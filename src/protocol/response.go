@@ -3,10 +3,10 @@ package protocol
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"github.com/bcicen/jstream"
 	"github.com/bytedance/sonic"
 	"io"
+	"strconv"
 )
 
 type ResponseType int
@@ -113,7 +113,14 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 				responseType = Ws
 				switch params := kv.Value.(type) {
 				case map[string]interface{}:
-					subId = fmt.Sprintf("%v", params["subscription"])
+					if sub, subOk := params["subscription"]; subOk {
+						subBytes, upstreamErr := readResult(sub)
+						if upstreamErr != nil {
+							upstreamError = upstreamErr
+						} else {
+							subId = ResultAsString(subBytes)
+						}
+					}
 					if res, paramsOk := params["result"]; paramsOk {
 						message, upstreamError = readResult(res)
 					}
@@ -153,6 +160,17 @@ func ResultAsString(result []byte) string {
 		return string(result[1 : len(result)-1])
 	}
 	return string(result)
+}
+
+func ResultAsNumber(result []byte) uint64 {
+	if len(result) == 0 {
+		return 0
+	}
+	num, err := strconv.ParseInt(string(result), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return uint64(num)
 }
 
 func readResult(result interface{}) ([]byte, *UpstreamError) {

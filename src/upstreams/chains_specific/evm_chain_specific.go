@@ -19,7 +19,7 @@ type EvmChainSpecificObject struct {
 }
 
 func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	request, err := e.LatestBlockRequest()
+	request, err := protocol.NewJsonRpcUpstreamRequest(1, "eth_getBlockByNumber", []interface{}{"latest", false}, false)
 	if err != nil {
 		return nil, err
 	}
@@ -36,6 +36,10 @@ func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector c
 	return parsedBlock, nil
 }
 
+func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
+	return e.ParseBlock(blockBytes)
+}
+
 func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block, error) {
 	evmBlock := EvmBlock{}
 	err := sonic.Unmarshal(blockBytes, &evmBlock)
@@ -45,13 +49,9 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 
 	return &protocol.Block{
 		Hash:      evmBlock.Hash,
-		Height:    evmBlock.Height,
+		Height:    uint64(evmBlock.Height.Int64()),
 		BlockJson: blockBytes,
 	}, nil
-}
-
-func (e *EvmChainSpecificObject) LatestBlockRequest() (protocol.UpstreamRequest, error) {
-	return protocol.NewJsonRpcUpstreamRequest(1, "eth_getBlockByNumber", []interface{}{"latest", false}, false)
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.UpstreamRequest, error) {

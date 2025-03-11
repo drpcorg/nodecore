@@ -1,9 +1,8 @@
 package protocol
 
-import "github.com/ethereum/go-ethereum/rpc"
-
 type Block struct {
-	Height    *rpc.BlockNumber
+	Height    uint64
+	Slot      uint64
 	Hash      string
 	BlockJson []byte
 }

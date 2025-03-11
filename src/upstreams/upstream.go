@@ -75,6 +75,8 @@ func getChainSpecific(blockchainType chains.BlockchainType) specific.ChainSpecif
 	switch blockchainType {
 	case chains.Ethereum:
 		return specific.EvmChainSpecific
+	case chains.Solana:
+		return specific.SolanaChainSpecific
 	default:
 		return nil
 	}

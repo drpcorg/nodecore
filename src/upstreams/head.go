@@ -63,7 +63,7 @@ func (h *HeadProcessor) Start() {
 			if ok {
 				h.lastUpdate.Store(time.Now())
 				// process events with heads
-				log.Debug().Msgf("got a new head - %d", block.Height.Int64())
+				log.Debug().Msgf("got a new head - %d", block.Height)
 			}
 		}
 		timeout.Reset(h.headNoUpdatesTimeout)
@@ -102,7 +102,7 @@ type RpcHead struct {
 }
 
 func (r *RpcHead) GetCurrentHeight() uint64 {
-	return uint64(r.block.Load().Height.Int64())
+	return uint64(r.block.Load().Height)
 }
 
 func NewRpcHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific, pollInterval time.Duration) *RpcHead {
@@ -169,7 +169,7 @@ type WsHead struct {
 }
 
 func (w *WsHead) GetCurrentHeight() uint64 {
-	return uint64(w.block.Load().Height.Int64())
+	return uint64(w.block.Load().Height)
 }
 
 func (w *WsHead) Start() {
@@ -221,7 +221,7 @@ func (w *WsHead) processMessages(subResponse protocol.UpstreamSubscriptionRespon
 				return
 			}
 			if message.Type == protocol.Ws {
-				block, err := w.chainSpecific.ParseBlock(message.Message)
+				block, err := w.chainSpecific.ParseSubscriptionBlock(message.Message)
 				if err != nil {
 					log.Warn().Err(err).Msgf("couldn't parse a message from heads subscription of upstream %s", w.upstreamId)
 					return

@@ -9,6 +9,6 @@ import (
 type ChainSpecific interface {
 	GetLatestBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
 	ParseBlock([]byte) (*protocol.Block, error)
-	LatestBlockRequest() (protocol.UpstreamRequest, error)
 	SubscribeHeadRequest() (protocol.UpstreamRequest, error)
+	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
 }
