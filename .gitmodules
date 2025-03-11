@@ -1,0 +1,3 @@
+[submodule "config/public"]
+	path = config/public
+	url = https://github.com/drpcorg/public
