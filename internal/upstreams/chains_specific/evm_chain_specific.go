@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/dshaltie/src/protocol"
-	"github.com/drpcorg/dshaltie/src/upstreams/connectors"
+	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 

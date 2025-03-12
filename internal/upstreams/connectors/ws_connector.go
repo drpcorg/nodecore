@@ -2,8 +2,8 @@ package connectors
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/src/protocol"
-	"github.com/drpcorg/dshaltie/src/upstreams/ws"
+	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/ws"
 )
 
 type WsConnector struct {

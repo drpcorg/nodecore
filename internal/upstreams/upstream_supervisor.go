@@ -1,8 +1,8 @@
 package upstreams
 
 import (
-	"github.com/drpcorg/dshaltie/src/config"
-	"github.com/drpcorg/dshaltie/src/utils"
+	"github.com/drpcorg/dshaltie/internal/config"
+	"github.com/drpcorg/dshaltie/pkg/utils"
 )
 
 type UpstreamSupervisor struct {

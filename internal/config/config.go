@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	AppName           = "dshaltie"
-	DefaultConfigPath = "./dshaltie.yml"
+	AppName           = "dShaltie"
+	DefaultConfigPath = "./dShaltie.yml"
 )
 
 type AppConfig struct {

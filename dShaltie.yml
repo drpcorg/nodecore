@@ -48,18 +48,18 @@ projects:
             successThresholdCapacity: 3
     upstreams:
       - id: eth-upstream
-        chain: ethereum
+        chain: solana
         connectors:
           - type: json-rpc
-            url:
+            url: https://lb.drpc.org/ogrpc?network=solana&dkey=AjIXNLaMB0OyhS4YP1EHDKctjGxmZloR7bsbAkKsEQAD
             headers:
               Key: Value
-          - type: rest
-            url:
-            headers:
-              Key: Value
-          - type: websocket
-            url:
+#          - type: rest
+#            url:
+#            headers:
+#              Key: Value
+#          - type: websocket
+#            url: wss://lb.drpc.org/ogws?network=solana&dkey=AjIXNLaMB0OyhS4YP1EHDKctjGxmZloR7bsbAkKsEQAD
         failsafe:
           timeout:
             duration: 30s

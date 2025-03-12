@@ -1,7 +1,6 @@
 package main
 
 import (
-	_ "embed"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"os"
@@ -9,9 +8,6 @@ import (
 	"text/template"
 	"unicode"
 )
-
-//go:embed public/chains.yaml
-var yamlData []byte
 
 type ChainConfig struct {
 	ChainSettings ChainSettings `yaml:"chain-settings"`
@@ -64,12 +60,16 @@ func (c Chain) String() string {
 `
 
 func main() {
+	chainsFile, err := os.ReadFile("pkg/chains/public/chains.yaml")
+	if err != nil {
+		log.Panic().Err(err).Msg("couldn't read chains.yaml")
+	}
 	var config ChainConfig
-	if err := yaml.Unmarshal(yamlData, &config); err != nil {
+	if err := yaml.Unmarshal(chainsFile, &config); err != nil {
 		log.Panic().Err(err).Msg("Failed to parse YAML")
 	}
 
-	f, err := os.Create("src/chains/chains_data.go")
+	f, err := os.Create("pkg/chains/chains_data.go")
 	if err != nil {
 		log.Panic().Err(err).Msg("Failed to create chains.go")
 	}

@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/drpcorg/dshaltie/src/protocol"
+	"github.com/drpcorg/dshaltie/internal/protocol"
 	"io"
 	"net/http"
 	"strings"

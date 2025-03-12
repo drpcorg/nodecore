@@ -1,8 +1,8 @@
 generate-networks:
-	go run config/init_chains.go
+	go run cmd/chains/init_chains.go
 
 lint:
 	golangci-lint run ./...
 
 build: generate-networks
-	go build -o $(PWD)/dshaltie.service src/main.go
+	go build -o $(PWD)/dshaltie.service cmd/dshaltie/main.go

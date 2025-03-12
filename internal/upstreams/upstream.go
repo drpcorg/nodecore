@@ -2,12 +2,12 @@ package upstreams
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/src/chains"
-	"github.com/drpcorg/dshaltie/src/config"
-	"github.com/drpcorg/dshaltie/src/protocol"
-	specific "github.com/drpcorg/dshaltie/src/upstreams/chains_specific"
-	"github.com/drpcorg/dshaltie/src/upstreams/connectors"
-	"github.com/drpcorg/dshaltie/src/upstreams/ws"
+	"github.com/drpcorg/dshaltie/internal/config"
+	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
+	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
+	"github.com/drpcorg/dshaltie/internal/upstreams/ws"
+	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/samber/lo"
 )
 

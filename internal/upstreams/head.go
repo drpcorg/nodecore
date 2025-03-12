@@ -2,11 +2,11 @@ package upstreams
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/src/chains"
-	"github.com/drpcorg/dshaltie/src/protocol"
-	specific "github.com/drpcorg/dshaltie/src/upstreams/chains_specific"
-	"github.com/drpcorg/dshaltie/src/upstreams/connectors"
-	"github.com/drpcorg/dshaltie/src/utils"
+	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
+	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
+	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dshaltie/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"sync/atomic"
 	"time"
@@ -63,7 +63,7 @@ func (h *HeadProcessor) Start() {
 			if ok {
 				h.lastUpdate.Store(time.Now())
 				// process events with heads
-				log.Debug().Msgf("got a new head - %d", block.Height)
+				log.Info().Msgf("got a new head - %d", block.Height)
 			}
 		}
 		timeout.Reset(h.headNoUpdatesTimeout)

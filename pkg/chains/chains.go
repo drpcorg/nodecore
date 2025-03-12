@@ -88,7 +88,7 @@ func GetChain(chainName string) ConfiguredChain {
 func configureChains() (map[string]ConfiguredChain, error) {
 	configuredChains := make(map[string]ConfiguredChain)
 
-	chainsFile, err := os.ReadFile("config/public/chains.yaml")
+	chainsFile, err := os.ReadFile("pkg/chains/public/chains.yaml")
 	if err != nil {
 		log.Panic().Err(err).Msg("couldn't read chains.yaml")
 	}

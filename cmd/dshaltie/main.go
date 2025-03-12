@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	_ "github.com/drpcorg/dshaltie/src/chains"
-	"github.com/drpcorg/dshaltie/src/config"
-	_ "github.com/drpcorg/dshaltie/src/logger"
-	"github.com/drpcorg/dshaltie/src/upstreams"
+	"github.com/drpcorg/dshaltie/internal/config"
+	"github.com/drpcorg/dshaltie/internal/upstreams"
+	_ "github.com/drpcorg/dshaltie/pkg/chains"
+	_ "github.com/drpcorg/dshaltie/pkg/logger"
 	"github.com/rs/zerolog/log"
 	"time"
 )
