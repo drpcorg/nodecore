@@ -21,13 +21,10 @@ The config example:
 
 [source,yaml]
 ----
-projects:
-  - id: main
+upstream-config:
     chain-defaults:
       - network: ethereum
         poll-interval: 3m
-        lags:
-          lagging: 6
     upstreams:
       - id: eth-upstream
         chain: ethereum
@@ -43,13 +40,12 @@ projects:
           - type: websocket
             url:
         methods:
+          enable:
+            - "eth_test"
+            - "arb_trace" # enable the whole method group
           disable:
             - "eth_getId"
 ----
-
-=== Projects
-
-The top level of the config is '*projects*'. There might be a few different projects with their upstreams and settings. You can have separate projects, so that you control their settings such as limits, upstream settings, etc.
 
 === Upstreams
 
@@ -59,6 +55,7 @@ image::upstream.png[alt="",width=60%,align="center"]
 - To be able to work with different blockchains an upstream has an abstraction `ChainSpecific`, which encapsulates the logic on how to work with various blockchain types.
 - To work with blockchains heads an upstream has an abstraction `HeadProcessor`, which encapsulates the logic on how to work with different heads.
 - An upstream has its own state, such as `status`, `head height`, `supported methods`, `finalized block`, `lower bounds`.
+- there are 2 statuses - `Available` and `Unavailable`
 
 === Connector
 
@@ -81,11 +78,11 @@ image::chainSpecific.png[alt="",width=90%,align="center"]
 image::heads.png[alt="",width=90%,align="center"]
 
 - A `HeadProcessor` in an abstraction to work with different types of heads. It controls to update its height and pass this event further, it observes that there are head updates, otherwise it can trigger a head restart.
-- In the picture above there are 2 types of heads - `RpcHead` and `WsHead`.
+- In the picture above there are 2 types of heads - `RpcHead` and `SubscriptionHead`.
 - Each head has a connector through which it works
 - `RpcHead` polls heads with a `pollInterval` time
-- `WsHead` subscribe to heads events if it's possible. If there are no head updates it can restart its subscription
-- By default `RpcHead` is used to receive heads to reduce costs unless a client specify `WsHead` to work with heads
+- `SubscriptionHead` subscribes to heads events if it's possible. If there are no head updates it can restart its subscription
+- By default `RpcHead` is used to receive heads to reduce costs unless a client specify `SubscriptionHead` to work with heads
 
 === Upstream requests and responses
 

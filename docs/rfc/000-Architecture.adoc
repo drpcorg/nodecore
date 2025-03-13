@@ -13,7 +13,7 @@ There is a high level overview of dShaltie architecture with its modules and wha
 
 == Detailed design
 
-image::dShaltie.png[alt="",width=90%,align="center"]
+image::balancer.png[alt="",width=90%,align="center"]
 
 dShaltie is smart and fault-tolerant RPC proxy whose main goal is to select the best upstream based on various characteristics (such as latency, error rate, lag, budgets, etc.) that can execute a client's request.
 
@@ -26,26 +26,31 @@ dShaltie is smart and fault-tolerant RPC proxy whose main goal is to select the 
 - return responses to the clients
 - stream http responses
 
-2. Execution Flow module
+2. Auth module
+
+- auth user requests using a conceptions of keys like in drpc
+- these keys can have different additional properties that should be applied later during request processing
+
+3. Execution Flow module
 - select a project and its upstreams for further processing
 - the single entry point for all requests
 - use the Balancing module to select an upstream that can execute a request and pass it
 - use the Hooks module for the response post-processing
 - wait for all responses and return them to the request module and then to the clients
 
-3. Balancing module
+4. Balancing module
 - select upstreams based on their characteristics
 - check upstreams state data like their lag
 - use the Rating module to filter upstreams based on their performance data like latency, error rate, etc.
 
-4. Rating module
+5. Rating module
 - calculate the upstream rating based on performance data
 
-5. Hooks module
+6. Hooks module
 - cache responses to the following storages - *Memory*, *Redis*, *PostgreSQL*, *Mongo*
 - write stats to Prometheus or dRPC via
 
-6. Upstream module
+7. Upstream module
 - read the config file and create upstreams with all their elements
 - create upstream connectors (*JSON-RPC*, *REST*, *Websocket*, *GRPC*)
 - create upstream heads (*RpcHead*, *WsHead*) and receive them
