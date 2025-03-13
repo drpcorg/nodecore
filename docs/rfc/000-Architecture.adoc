@@ -57,6 +57,10 @@ dShaltie is smart and fault-tolerant RPC proxy whose main goal is to select the 
 - there is chain specific logic for different networks (*JSON-RPC*, *Solana*, *Cosmos*, *Near*, *Polkadot*, etc.)
 - track upstream and chain state via a common pipeline
 
+8. Budget module
+- control rate limits
+- control client expenses to select the cheapest upstreams
+
 == Unresolved questions
 
 Nothing.
