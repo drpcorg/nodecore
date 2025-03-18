@@ -87,7 +87,7 @@ func parseJsonRpcBody(id interface{}, body []byte) *HttpUpstreamResponse {
 			}
 		}
 	}
-	if upstreamError == nil && len(result) == 0 {
+	if (upstreamError == nil && len(result) == 0) || dec.Err() != nil {
 		upstreamError = NewIncorrectResponseBodyError(errors.New("wrong json-rpc response - there is neither result nor error"))
 	}
 
@@ -137,6 +137,10 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 				responseType = JsonRpc
 			}
 		}
+	}
+
+	if dec.Err() != nil {
+		upstreamError = NewIncorrectResponseBodyError(errors.New("wrong json-rpc response from ws"))
 	}
 
 	return &WsResponse{
