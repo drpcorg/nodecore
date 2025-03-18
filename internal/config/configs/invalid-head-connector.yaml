@@ -1,0 +1,8 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: polygon
+      head-connector: wrongConnector
+      connectors:
+        - type: json-rpc
+          url: https://test.com

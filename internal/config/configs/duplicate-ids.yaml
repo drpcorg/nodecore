@@ -1,0 +1,12 @@
+upstream-config:
+  upstreams:
+    - id: another
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+    - id: another
+      chain: polygon
+      connectors:
+        - type: rest
+          url: https://test.com

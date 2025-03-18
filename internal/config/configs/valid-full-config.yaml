@@ -1,0 +1,25 @@
+upstream-config:
+  chain-defaults:
+    ethereum:
+      poll-interval: 2m
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      head-connector: websocket
+      poll-interval: 3m
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+          headers:
+            Key: Value
+        - type: websocket
+          url: wss://test.com
+    - id: another
+      chain: polygon
+      connectors:
+        - type: rest
+          url: https://test.com
+        - type: grpc
+          url: https://test-grpc.com
+          headers:
+            key: value

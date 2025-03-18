@@ -1,0 +1,4 @@
+upstream-config:
+  chain-defaults:
+    no-chain:
+      poll-interval: 2m

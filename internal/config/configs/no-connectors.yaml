@@ -1,0 +1,4 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: polygon
