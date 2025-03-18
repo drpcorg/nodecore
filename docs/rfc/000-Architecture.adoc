@@ -1,0 +1,66 @@
+= RFC 000-Architecture
+:imagesdir: ../assets
+
+*Name:* dShaltie Architecture
+
+*Type:* overview
+
+*Author:* https://github.com/KirillPamPam
+
+== Summary
+
+There is a high level overview of dShaltie architecture with its modules and what they are responsible for
+
+== Detailed design
+
+image::balancer.png[alt="",width=90%,align="center"]
+
+dShaltie is smart and fault-tolerant RPC proxy whose main goal is to select the best upstream based on various characteristics (such as latency, error rate, lag, budgets, etc.) that can execute a client's request.
+
+=== Modules
+
+1. Request module
+- receive clients requests and prepare them for further processing
+- it can work with any of these protocols: *JSON-RPC*, *REST*, *Websocket*, *GRPC*
+- parse requests into the internal representation and pass them to the Execution Flow module
+- return responses to the clients
+- stream http responses
+
+2. Auth module
+
+- auth user requests using a conceptions of keys like in drpc
+- these keys can have different additional properties that should be applied later during request processing
+
+3. Execution Flow module
+- select a project and its upstreams for further processing
+- the single entry point for all requests
+- use the Balancing module to select an upstream that can execute a request and pass it
+- use the Hooks module for the response post-processing
+- wait for all responses and return them to the request module and then to the clients
+
+4. Balancing module
+- select upstreams based on their characteristics
+- check upstreams state data like their lag
+- use the Rating module to filter upstreams based on their performance data like latency, error rate, etc.
+
+5. Rating module
+- calculate the upstream rating based on performance data
+
+6. Hooks module
+- cache responses to the following storages - *Memory*, *Redis*, *PostgreSQL*, *Mongo*
+- write stats to Prometheus or dRPC via
+
+7. Upstream module
+- read the config file and create upstreams with all their elements
+- create upstream connectors (*JSON-RPC*, *REST*, *Websocket*, *GRPC*)
+- create upstream heads (*RpcHead*, *WsHead*) and receive them
+- there is chain specific logic for different networks (*JSON-RPC*, *Solana*, *Cosmos*, *Near*, *Polkadot*, etc.)
+- track upstream and chain state via a common pipeline
+
+8. Budget module
+- control rate limits
+- control client expenses to select the cheapest upstreams
+
+== Unresolved questions
+
+Nothing.

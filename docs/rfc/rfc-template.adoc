@@ -1,0 +1,19 @@
+= RFC Template
+
+*Name:*
+
+*Type:* (feature/fix/enhancement/overview)
+
+*Author:*
+
+== Summary
+
+Explain what you want to do and why. For example, the possible use cases or the expected outcome.
+
+== Detailed design
+
+Explain what you want to do in enough detail. This should get into specifics and corner-cases, and include examples of how it can be used.
+
+== Unresolved questions
+
+The questions you need to discuss
