@@ -8,7 +8,6 @@ import (
 	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dshaltie/internal/upstreams/ws"
 	"github.com/drpcorg/dshaltie/pkg/chains"
-	"github.com/samber/lo"
 )
 
 type UpstreamStatus int
@@ -33,18 +32,20 @@ func (u *Upstream) Start() {
 	go u.headProcessor.Start()
 }
 
-func NewUpstream(config *config.UpstreamConfig) *Upstream {
+func NewUpstream(config *config.Upstream) *Upstream {
 	ctx := context.Background()
 	configuredChain := chains.GetChain(config.ChainName)
 	apiConnectors := make([]connectors.ApiConnector, 0)
 
+	var headConnector connectors.ApiConnector
 	for _, connectorConfig := range config.Connectors {
-		apiConnectors = append(apiConnectors, createConnector(ctx, connectorConfig))
+		apiConnector := createConnector(ctx, connectorConfig)
+		if connectorConfig.Type == config.HeadConnector {
+			headConnector = apiConnector
+		}
+		apiConnectors = append(apiConnectors, apiConnector)
 	}
 	chainSpecific := getChainSpecific(configuredChain.Type)
-	headConnector := lo.MinBy(apiConnectors, func(a connectors.ApiConnector, b connectors.ApiConnector) bool {
-		return a.GetType() < b.GetType()
-	})
 
 	return &Upstream{
 		Id:            config.Id,
@@ -53,7 +54,7 @@ func NewUpstream(config *config.UpstreamConfig) *Upstream {
 		apiConnectors: apiConnectors,
 		chainSpecific: chainSpecific,
 		ctx:           ctx,
-		headProcessor: NewHeadProcessor(ctx, config.Id, configuredChain, headConnector, chainSpecific),
+		headProcessor: NewHeadProcessor(ctx, config, configuredChain, headConnector, chainSpecific),
 	}
 }
 

@@ -18,6 +18,8 @@ func init() {
 type SolanaChainSpecificObject struct {
 }
 
+var _ ChainSpecific = (*SolanaChainSpecificObject)(nil)
+
 func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
 	slot, err := getLatestSlot(ctx, connector)
 	if err != nil {
@@ -30,6 +32,9 @@ func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context, connecto
 	}
 
 	block, err := getBlock(ctx, connector, maxBlock)
+	if err != nil {
+		return nil, err
+	}
 
 	parsedBlock, err := s.ParseBlock(block)
 	if err != nil {
@@ -47,9 +52,9 @@ func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Blo
 	}
 
 	return &protocol.Block{
-		Hash:      solanaBlock.Hash,
-		Height:    solanaBlock.Height,
-		BlockJson: blockBytes,
+		Hash:     solanaBlock.Hash,
+		Height:   solanaBlock.Height,
+		RawBlock: blockBytes,
 	}, nil
 }
 
@@ -61,10 +66,10 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 	}
 
 	return &protocol.Block{
-		Slot:      solanaSubBlock.Context.Slot,
-		Height:    solanaSubBlock.Value.Block.Height,
-		Hash:      solanaSubBlock.Value.Block.Hash,
-		BlockJson: blockBytes,
+		Slot:     solanaSubBlock.Context.Slot,
+		Height:   solanaSubBlock.Value.Block.Height,
+		Hash:     solanaSubBlock.Value.Block.Hash,
+		RawBlock: blockBytes,
 	}, nil
 }
 

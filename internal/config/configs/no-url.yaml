@@ -1,0 +1,6 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: polygon
+      connectors:
+        - type: rest

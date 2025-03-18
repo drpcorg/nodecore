@@ -1,0 +1,9 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: websocket
+          url: https://test.com
+        - type: rest
+          url: https://test.com

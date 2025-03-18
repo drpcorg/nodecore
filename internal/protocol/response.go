@@ -24,6 +24,8 @@ type HttpUpstreamResponse struct {
 	error  *UpstreamError
 }
 
+var _ UpstreamResponse = (*HttpUpstreamResponse)(nil)
+
 func (h *HttpUpstreamResponse) Id() interface{} {
 	return h.id
 }

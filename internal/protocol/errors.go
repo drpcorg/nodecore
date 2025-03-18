@@ -3,63 +3,64 @@ package protocol
 import "fmt"
 
 const (
-	IncorrectResponseBody   int = iota
-	ClientErrorCode             = 400
-	InternalServerErrorCode     = 500
+	BaseError int = iota
+	IncorrectResponseBody
+	ClientErrorCode         = 400
+	InternalServerErrorCode = 500
 )
 
 type UpstreamError struct {
-	code    int
-	message string
-	data    interface{}
+	Code    int
+	Message string
+	Data    interface{}
 	cause   error
 }
 
 func (b *UpstreamError) Error() string {
 	if b.cause != nil {
-		return fmt.Sprintf("%s - caused by: %s", b.message, b.cause.Error())
+		return fmt.Sprintf("%d: %s, caused by: %s", b.Code, b.Message, b.cause.Error())
 	} else {
-		return b.message
+		return fmt.Sprintf("%d: %s", b.Code, b.Message)
 	}
 }
 
 func NewUpstreamErrorFull(code int, message string, data interface{}, cause error) *UpstreamError {
 	return &UpstreamError{
-		message: message,
+		Message: message,
 		cause:   cause,
-		code:    code,
-		data:    data,
+		Code:    code,
+		Data:    data,
 	}
 }
 
 func NewUpstreamErrorWithData(code int, message string, data interface{}) *UpstreamError {
 	return &UpstreamError{
-		message: message,
-		code:    code,
-		data:    data,
+		Message: message,
+		Code:    code,
+		Data:    data,
 	}
 }
 
 func NewClientUpstreamError(cause error) *UpstreamError {
 	return &UpstreamError{
-		message: "client error",
+		Message: "client error",
 		cause:   cause,
-		code:    ClientErrorCode,
+		Code:    ClientErrorCode,
 	}
 }
 
 func NewServerUpstreamError(cause error) *UpstreamError {
 	return &UpstreamError{
-		message: "internal server error",
+		Message: "internal server error",
 		cause:   cause,
-		code:    InternalServerErrorCode,
+		Code:    InternalServerErrorCode,
 	}
 }
 
 func NewIncorrectResponseBodyError(cause error) *UpstreamError {
 	return &UpstreamError{
-		message: "incorrect response body",
+		Message: "incorrect response body",
 		cause:   cause,
-		code:    IncorrectResponseBody,
+		Code:    IncorrectResponseBody,
 	}
 }

@@ -7,10 +7,10 @@ import (
 type ApiConnectorType int
 
 const (
-	WsConnector ApiConnectorType = iota
-	JsonRpcConnector
+	JsonRpcConnector ApiConnectorType = iota
 	RestConnector
 	GrpcConnector
+	WsConnector
 )
 
 type JsonRpcRequest struct {

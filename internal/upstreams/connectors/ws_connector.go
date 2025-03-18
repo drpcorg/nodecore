@@ -10,6 +10,8 @@ type WsConnector struct {
 	connection *ws.WsConnection
 }
 
+var _ ApiConnector = (*WsConnector)(nil)
+
 func NewWsConnector(connection *ws.WsConnection) *WsConnector {
 	return &WsConnector{
 		connection: connection,

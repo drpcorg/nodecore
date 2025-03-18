@@ -15,8 +15,8 @@ func NewUpstreamSupervisor() *UpstreamSupervisor {
 	}
 }
 
-func (u *UpstreamSupervisor) StartUpstreams(upstreamsConfigs []*config.UpstreamConfig) {
-	for _, upConfig := range upstreamsConfigs {
+func (u *UpstreamSupervisor) StartUpstreams(upstreamsConfigs *config.UpstreamConfig) {
+	for _, upConfig := range upstreamsConfigs.Upstreams {
 		go func() {
 			up := NewUpstream(upConfig)
 			up.Start()

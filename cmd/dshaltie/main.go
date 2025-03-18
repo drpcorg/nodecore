@@ -19,9 +19,7 @@ func main() {
 	}
 
 	upstreamSupervisor := upstreams.NewUpstreamSupervisor()
-	for _, project := range appConfig.Projects {
-		go upstreamSupervisor.StartUpstreams(project.Upstreams)
-	}
+	go upstreamSupervisor.StartUpstreams(appConfig.UpstreamConfig)
 
 	time.Sleep(50000 * time.Second)
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"os"
+	"time"
 )
 
 const (
@@ -12,8 +13,8 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig *ServerConfig    `yaml:"server"`
-	Projects     []*ProjectConfig `yaml:"projects"`
+	ServerConfig   *ServerConfig   `yaml:"server"`
+	UpstreamConfig *UpstreamConfig `yaml:"upstream-config"`
 }
 
 type ServerConfig struct {
@@ -27,15 +28,21 @@ type TlsConfig struct {
 	Key         string `yaml:"key"`
 }
 
-type ProjectConfig struct {
-	Id        string            `yaml:"id"`
-	Upstreams []*UpstreamConfig `yaml:"upstreams"`
+type UpstreamConfig struct {
+	Upstreams     []*Upstream               `yaml:"upstreams"`
+	ChainDefaults map[string]*ChainDefaults `yaml:"chain-defaults"`
 }
 
-type UpstreamConfig struct {
-	Id         string             `yaml:"id"`
-	ChainName  string             `yaml:"chain"`
-	Connectors []*ConnectorConfig `yaml:"connectors"`
+type ChainDefaults struct {
+	PollInterval time.Duration `yaml:"poll-interval"`
+}
+
+type Upstream struct {
+	Id            string             `yaml:"id"`
+	ChainName     string             `yaml:"chain"`
+	Connectors    []*ConnectorConfig `yaml:"connectors"`
+	HeadConnector ConnectorType      `yaml:"head-connector"`
+	PollInterval  time.Duration      `yaml:"poll-interval"`
 }
 
 type ConnectorType string
@@ -46,6 +53,13 @@ const (
 	Grpc    ConnectorType = "grpc"
 	Ws      ConnectorType = "websocket"
 )
+
+var connectorTypesRating = map[ConnectorType]int{
+	JsonRpc: 0,
+	Rest:    1,
+	Grpc:    2,
+	Ws:      3,
+}
 
 type ConnectorConfig struct {
 	Type    ConnectorType     `yaml:"type"`
@@ -72,14 +86,10 @@ func NewAppConfig() (*AppConfig, error) {
 	}
 
 	appConfig.setDefaults()
-	err = appConfig.Validate()
+	err = appConfig.validate()
 	if err != nil {
 		return nil, err
 	}
 
 	return &appConfig, nil
-}
-
-func (a *AppConfig) setDefaults() {
-	//TODO: set default values
 }

@@ -1,0 +1,7 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: wrong
+      connectors:
+        - type: json-rpc
+          url: https://test.com

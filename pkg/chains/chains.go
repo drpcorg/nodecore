@@ -2,11 +2,12 @@ package chains
 
 import (
 	_ "embed"
-	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
-	"os"
 	"time"
 )
+
+//go:embed public/chains.yaml
+var chainsCfg []byte
 
 type BlockchainType string
 
@@ -45,11 +46,6 @@ type Protocol struct {
 
 type Settings struct {
 	ExpectedBlockTime time.Duration `yaml:"expected-block-time"`
-	Lags              Lags          `yaml:"lags"`
-}
-
-type Lags struct {
-	Lagging int `yaml:"lagging"`
 }
 
 type ConfiguredChain struct {
@@ -77,6 +73,11 @@ func init() {
 	chains = result
 }
 
+func IsSupported(chainName string) bool {
+	_, ok := chains[chainName]
+	return ok
+}
+
 func GetChain(chainName string) ConfiguredChain {
 	found, ok := chains[chainName]
 	if !ok {
@@ -88,13 +89,13 @@ func GetChain(chainName string) ConfiguredChain {
 func configureChains() (map[string]ConfiguredChain, error) {
 	configuredChains := make(map[string]ConfiguredChain)
 
-	chainsFile, err := os.ReadFile("pkg/chains/public/chains.yaml")
-	if err != nil {
-		log.Panic().Err(err).Msg("couldn't read chains.yaml")
-	}
+	//chainsFile, err := os.ReadFile("pkg/chains/public/chains.yaml")
+	//if err != nil {
+	//	log.Panic().Err(err).Msg("couldn't read chains.yaml")
+	//}
 
 	var config ChainConfig
-	if err := yaml.Unmarshal(chainsFile, &config); err != nil {
+	if err := yaml.Unmarshal(chainsCfg, &config); err != nil {
 		return nil, err
 	}
 
@@ -117,7 +118,6 @@ func configureChains() (map[string]ConfiguredChain, error) {
 					ChainId:    chain.ChainId,
 					ShortNames: chain.ShortNames,
 					Type:       protocol.Type,
-					Settings:   settings,
 					Chain:      network,
 				}
 			}

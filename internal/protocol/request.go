@@ -29,6 +29,8 @@ type HttpUpstreamRequest struct {
 	isStream       bool
 }
 
+var _ UpstreamRequest = (*HttpUpstreamRequest)(nil)
+
 func NewHttpUpstreamRequest(
 	method string,
 	headers map[string]string,
@@ -44,7 +46,7 @@ func NewHttpUpstreamRequest(
 	}
 }
 
-func NewJsonRpcUpstreamRequest(id interface{}, method string, params []interface{}, stream bool) (*HttpUpstreamRequest, error) {
+func NewJsonRpcUpstreamRequest(id interface{}, method string, params any, stream bool) (*HttpUpstreamRequest, error) {
 	jsonRpcReq := map[string]interface{}{
 		"id":      id,
 		"jsonrpc": "2.0",

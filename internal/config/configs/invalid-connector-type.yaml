@@ -1,0 +1,7 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: polygon
+      connectors:
+        - type: wrong-type
+          url: https://test.com

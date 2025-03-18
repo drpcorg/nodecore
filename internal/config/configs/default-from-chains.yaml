@@ -1,0 +1,11 @@
+upstream-config:
+  chain-defaults:
+    ethereum:
+      poll-interval: 10m
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      poll-interval: 3m
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -18,6 +18,8 @@ type HttpConnector struct {
 	connectorType     protocol.ApiConnectorType
 }
 
+var _ ApiConnector = (*HttpConnector)(nil)
+
 func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, additionalHeaders map[string]string) *HttpConnector {
 	return &HttpConnector{
 		endpoint:          endpoint,

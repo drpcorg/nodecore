@@ -21,54 +21,47 @@ cache:
       connector: memory-connector
       ttl: 0
 
-projects:
-  - id: main
-    chain-defaults:
-      - network: ethereum
-        expected-block-time: 12s
-        lags:
-          lagging: 6
-        failsafe:
-          timeout:
-            duration: 30s
-          retry:
-            maxAttempts: 3
-            delay: 0ms
-            backoffMaxDelay: 3s
-            backoffFactor: 1.2
-            jitter: 0ms
-          hedge:
-            delay: 500ms
-            maxCount: 1
-          circuitBreaker:
-            failureThresholdCount: 160
-            failureThresholdCapacity: 200
-            halfOpenAfter: 5m
-            successThresholdCount: 3
-            successThresholdCapacity: 3
-    upstreams:
-      - id: eth-upstream
-        chain: solana
-        connectors:
-          - type: json-rpc
-            url: https://lb.drpc.org/ogrpc?network=solana&dkey=AjIXNLaMB0OyhS4YP1EHDKctjGxmZloR7bsbAkKsEQAD
-            headers:
-              Key: Value
-#          - type: rest
-#            url:
-#            headers:
-#              Key: Value
-#          - type: websocket
-#            url: wss://lb.drpc.org/ogws?network=solana&dkey=AjIXNLaMB0OyhS4YP1EHDKctjGxmZloR7bsbAkKsEQAD
-        failsafe:
-          timeout:
-            duration: 30s
-          retry:
-            maxAttempts: 3
-            delay: 100ms
-            backoffMaxDelay: 3s
-            backoffFactor: 1.2
-            jitter: 0ms
-        methods:
-          disable:
-            - "eth_getId"
+upstream-config:
+  chain-defaults:
+    ethereum:
+      poll-interval: 12s
+      failsafe:
+        timeout:
+          duration: 30s
+        retry:
+          maxAttempts: 3
+          delay: 0ms
+          backoffMaxDelay: 3s
+          backoffFactor: 1.2
+          jitter: 0ms
+        hedge:
+          delay: 500ms
+          maxCount: 1
+        circuitBreaker:
+          failureThresholdCount: 160
+          failureThresholdCapacity: 200
+          halfOpenAfter: 5m
+          successThresholdCount: 3
+          successThresholdCapacity: 3
+  upstreams:
+    - id: eth-upstream
+      chain: polygon
+      connectors:
+        - type: json-rpc
+          url:
+          headers:
+            Key: Value
+        - type: websocket
+          url:
+      failsafe:
+        timeout:
+          duration: 30s
+        retry:
+          maxAttempts: 3
+          delay: 100ms
+          backoffMaxDelay: 3s
+          backoffFactor: 1.2
+          jitter: 0ms
+      methods:
+        disable:
+          - "eth_getId"

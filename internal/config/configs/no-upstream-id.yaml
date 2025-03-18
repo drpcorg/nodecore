@@ -1,0 +1,17 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+          headers:
+            Key: Value
+    - chain: polygon
+      connectors:
+        - type: rest
+          url: https://test.com
+        - type: grpc
+          url: https://test-grpc.com
+          headers:
+            key: value
