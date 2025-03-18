@@ -129,12 +129,12 @@ func NewRpcHead(ctx context.Context, upstreamId string, connector connectors.Api
 
 func (r *RpcHead) Start() {
 	for {
+		r.poll()
 		select {
 		case <-r.ctx.Done():
 			return
 		case <-time.After(r.pollInterval):
 		}
-		r.poll()
 	}
 }
 
