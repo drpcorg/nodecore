@@ -68,7 +68,7 @@ func (h *HeadProcessor) Start() {
 			if ok {
 				h.lastUpdate.Store(time.Now())
 				// process events with heads
-				log.Info().Msgf("got a new head - %d", block.Height)
+				log.Debug().Msgf("got a new head - %d", block.Height)
 			}
 		}
 		timeout.Reset(h.headNoUpdatesTimeout)
