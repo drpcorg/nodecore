@@ -1,0 +1,174 @@
+= RFC Template
+:imagesdir: ../assets/rfc-002
+
+*Name:* Upstream method processing
+
+*Type:* feature
+
+*Author:* https://github.com/KirillPamPam
+
+== Summary
+
+We'd like to have a flexible config with chain methods. There will be default protocol methods (e.g. EVM methods, bitcoin methods, solana methods, etc.), specific chain methods in addition to default ones, method groups (filter, debug, trace).
+
+But it's not enough to have plain methods only, it would be great to configure them via this config. For example, there could be different quorums for methods. By "Quorum" I mean sending one or multiple requests, processing the received responses and getting the final result.
+
+== Detailed design
+
+There is a config file with methods and their quorums.
+[source,yaml]
+----
+methods-config:
+  protocol-methods:
+    eth:
+      - name: "eth_call"
+        quorum: AnyQuorum
+        tag-parsers:
+          - parser: PARSER_NAME
+            args:
+              - "block"
+              - "1"
+          - parser: ANOTHER_PARSER_NAME
+            args:
+              - "hash"
+              - "1"
+              - "block_hash"
+      - name: "eth_getLogs"
+        tag-parsers:
+          - parser: PARSER_NAME
+            args:
+              - "block"
+              - "1"
+              - "func_max(fromBlock,toBlock)"
+          - parser: ANOTHER_PARSER_NAME
+            args:
+              - "hash"
+              - "1"
+              - "block_hash"
+    near:
+      - name: "block"
+        quorum: AnyQuorum
+        tag-parsers:
+          - parser: PARSER_NAME
+            args:
+              - "block"
+              - "0"
+          - parser: ANOTHER_PARSER_NAME
+            args:
+              - "hash"
+              - "0"
+          - parser: PARAMS_OBJECT_ANOTHER_PARSER_NAME
+            args:
+              - "hash"
+              - "finality"
+          - parser: PARAMS_OBJECT_ANOTHER_PARSER_NAME
+            args:
+              - "block"
+              - "block_id"
+          - parser: PARAMS_OBJECT_ANOTHER_PARSER_NAME
+            args:
+              - "hash"
+              - "block_id"
+    solana:
+      - name: "getSlot"
+  chain-methods:
+    sei:
+      - name: "sei_getCosmosTx"
+    filecoin:
+      - name: "Filecoin.ChainBlockstoreInfo"
+  unsupported-methods:
+    zksync:
+      - "eth_maxPriorityFeePerGas"
+  method-groups:
+    eth:
+      - name: filter
+        methods:
+          - name: "eth_getFilterChanges"
+
+----
+
+Let's look at each component separately in detail
+
+=== "methods-config" section
+
+"methods-config" consists of the following sections:
+
+* "protocol-methods" - methods that are common to a specific protocol. Possible values:
+** eth
+** solana
+** eth-beacon-chain
+** bitcoin
+** cosmos
+** near
+** polkadot
+** ripple
+** solana
+** starknet
+** ton
+* "chain-methods" - additional methods that exist only in a specific chain. Possible values - any supported chain.
+* "unsupported-methods" - methods that will be disabled in a specific chain. Possible values - any supported chain and an array of unsupported methods
+* "method-groups" - group of methods that can be enabled/disabled together. Possible values - any supported protocol and its methods. There are also special groups:
+** default - all supported methods
+** chain - specific chain methods
+
+=== Methods
+
+All settings under "methods-config" (except "unsupported-methods") consist of the method description:
+
+* name - a method name
+* quorum - a method quorum if it's necessary to send multiple requests and then process the result based on a few responses
+* tag-parsers - parsers that can be used to extract the block number or hash from the method parameters
+
+"unsupported-methods" contains only array of method names, it's unnecessary to describe a method in a full way.
+
+==== Quorums
+
+Possible quorums:
+
+* AlwaysQuorum - is a default one when no extra requests are sent
+* BroadcastQuorum - send a request to all providers/nodes and return an error if all providers/nodes responds with an error, otherwise return a normal response (could be used for tx sending)
+* MaximumValueQuorum - send a request to multiple providers/nodes, analyze and choose the maximum value among all responses, then return it, otherwise return an error if all providers/nodes responds with an error (could be used for getTxCount methods)
+
+==== Tag-parsers
+
+There can be multiple parsers for a method, because even one method may have different structures, so it's necessary to be able to parse all of them. These parsers are applied in turn, and then return a result once a value has been extracted.
+
+Each tag-parser consist of the following fields:
+
+* parser - a parser name that will be used to extract values
+* args - an array of args that will be used in a parser. For each parser these args may differ
+
+===== Parsers
+
+* PARSER_BY_ARG - a json-rpc parser that works with the params array.
+** block|hash - a type of possible extracted value
+** index - an index of the extracted value in the params array
+* PARSER_OBJECT_BY_ARG - a json-rpc parser that works with the params array, but the extracted value can be an object.
+** block|hash - a type of possible extracted value
+** index - an index of the extracted value in the params array
+** path.to.value[0].num - a json path to the extracted value. Use "." for nested objects and [index] for array elements
+* PARSER_OBJECT_FUNC_BY_ARG - a json-rpc parser that works with the params array, but the extracted value can be an object with multiple values that can be extracted. To analyze which value should be returned, the function is used.
+** block|hash - a type of possible extracted value
+** index - an index of the extracted value in the params array
+** a function with passed json paths to the extracted values. Functions:
+*** max(number, number) - choose a number with maximum value
+* PARSER_PARAMS_OBJECT - a json-rpc parser that works with params as an object.
+** block|hash - a type of possible extracted value
+** path.to.value[0].num - a json path to the extracted value. Use "." for nested objects and [index] for array elements
+* REST_PATH_PARAM_PARSER - a rest parser that works with path params
+** superior path parameter - a path param before the extracted value
+* REST_QUERY_PARAM_PARSER -  a rest parser that works with query params
+** query param name - a name of query param with the extracted value
+
+These parsers are general ones. However, specific chain parsers might be implemented since there could be specific logic, and it's impossible to have a common extractor that covers all cases.
+
+The TagParser structure:
+
+image::tag-parsers.png[alt="",width=90%,align="center"]
+
+It has one method *Extract*, which accepts *input* as the first param (it can be anything - a rest method name, a json object, a byte array, etc.) and *args* as the second param. And then in returns *Tag* with *block* or *hash* (it's impossible to return both of them at the same time).
+
+== Unresolved questions
+
+* Should group methods be enabled by default? Or is it necessary to detect them automatically?
+* How can the extracted values be used besides in balancing checks?
