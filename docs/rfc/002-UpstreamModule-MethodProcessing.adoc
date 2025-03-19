@@ -1,4 +1,4 @@
-= RFC Template
+= RFC 002-UpstreamModule-MethodProcessing
 :imagesdir: ../assets/rfc-002
 
 *Name:* Upstream method processing
