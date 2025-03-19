@@ -15,7 +15,7 @@ But it's not enough to have plain methods only, it would be great to configure t
 
 == Detailed design
 
-There is a config file with methods and their quorums.
+There is a config file with methods, their quorums and tag parsers.
 [source,yaml]
 ----
 methods-config:
