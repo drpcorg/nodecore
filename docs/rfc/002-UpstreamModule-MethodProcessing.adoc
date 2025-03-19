@@ -11,7 +11,7 @@
 
 We'd like to have a flexible config with chain methods. There will be default protocol methods (e.g. EVM methods, bitcoin methods, solana methods, etc.), specific chain methods in addition to default ones, method groups (filter, debug, trace).
 
-But it's not enough to have plain methods only, it would be great to configure them via this config. For example, there could be different quorums for methods. By "Quorum" I mean sending one or multiple requests, processing the received responses and getting the final result.
+But it's not enough to have plain methods only, it would be great to configure them via this config. For example, there could be different quorums for methods. By "Quorum" I mean sending one or multiple requests, processing the received responses and getting the final result. Also, we need to be able to extract some values like blocks and hashes.
 
 == Detailed design
 
