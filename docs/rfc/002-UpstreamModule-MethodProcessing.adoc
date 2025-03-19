@@ -147,11 +147,11 @@ Each tag-parser consist of the following fields:
 ** block|hash - a type of possible extracted value
 ** index - an index of the extracted value in the params array
 ** path.to.value[0].num - a json path to the extracted value. Use "." for nested objects and [index] for array elements
-* PARSER_OBJECT_FUNC_BY_ARG - a json-rpc parser that works with the params array, but the extracted value can be an object with multiple values that can be extracted. To analyze which value should be returned, the function is used.
+* PARSER_OBJECT_FUNC_BY_ARG - a json-rpc parser that works with the params array, but the extracted value can be an object with multiple values that can be extracted. To understand which value should be returned, the function is used.
 ** block|hash - a type of possible extracted value
 ** index - an index of the extracted value in the params array
 ** a function with passed json paths to the extracted values. Functions:
-*** max(number, number) - choose a number with maximum value
+*** max(number, number) - choose a number with a maximum value
 * PARSER_PARAMS_OBJECT - a json-rpc parser that works with params as an object.
 ** block|hash - a type of possible extracted value
 ** path.to.value[0].num - a json path to the extracted value. Use "." for nested objects and [index] for array elements
