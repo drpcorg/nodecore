@@ -1,0 +1,40 @@
+= RFC 002-UpstreamModule-UpstreamPipeline
+:imagesdir: ../assets/rfc-002
+
+*Name:* Upstream pipeline
+
+*Type:* feature
+
+*Author:* https://github.com/KirillPamPam
+
+== Summary
+
+We need to track the state of upstreams separately, and then aggregate all the states of upstreams of one chain to have a common chain state.
+
+The upstream state will help in understanding if that upstream can handle a request or not. By the upstream state I mean its status, supported methods, height and other characteristics.
+
+The chain state will help in understanding of the whole chain status, e.g. if it's available, supported methods, etc. Also, it might be important to process upstream states of one chain, for example - choose which head is canonical (aka *ForkChoice*), or track upstream lags, or something else.
+
+== Detailed design
+
+image::up-pipeline.png[alt="",width=90%,align="center"]
+
+=== SubscriptionManager
+
+The core element of the suggested pipeline is *SubscriptionManager*, through which all components exchange messages. The main feature of *SubscriptionManager* is multiple subscribers to a single "topic". It may help to process the same messages in various ways in parallel.
+
+=== Pipeline
+
+* *Upstream* updates its state through its *SubscriptionManager* and then send an event to *UpstreamSupervisor*; an upstream event contains:
+** head height
+** supported methods
+** status
+* *UpstreamSupervisor* receives events from upstreams, then creates or loads *ChainSupervisor* for a specific chain and sends an event to it
+* *ChainSupervisor* receives events for a specific chain and process them:
+** aggregate all data from upstreams to maintain its own state; it should distinguish available and unavailable upstreams to process the correct data only
+** calculate lags if necessary
+** choose the canonical head (aka ForkChoice). The base fork choice is by height to not store old heads
+
+== Unresolved questions
+
+
