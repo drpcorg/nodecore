@@ -1,5 +1,5 @@
-= RFC 002-UpstreamModule-MethodProcessing
-:imagesdir: ../assets/rfc-002
+= RFC 003-UpstreamModule-MethodProcessing
+:imagesdir: ../assets/rfc-003
 
 *Name:* Upstream method processing
 
