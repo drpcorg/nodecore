@@ -49,11 +49,7 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 		return nil, fmt.Errorf("couldn't parse the evm block, reason - %s", err.Error())
 	}
 
-	return &protocol.Block{
-		Hash:     evmBlock.Hash,
-		Height:   uint64(evmBlock.Height.Int64()),
-		RawBlock: blockBytes,
-	}, nil
+	return protocol.NewBlock(uint64(evmBlock.Height.Int64()), 0, evmBlock.Hash, blockBytes), nil
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.UpstreamRequest, error) {

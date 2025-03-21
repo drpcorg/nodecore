@@ -1,7 +1,8 @@
-package upstreams
+package heads
 
 import (
 	"context"
+	"fmt"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
@@ -13,21 +14,26 @@ import (
 	"time"
 )
 
+type HeadEvent struct {
+	HeadData *protocol.BlockData
+}
+
 type HeadProcessor struct {
 	upstreamId           string
 	ctx                  context.Context
 	head                 Head
 	lastUpdate           *utils.Atomic[time.Time]
 	headNoUpdatesTimeout time.Duration
+	subManager           *utils.SubscriptionManager[HeadEvent]
 }
 
 func NewHeadProcessor(
 	ctx context.Context,
 	upConfig *config.Upstream,
-	configuredChain chains.ConfiguredChain,
 	apiConnector connectors.ApiConnector,
 	specific specific.ChainSpecific,
 ) *HeadProcessor {
+	configuredChain := chains.GetChain(upConfig.ChainName)
 	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, apiConnector, specific)
 
 	headNoUpdatesTimeout := 1 * time.Minute
@@ -48,7 +54,16 @@ func NewHeadProcessor(
 		ctx:                  ctx,
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent](fmt.Sprintf("%s_head_processor", upConfig.Id)),
 	}
+}
+
+func (h *HeadProcessor) GetCurrentBlock() *protocol.Block {
+	return h.head.GetCurrentBlock()
+}
+
+func (h *HeadProcessor) Subscribe(name string) *utils.Subscription[HeadEvent] {
+	return h.subManager.Subscribe(name)
 }
 
 func (h *HeadProcessor) Start() {
@@ -66,9 +81,9 @@ func (h *HeadProcessor) Start() {
 			return
 		case block, ok := <-h.head.HeadsChan():
 			if ok {
+				log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.BlockData.Height)
 				h.lastUpdate.Store(time.Now())
-				// process events with heads
-				log.Debug().Msgf("got a new head - %d", block.Height)
+				h.subManager.Publish(HeadEvent{HeadData: block.BlockData})
 			}
 		}
 		timeout.Reset(h.headNoUpdatesTimeout)
@@ -79,20 +94,20 @@ func createHead(ctx context.Context, id string, pollInterval time.Duration, apiC
 	switch apiConnector.GetType() {
 	case protocol.JsonRpcConnector, protocol.RestConnector:
 		log.Info().Msgf("starting an rpc head of upstream %s with poll interval %s", id, pollInterval)
-		return NewRpcHead(ctx, id, apiConnector, specific, pollInterval)
+		return newRpcHead(ctx, id, apiConnector, specific, pollInterval)
 	case protocol.WsConnector:
 		log.Info().Msgf("starting a ws head of upstream %s", id)
-		return NewWsHead(ctx, id, apiConnector, specific)
+		return newWsHead(ctx, id, apiConnector, specific)
 	default:
 		return nil
 	}
 }
 
 type Head interface {
-	GetCurrentHeight() uint64
 	Start()
 	HeadsChan() chan *protocol.Block
 	OnNoHeadUpdates()
+	GetCurrentBlock() *protocol.Block
 }
 
 type RpcHead struct {
@@ -108,11 +123,7 @@ type RpcHead struct {
 
 var _ Head = (*RpcHead)(nil)
 
-func (r *RpcHead) GetCurrentHeight() uint64 {
-	return r.block.Load().Height
-}
-
-func NewRpcHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific, pollInterval time.Duration) *RpcHead {
+func newRpcHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific, pollInterval time.Duration) *RpcHead {
 	head := RpcHead{
 		ctx:            ctx,
 		block:          *utils.NewAtomic[protocol.Block](),
@@ -138,6 +149,11 @@ func (r *RpcHead) Start() {
 	}
 }
 
+func (r *RpcHead) GetCurrentBlock() *protocol.Block {
+	block := r.block.Load()
+	return &block
+}
+
 func (r *RpcHead) HeadsChan() chan *protocol.Block {
 	return r.headsChan
 }
@@ -150,7 +166,7 @@ func (r *RpcHead) poll() {
 		r.pollInProgress.Store(true)
 		defer r.pollInProgress.Store(false)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.ctx, 5*time.Second)
 		defer cancel()
 
 		block, err := r.chainSpecific.GetLatestBlock(ctx, r.connector)
@@ -177,8 +193,9 @@ type SubscriptionHead struct {
 
 var _ Head = (*SubscriptionHead)(nil)
 
-func (w *SubscriptionHead) GetCurrentHeight() uint64 {
-	return w.block.Load().Height
+func (w *SubscriptionHead) GetCurrentBlock() *protocol.Block {
+	block := w.block.Load()
+	return &block
 }
 
 func (w *SubscriptionHead) Start() {
@@ -247,7 +264,7 @@ func (w *SubscriptionHead) processMessages(subResponse protocol.UpstreamSubscrip
 	}
 }
 
-func NewWsHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific) *SubscriptionHead {
+func newWsHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific) *SubscriptionHead {
 	head := SubscriptionHead{
 		ctx:             ctx,
 		upstreamId:      upstreamId,

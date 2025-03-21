@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/upstreams"
@@ -18,7 +19,9 @@ func main() {
 		log.Panic().Err(err).Msg("unable to parse the config file")
 	}
 
-	upstreamSupervisor := upstreams.NewUpstreamSupervisor()
+	appCtx := context.Background()
+
+	upstreamSupervisor := upstreams.NewUpstreamSupervisor(appCtx)
 	go upstreamSupervisor.StartUpstreams(appConfig.UpstreamConfig)
 
 	time.Sleep(50000 * time.Second)

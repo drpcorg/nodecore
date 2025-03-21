@@ -31,8 +31,8 @@ func TestEvmParseSubBLock(t *testing.T) {
 	block, err := specific.EvmChainSpecific.ParseSubscriptionBlock(body)
 
 	assert.Nil(t, err)
-	assert.Equal(t, uint64(69195275), block.Height)
-	assert.Equal(t, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18", block.Hash)
+	assert.Equal(t, uint64(69195275), block.BlockData.Height)
+	assert.Equal(t, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18", block.BlockData.Hash)
 }
 
 func TestEvmGetLatestBlock(t *testing.T) {
@@ -53,8 +53,8 @@ func TestEvmGetLatestBlock(t *testing.T) {
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, err)
-	assert.Equal(t, uint64(69195275), block.Height)
-	assert.Equal(t, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18", block.Hash)
+	assert.Equal(t, uint64(69195275), block.BlockData.Height)
+	assert.Equal(t, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18", block.BlockData.Hash)
 }
 
 func TestEvmGetLatestBlockWithError(t *testing.T) {

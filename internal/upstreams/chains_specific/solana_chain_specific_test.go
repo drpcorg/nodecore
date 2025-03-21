@@ -43,9 +43,9 @@ func TestSolanaParseSubBLock(t *testing.T) {
 	block, err := specific.SolanaChainSpecific.ParseSubscriptionBlock(body)
 
 	assert.Nil(t, err)
-	assert.Equal(t, uint64(305813576), block.Height)
-	assert.Equal(t, uint64(327557189), block.Slot)
-	assert.Equal(t, "2XB8V5eP7HaNeRd2u98YLYS7QqzX61MNskmzeyXy4oiG", block.Hash)
+	assert.Equal(t, uint64(305813576), block.BlockData.Height)
+	assert.Equal(t, uint64(327557189), block.BlockData.Slot)
+	assert.Equal(t, "2XB8V5eP7HaNeRd2u98YLYS7QqzX61MNskmzeyXy4oiG", block.BlockData.Hash)
 }
 
 func TestSolanaGetLatestBlock(t *testing.T) {
@@ -81,9 +81,9 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, err)
-	assert.Equal(t, uint64(305814139), block.Height)
-	assert.Equal(t, uint64(327557752), block.Slot)
-	assert.Equal(t, "7QbMXETjcbRHTLxqAEH62nGE2o8mNh7JsspkzughEoGv", block.Hash)
+	assert.Equal(t, uint64(305814139), block.BlockData.Height)
+	assert.Equal(t, uint64(327557752), block.BlockData.Slot)
+	assert.Equal(t, "7QbMXETjcbRHTLxqAEH62nGE2o8mNh7JsspkzughEoGv", block.BlockData.Hash)
 }
 
 func TestSolanaGetLatestBlockWithError(t *testing.T) {
