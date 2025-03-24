@@ -23,6 +23,8 @@ methods-config:
     eth:
       - name: "eth_call"
         quorum: AnyQuorum
+        category:
+          type: json-rpc
         tag-parsers:
           - parser: PARSER_NAME
             args:
@@ -33,7 +35,16 @@ methods-config:
               - "hash"
               - "1"
               - "block_hash"
+      - name: "eth_subscribe"
+        quorum: AnyQuorum
+        category:
+          type: json-rpc
+          subscription:
+            method: eth_subscription
+            unsub: eth_unsubscribe
       - name: "eth_getLogs"
+        category:
+          type: json-rpc
         tag-parsers:
           - parser: PARSER_NAME
             args:
@@ -48,6 +59,8 @@ methods-config:
     near:
       - name: "block"
         quorum: AnyQuorum
+        category:
+          type: json-rpc
         tag-parsers:
           - parser: PARSER_NAME
             args:
@@ -118,6 +131,11 @@ All settings under "methods-config" (except "unsupported-methods") consist of th
 * name - a method name
 * quorum - a method quorum if it's necessary to send multiple requests and then process the result based on a few responses
 * tag-parsers - parsers that can be used to extract the block number or hash from the method parameters
+* category - additional methods parameters
+** type - a method protocol type (json-rpc, rest, grpc, etc)
+** subscription - additional parameters of subscription methods
+*** method - a "method" field in the json-rpc response
+*** unsub - an unsubscribe method
 
 "unsupported-methods" contains only array of method names, it's unnecessary to describe a method in a full way.
 
