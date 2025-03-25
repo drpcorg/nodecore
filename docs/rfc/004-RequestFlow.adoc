@@ -41,6 +41,15 @@ Due to many pitfalls and nuances of each protocol, they work internally through 
 * *RequestDecode* - parse and prepare requests for further processing
 * *ResponseEncode* - prepare a response that will be returned to the client
 
+image::req-resp.png[alt="",width=80%,align="center"]
+
+* *Request* - is an object that contains all info about requests
+** chain
+** requests themselves (due to json-rpc logic there might be multiple requests, that's why we have an array)
+* *Response* - is an object that will be used to deliver responses to the clients
+** response - response body as a reader
+** order - request order (dur to json-rpc logic it's necessary to preserve the same order as in the response body)
+
 ==== JSON-RPC handler
 
 First of all, it's unnecessary to have different request handlers for RPC and WS requests, since it's one protocol - JSON-RPC. There is one logic, so we can reuse one handler in both places.
@@ -49,7 +58,7 @@ Handling JSON-RPC requests differs from other protocols, since there can be a ba
 
 image::json-rpc-handler.png[alt="",width=60%,align="center"]
 
-* *requests* is an array of client requests
+* *preparedReq* is request that will be populated during encoding
 * *idMap* is a map with internal ids for each client request to understand in which order we should return responses in the end
 
 *Important*:
