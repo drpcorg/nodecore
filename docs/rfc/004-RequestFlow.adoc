@@ -1,0 +1,102 @@
+= RFC 004-RequestFlow
+:imagesdir: ../assets/rfc-004
+
+*Name:* Request flow
+
+*Type:* feature
+
+*Author:* https://github.com/KirillPamPam
+
+== Summary
+
+We need to be able to handle requests of different protocols (json-rpc, rest, websocket, grpc). Moreover, we need to work with them in the same way with minor differences. That's why we can have one execution flow for all request and response types.
+
+Using one execution flow we have one place where we select upstreams to handle requests based on some criteria, wait all responses (if there are multiple requests) and execute request post-processing (caching, write stats, extract and update heads, etc).
+
+Before starting the execution flow we need to parse all requests using one abstraction and prepare them to further processing. After the execution flow is completed, we need to return responses to the clients. There is one important thing we need to take into consideration - each response may be handled in different ways, for example, using json-rpc there might be a batch of requests, so we have to return the responses in the same order.
+
+== Detailed design
+
+There is the basic request flow. Let's break it down.
+
+image::request-flow.png[alt="",width=80%,align="center"]
+
+=== General
+
+Each protocol has its own entry point:
+
+* REST methods work through a path */rest/+{network}+*. After *+{network}+* the target path to a specific method is specified. There might be different HTTP methods - POST, GET, DELETE, etc., and it's necessary to take this into account
+* JSON-RPC methods work through a path */rpc/+{network}+* and the methods themselves are specified in the request body
+* WS JSON-RPC connections work through one endpoint */rpc/+{network}+*. It's better to have one endpoint for both RPC and WS to prevent issues from happening on the client  side
+* GRPC methods work through a GRPC server, and it's necessary to implement each method separately
+
+So we need to have specific handlers to process requests/responses of each protocol, taking into account their aspects.
+
+=== Handlers
+
+image::handlers.png[alt="",width=80%,align="center"]
+
+Due to many pitfalls and nuances of each protocol, they work internally through their own *RequestHandler* with methods:
+
+* *RequestDecode* - parse and prepare requests for further processing
+* *ResponseEncode* - prepare a response that will be returned to the client
+
+==== JSON-RPC handler
+
+First of all, it's unnecessary to have different request handlers for RPC and WS requests, since it's one protocol - JSON-RPC. There is one logic, so we can reuse one handler in both places.
+
+Handling JSON-RPC requests differs from other protocols, since there can be a batch of multiple requests, and the main thing is to return responses in the same order; The *JsonRpcHandler* may have the following structure:
+
+image::json-rpc-handler.png[alt="",width=60%,align="center"]
+
+* *requests* is an array of client requests
+* *idMap* is a map with internal ids for each client request to understand in which order we should return responses in the end
+
+*Important*:
+
+* a couple of words about streaming. Remembering about preserving request order, we need to implement our custom streaming logic. Fortunately, we can reuse the same approach as we have in dRPC.
+* in JSON-RPC protocol we can operate only *result/error* fields from original responses, because we can cache OK responses or process them in some way - that's why encoding a client response of JSON-RPC request also differs from other protocols - we need to build a response body from a few parts:
+** *result/error* field
+** *id* field
+* subscription events we can return as is
+
+==== REST handler
+
+In REST handler there is no need to have extra logic to process requests/responses since there is only one request/response. However, parsing a request might be tricky.
+
+* we need to identify which method it is by a formula (+{HTTP_METHOD}+#+{PATH}+)
+* we need to extract path and query params from the URL (they might be needed for further processing)
+* streaming a REST response is pretty simple - there is only one response always and the whole body as is can be streamed
+
+We can reuse the parsing logic from dRPC.
+
+==== GRPC handler
+
+Since we work with byte arrays as a response we may use *proto.Unmarshal()* to deserialize the byte array to a specific proto message, and then return it to the client.
+
+=== Process requests through Execution Flow
+
+Let's recall how a request is being processed through Execution Flow
+
+image::request_exec_flow.png[alt="",width=80%,align="center"]
+
+* First of all we have to select upstreams that are able to process client requests. It's a big separate topic, we'll discuss it in another RFC about the Balancing module.
+* By default, the simplest selection strategy is used - we filter upstreams in a round-robin way by their state: availability, supported methods, etc.
+* When we have upstreams, we can send requests. All of them are sent in parallel
+* To process parallel requests in one flow we need one channel, through which all responses will be delivered back to the execution flow
+
+Execution Flow may have the following structure:
+
+image::exec_flow_structure.png[alt="",width=80%,align="center"]
+
+* *responses* is a channel of *UpstreamResponseWrappers*. This wrapper contains of upstreamId, which processed a request, and a response itself.
+* all requests should be sent and handled using a specific *UpstreamRequestProcessor*, which encapsulate the logic for sending protocol-specific requests; it has one method *Execute* that takes an *UpstreamRequest* and returns an *UpstreamResponseWrapper*
+
+image::req_processor.png[alt="",width=80%,align="center"]
+
+* we're waiting for all responses, and then execute post-processing hooks in parallel to write stats, analyze a response body or something else. It will be discussed in another topic about the Hooks module
+* at the same time we return a response to the client, and a corresponding *RequestHandler* takes and send it using the *ResponseEncode* method
+
+== Unresolved questions
+1. Should we have one endpoint for rest and json-rpc methods?
+2. Should we reimplement the same approach for ws subs as we have in dshackle? It's not urgent obviously, but just to know.
