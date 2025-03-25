@@ -40,7 +40,7 @@ func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context, connecto
 	if err != nil {
 		return nil, err
 	}
-	parsedBlock.Slot = maxBlock
+	parsedBlock.BlockData.Slot = maxBlock
 	return parsedBlock, nil
 }
 
@@ -51,11 +51,7 @@ func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Blo
 		return nil, fmt.Errorf("couldn't parse the solana block, reason - %s", err.Error())
 	}
 
-	return &protocol.Block{
-		Hash:     solanaBlock.Hash,
-		Height:   solanaBlock.Height,
-		RawBlock: blockBytes,
-	}, nil
+	return protocol.NewBlock(solanaBlock.Height, 0, solanaBlock.Hash, blockBytes), nil
 }
 
 func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
@@ -65,12 +61,12 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 		return nil, err
 	}
 
-	return &protocol.Block{
-		Slot:     solanaSubBlock.Context.Slot,
-		Height:   solanaSubBlock.Value.Block.Height,
-		Hash:     solanaSubBlock.Value.Block.Hash,
-		RawBlock: blockBytes,
-	}, nil
+	return protocol.NewBlock(
+		solanaSubBlock.Value.Block.Height,
+		solanaSubBlock.Context.Slot,
+		solanaSubBlock.Value.Block.Hash,
+		blockBytes,
+	), nil
 }
 
 func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.UpstreamRequest, error) {

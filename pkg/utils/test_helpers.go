@@ -37,3 +37,30 @@ func (c *HttpConnectorMock) Subscribe(ctx context.Context, request protocol.Upst
 func (c *HttpConnectorMock) GetType() protocol.ApiConnectorType {
 	return protocol.JsonRpcConnector
 }
+
+type WsConnectorMock struct {
+	mock.Mock
+}
+
+func NewWsConnectorMock() *WsConnectorMock {
+	return &WsConnectorMock{}
+}
+
+func (c *WsConnectorMock) SendRequest(ctx context.Context, request protocol.UpstreamRequest) protocol.UpstreamResponse {
+	return nil
+}
+
+func (c *WsConnectorMock) Subscribe(ctx context.Context, request protocol.UpstreamRequest) (protocol.UpstreamSubscriptionResponse, error) {
+	args := c.Called(ctx, request)
+	var err error
+	if args.Get(1) == nil {
+		err = nil
+	} else {
+		err = args.Get(1).(error)
+	}
+	return args.Get(0).(protocol.UpstreamSubscriptionResponse), err
+}
+
+func (c *WsConnectorMock) GetType() protocol.ApiConnectorType {
+	return protocol.WsConnector
+}
