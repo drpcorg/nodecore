@@ -1,5 +1,5 @@
-= RFC 004-RequestFlow
-:imagesdir: ../assets/rfc-004
+= RFC 003-RequestFlow
+:imagesdir: ../assets/rfc-003
 
 *Name:* Request flow
 
@@ -25,9 +25,8 @@ image::request-flow.png[alt="",width=80%,align="center"]
 
 Each protocol has its own entry point:
 
-* REST methods work through a path */rest/+{network}+*. After *+{network}+* the target path to a specific method is specified. There might be different HTTP methods - POST, GET, DELETE, etc., and it's necessary to take this into account
-* JSON-RPC methods work through a path */rpc/+{network}+* and the methods themselves are specified in the request body
-* WS JSON-RPC connections work through one endpoint */rpc/+{network}+*. It's better to have one endpoint for both RPC and WS to prevent issues from happening on the client  side
+* REST and JSON-RPC methods work through a path /*+{network}+*. After *+{network}+* the target path to a specific method might be specified. To distinguish REST and JSON-RPC methods we can analyze a request url, and if there is a path after *+{network}+*, then it is a REST method, otherwise if a requested method is POST, then it's a JSON-RPC one. In any case we can't identify a method, we will return a 404 error
+* WS JSON-RPC connections work through the same endpoint /*+{network}+*. It's better to have one endpoint for both RPC and WS to prevent issues from happening on the client side
 * GRPC methods work through a GRPC server, and it's necessary to implement each method separately
 
 So we need to have specific handlers to process requests/responses of each protocol, taking into account their aspects.
