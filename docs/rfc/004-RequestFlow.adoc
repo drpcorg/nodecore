@@ -58,7 +58,6 @@ Handling JSON-RPC requests differs from other protocols, since there can be a ba
 
 image::json-rpc-handler.png[alt="",width=60%,align="center"]
 
-* *preparedReq* is request that will be populated during encoding
 * *idMap* is a map with internal ids for each client request to understand in which order we should return responses in the end
 
 *Important*:
