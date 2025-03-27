@@ -234,7 +234,10 @@ func (w *WsConnection) writeMessage(message []byte) error {
 }
 
 func (w *WsConnection) completeAll() {
-	w.connection.Close()
+	err := w.connection.Close()
+	if err != nil {
+		log.Warn().Err(err).Msg("couldn't a ws connection")
+	}
 	w.requests.Range(func(key uint64, val *reqOp) bool {
 		w.requests.Delete(key)
 		return true

@@ -2,8 +2,10 @@ package protocol
 
 import (
 	"fmt"
+	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"io"
+	"math"
 )
 
 type ApiConnectorType int
@@ -45,6 +47,8 @@ type AvailabilityStatus int
 const (
 	Available AvailabilityStatus = iota
 	Unavailable
+
+	UnknownStatus = math.MaxInt
 )
 
 func (a AvailabilityStatus) String() string {
@@ -53,6 +57,8 @@ func (a AvailabilityStatus) String() string {
 		return "AVAILABLE"
 	case Unavailable:
 		return "UNAVAILABLE"
+	case UnknownStatus:
+		return "UNKNOWN"
 	default:
 		panic(fmt.Sprintf("unknown status %d", a))
 	}
@@ -65,8 +71,9 @@ type UpstreamEvent struct {
 }
 
 type UpstreamState struct {
-	Status   AvailabilityStatus
-	HeadData *BlockData
+	Status          AvailabilityStatus
+	HeadData        *BlockData
+	UpstreamMethods methods.Methods
 }
 
 type AbstractUpstreamStateEvent interface {

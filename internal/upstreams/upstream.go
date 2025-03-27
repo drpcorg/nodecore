@@ -3,11 +3,13 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
 	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dshaltie/internal/upstreams/heads"
+	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/internal/upstreams/ws"
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/drpcorg/dshaltie/pkg/utils"
@@ -61,8 +63,10 @@ func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
 	}
 	chainSpecific := getChainSpecific(configuredChain.Type)
 
+	upstreamMethods := methods.NewUpstreamMethods(getChainMethods(configuredChain.Type, configuredChain.Chain), config.Methods)
+
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.UpstreamState{Status: protocol.Available})
+	upState.Store(protocol.UpstreamState{Status: protocol.Available, UpstreamMethods: upstreamMethods})
 
 	return &Upstream{
 		Id:            config.Id,
@@ -79,6 +83,14 @@ func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
 
 func (u *Upstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
 	return u.subManager.Subscribe(name)
+}
+
+func (u *Upstream) GetSupportedMethods() mapset.Set[string] {
+	return u.upstreamState.Load().UpstreamMethods.GetSupportedMethods()
+}
+
+func (u *Upstream) HasMethod(method string) bool {
+	return u.upstreamState.Load().UpstreamMethods.HasMethod(method)
 }
 
 func (u *Upstream) GetUpstreamState() protocol.UpstreamState {
@@ -150,6 +162,17 @@ func getChainSpecific(blockchainType chains.BlockchainType) specific.ChainSpecif
 		return specific.EvmChainSpecific
 	case chains.Solana:
 		return specific.SolanaChainSpecific
+	default:
+		panic(fmt.Sprintf("unknown blockchain type - %s", blockchainType))
+	}
+}
+
+func getChainMethods(blockchainType chains.BlockchainType, chain chains.Chain) methods.Methods {
+	switch blockchainType {
+	case chains.Ethereum:
+		return methods.NewEthereumLikeMethods(chain)
+	case chains.Solana:
+		return methods.NewSolanaMethods()
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", blockchainType))
 	}
