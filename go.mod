@@ -1,6 +1,6 @@
 module github.com/drpcorg/dshaltie
 
-go 1.23.4
+go 1.24.1
 
 require (
 	github.com/bcicen/jstream v1.0.1

@@ -43,6 +43,12 @@ type Upstream struct {
 	Connectors    []*ConnectorConfig `yaml:"connectors"`
 	HeadConnector ConnectorType      `yaml:"head-connector"`
 	PollInterval  time.Duration      `yaml:"poll-interval"`
+	Methods       *MethodsConfig     `yaml:"methods"`
+}
+
+type MethodsConfig struct {
+	EnableMethods  []string `yaml:"enable"`
+	DisableMethods []string `yaml:"disable"`
 }
 
 type ConnectorType string

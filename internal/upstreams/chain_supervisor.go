@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	choice "github.com/drpcorg/dshaltie/internal/upstreams/fork_choice"
+	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/drpcorg/dshaltie/pkg/utils"
 	"github.com/rs/zerolog/log"
@@ -22,8 +23,9 @@ type ChainSupervisor struct {
 }
 
 type ChainSupervisorState struct {
-	Status protocol.AvailabilityStatus
-	Head   uint64
+	Status  protocol.AvailabilityStatus
+	Head    uint64
+	Methods methods.Methods
 }
 
 func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice) *ChainSupervisor {
@@ -56,6 +58,10 @@ func (c *ChainSupervisor) Start() {
 	}()
 }
 
+func (c *ChainSupervisor) GetChainState() ChainSupervisorState {
+	return c.state.Load()
+}
+
 func (c *ChainSupervisor) Publish(event protocol.UpstreamEvent) {
 	c.eventsChan <- event
 }
@@ -74,7 +80,8 @@ func (c *ChainSupervisor) processEvents() {
 				if updated {
 					state.Head = headHeight
 				}
-				state.Status = c.processUpstreamsStatus()
+				state.Status = c.processUpstreamStatuses()
+				state.Methods = c.processUpstreamMethods()
 
 				c.state.Store(state)
 			}
@@ -82,8 +89,18 @@ func (c *ChainSupervisor) processEvents() {
 	}
 }
 
-func (c *ChainSupervisor) processUpstreamsStatus() protocol.AvailabilityStatus {
-	var status protocol.AvailabilityStatus
+func (c *ChainSupervisor) processUpstreamMethods() methods.Methods {
+	delegates := make([]methods.Methods, 0)
+	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
+		delegates = append(delegates, upState.UpstreamMethods)
+		return true
+	})
+
+	return methods.NewChainMethods(delegates)
+}
+
+func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
+	var status protocol.AvailabilityStatus = protocol.UnknownStatus
 	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
 		if upState.Status < status {
 			status = upState.Status

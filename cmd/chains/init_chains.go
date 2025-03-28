@@ -73,7 +73,12 @@ func main() {
 	if err != nil {
 		log.Panic().Err(err).Msg("Failed to create chains.go")
 	}
-	defer f.Close()
+	defer func() {
+		err = f.Close()
+		if err != nil {
+			log.Warn().Err(err).Msg("couldn't close chains_data.go")
+		}
+	}()
 
 	tmpl, err := template.New("consts").Parse(goTemplate)
 	if err != nil {
@@ -106,6 +111,6 @@ func toConstName(s string) string {
 	if unicode.IsDigit(rune(s[0])) {
 		s = "_" + s
 	}
-	s = strings.Replace(strings.ToUpper(s), "-", "_", -1)
+	s = strings.ReplaceAll(strings.ToUpper(s), "-", "_")
 	return s
 }

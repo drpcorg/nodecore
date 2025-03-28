@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"strings"
@@ -58,7 +59,12 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Upstre
 	if request.IsStream() {
 		return nil
 	} else {
-		defer resp.Body.Close()
+		defer func() {
+			err = resp.Body.Close()
+			if err != nil {
+				log.Warn().Err(err).Msg("couldn't close a response body")
+			}
+		}()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return protocol.NewHttpUpstreamResponseWithError(
