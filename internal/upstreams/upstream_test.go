@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dshaltie/internal/upstreams/heads"
 	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dshaltie/pkg/test_utils"
 	"github.com/drpcorg/dshaltie/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -20,7 +21,7 @@ func TestUpstreamEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector := utils.NewHttpConnectorMock()
+	connector := test_utils.NewHttpConnectorMock()
 	body := []byte(`{
 	  "jsonrpc": "2.0",
 	  "result": {
@@ -28,7 +29,7 @@ func TestUpstreamEvents(t *testing.T) {
 		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"
 	  }
 	}`)
-	response := protocol.NewHttpUpstreamResponse(1, body, 200, protocol.JsonRpc)
+	response := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
 	upConfig := &config.Upstream{

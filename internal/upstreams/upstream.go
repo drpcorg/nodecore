@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/dshaltie/internal/upstreams/ws"
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/drpcorg/dshaltie/pkg/utils"
+	"github.com/samber/lo"
 )
 
 func (u *Upstream) createEvent() protocol.UpstreamEvent {
@@ -95,6 +96,13 @@ func (u *Upstream) HasMethod(method string) bool {
 
 func (u *Upstream) GetUpstreamState() protocol.UpstreamState {
 	return u.upstreamState.Load()
+}
+
+func (u *Upstream) GetConnector(connectorType protocol.ApiConnectorType) connectors.ApiConnector {
+	connector, _ := lo.Find(u.apiConnectors, func(item connectors.ApiConnector) bool {
+		return item.GetType() == connectorType
+	})
+	return connector
 }
 
 // update upstream state through one pipeline

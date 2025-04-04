@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"fmt"
 	"github.com/bytedance/sonic"
 )
 
@@ -21,15 +22,42 @@ func (h HttpMethod) String() string {
 	return ""
 }
 
+type RequestType int
+
+const (
+	Rest RequestType = iota
+	JsonRpc
+	Ws
+	Grpc
+	Unknown
+)
+
+func (r RequestType) String() string {
+	switch r {
+	case Rest:
+		return "rest"
+	case JsonRpc:
+		return "json-rpc"
+	case Ws:
+		return "ws"
+	case Unknown:
+		return "unknown"
+	case Grpc:
+		return "grpc"
+	}
+	panic(fmt.Sprintf("unknown RequestType - %d", r))
+}
+
 type HttpUpstreamRequest struct {
-	id             interface{}
+	id             string
 	method         string
 	requestHeaders map[string]string
 	requestBody    []byte
 	isStream       bool
+	requestType    RequestType
 }
 
-var _ UpstreamRequest = (*HttpUpstreamRequest)(nil)
+var _ RequestHolder = (*HttpUpstreamRequest)(nil)
 
 func NewHttpUpstreamRequest(
 	method string,
@@ -38,7 +66,7 @@ func NewHttpUpstreamRequest(
 	stream bool,
 ) *HttpUpstreamRequest {
 	return &HttpUpstreamRequest{
-		id:             1,
+		id:             "1",
 		method:         method,
 		requestHeaders: headers,
 		requestBody:    body,
@@ -46,7 +74,7 @@ func NewHttpUpstreamRequest(
 	}
 }
 
-func NewJsonRpcUpstreamRequest(id interface{}, method string, params any, stream bool) (*HttpUpstreamRequest, error) {
+func NewJsonRpcUpstreamRequest(id string, method string, params any, stream bool) (*HttpUpstreamRequest, error) {
 	jsonRpcReq := map[string]interface{}{
 		"id":      id,
 		"jsonrpc": "2.0",
@@ -63,10 +91,19 @@ func NewJsonRpcUpstreamRequest(id interface{}, method string, params any, stream
 		method:      method,
 		requestBody: jsonRpcReqBytes,
 		isStream:    stream,
+		requestType: JsonRpc,
 	}, nil
 }
 
 const MethodSeparator = "#"
+
+func (h *HttpUpstreamRequest) RequestType() RequestType {
+	return h.requestType
+}
+
+func (h *HttpUpstreamRequest) Count() int {
+	return 1
+}
 
 func (h *HttpUpstreamRequest) Method() string {
 	return h.method
@@ -84,6 +121,6 @@ func (h *HttpUpstreamRequest) IsStream() bool {
 	return h.isStream
 }
 
-func (h *HttpUpstreamRequest) Id() interface{} {
+func (h *HttpUpstreamRequest) Id() string {
 	return h.id
 }

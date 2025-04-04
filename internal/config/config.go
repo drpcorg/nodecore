@@ -29,8 +29,23 @@ type TlsConfig struct {
 }
 
 type UpstreamConfig struct {
-	Upstreams     []*Upstream               `yaml:"upstreams"`
-	ChainDefaults map[string]*ChainDefaults `yaml:"chain-defaults"`
+	Upstreams      []*Upstream               `yaml:"upstreams"`
+	ChainDefaults  map[string]*ChainDefaults `yaml:"chain-defaults"`
+	FailsafeConfig *FailsafeConfig           `yaml:"failsafe-config"`
+}
+
+type FailsafeConfig struct {
+	HedgeConfig   *HedgeConfig   `yaml:"hedge"`
+	TimeoutConfig *TimeoutConfig `yaml:"timeout"`
+}
+
+type HedgeConfig struct { // works only on the execution flow level
+	Delay time.Duration `yaml:"delay"`
+	Count int           `yaml:"max"`
+}
+
+type TimeoutConfig struct {
+	Timeout time.Duration `yaml:"duration"`
 }
 
 type ChainDefaults struct {
@@ -38,12 +53,13 @@ type ChainDefaults struct {
 }
 
 type Upstream struct {
-	Id            string             `yaml:"id"`
-	ChainName     string             `yaml:"chain"`
-	Connectors    []*ConnectorConfig `yaml:"connectors"`
-	HeadConnector ConnectorType      `yaml:"head-connector"`
-	PollInterval  time.Duration      `yaml:"poll-interval"`
-	Methods       *MethodsConfig     `yaml:"methods"`
+	Id             string             `yaml:"id"`
+	ChainName      string             `yaml:"chain"`
+	Connectors     []*ConnectorConfig `yaml:"connectors"`
+	HeadConnector  ConnectorType      `yaml:"head-connector"`
+	PollInterval   time.Duration      `yaml:"poll-interval"`
+	Methods        *MethodsConfig     `yaml:"methods"`
+	FailsafeConfig *FailsafeConfig    `yaml:"failsafe-config"`
 }
 
 type MethodsConfig struct {

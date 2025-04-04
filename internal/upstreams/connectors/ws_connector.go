@@ -18,11 +18,11 @@ func NewWsConnector(connection *ws.WsConnection) *WsConnector {
 	}
 }
 
-func (w *WsConnector) SendRequest(ctx context.Context, request protocol.UpstreamRequest) protocol.UpstreamResponse {
+func (w *WsConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	return nil
 }
 
-func (w *WsConnector) Subscribe(ctx context.Context, request protocol.UpstreamRequest) (protocol.UpstreamSubscriptionResponse, error) {
+func (w *WsConnector) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	respChan, err := w.connection.SendWsRequest(ctx, request)
 	if err != nil {
 		return nil, err

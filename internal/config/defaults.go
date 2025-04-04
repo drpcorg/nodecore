@@ -5,11 +5,33 @@ import (
 	"time"
 )
 
+var defaultHedge = &HedgeConfig{
+	Delay: 1 * time.Second,
+	Count: 1,
+}
+
 func (a *AppConfig) setDefaults() {
+	if a.UpstreamConfig == nil {
+		a.UpstreamConfig = &UpstreamConfig{}
+	}
+	if a.ServerConfig == nil {
+		a.ServerConfig = &ServerConfig{
+			Port: 9090,
+		}
+	}
 	a.UpstreamConfig.setDefaults()
 }
 
 func (u *UpstreamConfig) setDefaults() {
+	if u.FailsafeConfig == nil {
+		u.FailsafeConfig = &FailsafeConfig{
+			HedgeConfig: defaultHedge,
+		}
+	} else {
+		if u.FailsafeConfig.HedgeConfig == nil {
+			u.FailsafeConfig.HedgeConfig = defaultHedge
+		}
+	}
 	for _, upstream := range u.Upstreams {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
 		upstream.setDefaults(chainDefaults)
@@ -17,6 +39,9 @@ func (u *UpstreamConfig) setDefaults() {
 }
 
 func (u *Upstream) setDefaults(defaults *ChainDefaults) {
+	if u.Methods == nil {
+		u.Methods = &MethodsConfig{}
+	}
 	if u.HeadConnector == "" && len(u.Connectors) > 0 {
 		filteredConnectors := lo.Filter(u.Connectors, func(item *ConnectorConfig, index int) bool {
 			_, ok := connectorTypesRating[item.Type]

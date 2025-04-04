@@ -12,7 +12,7 @@ import (
 type ChainSpecific interface {
 	GetLatestBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
 	ParseBlock([]byte) (*protocol.Block, error)
-	SubscribeHeadRequest() (protocol.UpstreamRequest, error)
+	SubscribeHeadRequest() (protocol.RequestHolder, error)
 	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
 }
 
@@ -28,14 +28,14 @@ type EvmChainSpecificObject struct {
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
 func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	request, err := protocol.NewJsonRpcUpstreamRequest(1, "eth_getBlockByNumber", []interface{}{"latest", false}, false)
+	request, err := protocol.NewJsonRpcUpstreamRequest("1", "eth_getBlockByNumber", []interface{}{"latest", false}, false)
 	if err != nil {
 		return nil, err
 	}
 
 	response := connector.SendRequest(ctx, request)
 	if response.HasError() {
-		return nil, response.ResponseError()
+		return nil, response.GetError()
 	}
 
 	parsedBlock, err := e.ParseBlock(response.ResponseResult())
@@ -59,8 +59,8 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 	return protocol.NewBlock(uint64(evmBlock.Height.Int64()), 0, evmBlock.Hash, blockBytes), nil
 }
 
-func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.UpstreamRequest, error) {
-	return protocol.NewJsonRpcUpstreamRequest(1, "eth_subscribe", []interface{}{"newHeads"}, false)
+func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
+	return protocol.NewJsonRpcUpstreamRequest("1", "eth_subscribe", []interface{}{"newHeads"}, false)
 }
 
 type EvmBlock struct {

@@ -30,18 +30,20 @@ func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, 
 	}
 }
 
-func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.UpstreamRequest) protocol.UpstreamResponse {
+func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	url, httpMethod, err := h.requestParams(request)
 	if err != nil {
-		return protocol.NewHttpUpstreamResponseWithError(
-			protocol.NewClientUpstreamError(err),
+		return h.createReplyError(
+			request,
+			protocol.ClientError(err),
 		)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewReader(request.Body()))
 	if err != nil {
-		return protocol.NewHttpUpstreamResponseWithError(
-			protocol.NewClientUpstreamError(fmt.Errorf("error creating an http request: %v", err)),
+		return h.createReplyError(
+			request,
+			protocol.ClientError(fmt.Errorf("error creating an http request: %v", err)),
 		)
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -51,8 +53,9 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Upstre
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return protocol.NewHttpUpstreamResponseWithError(
-			protocol.NewServerUpstreamError(fmt.Errorf("unable to get an http response: %v", err)),
+		return h.createReplyError(
+			request,
+			protocol.ServerError(fmt.Errorf("unable to get an http response: %v", err)),
 		)
 	}
 
@@ -67,32 +70,33 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Upstre
 		}()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return protocol.NewHttpUpstreamResponseWithError(
-				protocol.NewServerUpstreamError(fmt.Errorf("unable to read an http response: %v", err)),
+			return h.createReplyError(
+				request,
+				protocol.ServerError(fmt.Errorf("unable to read an http response: %v", err)),
 			)
 		}
 
-		return protocol.NewHttpUpstreamResponse(request.Id(), body, resp.StatusCode, h.responseType())
+		return protocol.NewHttpUpstreamResponse(request.Id(), body, resp.StatusCode, request.RequestType())
 	}
+}
+
+func (h *HttpConnector) createReplyError(request protocol.RequestHolder, responseError *protocol.ResponseError) *protocol.ReplyError {
+	return protocol.NewReplyError(
+		request.Id(),
+		responseError,
+		request.RequestType(),
+	)
 }
 
 func (h *HttpConnector) GetType() protocol.ApiConnectorType {
 	return h.connectorType
 }
 
-func (h *HttpConnector) Subscribe(_ context.Context, _ protocol.UpstreamRequest) (protocol.UpstreamSubscriptionResponse, error) {
+func (h *HttpConnector) Subscribe(_ context.Context, _ protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
 }
 
-func (h *HttpConnector) responseType() protocol.ResponseType {
-	if h.GetType() == protocol.JsonRpcConnector {
-		return protocol.JsonRpc
-	} else {
-		return protocol.Rest
-	}
-}
-
-func (h *HttpConnector) requestParams(request protocol.UpstreamRequest) (string, string, error) {
+func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, string, error) {
 	if h.GetType() == protocol.JsonRpcConnector {
 		return h.endpoint, protocol.Post.String(), nil
 	}

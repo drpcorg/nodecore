@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dshaltie/pkg/chains"
@@ -26,6 +27,14 @@ func (u *UpstreamConfig) validate() error {
 		}
 	}
 
+	if err := u.FailsafeConfig.validate(); err != nil {
+		return fmt.Errorf("error during failsafe validation of upstream-conifg: %s", err.Error())
+	}
+
+	if len(u.Upstreams) == 0 {
+		return errors.New("there must be at least one upstream in the config")
+	}
+
 	idSet := mapset.NewThreadUnsafeSet[string]()
 	for i, upstream := range u.Upstreams {
 		if upstream.Id == "" {
@@ -43,7 +52,20 @@ func (u *UpstreamConfig) validate() error {
 	return nil
 }
 
-func (t *TlsConfig) validate() error {
+func (f *FailsafeConfig) validate() error {
+	if err := f.HedgeConfig.validate(); err != nil {
+		return fmt.Errorf("hedge config validation error - %s", err.Error())
+	}
+	return nil
+}
+
+func (h *HedgeConfig) validate() error {
+	if h.Count <= 0 {
+		return errors.New("the number of hedges can't be less than 1")
+	}
+	if h.Delay.Milliseconds() < 50 {
+		return errors.New("the hedge delay can't be less than 50ms")
+	}
 	return nil
 }
 

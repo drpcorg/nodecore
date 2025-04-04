@@ -17,29 +17,52 @@ const (
 	WsConnector
 )
 
+func (a ApiConnectorType) String() string {
+	switch a {
+	case JsonRpcConnector:
+		return "JsonRpc"
+	case RestConnector:
+		return "REST"
+	case GrpcConnector:
+		return "GRPC"
+	case WsConnector:
+		return "WS"
+	default:
+		panic(fmt.Sprintf("unknown connector type %d", a))
+	}
+}
+
 type JsonRpcRequest struct {
 	Method string        `json:"method"`
 	Params []interface{} `json:"params"`
 }
 
-type UpstreamRequest interface {
-	Id() interface{}
+type RequestHolder interface {
+	Id() string
 	Method() string
 	Headers() map[string]string
 	Body() []byte
 	IsStream() bool
+	Count() int
+	RequestType() RequestType
 }
 
-type UpstreamResponse interface {
+type ResponseHolder interface {
 	ResponseResult() []byte
-	ResponseError() *UpstreamError
-	EncodeResponse() io.Reader
+	GetError() *ResponseError
+	EncodeResponse(realId []byte) io.Reader
 	HasError() bool
-	Id() interface{}
+	Id() string
 }
 
 type UpstreamSubscriptionResponse interface {
 	ResponseChan() chan *WsResponse
+}
+
+type ResponseHolderWrapper struct {
+	UpstreamId string
+	RequestId  string
+	Response   ResponseHolder
 }
 
 type AvailabilityStatus int

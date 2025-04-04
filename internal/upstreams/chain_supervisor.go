@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/drpcorg/dshaltie/pkg/utils"
 	"github.com/rs/zerolog/log"
+	"slices"
 	"strings"
 	"time"
 )
@@ -64,6 +65,23 @@ func (c *ChainSupervisor) GetChainState() ChainSupervisorState {
 
 func (c *ChainSupervisor) Publish(event protocol.UpstreamEvent) {
 	c.eventsChan <- event
+}
+
+func (c *ChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
+	if s, ok := c.upstreamStates.Load(upstreamId); ok {
+		return s
+	}
+	return nil
+}
+
+func (c *ChainSupervisor) GetUpstreamIds() []string {
+	ids := make([]string, 0)
+	c.upstreamStates.Range(func(upId string, _ *protocol.UpstreamState) bool {
+		ids = append(ids, upId)
+		return true
+	})
+	slices.Sort(ids)
+	return ids
 }
 
 func (c *ChainSupervisor) processEvents() {

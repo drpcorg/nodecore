@@ -30,7 +30,7 @@ type WsConnection struct {
 	connectFunc func() (*websocket.Conn, error)
 	connection  *websocket.Conn
 	internalId  atomic.Uint64
-	requests    utils.CMap[uint64, reqOp] // to store internal ids and websocket requests
+	requests    utils.CMap[string, reqOp] // to store internal ids and websocket requests
 	subs        utils.CMap[string, reqOp] // to store a subId and its request to identify events
 }
 
@@ -60,7 +60,7 @@ func NewWsConnection(ctx context.Context, endpoint string, additionalHeaders map
 		endpoint:    endpoint,
 		ctx:         ctx,
 		connectFunc: connectFunc,
-		requests:    utils.CMap[uint64, reqOp]{},
+		requests:    utils.CMap[string, reqOp]{},
 		subs:        utils.CMap[string, reqOp]{},
 		rpcTimeout:  1 * time.Minute,
 	}
@@ -73,7 +73,7 @@ func NewWsConnection(ctx context.Context, endpoint string, additionalHeaders map
 	return wsConnection
 }
 
-func (w *WsConnection) SendRpcRequest(ctx context.Context, upstreamRequest protocol.UpstreamRequest) (*protocol.WsResponse, error) {
+func (w *WsConnection) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -95,7 +95,8 @@ func (w *WsConnection) SendRpcRequest(ctx context.Context, upstreamRequest proto
 	}
 }
 
-func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protocol.UpstreamRequest) (chan *protocol.WsResponse, error) {
+func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+	// TODO: fix
 	jsonRpcRequest := protocol.JsonRpcRequest{}
 	err := sonic.Unmarshal(upstreamRequest.Body(), &jsonRpcRequest)
 	if err != nil {
@@ -111,13 +112,16 @@ func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protoc
 		method:           jsonRpcRequest.Method,
 	}
 
-	request, _ := protocol.NewJsonRpcUpstreamRequest(internalId, jsonRpcRequest.Method, jsonRpcRequest.Params, false)
+	request, err := protocol.NewJsonRpcUpstreamRequest(fmt.Sprintf("%d", internalId), jsonRpcRequest.Method, jsonRpcRequest.Params, false)
+	if err != nil {
+		return nil, err
+	}
 
 	err = w.writeMessage(request.Body())
 	if err != nil {
 		return nil, err
 	}
-	w.requests.Store(internalId, req)
+	w.requests.Store(fmt.Sprintf("%d", internalId), req)
 
 	go w.startProcess(req)
 
@@ -236,9 +240,9 @@ func (w *WsConnection) writeMessage(message []byte) error {
 func (w *WsConnection) completeAll() {
 	err := w.connection.Close()
 	if err != nil {
-		log.Warn().Err(err).Msg("couldn't a ws connection")
+		log.Warn().Err(err).Msg("couldn't close a ws connection")
 	}
-	w.requests.Range(func(key uint64, val *reqOp) bool {
+	w.requests.Range(func(key string, val *reqOp) bool {
 		w.requests.Delete(key)
 		return true
 	})
@@ -253,7 +257,7 @@ func (w *WsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
 		if unsubMethod, ok := GetUnsubscribeMethod(op.method); ok {
 			params := []interface{}{op.subId}
-			unsubReq, err := protocol.NewJsonRpcUpstreamRequest(0, unsubMethod, params, false)
+			unsubReq, err := protocol.NewJsonRpcUpstreamRequest("0", unsubMethod, params, false)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, op.subId)
 			} else {
