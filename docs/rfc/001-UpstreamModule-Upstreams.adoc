@@ -70,7 +70,7 @@ image::connectors.png[alt="",width=90%,align="center"]
 image::chainSpecific.png[alt="",width=90%,align="center"]
 
 - A `ChainSpecific` is an abstraction on how to interact with different types of blockchains and receive their data.
-- The main data it's necessary to receive is `heads`. It's also necessary to parse them differently due to they have their own format, even for ws and rpc heads.
+- The main data that needs to be received is `heads`. It's also necessary to parse them differently due to they have their own format, even for ws and rpc heads.
 - In the picture above there are 2 ChainSpecific implementation, however there will be much more in order to work with many types of chains.
 
 === HeadProcessor
