@@ -8,8 +8,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/pkg/utils"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 	"io"
 )
 
@@ -73,7 +73,7 @@ var _ RequestHandler = (*RestHandler)(nil)
 
 type JsonRpcHandler struct {
 	preReq          *Request
-	idMap           map[string]utils.Pair[json.RawMessage, int]
+	idMap           map[string]lo.Tuple2[json.RawMessage, int]
 	requestBody     []byte
 	single          bool
 	jsonRpcRequests []jsonRpcRequest
@@ -111,7 +111,7 @@ func NewJsonRpcHandler(preReq *Request, requestBody io.Reader) (*JsonRpcHandler,
 		preReq:          preReq,
 		requestBody:     body,
 		jsonRpcRequests: jsonRpcRequests,
-		idMap:           make(map[string]utils.Pair[json.RawMessage, int]),
+		idMap:           make(map[string]lo.Tuple2[json.RawMessage, int]),
 		single:          len(rawReq) > 0 && rawReq[0] == '{',
 	}, nil
 }
@@ -142,7 +142,7 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 		if err != nil {
 			return nil, err
 		}
-		j.idMap[id.String()] = utils.NewPair(jsonRpcReq.Id, i)
+		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
 		upstreamReq, err := protocol.NewJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Method, jsonRpcReq.Params, false)
 		if err != nil {
 			return nil, err
@@ -161,8 +161,8 @@ func (j *JsonRpcHandler) ResponseEncode(response protocol.ResponseHolder) *Respo
 	order := -1
 	idPair, ok := j.idMap[response.Id()]
 	if ok {
-		realId = idPair.F
-		order = idPair.S
+		realId = idPair.A
+		order = idPair.B
 	}
 	return &Response{
 		ResponseReader: response.EncodeResponse(realId),

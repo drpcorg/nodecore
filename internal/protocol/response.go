@@ -16,7 +16,6 @@ type HttpUpstreamResponse struct {
 	result       []byte
 	error        *ResponseError
 	responseType RequestType
-	errorBody    []byte
 }
 
 var _ ResponseHolder = (*HttpUpstreamResponse)(nil)
@@ -26,6 +25,9 @@ func (h *HttpUpstreamResponse) Id() string {
 }
 
 func (h *HttpUpstreamResponse) ResponseResult() []byte {
+	if h.HasError() {
+		return nil
+	}
 	return h.result
 }
 
@@ -37,8 +39,8 @@ func (h *HttpUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	if h.responseType == JsonRpc {
 		if h.HasError() {
 			var errBody []byte
-			if h.errorBody != nil {
-				errBody = h.errorBody
+			if h.result != nil {
+				errBody = h.result
 			} else {
 				errBody = []byte(h.error.Error())
 			}
@@ -80,31 +82,29 @@ func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestTy
 
 func parseHttpResponse(id string, body []byte, responseCode int) *HttpUpstreamResponse {
 	var err *ResponseError
-	var errorBody []byte
+	result := body
 	if responseCode != 200 {
 		dec := bodyDecoder(body, 0)
 		for obj := range dec.Stream() {
-			err, errorBody = readError(obj.Value)
+			err, result = readError(obj.Value)
 		}
 	}
 	return &HttpUpstreamResponse{
-		id:        id,
-		result:    body,
-		error:     err,
-		errorBody: errorBody,
+		id:     id,
+		result: result,
+		error:  err,
 	}
 }
 
 func parseJsonRpcBody(id string, body []byte) *HttpUpstreamResponse {
 	var upstreamError *ResponseError
 	var result []byte
-	var errorBody []byte
 
 	dec := bodyDecoder(body, 1)
 	for obj := range dec.Stream() {
 		if kv, ok := obj.Value.(jstream.KV); ok {
 			if kv.Key == "error" {
-				upstreamError, errorBody = readError(kv.Value)
+				upstreamError, result = readError(kv.Value)
 			}
 			if kv.Key == "result" {
 				result, upstreamError = readResult(kv.Value)
@@ -116,10 +116,9 @@ func parseJsonRpcBody(id string, body []byte) *HttpUpstreamResponse {
 	}
 
 	return &HttpUpstreamResponse{
-		id:        id,
-		result:    result,
-		error:     upstreamError,
-		errorBody: errorBody,
+		id:     id,
+		result: result,
+		error:  upstreamError,
 	}
 }
 

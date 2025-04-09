@@ -33,14 +33,12 @@ func main() {
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 
-	done := make(chan struct{}, 1)
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
 		log.Info().Msgf("got signal %v", sig)
-		done <- struct{}{}
+		mainCtxCancel()
 	}()
 
 	go func() {
@@ -49,6 +47,5 @@ func main() {
 		}
 	}()
 
-	<-done
-	mainCtxCancel()
+	<-mainCtx.Done()
 }
