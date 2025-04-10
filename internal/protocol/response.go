@@ -2,20 +2,22 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bcicen/jstream"
 	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/ast"
 	"io"
 	"strconv"
 	"testing/iotest"
 )
 
 type HttpUpstreamResponse struct {
-	id           string
-	result       []byte
-	error        *ResponseError
-	responseType RequestType
+	id          string
+	result      []byte
+	error       *ResponseError
+	requestType RequestType
+	stream      io.Reader
 }
 
 var _ ResponseHolder = (*HttpUpstreamResponse)(nil)
@@ -31,12 +33,16 @@ func (h *HttpUpstreamResponse) ResponseResult() []byte {
 	return h.result
 }
 
+func (h *HttpUpstreamResponse) HasStream() bool {
+	return h.stream != nil
+}
+
 func (h *HttpUpstreamResponse) GetError() *ResponseError {
 	return h.error
 }
 
 func (h *HttpUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
-	if h.responseType == JsonRpc {
+	if h.requestType == JsonRpc {
 		if h.HasError() {
 			var errBody []byte
 			if h.result != nil {
@@ -46,7 +52,11 @@ func (h *HttpUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 			}
 			return jsonRpcResponseReader(realId, "error", errBody)
 		} else {
-			return jsonRpcResponseReader(realId, "result", h.result)
+			if h.stream != nil {
+				return h.stream
+			} else {
+				return jsonRpcResponseReader(realId, "result", h.result)
+			}
 		}
 	}
 	return bytes.NewReader(h.result)
@@ -66,6 +76,14 @@ func jsonRpcResponseReader(id []byte, bodyName string, body []byte) io.Reader {
 	)
 }
 
+func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *HttpUpstreamResponse {
+	return &HttpUpstreamResponse{
+		id:          id,
+		requestType: requestType,
+		stream:      reader,
+	}
+}
+
 func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *HttpUpstreamResponse {
 	var response *HttpUpstreamResponse
 	switch requestType {
@@ -76,7 +94,7 @@ func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestTy
 	default:
 		panic(fmt.Sprintf("not an http response type - %s", requestType))
 	}
-	response.responseType = requestType
+	response.requestType = requestType
 	return response
 }
 
@@ -84,10 +102,7 @@ func parseHttpResponse(id string, body []byte, responseCode int) *HttpUpstreamRe
 	var err *ResponseError
 	result := body
 	if responseCode != 200 {
-		dec := bodyDecoder(body, 0)
-		for obj := range dec.Stream() {
-			err, result = readError(obj.Value)
-		}
+		err, result = parseError(body), body
 	}
 	return &HttpUpstreamResponse{
 		id:     id,
@@ -100,18 +115,25 @@ func parseJsonRpcBody(id string, body []byte) *HttpUpstreamResponse {
 	var upstreamError *ResponseError
 	var result []byte
 
-	dec := bodyDecoder(body, 1)
-	for obj := range dec.Stream() {
-		if kv, ok := obj.Value.(jstream.KV); ok {
-			if kv.Key == "error" {
-				upstreamError, result = readError(kv.Value)
-			}
-			if kv.Key == "result" {
-				result, upstreamError = readResult(kv.Value)
+	searcher := astSearcher(body)
+
+	if resultNode, err := searcher.GetByPath("result"); err == nil {
+		if rawResult, err := resultNode.Raw(); err == nil {
+			result = []byte(rawResult)
+		}
+	}
+	if errorNode, err := searcher.GetByPath("error"); err == nil {
+		if errorRaw, err := errorNode.Raw(); err == nil {
+			bodyBytes := []byte(errorRaw)
+			if errorNode.TypeSafe() == ast.V_STRING {
+				upstreamError, result = ResponseErrorWithMessage(errorRaw[1:len(errorRaw)-1]), bodyBytes
+			} else {
+				upstreamError, result = parseError([]byte(errorRaw)), bodyBytes
 			}
 		}
 	}
-	if (upstreamError == nil && len(result) == 0) || dec.Err() != nil {
+
+	if upstreamError == nil && len(result) == 0 {
 		upstreamError = IncorrectResponseBodyError(errors.New("wrong json-rpc response - there is neither result nor error"))
 	}
 
@@ -122,6 +144,46 @@ func parseJsonRpcBody(id string, body []byte) *HttpUpstreamResponse {
 	}
 }
 
+func parseError(errorRaw []byte) *ResponseError {
+	jsonRpcErr := jsonRpcError{}
+	if err := sonic.Unmarshal(errorRaw, &jsonRpcErr); err == nil {
+		message := "internal server error"
+		if jsonRpcErr.Message != "" {
+			message = jsonRpcErr.Message
+		} else if jsonRpcErr.Error != "" {
+			message = jsonRpcErr.Message
+		}
+
+		code := 500
+		if jsonRpcErr.Code != nil {
+			code = *jsonRpcErr.Code
+		}
+
+		return ResponseErrorWithData(code, message, jsonRpcErr.Data)
+	}
+	return ServerError()
+}
+
+func astSearcher(body []byte) *ast.Searcher {
+	searcher := ast.NewSearcher(string(body))
+	searcher.ConcurrentRead = false
+	searcher.CopyReturn = false
+
+	return searcher
+}
+
+type jsonRpcWsParams struct {
+	Result       json.RawMessage `json:"result"`
+	Subscription json.RawMessage `json:"subscription"`
+}
+
+type jsonRpcWsMessage struct {
+	Id     string           `json:"id"`
+	Result json.RawMessage  `json:"result"`
+	Params *jsonRpcWsParams `json:"params"`
+	Error  json.RawMessage  `json:"error"`
+}
+
 func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 	var id string
 	var responseType = Unknown
@@ -129,44 +191,29 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 	var upstreamError *ResponseError
 	message := body
 
-	dec := bodyDecoder(body, 1)
-	for obj := range dec.Stream() {
-		if kv, ok := obj.Value.(jstream.KV); ok {
-			if kv.Key == "id" {
-				id = kv.Value.(string)
-			}
-			if kv.Key == "params" {
-				responseType = Ws
-				switch params := kv.Value.(type) {
-				case jstream.KVS:
-					for _, paramsKv := range params {
-						switch paramsKv.Key {
-						case "subscription":
-							subBytes, upstreamErr := readResult(paramsKv.Value)
-							if upstreamErr != nil {
-								upstreamError = upstreamErr
-							} else {
-								subId = ResultAsString(subBytes)
-							}
-						case "result":
-							message, upstreamError = readResult(paramsKv.Value)
-						}
-					}
-				}
-			}
-			if kv.Key == "result" {
+	wsMessage := jsonRpcWsMessage{}
+	err := sonic.Unmarshal(body, &wsMessage)
+	if err == nil {
+		id = wsMessage.Id
+
+		if wsMessage.Params != nil {
+			responseType = Ws
+			subId = ResultAsString(wsMessage.Params.Subscription)
+			message = wsMessage.Params.Result
+		} else {
+			if len(wsMessage.Result) > 0 {
 				responseType = JsonRpc
-				message, upstreamError = readResult(kv.Value)
+				message = wsMessage.Result
 			}
-			if kv.Key == "error" {
-				upstreamError, _ = readError(kv.Value)
+			if len(wsMessage.Error) > 0 {
 				responseType = JsonRpc
+				upstreamError = parseError(wsMessage.Error)
 			}
 		}
 	}
 
-	if dec.Err() != nil {
-		upstreamError = IncorrectResponseBodyError(errors.New("wrong json-rpc response from ws"))
+	if id == "" && subId == "" && upstreamError == nil {
+		upstreamError = IncorrectResponseBodyError(errors.New("wrong json-rpc ws response"))
 	}
 
 	return &WsResponse{
@@ -176,10 +223,6 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 		SubId:   subId,
 		Error:   upstreamError,
 	}
-}
-
-func bodyDecoder(body []byte, level int) *jstream.Decoder {
-	return jstream.NewDecoder(bytes.NewReader(body), level).EmitKV().ObjectAsKVS()
 }
 
 var quote = byte('"')
@@ -203,55 +246,6 @@ func ResultAsNumber(result []byte) uint64 {
 		return 0
 	}
 	return uint64(num)
-}
-
-func readResult(result interface{}) ([]byte, *ResponseError) {
-	resBytes, err := sonic.Marshal(result)
-	if err != nil {
-		return nil, IncorrectResponseBodyError(err)
-	}
-
-	return resBytes, nil
-}
-
-func readError(errorBody interface{}) (*ResponseError, []byte) {
-	code := 0
-	message := ""
-	var data interface{}
-
-	switch errValue := errorBody.(type) {
-	case jstream.KVS:
-		for _, kv := range errValue {
-			if kv.Key == "message" || kv.Key == "error" {
-				message = kv.Value.(string)
-			}
-			if kv.Key == "code" {
-				code = int(kv.Value.(float64))
-			}
-			if kv.Key == "data" {
-				switch dataValue := kv.Value.(type) {
-				case string:
-					data = dataValue
-				case jstream.KVS:
-					dataValues := map[string]interface{}{}
-					for _, dataKv := range dataValue {
-						dataValues[dataKv.Key] = dataKv.Value
-					}
-					if len(dataValues) > 0 {
-						data = dataValues
-					}
-				}
-			}
-		}
-	case string:
-		message = errValue
-	}
-	errorBytes, err := sonic.Marshal(errorBody)
-	if err != nil {
-		return IncorrectResponseBodyError(err), nil
-	}
-
-	return ResponseErrorWithData(code, message, data), errorBytes
 }
 
 func NewHttpUpstreamResponseWithError(error *ResponseError) *HttpUpstreamResponse {
@@ -305,7 +299,11 @@ func NewReplyErrorFromErr(id string, err error, responseType RequestType) *Reply
 			responseType:  responseType,
 		}
 	}
-	return NewReplyError(id, ServerError(err), responseType)
+	return NewReplyError(id, ServerErrorWithCause(err), responseType)
+}
+
+func (r *ReplyError) HasStream() bool {
+	return false
 }
 
 func (r *ReplyError) ResponseResult() []byte {
@@ -317,16 +315,17 @@ func (r *ReplyError) GetError() *ResponseError {
 }
 
 type jsonRpcError struct {
-	Code    int         `json:"code,omitempty"`
 	Message string      `json:"message,omitempty"`
+	Code    *int        `json:"code,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
+	Error   string      `json:"error,omitempty"`
 }
 
 func (r *ReplyError) EncodeResponse(realId []byte) io.Reader {
 	switch r.responseType {
 	case JsonRpc:
 		jsonRpcErr := jsonRpcError{
-			Code:    r.responseError.Code,
+			Code:    &r.responseError.Code,
 			Message: r.responseError.Message,
 			Data:    r.responseError.Data,
 		}

@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/bytedance/sonic"
 )
@@ -74,7 +75,22 @@ func NewHttpUpstreamRequest(
 	}
 }
 
-func NewJsonRpcUpstreamRequest(id string, method string, params any, stream bool) (*HttpUpstreamRequest, error) {
+func NewStreamRestUpstreamRequest(
+	method string,
+	headers map[string]string,
+	body []byte,
+) *HttpUpstreamRequest {
+	return &HttpUpstreamRequest{
+		id:             "1",
+		method:         method,
+		requestHeaders: headers,
+		requestBody:    body,
+		isStream:       true,
+		requestType:    Rest,
+	}
+}
+
+func NewJsonRpcUpstreamRequest(id string, method string, params any) (*HttpUpstreamRequest, error) {
 	jsonRpcReq := map[string]interface{}{
 		"id":      id,
 		"jsonrpc": "2.0",
@@ -90,7 +106,27 @@ func NewJsonRpcUpstreamRequest(id string, method string, params any, stream bool
 		id:          id,
 		method:      method,
 		requestBody: jsonRpcReqBytes,
-		isStream:    stream,
+		requestType: JsonRpc,
+	}, nil
+}
+
+func NewStreamJsonRpcUpstreamRequest(id string, realId json.RawMessage, method string, params any) (*HttpUpstreamRequest, error) {
+	jsonRpcReq := map[string]interface{}{
+		"id":      realId,
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+	}
+	jsonRpcReqBytes, err := sonic.Marshal(jsonRpcReq)
+	if err != nil {
+		return nil, err
+	}
+
+	return &HttpUpstreamRequest{
+		id:          id,
+		method:      method,
+		requestBody: jsonRpcReqBytes,
+		isStream:    true,
 		requestType: JsonRpc,
 	}, nil
 }

@@ -31,7 +31,7 @@ func TestParseWsNumberSubMessage(t *testing.T) {
 }
 
 func TestParseWsEvent(t *testing.T) {
-	body := []byte(`{"id":"15","jsonrpc":"2.0","params": { "result": {"key": "value"}, "subscription": "0x89d9f8cd1e113f4b65c1e22f3847d3672cf5761f"} }`)
+	body := []byte(`{"id":"15","jsonrpc":"2.0","params": { "result": {"key":"value"}, "subscription": "0x89d9f8cd1e113f4b65c1e22f3847d3672cf5761f"} }`)
 	wsResponse := protocol.ParseJsonRpcWsMessage(body)
 
 	assert.Nil(t, wsResponse.Error)
@@ -42,7 +42,7 @@ func TestParseWsEvent(t *testing.T) {
 }
 
 func TestParseWsEventWithNumSub(t *testing.T) {
-	body := []byte(`{"id":"15","jsonrpc":"2.0","params": { "result": {"key": "value"}, "subscription": 1223} }`)
+	body := []byte(`{"id":"15","jsonrpc":"2.0","params": { "result": {"key":"value"}, "subscription": 1223} }`)
 	wsResponse := protocol.ParseJsonRpcWsMessage(body)
 
 	assert.Nil(t, wsResponse.Error)
@@ -111,17 +111,17 @@ func TestEncodeJsonRpcRequest(t *testing.T) {
 }
 
 func TestEncodeReplyErrorJsonRpc(t *testing.T) {
-	replyError := protocol.NewReplyError("1", protocol.ServerError(errors.New("err cause")), protocol.JsonRpc)
+	replyError := protocol.NewReplyError("1", protocol.ServerErrorWithCause(errors.New("err cause")), protocol.JsonRpc)
 
 	respReader := replyError.EncodeResponse([]byte("55"))
 	respBytes, err := io.ReadAll(respReader)
 
 	assert.Nil(t, err)
-	assert.Equal(t, []byte(`{"id":55,"jsonrpc":"2.0","error":{"code":500,"message":"internal server error: err cause"}}`), respBytes)
+	assert.Equal(t, []byte(`{"id":55,"jsonrpc":"2.0","error":{"message":"internal server error: err cause","code":500}}`), respBytes)
 }
 
 func TestEncodeReplyErrorRest(t *testing.T) {
-	replyError := protocol.NewReplyError("1", protocol.ServerError(errors.New("err cause")), protocol.Rest)
+	replyError := protocol.NewReplyError("1", protocol.ServerErrorWithCause(errors.New("err cause")), protocol.Rest)
 
 	respReader := replyError.EncodeResponse([]byte("55"))
 	respBytes, err := io.ReadAll(respReader)

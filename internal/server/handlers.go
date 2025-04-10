@@ -143,7 +143,15 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 			return nil, err
 		}
 		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
-		upstreamReq, err := protocol.NewJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Method, jsonRpcReq.Params, false)
+		var upstreamReq protocol.RequestHolder
+		if protocol.IsStream(jsonRpcReq.Method) { // for tests
+			// during streaming, it's unnecessary to get the result field separately and then add a real id
+			// instead, we can send a real id and then stream the whole body as is
+			// since we have our internal id to get a request index to sort client's responses
+			upstreamReq, err = protocol.NewStreamJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params)
+		} else {
+			upstreamReq, err = protocol.NewJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Method, jsonRpcReq.Params)
+		}
 		if err != nil {
 			return nil, err
 		}
