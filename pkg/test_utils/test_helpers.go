@@ -1,4 +1,4 @@
-package utils
+package test_utils
 
 import (
 	"context"
@@ -25,12 +25,12 @@ func NewHttpConnectorMock() *HttpConnectorMock {
 	return &HttpConnectorMock{}
 }
 
-func (c *HttpConnectorMock) SendRequest(ctx context.Context, request protocol.UpstreamRequest) protocol.UpstreamResponse {
+func (c *HttpConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	args := c.Called(ctx, request)
-	return args.Get(0).(protocol.UpstreamResponse)
+	return args.Get(0).(protocol.ResponseHolder)
 }
 
-func (c *HttpConnectorMock) Subscribe(ctx context.Context, request protocol.UpstreamRequest) (protocol.UpstreamSubscriptionResponse, error) {
+func (c *HttpConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
 }
 
@@ -46,11 +46,11 @@ func NewWsConnectorMock() *WsConnectorMock {
 	return &WsConnectorMock{}
 }
 
-func (c *WsConnectorMock) SendRequest(ctx context.Context, request protocol.UpstreamRequest) protocol.UpstreamResponse {
+func (c *WsConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	return nil
 }
 
-func (c *WsConnectorMock) Subscribe(ctx context.Context, request protocol.UpstreamRequest) (protocol.UpstreamSubscriptionResponse, error) {
+func (c *WsConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	args := c.Called(ctx, request)
 	var err error
 	if args.Get(1) == nil {

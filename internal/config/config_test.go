@@ -19,7 +19,16 @@ func TestReadFullConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.AppConfig{
+		ServerConfig: &config.ServerConfig{
+			Port: 9090,
+		},
 		UpstreamConfig: &config.UpstreamConfig{
+			FailsafeConfig: &config.FailsafeConfig{
+				HedgeConfig: &config.HedgeConfig{
+					Delay: 500 * time.Millisecond,
+					Count: 2,
+				},
+			},
 			ChainDefaults: map[string]*config.ChainDefaults{
 				"ethereum": {
 					PollInterval: 2 * time.Minute,
@@ -31,6 +40,7 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: config.Ws,
 					PollInterval:  2 * time.Minute,
 					ChainName:     "ethereum",
+					Methods:       &config.MethodsConfig{},
 					Connectors: []*config.ConnectorConfig{
 						{
 							Type: config.JsonRpc,
@@ -50,6 +60,7 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: config.Rest,
 					PollInterval:  1 * time.Minute,
 					ChainName:     "polygon",
+					Methods:       &config.MethodsConfig{},
 					Connectors: []*config.ConnectorConfig{
 						{
 							Type: config.Rest,
@@ -136,26 +147,21 @@ func TestSetDefaultPollInterval(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	expected := &config.AppConfig{
-		UpstreamConfig: &config.UpstreamConfig{
-			Upstreams: []*config.Upstream{
-				{
-					Id:            "eth-upstream",
-					HeadConnector: config.JsonRpc,
-					PollInterval:  1 * time.Minute,
-					ChainName:     "ethereum",
-					Connectors: []*config.ConnectorConfig{
-						{
-							Type: config.JsonRpc,
-							Url:  "https://test.com",
-						},
-					},
-				},
+	expected := &config.Upstream{
+		Id:            "eth-upstream",
+		Methods:       &config.MethodsConfig{},
+		HeadConnector: config.JsonRpc,
+		PollInterval:  1 * time.Minute,
+		ChainName:     "ethereum",
+		Connectors: []*config.ConnectorConfig{
+			{
+				Type: config.JsonRpc,
+				Url:  "https://test.com",
 			},
 		},
 	}
 
-	assert.Equal(t, expected, appConfig)
+	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
 }
 
 func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
@@ -163,30 +169,25 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	expected := &config.AppConfig{
-		UpstreamConfig: &config.UpstreamConfig{
-			Upstreams: []*config.Upstream{
-				{
-					Id:            "eth-upstream",
-					HeadConnector: config.JsonRpc,
-					PollInterval:  1 * time.Minute,
-					ChainName:     "ethereum",
-					Connectors: []*config.ConnectorConfig{
-						{
-							Type: config.JsonRpc,
-							Url:  "https://test.com",
-						},
-						{
-							Type: config.Rest,
-							Url:  "https://test.com",
-						},
-					},
-				},
+	expected := &config.Upstream{
+		Id:            "eth-upstream",
+		HeadConnector: config.JsonRpc,
+		PollInterval:  1 * time.Minute,
+		ChainName:     "ethereum",
+		Methods:       &config.MethodsConfig{},
+		Connectors: []*config.ConnectorConfig{
+			{
+				Type: config.JsonRpc,
+				Url:  "https://test.com",
+			},
+			{
+				Type: config.Rest,
+				Url:  "https://test.com",
 			},
 		},
 	}
 
-	assert.Equal(t, expected, appConfig)
+	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
 }
 
 func TestSetDefaultRestHeadConnector(t *testing.T) {
@@ -194,30 +195,37 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	expected := &config.AppConfig{
-		UpstreamConfig: &config.UpstreamConfig{
-			Upstreams: []*config.Upstream{
-				{
-					Id:            "eth-upstream",
-					HeadConnector: config.Rest,
-					PollInterval:  1 * time.Minute,
-					ChainName:     "ethereum",
-					Connectors: []*config.ConnectorConfig{
-						{
-							Type: config.Ws,
-							Url:  "https://test.com",
-						},
-						{
-							Type: config.Rest,
-							Url:  "https://test.com",
-						},
-					},
-				},
+	expected := &config.Upstream{
+		Id:            "eth-upstream",
+		HeadConnector: config.Rest,
+		PollInterval:  1 * time.Minute,
+		ChainName:     "ethereum",
+		Methods:       &config.MethodsConfig{},
+		Connectors: []*config.ConnectorConfig{
+			{
+				Type: config.Ws,
+				Url:  "https://test.com",
+			},
+			{
+				Type: config.Rest,
+				Url:  "https://test.com",
 			},
 		},
 	}
 
-	assert.Equal(t, expected, appConfig)
+	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
+}
+
+func TestServerConfig(t *testing.T) {
+	t.Setenv("DSHALTIE_CONFIG_PATH", "configs/server-config.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	expected := config.ServerConfig{
+		Port: 9095,
+	}
+
+	assert.Equal(t, &expected, appConfig.ServerConfig)
 }
 
 func TestSetChainsDefault(t *testing.T) {
@@ -235,6 +243,7 @@ func TestSetChainsDefault(t *testing.T) {
 			Upstreams: []*config.Upstream{
 				{
 					Id:            "eth-upstream",
+					Methods:       &config.MethodsConfig{},
 					HeadConnector: config.JsonRpc,
 					PollInterval:  10 * time.Minute,
 					ChainName:     "ethereum",
@@ -249,5 +258,6 @@ func TestSetChainsDefault(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, expected, appConfig)
+	assert.Equal(t, expected.UpstreamConfig.Upstreams[0], appConfig.UpstreamConfig.Upstreams[0])
+	assert.Equal(t, expected.UpstreamConfig.ChainDefaults, appConfig.UpstreamConfig.ChainDefaults)
 }

@@ -8,28 +8,58 @@ import (
 	choice "github.com/drpcorg/dshaltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/drpcorg/dshaltie/pkg/utils"
+	"github.com/failsafe-go/failsafe-go"
 )
 
-type UpstreamSupervisor struct {
+type UpstreamSupervisor interface {
+	GetChainSupervisor(chain chains.Chain) *ChainSupervisor
+	GetUpstream(string) *Upstream
+	GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper]
+	StartUpstreams()
+}
+
+type BaseUpstreamSupervisor struct {
 	ctx              context.Context
 	chainSupervisors utils.CMap[chains.Chain, ChainSupervisor]
 	upstreams        utils.CMap[string, Upstream]
 	eventsChan       chan protocol.UpstreamEvent
+	upstreamsConfig  *config.UpstreamConfig
+	executor         failsafe.Executor[*protocol.ResponseHolderWrapper]
 }
 
-func NewUpstreamSupervisor(ctx context.Context) *UpstreamSupervisor {
-	return &UpstreamSupervisor{
+func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig) UpstreamSupervisor {
+	return &BaseUpstreamSupervisor{
 		ctx:              ctx,
 		upstreams:        utils.CMap[string, Upstream]{},
 		chainSupervisors: utils.CMap[chains.Chain, ChainSupervisor]{},
 		eventsChan:       make(chan protocol.UpstreamEvent, 100),
+		upstreamsConfig:  upstreamsConfig,
+		executor:         createExecutor(createHedgePolicy(upstreamsConfig.FailsafeConfig.HedgeConfig)),
 	}
 }
 
-func (u *UpstreamSupervisor) StartUpstreams(upstreamsConfigs *config.UpstreamConfig) {
+func (u *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) *ChainSupervisor {
+	if c, ok := u.chainSupervisors.Load(chain); ok {
+		return c
+	}
+	return nil
+}
+
+func (u *BaseUpstreamSupervisor) GetUpstream(upstreamId string) *Upstream {
+	if up, ok := u.upstreams.Load(upstreamId); ok {
+		return up
+	}
+	return nil
+}
+
+func (u *BaseUpstreamSupervisor) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
+	return u.executor
+}
+
+func (u *BaseUpstreamSupervisor) StartUpstreams() {
 	go u.processEvents()
 
-	for _, upConfig := range upstreamsConfigs.Upstreams {
+	for _, upConfig := range u.upstreamsConfig.Upstreams {
 		go func() {
 			up := NewUpstream(u.ctx, upConfig)
 			up.Start()
@@ -53,7 +83,7 @@ func (u *UpstreamSupervisor) StartUpstreams(upstreamsConfigs *config.UpstreamCon
 	}
 }
 
-func (u *UpstreamSupervisor) processEvents() {
+func (u *BaseUpstreamSupervisor) processEvents() {
 	for {
 		select {
 		case <-u.ctx.Done():

@@ -1,4 +1,8 @@
 upstream-config:
+  failsafe-config:
+    hedge:
+      delay: 500ms
+      max: 2
   chain-defaults:
     ethereum:
       poll-interval: 2m

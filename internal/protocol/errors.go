@@ -5,62 +5,84 @@ import "fmt"
 const (
 	BaseError int = iota
 	IncorrectResponseBody
+	NoAvailableUpstreams
+	WrongChain
 	ClientErrorCode         = 400
+	RequestTimeout          = 408
 	InternalServerErrorCode = 500
+	NoSupportedMethod       = -32601
 )
 
-type UpstreamError struct {
+type ResponseError struct {
 	Code    int
 	Message string
 	Data    interface{}
-	cause   error
 }
 
-func (b *UpstreamError) Error() string {
-	if b.cause != nil {
-		return fmt.Sprintf("%d: %s, caused by: %s", b.Code, b.Message, b.cause.Error())
-	} else {
-		return fmt.Sprintf("%d: %s", b.Code, b.Message)
-	}
+func (b *ResponseError) Error() string {
+	return fmt.Sprintf("%d: %s", b.Code, b.Message)
 }
 
-func NewUpstreamErrorFull(code int, message string, data interface{}, cause error) *UpstreamError {
-	return &UpstreamError{
-		Message: message,
-		cause:   cause,
-		Code:    code,
-		Data:    data,
-	}
-}
-
-func NewUpstreamErrorWithData(code int, message string, data interface{}) *UpstreamError {
-	return &UpstreamError{
+func ResponseErrorWithData(code int, message string, data interface{}) *ResponseError {
+	return &ResponseError{
 		Message: message,
 		Code:    code,
 		Data:    data,
 	}
 }
 
-func NewClientUpstreamError(cause error) *UpstreamError {
-	return &UpstreamError{
-		Message: "client error",
-		cause:   cause,
+func ClientError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("client error - %s", cause.Error()),
 		Code:    ClientErrorCode,
 	}
 }
 
-func NewServerUpstreamError(cause error) *UpstreamError {
-	return &UpstreamError{
-		Message: "internal server error",
-		cause:   cause,
+func ParseError() *ResponseError {
+	return &ResponseError{
+		Message: "couldn't parse a request",
+		Code:    ClientErrorCode,
+	}
+}
+
+func RequestTimeoutError() *ResponseError {
+	return &ResponseError{
+		Message: "request timeout",
+		Code:    RequestTimeout,
+	}
+}
+
+func ServerError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("internal server error: %s", cause.Error()),
 		Code:    InternalServerErrorCode,
 	}
 }
 
-func NewIncorrectResponseBodyError(cause error) *UpstreamError {
-	return &UpstreamError{
-		Message: "incorrect response body",
-		cause:   cause,
+func IncorrectResponseBodyError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("incorrect response body: %s", cause.Error()),
 		Code:    IncorrectResponseBody,
+	}
+}
+
+func NoAvailableUpstreamsError() *ResponseError {
+	return &ResponseError{
+		Message: "no available upstreams to process a request",
+		Code:    NoAvailableUpstreams,
+	}
+}
+
+func NotSupportedMethodError(method string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("the method %s does not exist/is not available", method),
+		Code:    NoSupportedMethod,
+	}
+}
+
+func WrongChainError(chain string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("chain %s is not supported", chain),
+		Code:    WrongChain,
 	}
 }

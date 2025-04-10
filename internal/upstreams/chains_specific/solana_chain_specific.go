@@ -69,22 +69,22 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 	), nil
 }
 
-func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.UpstreamRequest, error) {
+func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
 	params := map[string]interface{}{
 		"showRewards":        false,
 		"transactionDetails": "none",
 	}
-	return protocol.NewJsonRpcUpstreamRequest(1, "blockSubscribe", []interface{}{"all", params}, false)
+	return protocol.NewJsonRpcUpstreamRequest("1", "blockSubscribe", []interface{}{"all", params}, false)
 }
 
 func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint64, error) {
-	slotReq, err := protocol.NewJsonRpcUpstreamRequest(1, "getSlot", nil, false)
+	slotReq, err := protocol.NewJsonRpcUpstreamRequest("1", "getSlot", nil, false)
 	if err != nil {
 		return 0, err
 	}
 	slotResponse := connector.SendRequest(ctx, slotReq)
 	if slotResponse.HasError() {
-		return 0, slotResponse.ResponseError()
+		return 0, slotResponse.GetError()
 	}
 
 	slot := protocol.ResultAsNumber(slotResponse.ResponseResult())
@@ -93,13 +93,13 @@ func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint
 }
 
 func getMaxBlock(ctx context.Context, connector connectors.ApiConnector, slot uint64) (uint64, error) {
-	blocksReq, err := protocol.NewJsonRpcUpstreamRequest(1, "getBlocks", []interface{}{slot - 10, slot}, false)
+	blocksReq, err := protocol.NewJsonRpcUpstreamRequest("1", "getBlocks", []interface{}{slot - 10, slot}, false)
 	if err != nil {
 		return 0, err
 	}
 	blocksResponse := connector.SendRequest(ctx, blocksReq)
 	if blocksResponse.HasError() {
-		return 0, blocksResponse.ResponseError()
+		return 0, blocksResponse.GetError()
 	}
 
 	var blocks []uint64
@@ -117,13 +117,13 @@ func getBlock(ctx context.Context, connector connectors.ApiConnector, block uint
 		"transactionDetails":             "none",
 		"maxSupportedTransactionVersion": 0,
 	}
-	blockReq, err := protocol.NewJsonRpcUpstreamRequest(1, "getBlock", []interface{}{block, params}, false)
+	blockReq, err := protocol.NewJsonRpcUpstreamRequest("1", "getBlock", []interface{}{block, params}, false)
 	if err != nil {
 		return nil, err
 	}
 	blockResponse := connector.SendRequest(ctx, blockReq)
 	if blockResponse.HasError() {
-		return nil, blockResponse.ResponseError()
+		return nil, blockResponse.GetError()
 	}
 
 	return blockResponse.ResponseResult(), nil
