@@ -39,7 +39,7 @@ func TestProcessFirstChunk(t *testing.T) {
 		t.Run(test.name, func(te *testing.T) {
 			reader := bufio.NewReaderSize(bytes.NewReader(test.body), protocol.MaxChunkSize)
 
-			canBeStreamed := protocol.ProcessFirstChunk(reader, protocol.MaxChunkSize)
+			canBeStreamed := protocol.ResponseCanBeStreamed(reader, protocol.MaxChunkSize)
 
 			assert.Equal(t, test.expected, canBeStreamed)
 		})

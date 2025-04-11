@@ -12,7 +12,7 @@ import (
 
 const MaxChunkSize = 8192
 
-func ProcessFirstChunk(reader *bufio.Reader, chunkSize int) bool {
+func ResponseCanBeStreamed(reader *bufio.Reader, chunkSize int) bool {
 	// analyze the first chunk to determine if there is an error or not
 	// if there is an error then it's unnecessary to stream such responses
 	body, err := reader.Peek(chunkSize)

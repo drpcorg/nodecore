@@ -64,7 +64,7 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
 		// if this is a REST request then it can be streamed as is
 		// if this is a JSON-RPC request, first it's necessary to understand if there is an error or not
-		canBeStreamed := request.RequestType() == protocol.Rest || protocol.ProcessFirstChunk(bufReader, protocol.MaxChunkSize)
+		canBeStreamed := request.RequestType() == protocol.Rest || protocol.ResponseCanBeStreamed(bufReader, protocol.MaxChunkSize)
 		if canBeStreamed {
 			zerolog.Ctx(ctx).Info().Msgf("streaming response of method %s", request.Method())
 			return protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
