@@ -23,6 +23,12 @@ func (b *ResponseError) Error() string {
 	return fmt.Sprintf("%d: %s", b.Code, b.Message)
 }
 
+func ResponseErrorWithMessage(message string) *ResponseError {
+	return &ResponseError{
+		Message: message,
+	}
+}
+
 func ResponseErrorWithData(code int, message string, data interface{}) *ResponseError {
 	return &ResponseError{
 		Message: message,
@@ -52,9 +58,16 @@ func RequestTimeoutError() *ResponseError {
 	}
 }
 
-func ServerError(cause error) *ResponseError {
+func ServerErrorWithCause(cause error) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("internal server error: %s", cause.Error()),
+		Code:    InternalServerErrorCode,
+	}
+}
+
+func ServerError() *ResponseError {
+	return &ResponseError{
+		Message: "internal server error",
 		Code:    InternalServerErrorCode,
 	}
 }

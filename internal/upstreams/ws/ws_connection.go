@@ -112,7 +112,7 @@ func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protoc
 		method:           jsonRpcRequest.Method,
 	}
 
-	request, err := protocol.NewJsonRpcUpstreamRequest(fmt.Sprintf("%d", internalId), jsonRpcRequest.Method, jsonRpcRequest.Params, false)
+	request, err := protocol.NewJsonRpcUpstreamRequest(fmt.Sprintf("%d", internalId), jsonRpcRequest.Method, jsonRpcRequest.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +257,7 @@ func (w *WsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
 		if unsubMethod, ok := GetUnsubscribeMethod(op.method); ok {
 			params := []interface{}{op.subId}
-			unsubReq, err := protocol.NewJsonRpcUpstreamRequest("0", unsubMethod, params, false)
+			unsubReq, err := protocol.NewJsonRpcUpstreamRequest("0", unsubMethod, params)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, op.subId)
 			} else {

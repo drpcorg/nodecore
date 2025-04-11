@@ -1,12 +1,13 @@
 package connectors
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"io"
 	"net/http"
 	"strings"
@@ -55,29 +56,45 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 	if err != nil {
 		return h.createReplyError(
 			request,
-			protocol.ServerError(fmt.Errorf("unable to get an http response: %v", err)),
+			protocol.ServerErrorWithCause(fmt.Errorf("unable to get an http response: %v", err)),
 		)
 	}
 
-	if request.IsStream() {
-		return nil
-	} else {
-		defer func() {
-			err = resp.Body.Close()
-			if err != nil {
-				log.Warn().Err(err).Msg("couldn't close a response body")
-			}
-		}()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return h.createReplyError(
-				request,
-				protocol.ServerError(fmt.Errorf("unable to read an http response: %v", err)),
-			)
+	if request.IsStream() && resp.StatusCode == 200 {
+		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
+		// if this is a REST request then it can be streamed as is
+		// if this is a JSON-RPC request, first it's necessary to understand if there is an error or not
+		canBeStreamed := request.RequestType() == protocol.Rest || protocol.ResponseCanBeStreamed(bufReader, protocol.MaxChunkSize)
+		if canBeStreamed {
+			zerolog.Ctx(ctx).Info().Msgf("streaming response of method %s", request.Method())
+			return protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
+		} else {
+			defer closeBodyReader(ctx, resp.Body)
+			return h.receiveWholeResponse(request, resp.StatusCode, bufReader)
 		}
-
-		return protocol.NewHttpUpstreamResponse(request.Id(), body, resp.StatusCode, request.RequestType())
+	} else {
+		defer closeBodyReader(ctx, resp.Body)
+		return h.receiveWholeResponse(request, resp.StatusCode, resp.Body)
 	}
+}
+
+func closeBodyReader(ctx context.Context, bodyReader io.ReadCloser) {
+	err := bodyReader.Close()
+	if err != nil {
+		zerolog.Ctx(ctx).Warn().Err(err).Msg("couldn't close a body reader")
+	}
+}
+
+func (h *HttpConnector) receiveWholeResponse(request protocol.RequestHolder, status int, reader io.Reader) protocol.ResponseHolder {
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return h.createReplyError(
+			request,
+			protocol.ServerErrorWithCause(fmt.Errorf("unable to read an http response: %v", err)),
+		)
+	}
+
+	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType())
 }
 
 func (h *HttpConnector) createReplyError(request protocol.RequestHolder, responseError *protocol.ResponseError) *protocol.ReplyError {

@@ -28,7 +28,7 @@ type EvmChainSpecificObject struct {
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
 func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	request, err := protocol.NewJsonRpcUpstreamRequest("1", "eth_getBlockByNumber", []interface{}{"latest", false}, false)
+	request, err := protocol.NewJsonRpcUpstreamRequest("1", "eth_getBlockByNumber", []interface{}{"latest", false})
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return protocol.NewJsonRpcUpstreamRequest("1", "eth_subscribe", []interface{}{"newHeads"}, false)
+	return protocol.NewJsonRpcUpstreamRequest("1", "eth_subscribe", []interface{}{"newHeads"})
 }
 
 type EvmBlock struct {

@@ -8,6 +8,11 @@ import (
 	"math"
 )
 
+func IsStream(method string) bool {
+	// TODO: implement logic to determine if a method is streaming or not
+	return method == "eth_getLogs" || method == "eth_getBlockByHash" || method == "getProgramAccounts"
+}
+
 type ApiConnectorType int
 
 const (
@@ -52,6 +57,7 @@ type ResponseHolder interface {
 	GetError() *ResponseError
 	EncodeResponse(realId []byte) io.Reader
 	HasError() bool
+	HasStream() bool
 	Id() string
 }
 

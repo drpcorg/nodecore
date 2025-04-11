@@ -185,3 +185,7 @@ func (t testResponseHolder) HasError() bool {
 func (t testResponseHolder) Id() string {
 	return t.id
 }
+
+func (t testResponseHolder) HasStream() bool {
+	return false
+}

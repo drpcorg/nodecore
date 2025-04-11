@@ -2,6 +2,7 @@ package connectors_test
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dshaltie/pkg/test_utils"
@@ -54,11 +55,12 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 			})
 
 			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-			req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil, false)
+			req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
 
 			assert.False(te, r.HasError())
+			assert.False(t, r.HasStream())
 			require.JSONEq(t, string(test_utils.GetResultAsBytes(test.body)), string(r.ResponseResult()))
 		})
 	}
@@ -112,12 +114,13 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 			})
 
 			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-			req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil, false)
+			req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
 
 			assert.True(te, r.HasError())
 			assert.Equal(te, test.code, r.GetError().Code)
+			assert.False(t, r.HasStream())
 			assert.Equal(te, test.message, r.GetError().Message)
 			assert.Equal(te, test.data, r.GetError().Data)
 		})
@@ -134,13 +137,90 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	})
 
 	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-	req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil, false)
+	req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil)
 
 	r := connector.SendRequest(context.Background(), req)
 
 	assert.True(t, r.HasError())
+	assert.False(t, r.HasStream())
 	assert.Equal(t, 1, r.GetError().Code)
 	assert.Equal(t, "incorrect response body: wrong json-rpc response - there is neither result nor error", r.GetError().Message)
 	assert.Nil(t, r.GetError().Data)
 	assert.Equal(t, "1: incorrect response body: wrong json-rpc response - there is neither result nor error", r.GetError().Error())
+}
+
+func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
+		resp := httpmock.NewBytesResponse(200, []byte(`{"id": 1, "jsonrpc": "2.0", "result": {"number": "0x11"} }`))
+		return resp, nil
+	})
+
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+	req, _ := protocol.NewStreamJsonRpcUpstreamRequest("id", json.RawMessage(`"real"`), "eth_test", nil)
+
+	r := connector.SendRequest(context.Background(), req)
+
+	assert.True(t, r.HasStream())
+	assert.False(t, r.HasError())
+	assert.Nil(t, r.ResponseResult())
+}
+
+func TestRestRequestWith200CodeThenStream(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("GET", "/info", func(request *http.Request) (*http.Response, error) {
+		resp := httpmock.NewBytesResponse(200, []byte(`{"key": "value"}`))
+		return resp, nil
+	})
+
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.RestConnector, nil)
+	req := protocol.NewStreamRestUpstreamRequest("GET#/info", nil, nil)
+
+	r := connector.SendRequest(context.Background(), req)
+
+	assert.True(t, r.HasStream())
+	assert.False(t, r.HasError())
+	assert.Nil(t, r.ResponseResult())
+}
+
+func TestRestRequestWithNot200CodeThenNoStream(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("GET", "/info", func(request *http.Request) (*http.Response, error) {
+		resp := httpmock.NewBytesResponse(500, []byte(`{"message":"err"}`))
+		return resp, nil
+	})
+
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.RestConnector, nil)
+	req := protocol.NewStreamRestUpstreamRequest("GET#/info", nil, nil)
+
+	r := connector.SendRequest(context.Background(), req)
+
+	assert.False(t, r.HasStream())
+	assert.True(t, r.HasError())
+	assert.Equal(t, &protocol.ResponseError{Message: "err", Code: 500}, r.GetError())
+}
+
+func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
+		resp := httpmock.NewBytesResponse(500, []byte(`{"id": 1, "jsonrpc": "2.0", "error": {"message": "0x11"} }`))
+		return resp, nil
+	})
+
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+	req, _ := protocol.NewStreamJsonRpcUpstreamRequest("id", json.RawMessage(`"real"`), "eth_test", nil)
+
+	r := connector.SendRequest(context.Background(), req)
+
+	assert.False(t, r.HasStream())
+	assert.True(t, r.HasError())
+	assert.Equal(t, &protocol.ResponseError{Message: "0x11", Code: 500}, r.GetError())
 }
