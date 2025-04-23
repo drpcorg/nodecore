@@ -1,0 +1,125 @@
+= RFC Template
+
+*Name:* Cache system
+
+*Type:* feature
+
+*Author:* https://github.com/KirillPamPam
+
+== Summary
+
+To save clients money and reduce latency, we'd like to implement a caching system that can help to achieve that. This system should be flexible and configurable, allowing it to work with various types of caches (in-memory, SQL/NOSQL DBs, etc.)
+
+== Detailed design
+
+There is the suggested cache configuration:
+
+[source,yaml]
+----
+cache:
+  connectors:
+    - id: connector-id
+      driver: memory,redis,postgres,mongo
+      connector-specific-settings:
+        # like creds to connect or some additional settings
+  policies:
+    - chain: chain_name,*(all),|(or)
+      method: method_name,*(all),wildcard(trace_*),|(or)
+      finality-state: finalized,unfinalized,none
+      cache-empty: true,false
+      connector: connector-id
+      max-size: 1MB,100KB...
+      ttl: 0(forever),10m,5s...
+----
+
+Let's break it down, each setting in details.
+
+=== Connectors
+
+Connector is an abstraction that represents a connection to a specific system that will cache client responses.
+
+It contains a few fields:
+
+* *id* - connector id, or simply its name
+* *driver* - this is the engine through which requests will be cached. Depending on their needs, clients can choose a specific driver for their purposes:
+** in-memory
+** redis
+** mongo
+** postgres
+* *connector-specific-settings* - this is the section where additional setting for a concrete driver will be specified (like connection settings)
+
+=== Cache policies
+
+Cache policy - it's a policy that describes the cache flow for a specific chain:
+
+* what to cache
+* for how long
+* which methods
+
+There is a one-to-one mapping between policies and connectors, but you can specify as many policies as you want, they will be applied in turn.
+
+it contains the following fields:
+
+* chain - for which chain this policy can be applied; possible values:
+** a specific chain name (ethereum, solana)
+** wildcard * (it means all chains)
+** enumeration of chains using | (or)
+* method - for which method this policy can be applied; possible values:
+** a specific method name (eth_getBlockByNumber)
+** wildcard * (it means all methods)
+** wildcard * in combination with a method name (debug_*)
+* finality-state - this setting specifies how to cache responses that depend on a specific block; because of possible reorgs, it should be possible to control which blocks can be cached; possible values:
+** finalized (default) - cache blocks that confirmed as finalized;for that there must be an additional mechanism for determining finalized blocks on different chains
+** unfinalized - cache recent blocks that are not confirmed as finalized
+** none - cache all blocks
+* cache-empty - this setting specifies if empty responses (0x, null, []) can be cached or not; possible values:
+** true
+** false (default)
+* connector - link to a specific connector
+* max-size - maximum response size (in Kb or Mb) that can be cached
+* ttl - for how long a response can be cached; 0 means forever
+
+=== Cache flow
+
+Before describing the cache flow, it's necessary to say a couple of things about the additional logic that must exist outside this flow but that is part of it.
+
+==== Additional logic
+
+1. First of all, we should have in our method config a setting that specifies if a method is cacheable or not. For example, it can be useful for methods to turn caching off by default (eth_gasPrice), but in the application config clients can override it
+2. Not only specific block numbers but also block tags can be specified in some methods. We should distinguish it using param extractors, because we can't cache responses for a block tag (either replace it or not cache at all). So param extractor must be implemented to maintain the overall flow.
+
+==== Flow description
+
+There 2 operation with cache - receive a response from cache and store it. For these 2 operations there is one common thing we need to do each time. This is the generation of a request key.
+
+I suggest to generate a hash of a request body (or method) using *blake2b*:
+
+* it consumes less cpu, and it's faster in comparison with sha256
+* collisions are almost impossible
+
+Then we can use the following formula to build a key: +{chain}+ + +{method}+ + hash
+
+===== Description of the flow of receiving a cached response:
+
+* Determine if a requested method is cacheable or not using the method config.
+* Calculate a hash from a request body (if there isn't body, use a requested method).
+* Add to a request two additional setting (or do it in advance):
+**  if it's cacheable or not
+** a key
+* Build a key using the formula above.
+* Find all policies that match a request:
+** get a block using param extractors and compare it with a current finalized block, if there is the *finalized* finality-state
+** don't cache responses with block tags (there is an open question below)
+* Iterate over all policies and return the first result.
+
+===== Description of the flow of saving a cached response:
+
+* Skip or not the cache logic using a cacheable setting
+* Find all policies that match a response:
+** determine if it's possible to cache empty responses if there is an empty one
+** calculate a response size and compare it with a policy's *max-size* setting
+* Iterate over all policies and store a response using each policy connector
+
+== Unresolved questions
+
+1. Should we cache responses by replacing block tags with specific block numbers for some methods?
