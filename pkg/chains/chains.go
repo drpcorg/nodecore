@@ -3,6 +3,7 @@ package chains
 import (
 	_ "embed"
 	"gopkg.in/yaml.v3"
+	"maps"
 	"time"
 )
 
@@ -71,6 +72,10 @@ func init() {
 		panic(err)
 	}
 	chains = result
+}
+
+func GetAllChains() map[string]ConfiguredChain {
+	return maps.Clone(chains)
 }
 
 func IsSupported(chainName string) bool {

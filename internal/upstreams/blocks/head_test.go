@@ -1,11 +1,11 @@
-package heads_test
+package blocks_test
 
 import (
 	"context"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/blocks"
 	specific "github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dshaltie/internal/upstreams/heads"
 	"github.com/drpcorg/dshaltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -33,7 +33,7 @@ func TestRpcHead(t *testing.T) {
 		Id:           "id",
 		PollInterval: 10 * time.Millisecond,
 	}
-	headProcessor := heads.NewHeadProcessor(ctx, &upConfig, connector, specific.EvmChainSpecific)
+	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, specific.EvmChainSpecific)
 	go headProcessor.Start()
 
 	sub := headProcessor.Subscribe("test")
@@ -76,7 +76,7 @@ func TestWsHead(t *testing.T) {
 		Id:           "id",
 		PollInterval: 10 * time.Millisecond,
 	}
-	headProcessor := heads.NewHeadProcessor(ctx, &upConfig, connector, specific.EvmChainSpecific)
+	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, specific.EvmChainSpecific)
 	go headProcessor.Start()
 
 	sub := headProcessor.Subscribe("test")

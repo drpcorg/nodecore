@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/drpcorg/dshaltie/internal/caches"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/server"
 	"github.com/drpcorg/dshaltie/internal/upstreams"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -29,7 +31,9 @@ func main() {
 	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig)
 	go upstreamSupervisor.StartUpstreams()
 
-	appCtx := server.NewApplicationContext(upstreamSupervisor)
+	cacheProcessor := caches.NewCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, 1*time.Second)
+
+	appCtx := server.NewApplicationContext(upstreamSupervisor, cacheProcessor)
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 

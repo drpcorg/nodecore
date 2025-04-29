@@ -27,7 +27,7 @@ func TestBaseStrategyGetUpstreams(t *testing.T) {
 	chSup := createChainSupervisor()
 	publishEvent(chSup, "id1", protocol.Available)
 	publishEvent(chSup, "id2", protocol.Available)
-	request := protocol.NewHttpUpstreamRequest("eth_getBalance", nil, nil, false)
+	request := protocol.NewHttpUpstreamRequest("eth_getBalance", nil, nil)
 	baseStrategy := flow.NewBaseStrategy(chSup)
 
 	upId, err := baseStrategy.SelectUpstream(request)
@@ -50,7 +50,7 @@ func TestBaseStrategyNoAvailableUpstreams(t *testing.T) {
 	chSup := createChainSupervisor()
 	publishEvent(chSup, "id1", protocol.Unavailable)
 	baseStrategy := flow.NewBaseStrategy(chSup)
-	request := protocol.NewHttpUpstreamRequest("eth_getBalance", nil, nil, false)
+	request := protocol.NewHttpUpstreamRequest("eth_getBalance", nil, nil)
 
 	_, err := baseStrategy.SelectUpstream(request)
 
@@ -62,7 +62,7 @@ func TestBaseStrategyNotSupportedMethod(t *testing.T) {
 	chSup := createChainSupervisor()
 	publishEvent(chSup, "id1", protocol.Unavailable)
 	baseStrategy := flow.NewBaseStrategy(chSup)
-	request := protocol.NewHttpUpstreamRequest("test", nil, nil, false)
+	request := protocol.NewHttpUpstreamRequest("test", nil, nil)
 
 	_, err := baseStrategy.SelectUpstream(request)
 

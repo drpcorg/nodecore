@@ -1,0 +1,23 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: memory
+      id: test
+      memory:
+        max-items: 100
+        expired-remove-interval: 1s
+    - driver: memory
+      id: test
+      memory:
+        max-items: 10000
+        expired-remove-interval: 10s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

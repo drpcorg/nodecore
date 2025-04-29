@@ -84,6 +84,14 @@ func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType Requ
 	}
 }
 
+func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *HttpUpstreamResponse {
+	return &HttpUpstreamResponse{
+		id:          id,
+		result:      body,
+		requestType: requestType,
+	}
+}
+
 func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *HttpUpstreamResponse {
 	var response *HttpUpstreamResponse
 	switch requestType {

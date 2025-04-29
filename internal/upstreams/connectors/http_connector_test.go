@@ -55,7 +55,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 			})
 
 			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-			req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil)
+			req, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
 
@@ -114,7 +114,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 			})
 
 			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-			req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil)
+			req, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
 
@@ -137,7 +137,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	})
 
 	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-	req, _ := protocol.NewJsonRpcUpstreamRequest("1", "eth_test", nil)
+	req, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_test", nil)
 
 	r := connector.SendRequest(context.Background(), req)
 

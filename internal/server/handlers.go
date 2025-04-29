@@ -43,7 +43,7 @@ func NewRestHandler(preReq *Request, method string, requestBody io.Reader) (*Res
 }
 
 func (r *RestHandler) RequestDecode(ctx context.Context) (*Request, error) {
-	upstreamReq := protocol.NewHttpUpstreamRequest(r.method, nil, r.requestBody, false)
+	upstreamReq := protocol.NewHttpUpstreamRequest(r.method, nil, r.requestBody)
 	return &Request{
 		Chain:            r.preReq.Chain,
 		UpstreamRequests: []protocol.RequestHolder{upstreamReq},
@@ -76,7 +76,7 @@ type JsonRpcHandler struct {
 	idMap           map[string]lo.Tuple2[json.RawMessage, int]
 	requestBody     []byte
 	single          bool
-	jsonRpcRequests []jsonRpcRequest
+	jsonRpcRequests []protocol.JsonRpcRequestBody
 }
 
 var _ RequestHandler = (*JsonRpcHandler)(nil)
@@ -86,22 +86,22 @@ func NewJsonRpcHandler(preReq *Request, requestBody io.Reader) (*JsonRpcHandler,
 	if err != nil {
 		return nil, err
 	}
-	var jsonRpcRequests []jsonRpcRequest
+	var jsonRpcRequests []protocol.JsonRpcRequestBody
 	rawReq := string(bytes.TrimLeft(body, " \t\n\r"))
 	if len(rawReq) > 0 {
 		switch rawReq[0] {
 		case '[':
-			var requests []jsonRpcRequest
+			var requests []protocol.JsonRpcRequestBody
 			if err := sonic.UnmarshalString(rawReq, &requests); err != nil {
 				return nil, err
 			}
 			jsonRpcRequests = requests
 		case '{':
-			var request jsonRpcRequest
+			var request protocol.JsonRpcRequestBody
 			if err := sonic.UnmarshalString(rawReq, &request); err != nil {
 				return nil, err
 			}
-			jsonRpcRequests = []jsonRpcRequest{request}
+			jsonRpcRequests = []protocol.JsonRpcRequestBody{request}
 		}
 	} else {
 		return nil, decoder.SyntaxError{}
@@ -114,12 +114,6 @@ func NewJsonRpcHandler(preReq *Request, requestBody io.Reader) (*JsonRpcHandler,
 		idMap:           make(map[string]lo.Tuple2[json.RawMessage, int]),
 		single:          len(rawReq) > 0 && rawReq[0] == '{',
 	}, nil
-}
-
-type jsonRpcRequest struct {
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
-	Id     json.RawMessage `json:"id"`
 }
 
 func (j *JsonRpcHandler) IsSingle() bool {
@@ -145,12 +139,9 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
 		var upstreamReq protocol.RequestHolder
 		if protocol.IsStream(jsonRpcReq.Method) { // for tests
-			// during streaming, it's unnecessary to get the result field separately and then add a real id
-			// instead, we can send a real id and then stream the whole body as is
-			// since we have our internal id to get a request index to sort client's responses
 			upstreamReq, err = protocol.NewStreamJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params)
 		} else {
-			upstreamReq, err = protocol.NewJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Method, jsonRpcReq.Params)
+			upstreamReq, err = protocol.NewSimpleJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params)
 		}
 		if err != nil {
 			return nil, err

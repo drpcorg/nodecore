@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
+	"github.com/drpcorg/dshaltie/internal/caches"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams"
 	"github.com/drpcorg/dshaltie/internal/upstreams/flow"
@@ -29,11 +30,13 @@ type Response struct {
 
 type ApplicationContext struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
+	cacheProcessor     *caches.CacheProcessor
 }
 
-func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor) *ApplicationContext {
+func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor, cacheProcessor *caches.CacheProcessor) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
+		cacheProcessor:     cacheProcessor,
 	}
 }
 
@@ -155,7 +158,7 @@ func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *A
 		return createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType())
 	}
 
-	executionFlow := flow.NewSingleRequestExecutionFlow(chain, appCtx.upstreamSupervisor)
+	executionFlow := flow.NewSingleRequestExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor)
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 

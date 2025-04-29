@@ -11,6 +11,7 @@ import (
 
 type ChainSpecific interface {
 	GetLatestBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
+	GetFinalizedBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
 	ParseBlock([]byte) (*protocol.Block, error)
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
@@ -28,21 +29,11 @@ type EvmChainSpecificObject struct {
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
 func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	request, err := protocol.NewJsonRpcUpstreamRequest("1", "eth_getBlockByNumber", []interface{}{"latest", false})
-	if err != nil {
-		return nil, err
-	}
+	return e.getBlockByTag(ctx, connector, rpc.LatestBlockNumber)
+}
 
-	response := connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return nil, response.GetError()
-	}
-
-	parsedBlock, err := e.ParseBlock(response.ResponseResult())
-	if err != nil {
-		return nil, err
-	}
-	return parsedBlock, nil
+func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
+	return e.getBlockByTag(ctx, connector, rpc.FinalizedBlockNumber)
 }
 
 func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
@@ -60,7 +51,25 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return protocol.NewJsonRpcUpstreamRequest("1", "eth_subscribe", []interface{}{"newHeads"})
+	return protocol.NewInternalJsonRpcUpstreamRequest("eth_subscribe", []interface{}{"newHeads"})
+}
+
+func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector connectors.ApiConnector, blockTag rpc.BlockNumber) (*protocol.Block, error) {
+	request, err := protocol.NewInternalJsonRpcUpstreamRequest("eth_getBlockByNumber", []interface{}{blockTag, false})
+	if err != nil {
+		return nil, err
+	}
+
+	response := connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return nil, response.GetError()
+	}
+
+	parsedBlock, err := e.ParseBlock(response.ResponseResult())
+	if err != nil {
+		return nil, err
+	}
+	return parsedBlock, nil
 }
 
 type EvmBlock struct {

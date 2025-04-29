@@ -94,9 +94,11 @@ func (c *ChainSupervisor) processEvents() {
 				state := c.state.Load()
 				c.upstreamStates.Store(event.Id, event.State)
 
-				updated, headHeight := c.fc.Choose(event)
-				if updated {
-					state.Head = headHeight
+				if event.State.HeadData != nil {
+					updated, headHeight := c.fc.Choose(event)
+					if updated {
+						state.Head = headHeight
+					}
 				}
 				state.Status = c.processUpstreamStatuses()
 				state.Methods = c.processUpstreamMethods()

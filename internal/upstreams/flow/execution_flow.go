@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"github.com/drpcorg/dshaltie/internal/caches"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams"
 	"github.com/drpcorg/dshaltie/pkg/chains"
@@ -20,14 +21,17 @@ type SingleRequestExecutionFlow struct {
 	responsesInternal  chan *protocol.ResponseHolderWrapper
 	wg                 sync.WaitGroup
 	responseChan       chan *protocol.ResponseHolderWrapper
+	cacheProcessor     *caches.CacheProcessor
 }
 
 func NewSingleRequestExecutionFlow(
 	chain chains.Chain,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
+	cacheProcessor *caches.CacheProcessor,
 ) *SingleRequestExecutionFlow {
 	return &SingleRequestExecutionFlow{
 		chain:              chain,
+		cacheProcessor:     cacheProcessor,
 		upstreamSupervisor: upstreamSupervisor,
 		responsesInternal:  make(chan *protocol.ResponseHolderWrapper),
 		responseChan:       make(chan *protocol.ResponseHolderWrapper),
@@ -45,13 +49,21 @@ func (e *SingleRequestExecutionFlow) Execute(ctx context.Context, requests []pro
 		e.wg.Wait()
 		close(e.responsesInternal)
 	}()
+	requestMap := make(map[string]protocol.RequestHolder)
 
 	for _, request := range requests {
+		requestMap[request.Id()] = request
 		upstreamStrategy := NewBaseStrategy(e.upstreamSupervisor.GetChainSupervisor(e.chain))
 		e.processRequest(ctx, upstreamStrategy, request)
 	}
 
 	for response := range e.responsesInternal {
+		if !response.Response.HasError() && !response.Response.HasStream() {
+			if request, ok := requestMap[response.RequestId]; ok {
+				go e.cacheProcessor.Store(e.chain, request, response.Response.ResponseResult())
+			}
+		}
+
 		e.responseChan <- response
 	}
 }
@@ -59,25 +71,37 @@ func (e *SingleRequestExecutionFlow) Execute(ctx context.Context, requests []pro
 func (e *SingleRequestExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
 		execCtx := context.WithValue(ctx, upstreams.RequestKey, request)
-		response, err := e.upstreamSupervisor.
-			GetExecutor().
-			WithContext(execCtx).
-			GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
-				upstreamId, err := upstreamStrategy.SelectUpstream(request)
-				if err != nil {
-					return nil, upstreams.ExecutionError(exec.Hedges(), err)
-				}
-				result, err := sendRequest(ctx, e.upstreamSupervisor.GetUpstream(upstreamId), request)
-				if err != nil {
-					return nil, upstreams.ExecutionError(exec.Hedges(), err)
-				}
-				return result, nil
-			})
-		if err != nil {
+		var response *protocol.ResponseHolderWrapper
+		var err error
+
+		result, ok := e.cacheProcessor.Receive(ctx, e.chain, request)
+		if ok {
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				RequestId:  request.Id(),
-				Response:   protocol.NewReplyErrorFromErr(request.Id(), err, request.RequestType()),
+				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), result, request.RequestType()),
+			}
+		} else {
+			response, err = e.upstreamSupervisor.
+				GetExecutor().
+				WithContext(execCtx).
+				GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
+					upstreamId, err := upstreamStrategy.SelectUpstream(request)
+					if err != nil {
+						return nil, upstreams.ExecutionError(exec.Hedges(), err)
+					}
+					responseHolder, err := sendRequest(ctx, e.upstreamSupervisor.GetUpstream(upstreamId), request)
+					if err != nil {
+						return nil, upstreams.ExecutionError(exec.Hedges(), err)
+					}
+					return responseHolder, nil
+				})
+			if err != nil {
+				response = &protocol.ResponseHolderWrapper{
+					UpstreamId: NoUpstream,
+					RequestId:  request.Id(),
+					Response:   protocol.NewReplyErrorFromErr(request.Id(), err, request.RequestType()),
+				}
 			}
 		}
 

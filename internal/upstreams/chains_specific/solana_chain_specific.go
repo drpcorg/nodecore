@@ -44,6 +44,11 @@ func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context, connecto
 	return parsedBlock, nil
 }
 
+func (s *SolanaChainSpecificObject) GetFinalizedBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
+	// TODO: implement get block/slot with finalized commitment
+	return nil, nil
+}
+
 func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block, error) {
 	solanaBlock := SolanaBlock{}
 	err := sonic.Unmarshal(blockBytes, &solanaBlock)
@@ -74,11 +79,11 @@ func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHold
 		"showRewards":        false,
 		"transactionDetails": "none",
 	}
-	return protocol.NewJsonRpcUpstreamRequest("1", "blockSubscribe", []interface{}{"all", params})
+	return protocol.NewInternalJsonRpcUpstreamRequest("blockSubscribe", []interface{}{"all", params})
 }
 
 func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint64, error) {
-	slotReq, err := protocol.NewJsonRpcUpstreamRequest("1", "getSlot", nil)
+	slotReq, err := protocol.NewInternalJsonRpcUpstreamRequest("getSlot", nil)
 	if err != nil {
 		return 0, err
 	}
@@ -93,7 +98,7 @@ func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint
 }
 
 func getMaxBlock(ctx context.Context, connector connectors.ApiConnector, slot uint64) (uint64, error) {
-	blocksReq, err := protocol.NewJsonRpcUpstreamRequest("1", "getBlocks", []interface{}{slot - 10, slot})
+	blocksReq, err := protocol.NewInternalJsonRpcUpstreamRequest("getBlocks", []interface{}{slot - 10, slot})
 	if err != nil {
 		return 0, err
 	}
@@ -117,7 +122,7 @@ func getBlock(ctx context.Context, connector connectors.ApiConnector, block uint
 		"transactionDetails":             "none",
 		"maxSupportedTransactionVersion": 0,
 	}
-	blockReq, err := protocol.NewJsonRpcUpstreamRequest("1", "getBlock", []interface{}{block, params})
+	blockReq, err := protocol.NewInternalJsonRpcUpstreamRequest("getBlock", []interface{}{block, params})
 	if err != nil {
 		return nil, err
 	}
