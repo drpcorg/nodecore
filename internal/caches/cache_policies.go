@@ -84,7 +84,7 @@ func (c *CachePolicy) Store(
 			return false
 		}
 	}
-	if len(response) > c.maxSizeBytes { // check if a response body fits the maximum size of a cacheable item
+	if len(response) > c.maxSizeBytes { // check if a response body doesn't exceed the maximum size of a cacheable item
 		return false
 	}
 	if !c.cacheEmtpy { // if empty responses can't be stored, check if a response body is one of the empty responses
