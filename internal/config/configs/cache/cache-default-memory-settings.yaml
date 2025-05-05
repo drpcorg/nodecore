@@ -1,0 +1,24 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: memory
+      id: test
+  policies:
+    - id: my_policy
+      chain: "ethereum"
+      method: "*getBlock*"
+      finalization-type: none
+      cache-empty: true
+      connector-id: test
+      object-max-size: "10KB"
+      ttl: 10s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -1,4 +1,4 @@
-package heads
+package blocks
 
 import (
 	"context"

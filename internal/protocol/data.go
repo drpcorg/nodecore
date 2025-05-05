@@ -1,17 +1,25 @@
 package protocol
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dshaltie/pkg/utils"
 	"io"
 	"math"
 )
 
 func IsStream(method string) bool {
 	// TODO: implement logic to determine if a method is streaming or not
-	return method == "eth_getLogs" || method == "eth_getBlockByHash" || method == "getProgramAccounts"
+	return method == "eth_getLogs" || method == "getProgramAccounts"
 }
+
+type BlockType int
+
+const (
+	FinalizedBlock BlockType = iota
+)
 
 type ApiConnectorType int
 
@@ -37,9 +45,20 @@ func (a ApiConnectorType) String() string {
 	}
 }
 
-type JsonRpcRequest struct {
-	Method string        `json:"method"`
-	Params []interface{} `json:"params"`
+type JsonRpcRequestBody struct {
+	Id      json.RawMessage `json:"id"`
+	Jsonrpc string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params"`
+}
+
+func newJsonRpcRequestBody(id json.RawMessage, method string, params json.RawMessage) *JsonRpcRequestBody {
+	return &JsonRpcRequestBody{
+		Id:      id,
+		Method:  method,
+		Params:  params,
+		Jsonrpc: "2.0",
+	}
 }
 
 type RequestHolder interface {
@@ -50,6 +69,7 @@ type RequestHolder interface {
 	IsStream() bool
 	Count() int
 	RequestType() RequestType
+	RequestHash() string
 }
 
 type ResponseHolder interface {
@@ -103,6 +123,34 @@ type UpstreamState struct {
 	Status          AvailabilityStatus
 	HeadData        *BlockData
 	UpstreamMethods methods.Methods
+	BlockInfo       *BlockInfo
+}
+
+func DefaultUpstreamState(upstreamMethods *methods.UpstreamMethods) UpstreamState {
+	return UpstreamState{
+		Status:          Available,
+		UpstreamMethods: upstreamMethods,
+		BlockInfo:       NewBlockInfo(),
+	}
+}
+
+type BlockInfo struct {
+	blocks utils.CMap[BlockType, BlockData]
+}
+
+func NewBlockInfo() *BlockInfo {
+	return &BlockInfo{
+		blocks: utils.CMap[BlockType, BlockData]{},
+	}
+}
+
+func (b *BlockInfo) AddBlock(data *BlockData, blockType BlockType) {
+	b.blocks.Store(blockType, data)
+}
+
+func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
+	block, _ := b.blocks.Load(blockType)
+	return block
 }
 
 type AbstractUpstreamStateEvent interface {
@@ -114,3 +162,11 @@ type HeadUpstreamStateEvent struct {
 }
 
 func (h *HeadUpstreamStateEvent) event() {}
+
+type BlockUpstreamStateEvent struct {
+	BlockData *BlockData
+	BlockType BlockType
+}
+
+func (f *BlockUpstreamStateEvent) event() {
+}

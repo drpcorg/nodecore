@@ -3,13 +3,13 @@ module github.com/drpcorg/dshaltie
 go 1.24.1
 
 require (
-	github.com/bcicen/jstream v1.0.1
 	github.com/bytedance/sonic v1.13.2
 	github.com/deckarep/golang-set/v2 v2.8.0
 	github.com/ethereum/go-ethereum v1.15.6
 	github.com/failsafe-go/failsafe-go v0.6.9
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jarcoal/httpmock v1.3.1
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/prometheus/client_golang v1.21.1

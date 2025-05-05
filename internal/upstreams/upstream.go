@@ -6,9 +6,9 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/blocks"
 	"github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
 	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
-	"github.com/drpcorg/dshaltie/internal/upstreams/heads"
 	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/internal/upstreams/ws"
 	"github.com/drpcorg/dshaltie/pkg/chains"
@@ -26,23 +26,26 @@ func (u *Upstream) createEvent() protocol.UpstreamEvent {
 }
 
 type Upstream struct {
-	Id            string
-	Chain         chains.Chain
-	apiConnectors []connectors.ApiConnector
-	ctx           context.Context
-	headProcessor *heads.HeadProcessor
-	subManager    *utils.SubscriptionManager[protocol.UpstreamEvent]
-	cancelFunc    context.CancelFunc
-	upstreamState *utils.Atomic[protocol.UpstreamState]
-	stateChan     chan protocol.AbstractUpstreamStateEvent
+	Id             string
+	Chain          chains.Chain
+	apiConnectors  []connectors.ApiConnector
+	ctx            context.Context
+	headProcessor  *blocks.HeadProcessor
+	blockProcessor blocks.BlockProcessor
+	subManager     *utils.SubscriptionManager[protocol.UpstreamEvent]
+	cancelFunc     context.CancelFunc
+	upstreamState  *utils.Atomic[protocol.UpstreamState]
+	stateChan      chan protocol.AbstractUpstreamStateEvent
+	chainSpecific  specific.ChainSpecific
 }
 
 func (u *Upstream) Start() {
-	go u.processStateEvents()
-
 	go u.headProcessor.Start()
+	if u.blockProcessor != nil {
+		go u.blockProcessor.Start()
+	}
 
-	go u.processHeads()
+	u.handleSubscriptions()
 }
 
 func (u *Upstream) Stop() {
@@ -67,18 +70,20 @@ func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
 	upstreamMethods := methods.NewUpstreamMethods(getChainMethods(configuredChain.Type, configuredChain.Chain), config.Methods)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.UpstreamState{Status: protocol.Available, UpstreamMethods: upstreamMethods})
+	upState.Store(protocol.DefaultUpstreamState(upstreamMethods))
 
 	return &Upstream{
-		Id:            config.Id,
-		Chain:         configuredChain.Chain,
-		apiConnectors: apiConnectors,
-		ctx:           ctx,
-		cancelFunc:    cancel,
-		upstreamState: upState,
-		headProcessor: heads.NewHeadProcessor(ctx, config, headConnector, chainSpecific),
-		subManager:    utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", config.Id)),
-		stateChan:     make(chan protocol.AbstractUpstreamStateEvent, 100),
+		Id:             config.Id,
+		Chain:          configuredChain.Chain,
+		apiConnectors:  apiConnectors,
+		ctx:            ctx,
+		cancelFunc:     cancel,
+		upstreamState:  upState,
+		headProcessor:  blocks.NewHeadProcessor(ctx, config, headConnector, chainSpecific),
+		blockProcessor: createBlockProcessor(ctx, config, headConnector, chainSpecific, configuredChain.Type),
+		subManager:     utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", config.Id)),
+		stateChan:      make(chan protocol.AbstractUpstreamStateEvent, 100),
+		chainSpecific:  chainSpecific,
 	}
 }
 
@@ -117,6 +122,8 @@ func (u *Upstream) processStateEvents() {
 			switch stateEvent := event.(type) {
 			case *protocol.HeadUpstreamStateEvent:
 				state.HeadData = stateEvent.HeadData
+			case *protocol.BlockUpstreamStateEvent:
+				state.BlockInfo.AddBlock(stateEvent.BlockData, stateEvent.BlockType)
 			default:
 				panic(fmt.Sprintf("unknown event type %T", event))
 			}
@@ -149,7 +156,31 @@ func (u *Upstream) processHeads() {
 	}
 }
 
-func createConnector(ctx context.Context, connectorConfig *config.ConnectorConfig) connectors.ApiConnector {
+func (u *Upstream) processBlocks() {
+	sub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.Id))
+	defer sub.Unsubscribe()
+
+	for {
+		select {
+		case <-u.ctx.Done():
+			return
+		case e, ok := <-sub.Events:
+			if ok {
+				u.publishUpstreamStateEvent(&protocol.BlockUpstreamStateEvent{BlockData: e.BlockData, BlockType: e.BlockType})
+			}
+		}
+	}
+}
+
+func (u *Upstream) handleSubscriptions() {
+	go u.processStateEvents()
+	go u.processHeads()
+	if u.blockProcessor != nil {
+		go u.processBlocks()
+	}
+}
+
+func createConnector(ctx context.Context, connectorConfig *config.ApiConnectorConfig) connectors.ApiConnector {
 	switch connectorConfig.Type {
 	case config.JsonRpc:
 		return connectors.NewHttpConnector(connectorConfig.Url, protocol.JsonRpcConnector, connectorConfig.Headers)
@@ -160,6 +191,21 @@ func createConnector(ctx context.Context, connectorConfig *config.ConnectorConfi
 		return connectors.NewHttpConnector(connectorConfig.Url, protocol.RestConnector, connectorConfig.Headers)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
+	}
+}
+
+func createBlockProcessor(
+	ctx context.Context,
+	upConfig *config.Upstream,
+	connector connectors.ApiConnector,
+	chainSpecific specific.ChainSpecific,
+	blockchainType chains.BlockchainType,
+) blocks.BlockProcessor {
+	switch blockchainType {
+	case chains.Ethereum:
+		return blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, chainSpecific)
+	default:
+		return nil
 	}
 }
 

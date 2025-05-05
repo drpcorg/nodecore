@@ -96,32 +96,33 @@ func (w *WsConnection) SendRpcRequest(ctx context.Context, upstreamRequest proto
 }
 
 func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
-	// TODO: fix
-	jsonRpcRequest := protocol.JsonRpcRequest{}
-	err := sonic.Unmarshal(upstreamRequest.Body(), &jsonRpcRequest)
+	jsonBody, err := sonic.Get(upstreamRequest.Body())
 	if err != nil {
 		return nil, fmt.Errorf("invalid json-rpc request, cause %s", err.Error())
 	}
 
 	internalId := w.internalId.Add(1)
+	requestId := fmt.Sprintf("%d", internalId)
+	_, err = jsonBody.SetAny("id", requestId)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't replace an id, cause %s", err.Error())
+	}
+
 	req := &reqOp{
 		responseChan:     make(chan *protocol.WsResponse, 50),
 		internalMessages: make(chan *protocol.WsResponse, 50),
 		completed:        atomic.Bool{},
 		ctx:              ctx,
-		method:           jsonRpcRequest.Method,
+		method:           upstreamRequest.Method(),
 	}
 
-	request, err := protocol.NewJsonRpcUpstreamRequest(fmt.Sprintf("%d", internalId), jsonRpcRequest.Method, jsonRpcRequest.Params)
+	rawBody, _ := jsonBody.Raw()
+
+	err = w.writeMessage([]byte(rawBody))
 	if err != nil {
 		return nil, err
 	}
-
-	err = w.writeMessage(request.Body())
-	if err != nil {
-		return nil, err
-	}
-	w.requests.Store(fmt.Sprintf("%d", internalId), req)
+	w.requests.Store(requestId, req)
 
 	go w.startProcess(req)
 
@@ -257,7 +258,7 @@ func (w *WsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
 		if unsubMethod, ok := GetUnsubscribeMethod(op.method); ok {
 			params := []interface{}{op.subId}
-			unsubReq, err := protocol.NewJsonRpcUpstreamRequest("0", unsubMethod, params)
+			unsubReq, err := protocol.NewInternalJsonRpcUpstreamRequest(unsubMethod, params)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, op.subId)
 			} else {

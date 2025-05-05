@@ -1,0 +1,27 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: memory
+      id: test
+      memory:
+        max-items: 100
+        expired-remove-interval: 1s
+  policies:
+    - id: my_policy
+      chain: "ethereum"
+      method: "*"
+      connector-id: strange-connector
+      finalization-type: none
+      cache-empty: true
+      object-max-size: "10KB"
+      ttl: 10s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

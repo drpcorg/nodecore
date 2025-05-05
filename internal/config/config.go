@@ -15,6 +15,7 @@ const (
 type AppConfig struct {
 	ServerConfig   *ServerConfig   `yaml:"server"`
 	UpstreamConfig *UpstreamConfig `yaml:"upstream-config"`
+	CacheConfig    *CacheConfig    `yaml:"cache"`
 }
 
 type ServerConfig struct {
@@ -53,13 +54,13 @@ type ChainDefaults struct {
 }
 
 type Upstream struct {
-	Id             string             `yaml:"id"`
-	ChainName      string             `yaml:"chain"`
-	Connectors     []*ConnectorConfig `yaml:"connectors"`
-	HeadConnector  ConnectorType      `yaml:"head-connector"`
-	PollInterval   time.Duration      `yaml:"poll-interval"`
-	Methods        *MethodsConfig     `yaml:"methods"`
-	FailsafeConfig *FailsafeConfig    `yaml:"failsafe-config"`
+	Id             string                `yaml:"id"`
+	ChainName      string                `yaml:"chain"`
+	Connectors     []*ApiConnectorConfig `yaml:"connectors"`
+	HeadConnector  ApiConnectorType      `yaml:"head-connector"`
+	PollInterval   time.Duration         `yaml:"poll-interval"`
+	Methods        *MethodsConfig        `yaml:"methods"`
+	FailsafeConfig *FailsafeConfig       `yaml:"failsafe-config"`
 }
 
 type MethodsConfig struct {
@@ -67,26 +68,79 @@ type MethodsConfig struct {
 	DisableMethods []string `yaml:"disable"`
 }
 
-type ConnectorType string
+type ApiConnectorType string
 
 const (
-	JsonRpc ConnectorType = "json-rpc"
-	Rest    ConnectorType = "rest"
-	Grpc    ConnectorType = "grpc"
-	Ws      ConnectorType = "websocket"
+	JsonRpc ApiConnectorType = "json-rpc"
+	Rest    ApiConnectorType = "rest"
+	Grpc    ApiConnectorType = "grpc"
+	Ws      ApiConnectorType = "websocket"
 )
 
-var connectorTypesRating = map[ConnectorType]int{
+var connectorTypesRating = map[ApiConnectorType]int{
 	JsonRpc: 0,
 	Rest:    1,
 	Grpc:    2,
 	Ws:      3,
 }
 
-type ConnectorConfig struct {
-	Type    ConnectorType     `yaml:"type"`
+type ApiConnectorConfig struct {
+	Type    ApiConnectorType  `yaml:"type"`
 	Url     string            `yaml:"url"`
 	Headers map[string]string `yaml:"headers"`
+}
+
+type CacheConfig struct {
+	CacheConnectors []*CacheConnectorConfig `yaml:"connectors"`
+	CachePolicies   []*CachePolicyConfig    `yaml:"policies"`
+}
+
+type CacheConnectorDriver string
+
+const (
+	Memory CacheConnectorDriver = "memory"
+	Redis  CacheConnectorDriver = "redis"
+)
+
+type CacheConnectorConfig struct {
+	Id     string                      `yaml:"id"`
+	Driver CacheConnectorDriver        `yaml:"driver"`
+	Redis  *RedisCacheConnectorConfig  `yaml:"redis"`
+	Memory *MemoryCacheConnectorConfig `yaml:"memory"`
+}
+
+type MemoryCacheConnectorConfig struct {
+	MaxItems              int           `yaml:"max-items"`
+	ExpiredRemoveInterval time.Duration `yaml:"expired-remove-interval"`
+}
+
+type RedisCacheConnectorConfig struct {
+	Address        string        `yaml:"address"`
+	Password       string        `yaml:"password"`
+	DB             int           `yaml:"db"`
+	PoolSize       int           `yaml:"pool-size"`
+	ConnectTimeout time.Duration `yaml:"connect-timeout"`
+	ReadTimeout    time.Duration `yaml:"read-timeout"`
+	WriteTimeout   time.Duration `yaml:"write-timeout"`
+}
+
+type FinalizationType string
+
+const (
+	Finalized   FinalizationType = "finalized"
+	Unfinalized FinalizationType = "unfinalized"
+	None        FinalizationType = "none"
+)
+
+type CachePolicyConfig struct {
+	Id               string           `yaml:"id"`
+	Chain            string           `yaml:"chain"`
+	Method           string           `yaml:"method"`
+	FinalizationType FinalizationType `yaml:"finalization-type"`
+	CacheEmpty       bool             `yaml:"cache-empty"`
+	Connector        string           `yaml:"connector-id"`
+	ObjectMaxSize    string           `yaml:"object-max-size"`
+	TTL              string           `yaml:"ttl"`
 }
 
 func NewAppConfig() (*AppConfig, error) {

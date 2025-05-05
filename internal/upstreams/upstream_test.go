@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dshaltie/internal/upstreams/blocks"
 	specific "github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
 	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
-	"github.com/drpcorg/dshaltie/internal/upstreams/heads"
 	"github.com/drpcorg/dshaltie/pkg/chains"
 	"github.com/drpcorg/dshaltie/pkg/test_utils"
 	"github.com/drpcorg/dshaltie/pkg/utils"
@@ -74,7 +74,7 @@ func testUpstream(ctx context.Context, connector connectors.ApiConnector, upConf
 		ctx:           ctx,
 		cancelFunc:    cancel,
 		upstreamState: upState,
-		headProcessor: heads.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
+		headProcessor: blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
 		subManager:    utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
 		stateChan:     make(chan protocol.AbstractUpstreamStateEvent, 100),
 	}
