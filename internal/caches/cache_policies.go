@@ -37,7 +37,7 @@ type CachePolicy struct {
 	connector          CacheConnector
 	methods            mapset.Set[string]
 	chains             mapset.Set[chains.Chain]
-	cacheEmtpy         bool
+	cacheEmpty         bool
 	maxSizeBytes       int
 	ttl                time.Duration
 	upstreamSupervisor upstreams.UpstreamSupervisor
@@ -61,7 +61,7 @@ func NewCachePolicy(
 		id:                 policyConfig.Id,
 		connector:          cacheConnector,
 		upstreamSupervisor: upstreamSupervisor,
-		cacheEmtpy:         policyConfig.CacheEmpty,
+		cacheEmpty:         policyConfig.CacheEmpty,
 		ttl:                ttl,
 		chains:             getCacheChains(policyConfig.Chain),
 		methods:            getCacheMethods(policyConfig.Method),
@@ -87,7 +87,7 @@ func (c *CachePolicy) Store(
 	if len(response) > c.maxSizeBytes { // check if a response body doesn't exceed the maximum size of a cacheable item
 		return false
 	}
-	if !c.cacheEmtpy { // if empty responses can't be stored, check if a response body is one of the empty responses
+	if !c.cacheEmpty { // if empty responses can't be stored, check if a response body is one of the empty responses
 		for _, emptyResponse := range EmptyResponses {
 			if bytes.Equal(emptyResponse, response) {
 				return false
