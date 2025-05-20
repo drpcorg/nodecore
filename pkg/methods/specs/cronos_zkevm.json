@@ -1,0 +1,22 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "CRONOS ZKEVM JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "cronos-zkevm"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "zk_estimateFee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

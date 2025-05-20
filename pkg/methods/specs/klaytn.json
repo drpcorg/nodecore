@@ -1,0 +1,841 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "KLAYTN JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "klaytn"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "klay_blockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getBlockByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockReceipts",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockTransactionCountByNumber",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockWithConsensusInfoByNumber",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockByNumber",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockTransactionCountByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getHeaderByNumber",
+      "params": []
+    },
+    {
+      "name": "klay_getHeaderByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockWithConsensusInfoByNumberRange",
+      "params": []
+    },
+    {
+      "name": "klay_getBlockWithConsensusInfoByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getDecodedAnchoringTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getRawTransactionByBlockNumberAndIndex",
+      "params": []
+    },
+    {
+      "name": "klay_getRawTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "klay_getRawTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getTransactionByBlockNumberAndIndex",
+      "params": []
+    },
+    {
+      "name": "klay_getTransactionBySenderTxHash",
+      "params": []
+    },
+    {
+      "name": "klay_getTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "klay_getTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "klay_getTransactionReceipt",
+      "params": []
+    },
+    {
+      "name": "klay_getTransactionReceiptBySenderTxHash",
+      "params": []
+    },
+    {
+      "name": "klay_sendRawTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getTransactionCount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_accountCreated",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_accounts",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_decodeAccountKey",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getAccountKey",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getCode",
+      "params": []
+    },
+    {
+      "name": "klay_encodeAccountKey",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getAccount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_sign",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_isContractAccount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getCommittee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getCommitteeSize",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getCouncil",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getCouncilSize",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getRewards",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getStorageAt",
+      "params": []
+    },
+    {
+      "name": "klay_syncing",
+      "params": []
+    },
+    {
+      "name": "klay_call",
+      "params": []
+    },
+    {
+      "name": "klay_estimateGas",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_estimateComputationCost",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_pendingTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_createAccessList",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_resend",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_chainID",
+      "params": []
+    },
+    {
+      "name": "klay_clientVersion",
+      "params": []
+    },
+    {
+      "name": "klay_gasPriceAt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_gasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_protocolVersion",
+      "params": []
+    },
+    {
+      "name": "klay_getChainConfig",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_forkStatus",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getFilterChanges",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getFilterLogs",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_newBlockFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_newPendingTransactionFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_uninstallFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_unsubscribe",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getLogs",
+      "params": []
+    },
+    {
+      "name": "klay_subscribe",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_newFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_feeHistory",
+      "params": []
+    },
+    {
+      "name": "klay_lowerBoundGasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_upperBoundGasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_maxPriorityFeePerGas",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getStakingInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_sha3",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_recoverFromTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_recoverFromMessage",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "klay_getProof",
+      "params": []
+    },
+    {
+      "name": "klay_nodeAddress",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_blockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getBlockByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockReceipts",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockTransactionCountByNumber",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockWithConsensusInfoByNumber",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockByNumber",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockTransactionCountByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getHeaderByNumber",
+      "params": []
+    },
+    {
+      "name": "kaia_getHeaderByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockWithConsensusInfoByNumberRange",
+      "params": []
+    },
+    {
+      "name": "kaia_getBlockWithConsensusInfoByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getDecodedAnchoringTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getRawTransactionByBlockNumberAndIndex",
+      "params": []
+    },
+    {
+      "name": "kaia_getRawTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "kaia_getRawTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getTransactionByBlockNumberAndIndex",
+      "params": []
+    },
+    {
+      "name": "kaia_getTransactionBySenderTxHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "kaia_getTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "kaia_getTransactionReceipt",
+      "params": []
+    },
+    {
+      "name": "kaia_getTransactionReceiptBySenderTxHash",
+      "params": []
+    },
+    {
+      "name": "kaia_sendRawTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getTransactionCount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_accountCreated",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_accounts",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_decodeAccountKey",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getAccountKey",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getCode",
+      "params": []
+    },
+    {
+      "name": "kaia_encodeAccountKey",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getAccount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_sign",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_isContractAccount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getCommittee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getCommitteeSize",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getCouncil",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getCouncilSize",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getRewards",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getStorageAt",
+      "params": []
+    },
+    {
+      "name": "kaia_syncing",
+      "params": []
+    },
+    {
+      "name": "kaia_call",
+      "params": []
+    },
+    {
+      "name": "kaia_estimateGas",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_estimateComputationCost",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_pendingTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_createAccessList",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_resend",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_chainID",
+      "params": []
+    },
+    {
+      "name": "kaia_clientVersion",
+      "params": []
+    },
+    {
+      "name": "kaia_gasPriceAt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_gasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_protocolVersion",
+      "params": []
+    },
+    {
+      "name": "kaia_getChainConfig",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_forkStatus",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getFilterChanges",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getFilterLogs",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_newBlockFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_newPendingTransactionFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_uninstallFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_unsubscribe",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getLogs",
+      "params": []
+    },
+    {
+      "name": "kaia_subscribe",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_newFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_feeHistory",
+      "params": []
+    },
+    {
+      "name": "kaia_lowerBoundGasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_upperBoundGasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_maxPriorityFeePerGas",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getStakingInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_sha3",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_recoverFromTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_recoverFromMessage",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kaia_getProof",
+      "params": []
+    },
+    {
+      "name": "kaia_nodeAddress",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

@@ -126,7 +126,7 @@ type UpstreamState struct {
 	BlockInfo       *BlockInfo
 }
 
-func DefaultUpstreamState(upstreamMethods *methods.UpstreamMethods) UpstreamState {
+func DefaultUpstreamState(upstreamMethods methods.Methods) UpstreamState {
 	return UpstreamState{
 		Status:          Available,
 		UpstreamMethods: upstreamMethods,

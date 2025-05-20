@@ -1,0 +1,57 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "POLYGON JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "polygon"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "bor_getAuthor",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "bor_getCurrentValidators",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "bor_getCurrentProposer",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "bor_getRootHash",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "bor_getSignersAtHash",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getRootHash",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    }
+  ]
+}

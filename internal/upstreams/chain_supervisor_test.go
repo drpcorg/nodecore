@@ -3,12 +3,12 @@ package upstreams_test
 import (
 	"context"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams"
 	"github.com/drpcorg/dshaltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dshaltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -29,56 +29,60 @@ func createEvent(id string, status protocol.AvailabilityStatus, height uint64, m
 
 func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
+	methodsMock := test_utils.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(createEvent("id", protocol.Available, 100, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id", protocol.Available, 100, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().Head)
 
-	chainSupervisor.Publish(createEvent("id1", protocol.Available, 95, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id1", protocol.Available, 95, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().Head)
 
-	chainSupervisor.Publish(createEvent("id3", protocol.Unavailable, 500, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id3", protocol.Unavailable, 500, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().Head)
 
-	chainSupervisor.Publish(createEvent("id", protocol.Available, 1000, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id", protocol.Available, 1000, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().Head)
 }
 
 func TestChainSupervisorUpdateStatus(t *testing.T) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
+	methodsMock := test_utils.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(createEvent("id", protocol.Available, 100, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id", protocol.Available, 100, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, protocol.Available, chainSupervisor.GetChainState().Status)
 
-	chainSupervisor.Publish(createEvent("id1", protocol.Unavailable, 95, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id1", protocol.Unavailable, 95, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, protocol.Available, chainSupervisor.GetChainState().Status)
 
-	chainSupervisor.Publish(createEvent("id", protocol.Unavailable, 500, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id", protocol.Unavailable, 500, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, protocol.Unavailable, chainSupervisor.GetChainState().Status)
 
-	chainSupervisor.Publish(createEvent("id12", protocol.Available, 95, methods.NewSolanaMethods()))
+	chainSupervisor.Publish(createEvent("id12", protocol.Available, 95, methodsMock))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, protocol.Available, chainSupervisor.GetChainState().Status)
 }
 
 func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
-	config1 := &config.MethodsConfig{EnableMethods: []string{"test1"}, DisableMethods: []string{"default"}}
-	methods1 := methods.NewUpstreamMethods(methods.NewEthereumLikeMethods(chains.ARBITRUM), config1)
-	config2 := &config.MethodsConfig{EnableMethods: []string{"test2"}, DisableMethods: []string{"default"}}
-	methods2 := methods.NewUpstreamMethods(methods.NewEthereumLikeMethods(chains.ARBITRUM), config2)
-	config3 := &config.MethodsConfig{EnableMethods: []string{"test2", "test5"}, DisableMethods: []string{"default"}}
-	methods3 := methods.NewUpstreamMethods(methods.NewEthereumLikeMethods(chains.ARBITRUM), config3)
+	methods1 := test_utils.NewMethodsMock()
+	methods1.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+	methods2 := test_utils.NewMethodsMock()
+	methods2.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test2"))
+	methods3 := test_utils.NewMethodsMock()
+	methods3.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test2", "test5"))
 
 	go chainSupervisor.Start()
 

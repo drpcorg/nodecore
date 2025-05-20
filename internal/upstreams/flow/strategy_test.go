@@ -2,12 +2,14 @@ package flow_test
 
 import (
 	"context"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams"
 	"github.com/drpcorg/dshaltie/internal/upstreams/flow"
 	"github.com/drpcorg/dshaltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
 	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dshaltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -79,7 +81,11 @@ func createChainSupervisor() *upstreams.ChainSupervisor {
 }
 
 func publishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, status protocol.AvailabilityStatus) {
-	chainSupervisor.Publish(createEvent(upId, status, 100, methods.NewEthereumLikeMethods(chains.ARBITRUM)))
+	methodsMock := test_utils.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getBalance"))
+	methodsMock.On("HasMethod", "eth_getBalance").Return(true)
+	methodsMock.On("HasMethod", "test").Return(false)
+	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock))
 	time.Sleep(5 * time.Millisecond)
 }
 

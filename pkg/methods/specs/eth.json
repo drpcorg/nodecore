@@ -1,0 +1,395 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Ethereum JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "eth"
+  },
+  "methods": [
+    {
+      "name": "eth_getFilterChanges",
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getFilterLogs",
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_uninstallFilter",
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_newFilter",
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_newBlockFilter",
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_newPendingTransactionFilter",
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "trace_call",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[2]"
+      }
+    },
+    {
+      "name": "trace_callMany",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "trace_rawTransaction",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "trace_replayBlockTransactions",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "trace_replayTransaction",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "trace_block",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "trace_filter",
+      "group": "trace",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "trace_get",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "trace_transaction",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "debug_storageRangeAt",
+      "group": "debug",
+      "params": []
+    },
+    {
+      "name": "debug_traceBlock",
+      "group": "debug",
+      "params": []
+    },
+    {
+      "name": "debug_traceBlockByHash",
+      "group": "debug",
+      "params": []
+    },
+    {
+      "name": "debug_traceBlockByNumber",
+      "group": "debug",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "debug_traceCall",
+      "group": "debug",
+      "params": [],
+      "tag-parser": {
+        "type": "blockRef",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "debug_traceCallMany",
+      "group": "debug",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1].blockNumber"
+      }
+    },
+    {
+      "name": "debug_traceTransaction",
+      "group": "debug",
+      "params": []
+    },
+    {
+      "name": "eth_gasPrice",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_estimateGas",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "eth_getTransactionReceipt",
+      "params": []
+    },
+    {
+      "name": "eth_getBlockTransactionCountByHash",
+      "params": []
+    },
+    {
+      "name": "eth_getBlockByHash",
+      "params": []
+    },
+    {
+      "name": "eth_getBlockByNumber",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "eth_getTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "eth_getTransactionByBlockNumberAndIndex",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "eth_getUncleByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "eth_getUncleCountByBlockHash",
+      "params": []
+    },
+    {
+      "name": "eth_call",
+      "params": [],
+      "tag-parser": {
+        "type": "blockRef",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "eth_getStorageAt",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[2]"
+      }
+    },
+    {
+      "name": "eth_getCode",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "eth_getLogs",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "eth_maxPriorityFeePerGas",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getProof",
+      "params": [],
+      "tag-parser": {
+        "type": "blockRef",
+        "path": ".[2]"
+      }
+    },
+    {
+      "name": "eth_createAccessList",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getBlockReceipts",
+      "params": [],
+      "tag-parser": {
+        "type": "blockRef",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "eth_getTransactionCount",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_blockNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getBalance",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "eth_sendRawTransaction",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getBlockTransactionCountByNumber",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "eth_getUncleCountByBlockNumber",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "eth_getUncleByBlockNumberAndIndex",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "eth_feeHistory",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "net_version",
+      "params": []
+    },
+    {
+      "name": "net_peerCount",
+      "params": []
+    },
+    {
+      "name": "net_listening",
+      "params": []
+    },
+    {
+      "name": "web3_clientVersion",
+      "params": []
+    },
+    {
+      "name": "eth_protocolVersion",
+      "params": []
+    },
+    {
+      "name": "eth_syncing",
+      "params": []
+    },
+    {
+      "name": "eth_coinbase",
+      "params": []
+    },
+    {
+      "name": "eth_mining",
+      "params": []
+    },
+    {
+      "name": "eth_hashrate",
+      "params": []
+    },
+    {
+      "name": "eth_accounts",
+      "params": []
+    },
+    {
+      "name": "eth_chainId",
+      "params": []
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "LINEA JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "linea"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "linea_estimateGas",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "linea_getProof",
+      "params": []
+    }
+  ]
+}

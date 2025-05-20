@@ -1,0 +1,139 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "ZKSYNC JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "zksync"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "zks_estimateFee",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_estimateGasL1ToL2",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getAllAccountBalances",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getBlockDetails",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getBridgeContracts",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_maxPriorityFeePerGas",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "zks_getConfirmedTokens",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getL1BatchBlockRange",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getL1BatchDetails",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getL2ToL1LogProof",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getL2ToL1MsgProof",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getMainContract",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getRawBlockTransactions",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getTestnetPaymaster",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getTokenPrice",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_getTransactionDetails",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_L1BatchNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zks_L1ChainId",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    }
+  ]
+}

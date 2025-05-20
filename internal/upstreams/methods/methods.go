@@ -1,74 +1,69 @@
 package methods
 
 import (
+	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dshaltie/internal/config"
+	specs "github.com/drpcorg/dshaltie/pkg/methods"
+	"github.com/samber/lo"
+	"maps"
 )
-
-var (
-	TraceGroup   = "trace"
-	DebugGroup   = "debug"
-	FilterGroup  = "filter"
-	DefaultGroup = "default"
-)
-
-var methodGroups = mapset.NewThreadUnsafeSet[string](TraceGroup, DefaultGroup, FilterGroup, DebugGroup)
-
-func isMethodGroup(value string) bool {
-	return methodGroups.ContainsOne(value)
-}
 
 type Methods interface {
 	GetSupportedMethods() mapset.Set[string]
 	HasMethod(string) bool
-	GetGroupMethods(string) mapset.Set[string]
 }
 
 type UpstreamMethods struct {
-	delegate         Methods
-	availableMethods mapset.Set[string]
+	availableMethods map[string]*specs.Method
+	methodNames      mapset.Set[string]
 }
 
-func NewUpstreamMethods(delegate Methods, methodsConfig *config.MethodsConfig) *UpstreamMethods {
-	enableMethodGroupMethods, enableMethods := getMethodGroupMethods(delegate, methodsConfig.EnableMethods)
-	disableMethodGroupMethods, disableMethods := getMethodGroupMethods(delegate, methodsConfig.DisableMethods)
-
-	availableMethods := delegate.GetSupportedMethods().Union(enableMethodGroupMethods)
-	availableMethods.RemoveAll(disableMethodGroupMethods.ToSlice()...)
-	availableMethods = availableMethods.Union(enableMethods)
-	availableMethods.RemoveAll(disableMethods.ToSlice()...)
-
-	return &UpstreamMethods{
-		availableMethods: availableMethods,
-		delegate:         delegate,
+func NewUpstreamMethods(methodSpecName string, methodsConfig *config.MethodsConfig) (*UpstreamMethods, error) {
+	specMethods := specs.GetSpecMethods(methodSpecName)
+	if specMethods == nil {
+		return nil, fmt.Errorf("no method spec with name '%s'", methodSpecName)
 	}
-}
+	specMethodGroups := mapset.NewThreadUnsafeSet[string](lo.Keys(specMethods)...)
+	availableMethods := maps.Clone(specMethods[specs.DefaultMethodGroup])
 
-func (u *UpstreamMethods) GetSupportedMethods() mapset.Set[string] {
-	return u.availableMethods.Clone()
-}
-
-func (u *UpstreamMethods) HasMethod(method string) bool {
-	return u.availableMethods.ContainsOne(method)
-}
-
-func (u *UpstreamMethods) GetGroupMethods(group string) mapset.Set[string] {
-	return u.delegate.GetGroupMethods(group)
-}
-
-func getMethodGroupMethods(delegate Methods, values []string) (mapset.Set[string], mapset.Set[string]) {
-	groupMethods := mapset.NewThreadUnsafeSet[string]()
-	plainMethods := mapset.NewThreadUnsafeSet[string]()
-
-	for _, value := range values {
-		if isMethodGroup(value) {
-			groupMethods = groupMethods.Union(delegate.GetGroupMethods(value))
+	// remove disabled methods
+	for _, disabled := range methodsConfig.DisableMethods {
+		if specMethodGroups.ContainsOne(disabled) {
+			methodGroup := specMethods[disabled]
+			for _, method := range lo.Keys(methodGroup) {
+				delete(availableMethods, method)
+			}
 		} else {
-			plainMethods.Add(value)
+			delete(availableMethods, disabled)
 		}
 	}
 
-	return groupMethods, plainMethods
+	// add enabled methods
+	for _, enabled := range methodsConfig.EnableMethods {
+		if specMethodGroups.ContainsOne(enabled) {
+			methodGroup := specMethods[enabled]
+			for methodName, method := range methodGroup {
+				availableMethods[methodName] = method
+			}
+		} else if _, ok := specMethods[specs.DefaultMethodGroup][enabled]; !ok {
+			// if there is no such method in the spec then add a default one
+			availableMethods[enabled] = specs.DefaultMethod(enabled)
+		}
+	}
+
+	return &UpstreamMethods{
+		availableMethods: availableMethods,
+		methodNames:      mapset.NewThreadUnsafeSet[string](lo.Keys(availableMethods)...),
+	}, nil
+}
+
+func (u *UpstreamMethods) GetSupportedMethods() mapset.Set[string] {
+	return u.methodNames.Clone()
+}
+
+func (u *UpstreamMethods) HasMethod(method string) bool {
+	return u.methodNames.ContainsOne(method)
 }
 
 var _ Methods = (*UpstreamMethods)(nil)
@@ -96,16 +91,6 @@ func (c *ChainMethods) GetSupportedMethods() mapset.Set[string] {
 
 func (c *ChainMethods) HasMethod(method string) bool {
 	return c.availableMethods.ContainsOne(method)
-}
-
-func (c *ChainMethods) GetGroupMethods(group string) mapset.Set[string] {
-	for _, delegateMethods := range c.delegates {
-		groupMethods := delegateMethods.GetGroupMethods(group)
-		if !groupMethods.IsEmpty() {
-			return groupMethods
-		}
-	}
-	return mapset.NewThreadUnsafeSet[string]()
 }
 
 var _ Methods = (*ChainMethods)(nil)

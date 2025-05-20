@@ -10,6 +10,7 @@ import (
 const (
 	AppName           = "dShaltie"
 	DefaultConfigPath = "./dShaltie.yml"
+	ConfigPathVar     = "DSHALTIE_CONFIG_PATH"
 )
 
 type AppConfig struct {
@@ -144,7 +145,7 @@ type CachePolicyConfig struct {
 }
 
 func NewAppConfig() (*AppConfig, error) {
-	configPath := os.Getenv("DSHALTIE_CONFIG_PATH")
+	configPath := os.Getenv(ConfigPathVar)
 	if configPath == "" {
 		configPath = DefaultConfigPath
 	}

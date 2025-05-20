@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TEST ANOTHER JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "test"
+  },
+  "methods": [
+  ]
+}

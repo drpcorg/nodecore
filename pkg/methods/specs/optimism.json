@@ -1,0 +1,50 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "OPTIMISM JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "optimism"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "optimism_outputAtBlock",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "optimism_syncStatus",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "optimism_rollupConfig",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "optimism_version",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "rollup_gasPrices",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    }
+  ]
+}

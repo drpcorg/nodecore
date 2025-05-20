@@ -1,0 +1,22 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "VICTION JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "viction"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "posv_getNetworkInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}
