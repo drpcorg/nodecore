@@ -4,6 +4,7 @@ import (
 	"context"
 	json2 "encoding/json"
 	"github.com/bytedance/sonic"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dshaltie/internal/config"
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/stretchr/testify/mock"
@@ -136,4 +137,24 @@ func PolicyConfig(chain, method, connector, maxSize, ttl string, cacheEmpty bool
 		ObjectMaxSize:    maxSize,
 		TTL:              ttl,
 	}
+}
+
+type MethodsMock struct {
+	mock.Mock
+}
+
+func NewMethodsMock() *MethodsMock {
+	return &MethodsMock{}
+}
+
+func (m *MethodsMock) GetSupportedMethods() mapset.Set[string] {
+	args := m.Called()
+
+	return args.Get(0).(mapset.Set[string])
+}
+
+func (m *MethodsMock) HasMethod(s string) bool {
+	args := m.Called(s)
+
+	return args.Get(0).(bool)
 }

@@ -1,0 +1,39 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TEST JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "test"
+  },
+  "methods": [
+    {
+      "name": "test",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[2]"
+      }
+    },
+    {
+      "name": "call_1",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockRef",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "call",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1].from"
+      }
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "ARBITRUM JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "arbitrum"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "arbtrace_call",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[2]"
+      }
+    },
+    {
+      "name": "arbtrace_callMany",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "arbtrace_replayBlockTransactions",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "arbtrace_replayTransaction",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "arbtrace_block",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "arbtrace_filter",
+      "group": "trace",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "arbtrace_get",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "arbtrace_transaction",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "trace_call",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_callMany",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_rawTransaction",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_replayBlockTransactions",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_replayTransaction",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_block",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_filter",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_get",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    },
+    {
+      "name": "trace_transaction",
+      "group": "trace",
+      "enabled": false,
+      "params": []
+    }
+  ]
+}

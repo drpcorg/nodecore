@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/dshaltie/internal/upstreams"
 	_ "github.com/drpcorg/dshaltie/pkg/chains"
 	_ "github.com/drpcorg/dshaltie/pkg/logger"
+	specs "github.com/drpcorg/dshaltie/pkg/methods"
 	"github.com/rs/zerolog/log"
 	"os"
 	"os/signal"
@@ -24,6 +25,10 @@ func main() {
 	appConfig, err := config.NewAppConfig()
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to parse the config file")
+	}
+	err = specs.Load()
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to load method specs")
 	}
 
 	mainCtx, mainCtxCancel := context.WithCancel(context.Background())

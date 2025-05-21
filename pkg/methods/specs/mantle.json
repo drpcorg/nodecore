@@ -1,0 +1,29 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "MANTLE JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "mantle"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "rollup_gasPrices",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "eth_getBlockRange",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

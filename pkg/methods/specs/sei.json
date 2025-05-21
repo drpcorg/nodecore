@@ -1,0 +1,31 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "SEI JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "sei"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "sei_getCosmosTx",
+      "params": []
+    },
+    {
+      "name": "sei_getEvmTx",
+      "params": []
+    },
+    {
+      "name": "sei_getEVMAddress",
+      "params": []
+    },
+    {
+      "name": "sei_getSeiAddress",
+      "params": []
+    }
+  ]
+}

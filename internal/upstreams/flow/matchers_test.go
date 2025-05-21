@@ -3,8 +3,7 @@ package flow_test
 import (
 	"github.com/drpcorg/dshaltie/internal/protocol"
 	"github.com/drpcorg/dshaltie/internal/upstreams/flow"
-	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
-	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dshaltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -13,7 +12,9 @@ func TestMultiMatcher(t *testing.T) {
 	method := flow.NewMethodMatcher("eth_getBalance")
 	status := flow.NewStatusMatcher()
 	multiMatcher := flow.NewMultiMatcher(method, status)
-	state := protocol.UpstreamState{Status: protocol.Available, UpstreamMethods: methods.NewEthereumLikeMethods(chains.POLYGON)}
+	methods := test_utils.NewMethodsMock()
+	methods.On("HasMethod", "eth_getBalance").Return(true)
+	state := protocol.UpstreamState{Status: protocol.Available, UpstreamMethods: methods}
 
 	resp := multiMatcher.Match("1", &state)
 
@@ -25,7 +26,9 @@ func TestMultiMatcherResponseMethodType(t *testing.T) {
 	method := flow.NewMethodMatcher("no-method")
 	status := flow.NewStatusMatcher()
 	multiMatcher := flow.NewMultiMatcher(method, status)
-	state := protocol.UpstreamState{Status: protocol.Unavailable, UpstreamMethods: methods.NewEthereumLikeMethods(chains.POLYGON)}
+	methods := test_utils.NewMethodsMock()
+	methods.On("HasMethod", "no-method").Return(false)
+	state := protocol.UpstreamState{Status: protocol.Unavailable, UpstreamMethods: methods}
 
 	resp := multiMatcher.Match("1", &state)
 
@@ -36,7 +39,9 @@ func TestMultiMatcherResponseMethodType(t *testing.T) {
 
 func TestMethodMatcher(t *testing.T) {
 	matcher := flow.NewMethodMatcher("eth_getBalance")
-	state := protocol.UpstreamState{UpstreamMethods: methods.NewEthereumLikeMethods(chains.POLYGON)}
+	methods := test_utils.NewMethodsMock()
+	methods.On("HasMethod", "eth_getBalance").Return(true)
+	state := protocol.UpstreamState{UpstreamMethods: methods}
 
 	resp := matcher.Match("1", &state)
 
@@ -46,7 +51,9 @@ func TestMethodMatcher(t *testing.T) {
 
 func TestMethodMatcherNoMethod(t *testing.T) {
 	matcher := flow.NewMethodMatcher("no-method")
-	state := protocol.UpstreamState{UpstreamMethods: methods.NewEthereumLikeMethods(chains.POLYGON)}
+	methods := test_utils.NewMethodsMock()
+	methods.On("HasMethod", "no-method").Return(false)
+	state := protocol.UpstreamState{UpstreamMethods: methods}
 
 	resp := matcher.Match("1", &state)
 

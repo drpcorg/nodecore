@@ -1,0 +1,22 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "SCROLL JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "scroll"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "scroll_estimateL1DataFee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

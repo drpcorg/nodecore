@@ -36,6 +36,7 @@ type ChainSettings struct {
 type ChainData struct {
 	ShortNames []string               `yaml:"short-names"`
 	ChainId    string                 `yaml:"chain-id"`
+	MethodSpec string                 `yaml:"method-spec"`
 	Settings   map[string]interface{} `yaml:"settings"`
 }
 
@@ -55,6 +56,7 @@ type ConfiguredChain struct {
 	Type       BlockchainType
 	Settings   Settings
 	Chain      Chain
+	MethodSpec string
 }
 
 var UnknownChain = ConfiguredChain{
@@ -124,12 +126,27 @@ func configureChains() (map[string]ConfiguredChain, error) {
 					ShortNames: chain.ShortNames,
 					Type:       protocol.Type,
 					Chain:      network,
+					MethodSpec: getMethodSpecName(protocol.Type, chain.MethodSpec),
 				}
 			}
 		}
 	}
 
 	return configuredChains, nil
+}
+
+func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) string {
+	if methodSpecName != "" {
+		return methodSpecName
+	}
+	switch blockchainType {
+	case Ethereum:
+		return "eth"
+	case Solana:
+		return "solana"
+	}
+
+	return ""
 }
 
 func deepMerge(dst, src map[string]interface{}) map[string]interface{} {

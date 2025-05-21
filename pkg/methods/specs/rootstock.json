@@ -1,0 +1,35 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "ROOTSTOCK JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "rootstock"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "rsk_getRawTransactionReceiptByHash",
+      "params": []
+    },
+    {
+      "name": "rsk_getTransactionReceiptNodesByHash",
+      "params": []
+    },
+    {
+      "name": "rsk_getRawBlockHeaderByHash",
+      "params": []
+    },
+    {
+      "name": "rsk_getRawBlockHeaderByNumber",
+      "params": []
+    },
+    {
+      "name": "rsk_protocolVersion",
+      "params": []
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "POLYGON ZKEVM JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "polygon-zkevm"
+  },
+  "spec-imports": [
+    "harmony1"
+  ],
+  "methods": [
+    {
+      "name": "zkevm_consolidatedBlockNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_isBlockConsolidated",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_isBlockVirtualized",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_batchNumberByBlockNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_batchNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_virtualBatchNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_verifiedBatchNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_getBatchByNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "zkevm_getBroadcastURI",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    }
+  ]
+}

@@ -67,7 +67,7 @@ func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
 	}
 	chainSpecific := getChainSpecific(configuredChain.Type)
 
-	upstreamMethods := methods.NewUpstreamMethods(getChainMethods(configuredChain.Type, configuredChain.Chain), config.Methods)
+	upstreamMethods, _ := methods.NewUpstreamMethods(configuredChain.MethodSpec, config.Methods)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	upState.Store(protocol.DefaultUpstreamState(upstreamMethods))
@@ -216,17 +216,6 @@ func getChainSpecific(blockchainType chains.BlockchainType) specific.ChainSpecif
 		return specific.EvmChainSpecific
 	case chains.Solana:
 		return specific.SolanaChainSpecific
-	default:
-		panic(fmt.Sprintf("unknown blockchain type - %s", blockchainType))
-	}
-}
-
-func getChainMethods(blockchainType chains.BlockchainType, chain chains.Chain) methods.Methods {
-	switch blockchainType {
-	case chains.Ethereum:
-		return methods.NewEthereumLikeMethods(chain)
-	case chains.Solana:
-		return methods.NewSolanaMethods()
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", blockchainType))
 	}

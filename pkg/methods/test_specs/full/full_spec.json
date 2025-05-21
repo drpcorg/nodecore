@@ -1,0 +1,31 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TEST JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "test"
+  },
+  "methods": [
+    {
+      "name": "test",
+      "group": "trace",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[2]"
+      }
+    },
+    {
+      "name": "test_another",
+      "group": "trace",
+      "params": []
+    },
+    {
+      "name": "test2",
+      "group": "super-group",
+      "params": []
+    }
+  ]
+}

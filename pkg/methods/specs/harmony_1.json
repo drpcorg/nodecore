@@ -1,0 +1,535 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "HARMONY SHARD1 JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "harmony1"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "hmy_getStakingTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "hmy_getStakingTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "hmy_getCXReceiptByHash",
+      "params": []
+    },
+    {
+      "name": "hmy_getBlockTransactionCountByHash",
+      "params": []
+    },
+    {
+      "name": "hmy_getTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "hmy_getTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "hmy_getBlockByHash",
+      "params": []
+    },
+    {
+      "name": "hmy_getStakingTransactionByBlockNumberAndIndex",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "hmy_getTransactionReceipt",
+      "params": []
+    },
+    {
+      "name": "hmy_getBlockTransactionCountByNumber",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "hmy_getTransactionByBlockNumberAndIndex",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "hmy_getBlockByNumber",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "hmy_getAllValidatorInformationByBlockNumber",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getStakingTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getStakingTransactionByBlockNumberAndIndex",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getStakingTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getTransactionReceipt",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getBlockTransactionCountByHash",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getBlockTransactionCountByNumber",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getTransactionByHash",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getTransactionByBlockNumberAndIndex",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getTransactionByBlockHashAndIndex",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getBlockByNumber",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getBlockByHash",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getCXReceiptByHash",
+      "params": []
+    },
+    {
+      "name": "hmy_sendRawStakingTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_sendRawTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getTransactionCount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_newFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_newBlockFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_newPendingTransactionFilter",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getFilterLogs",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getFilterChanges",
+      "params": [],
+      "group": "filter",
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getPendingCrossLinks",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getCurrentTransactionErrorSink",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getPendingCXReceipts",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_pendingTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getTransactionsHistory",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getBlocks",
+      "params": []
+    },
+    {
+      "name": "hmy_getBalanceByBlockNumber",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "hmy_getBalance",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "hmy_getLogs",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_estimateGas",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getStorageAt",
+      "params": []
+    },
+    {
+      "name": "hmy_call",
+      "params": [],
+      "tag-parser": {
+        "type": "blockRef",
+        "path": ".[1]"
+      }
+    },
+    {
+      "name": "hmy_getCode",
+      "params": []
+    },
+    {
+      "name": "hmy_isLastBlock",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_latestHeader",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_blockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_gasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getEpoch",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_epochLastBlock",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getShardingStructure",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_syncing",
+      "params": []
+    },
+    {
+      "name": "hmy_getLeader",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getCirculatingSupply",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getTotalSupply",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getStakingNetworkInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getAllValidatorInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getDelegationsByValidator",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getDelegationsByDelegatorAndValidator",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getDelegationsByDelegator",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getValidatorMetrics",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getMedianRawStakeSnapshot",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getElectedValidatorAddresses",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getAllValidatorAddresses",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getCurrentStakingErrorSink",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getValidatorInformation",
+      "params": []
+    },
+    {
+      "name": "hmy_getSignedBlocks",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getValidators",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_isBlockSigner",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmy_getBlockSigners",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getBalanceByBlockNumber",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getTransactionCount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getBalance",
+      "params": []
+    },
+    {
+      "name": "hmyv2_getCurrentTransactionErrorSink",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getPendingCrossLinks",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getPendingCXReceipts",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_pendingTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getTransactionsHistory",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getBlocks",
+      "params": []
+    },
+    {
+      "name": "hmyv2_blockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_gasPrice",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getEpoch",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "hmyv2_getValidators",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}
