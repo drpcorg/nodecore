@@ -5,8 +5,8 @@ import (
 	json2 "encoding/json"
 	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dshaltie/internal/config"
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/stretchr/testify/mock"
 	"time"
 )

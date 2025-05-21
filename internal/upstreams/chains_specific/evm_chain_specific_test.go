@@ -3,9 +3,9 @@ package specific_test
 import (
 	"context"
 	"errors"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	specific "github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dshaltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
+	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

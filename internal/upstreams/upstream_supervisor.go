@@ -3,11 +3,11 @@ package upstreams
 import (
 	"context"
 	"fmt"
-	"github.com/drpcorg/dshaltie/internal/config"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	choice "github.com/drpcorg/dshaltie/internal/upstreams/fork_choice"
-	"github.com/drpcorg/dshaltie/pkg/chains"
-	"github.com/drpcorg/dshaltie/pkg/utils"
+	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
+	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 )
 

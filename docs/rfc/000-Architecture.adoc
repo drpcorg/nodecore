@@ -1,7 +1,7 @@
 = RFC 000-Architecture
 :imagesdir: ../assets
 
-*Name:* dShaltie Architecture
+*Name:* dSheltie Architecture
 
 *Type:* overview
 
@@ -9,13 +9,13 @@
 
 == Summary
 
-There is a high level overview of dShaltie architecture with its modules and what they are responsible for
+There is a high level overview of dSheltie architecture with its modules and what they are responsible for
 
 == Detailed design
 
 image::balancer.png[alt="",width=90%,align="center"]
 
-dShaltie is smart and fault-tolerant RPC proxy whose main goal is to select the best upstream based on various characteristics (such as latency, error rate, lag, budgets, etc.) that can execute a client's request.
+dSheltie is smart and fault-tolerant RPC proxy whose main goal is to select the best upstream based on various characteristics (such as latency, error rate, lag, budgets, etc.) that can execute a client's request.
 
 === Modules
 

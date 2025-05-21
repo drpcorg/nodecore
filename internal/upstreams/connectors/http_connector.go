@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/rs/zerolog"
 	"io"
 	"net/http"

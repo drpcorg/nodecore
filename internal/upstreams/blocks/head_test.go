@@ -2,11 +2,11 @@ package blocks_test
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/internal/config"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams/blocks"
-	specific "github.com/drpcorg/dshaltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dshaltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams/blocks"
+	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
+	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"testing"

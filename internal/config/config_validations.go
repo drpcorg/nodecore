@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/samber/lo"
 	"strconv"
 	"strings"

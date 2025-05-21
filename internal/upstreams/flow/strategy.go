@@ -2,8 +2,8 @@ package flow
 
 import (
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"sync/atomic"
 )
 

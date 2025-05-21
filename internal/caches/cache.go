@@ -3,7 +3,7 @@ package caches
 import (
 	"context"
 	"errors"
-	"github.com/drpcorg/dshaltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"

@@ -3,9 +3,9 @@ package connectors_test
 import (
 	"context"
 	"encoding/json"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
-	"github.com/drpcorg/dshaltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
+	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/jarcoal/httpmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

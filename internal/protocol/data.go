@@ -3,9 +3,9 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
-	"github.com/drpcorg/dshaltie/pkg/chains"
-	"github.com/drpcorg/dshaltie/pkg/utils"
+	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
+	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/pkg/utils"
 	"io"
 	"math"
 )

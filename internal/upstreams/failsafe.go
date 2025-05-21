@@ -2,8 +2,8 @@ package upstreams
 
 import (
 	"errors"
-	"github.com/drpcorg/dshaltie/internal/config"
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/hedgepolicy"
 	"github.com/rs/zerolog"

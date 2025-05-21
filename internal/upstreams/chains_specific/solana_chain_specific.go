@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/samber/lo"
 )
 

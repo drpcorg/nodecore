@@ -1,7 +1,7 @@
 package fork_choice
 
 import (
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 )
 
 type HeightForkChoice struct {
