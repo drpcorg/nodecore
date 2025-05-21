@@ -1,7 +1,7 @@
 package config_test
 
 import (
-	"github.com/drpcorg/dshaltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -10,7 +10,7 @@ import (
 
 func TestNoConfigFileThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "open ./dShaltie.yml: no such file or directory")
+	assert.ErrorContains(t, err, "open ./dSheltie.yml: no such file or directory")
 }
 
 func TestReadFullConfig(t *testing.T) {

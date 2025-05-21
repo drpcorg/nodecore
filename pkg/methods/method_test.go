@@ -2,7 +2,7 @@ package specs_test
 
 import (
 	"context"
-	specs "github.com/drpcorg/dshaltie/pkg/methods"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"testing"

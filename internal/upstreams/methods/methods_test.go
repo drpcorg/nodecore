@@ -2,9 +2,9 @@ package methods_test
 
 import (
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dshaltie/internal/config"
-	"github.com/drpcorg/dshaltie/internal/upstreams/methods"
-	specs "github.com/drpcorg/dshaltie/pkg/methods"
+	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

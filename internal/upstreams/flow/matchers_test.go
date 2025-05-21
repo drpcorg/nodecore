@@ -1,9 +1,9 @@
 package flow_test
 
 import (
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams/flow"
-	"github.com/drpcorg/dshaltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
+	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

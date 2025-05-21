@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	AppName           = "dShaltie"
-	DefaultConfigPath = "./dShaltie.yml"
-	ConfigPathVar     = "DSHALTIE_CONFIG_PATH"
+	AppName           = "dSheltie"
+	DefaultConfigPath = "./dSheltie.yml"
+	ConfigPathVar     = "DSHELTIE_CONFIG_PATH"
 )
 
 type AppConfig struct {

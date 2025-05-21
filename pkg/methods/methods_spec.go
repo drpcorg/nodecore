@@ -16,7 +16,7 @@ import (
 
 const (
 	DefaultMethodGroup = "default"
-	SpecPathVar        = "DSHALTIE_SPECS_PATH"
+	SpecPathVar        = "DSHELTIE_SPECS_PATH"
 )
 
 type MethodSpec struct {

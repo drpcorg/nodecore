@@ -1,4 +1,4 @@
-module github.com/drpcorg/dshaltie
+module github.com/drpcorg/dsheltie
 
 go 1.24.1
 

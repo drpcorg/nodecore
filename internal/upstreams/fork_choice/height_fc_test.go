@@ -1,8 +1,8 @@
 package fork_choice_test
 
 import (
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	choice "github.com/drpcorg/dshaltie/internal/upstreams/fork_choice"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

@@ -2,10 +2,10 @@ package flow
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/internal/caches"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams"
-	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/internal/caches"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams"
+	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/failsafe-go/failsafe-go"
 	"sync"
 )

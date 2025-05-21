@@ -12,4 +12,4 @@ test:
 
 .PHONY: build
 build: generate-networks
-	go build -o $(PWD)/dshaltie.service cmd/dshaltie/main.go
+	go build -o $(PWD)/dsheltie.service cmd/dsheltie/main.go

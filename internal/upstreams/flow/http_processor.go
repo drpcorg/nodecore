@@ -3,9 +3,9 @@ package flow
 import (
 	"context"
 	"fmt"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams"
-	"github.com/drpcorg/dshaltie/internal/upstreams/connectors"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams"
+	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 )
 
 type UpstreamRequestProcessor interface {

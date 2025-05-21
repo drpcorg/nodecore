@@ -2,7 +2,7 @@ package protocol_test
 
 import (
 	"fmt"
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
 	"testing"

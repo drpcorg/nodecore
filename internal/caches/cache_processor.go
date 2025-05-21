@@ -2,10 +2,10 @@ package caches
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/internal/config"
-	"github.com/drpcorg/dshaltie/internal/protocol"
-	"github.com/drpcorg/dshaltie/internal/upstreams"
-	"github.com/drpcorg/dshaltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams"
+	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"sync"

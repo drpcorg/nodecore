@@ -3,8 +3,8 @@ package methods
 import (
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dshaltie/internal/config"
-	specs "github.com/drpcorg/dshaltie/pkg/methods"
+	"github.com/drpcorg/dsheltie/internal/config"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/samber/lo"
 	"maps"
 )

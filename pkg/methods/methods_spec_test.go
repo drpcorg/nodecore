@@ -1,7 +1,7 @@
 package specs_test
 
 import (
-	specs "github.com/drpcorg/dshaltie/pkg/methods"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

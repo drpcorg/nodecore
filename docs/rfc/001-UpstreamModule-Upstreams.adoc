@@ -9,7 +9,7 @@
 
 == Summary
 
-An upstream is the core component of dShaltie. It encapsulates the logic of how to work with blockchain nodes or RPC providers. It has its own state and can work via different protocols, such as *JSON-RPC*, *REST*, *Websocket*, *GRPC*.
+An upstream is the core component of dSheltie. It encapsulates the logic of how to work with blockchain nodes or RPC providers. It has its own state and can work via different protocols, such as *JSON-RPC*, *REST*, *Websocket*, *GRPC*.
 
 == Detailed design
 
@@ -93,5 +93,5 @@ image::req_resp.png[alt="",width=90%,align="center"]
 == Unresolved questions
 
 - Do we need to have a list of supported methods as we have in dshackle? Or do we consider that all methods are supported by default unless a client specifies them explicitly?
-- Is it necessary to track lower bounds? At least block and state data, so that dShaltie can use it to route requests better instead of retries?
+- Is it necessary to track lower bounds? At least block and state data, so that dSheltie can use it to route requests better instead of retries?
 - What is the best pollInterval time? Does chain matter, or we could have the same time for all chains?

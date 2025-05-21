@@ -2,7 +2,7 @@ package connectors
 
 import (
 	"context"
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 )
 
 type ApiConnector interface {

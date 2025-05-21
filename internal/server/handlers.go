@@ -7,7 +7,7 @@ import (
 	"errors"
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
-	"github.com/drpcorg/dshaltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"io"
