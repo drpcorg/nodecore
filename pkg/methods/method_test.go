@@ -206,3 +206,48 @@ func TestUnableParseBlockRefThenNil(t *testing.T) {
 
 	assert.Nil(t, result)
 }
+
+func TestBlockTag(t *testing.T) {
+	tests := []struct {
+		name     string
+		num      rpc.BlockNumber
+		expected bool
+	}{
+		{
+			"latest",
+			rpc.LatestBlockNumber,
+			true,
+		},
+		{
+			"finalized",
+			rpc.FinalizedBlockNumber,
+			true,
+		},
+		{
+			"safe",
+			rpc.SafeBlockNumber,
+			true,
+		},
+		{
+			"earliest",
+			rpc.EarliestBlockNumber,
+			true,
+		},
+		{
+			"pending",
+			rpc.PendingBlockNumber,
+			true,
+		},
+		{
+			"common num",
+			rpc.BlockNumber(12334),
+			false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(te *testing.T) {
+			assert.Equal(te, test.expected, specs.IsBlockTagNumber(test.num))
+		})
+	}
+}

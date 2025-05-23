@@ -7,8 +7,10 @@ import (
 	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"slices"
 	"strings"
 	"time"
@@ -27,11 +29,12 @@ type ChainSupervisorState struct {
 	Status  protocol.AvailabilityStatus
 	Head    uint64
 	Methods methods.Methods
+	Blocks  map[protocol.BlockType]*protocol.BlockData
 }
 
 func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice) *ChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
-	state.Store(ChainSupervisorState{Status: protocol.Available})
+	state.Store(ChainSupervisorState{Status: protocol.Available, Blocks: make(map[protocol.BlockType]*protocol.BlockData)})
 
 	return &ChainSupervisor{
 		ctx:            ctx,
@@ -61,6 +64,10 @@ func (c *ChainSupervisor) Start() {
 
 func (c *ChainSupervisor) GetChainState() ChainSupervisorState {
 	return c.state.Load()
+}
+
+func (c *ChainSupervisor) GetMethod(methodName string) *specs.Method {
+	return c.GetChainState().Methods.GetMethod(methodName)
 }
 
 func (c *ChainSupervisor) Publish(event protocol.UpstreamEvent) {
@@ -94,6 +101,9 @@ func (c *ChainSupervisor) processEvents() {
 				state := c.state.Load()
 				c.upstreamStates.Store(event.Id, event.State)
 
+				// it's necessary to merge states only from available upstreams
+				availableUpstreams := c.availableUpstreams()
+
 				if event.State.HeadData != nil {
 					updated, headHeight := c.fc.Choose(event)
 					if updated {
@@ -101,7 +111,8 @@ func (c *ChainSupervisor) processEvents() {
 					}
 				}
 				state.Status = c.processUpstreamStatuses()
-				state.Methods = c.processUpstreamMethods()
+				state.Methods = c.processUpstreamMethods(availableUpstreams)
+				state.Blocks = c.processUpstreamBlocks(availableUpstreams)
 
 				c.state.Store(state)
 			}
@@ -109,11 +120,22 @@ func (c *ChainSupervisor) processEvents() {
 	}
 }
 
-func (c *ChainSupervisor) processUpstreamMethods() methods.Methods {
-	delegates := make([]methods.Methods, 0)
-	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
-		delegates = append(delegates, upState.UpstreamMethods)
+func (c *ChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
+	states := make([]*protocol.UpstreamState, 0)
+
+	c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
+		if val.Status == protocol.Available {
+			states = append(states, val)
+		}
 		return true
+	})
+
+	return states
+}
+
+func (c *ChainSupervisor) processUpstreamMethods(availableStates []*protocol.UpstreamState) methods.Methods {
+	delegates := lo.Map(availableStates, func(item *protocol.UpstreamState, index int) methods.Methods {
+		return item.UpstreamMethods
 	})
 
 	return methods.NewChainMethods(delegates)
@@ -129,6 +151,37 @@ func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus 
 	})
 
 	return status
+}
+
+func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]*protocol.BlockData {
+	blocks := map[protocol.BlockType]*protocol.BlockData{}
+
+	for _, upState := range availableStates {
+		if upState.BlockInfo != nil {
+			upBlocks := upState.BlockInfo.GetBlocks()
+
+			for blockType, blockData := range upBlocks {
+				currentBlockData, ok := blocks[blockType]
+				if !ok {
+					blocks[blockType] = blockData
+				} else {
+					blocks[blockType] = compareBlocks(blockType, currentBlockData, blockData)
+				}
+			}
+		}
+	}
+
+	return blocks
+}
+
+func compareBlocks(blockType protocol.BlockType, currentBlock, newBlock *protocol.BlockData) *protocol.BlockData {
+	switch blockType {
+	case protocol.FinalizedBlock:
+		if newBlock.Height > currentBlock.Height {
+			return newBlock
+		}
+	}
+	return currentBlock
 }
 
 func (c *ChainSupervisor) monitor() {

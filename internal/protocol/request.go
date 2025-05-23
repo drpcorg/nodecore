@@ -1,10 +1,13 @@
 package protocol
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/bytedance/sonic"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
+	"sync"
 )
 
 type HttpMethod int
@@ -55,9 +58,13 @@ type HttpUpstreamRequest struct {
 	method         string
 	requestHeaders map[string]string
 	requestBody    []byte
+	requestParams  any // for json-rpc it's params array or object
+	parsedParam    specs.MethodParam
 	isStream       bool
 	requestType    RequestType
 	requestKey     string
+
+	mu sync.Mutex
 }
 
 var _ RequestHolder = (*HttpUpstreamRequest)(nil)
@@ -91,6 +98,7 @@ func newRestRequest(method string, headers map[string]string, body []byte, strea
 		requestBody:    body,
 		isStream:       stream,
 		requestType:    Rest,
+		requestParams:  []any{},
 		requestKey:     calculateHash(requestBytes),
 	}
 }
@@ -108,10 +116,11 @@ func NewInternalJsonRpcUpstreamRequest(method string, params any) (*HttpUpstream
 	}
 
 	return &HttpUpstreamRequest{
-		id:          "1",
-		method:      method,
-		requestBody: jsonRpcReqBytes,
-		requestType: JsonRpc,
+		id:            "1",
+		method:        method,
+		requestBody:   jsonRpcReqBytes,
+		requestType:   JsonRpc,
+		requestParams: []any{},
 	}, nil
 }
 
@@ -128,19 +137,32 @@ func newJsonRpcRequest(id string, realId json.RawMessage, method string, params 
 	if err != nil {
 		return nil, err
 	}
+
 	var requestHash string
 	if len(params) == 0 {
 		requestHash = calculateHash([]byte(method))
 	} else {
 		requestHash = calculateHash(append(params, []byte(method)...))
 	}
+
+	var requestParams any
+	if len(params) == 0 {
+		requestParams = []any{}
+	} else {
+		err = sonic.Unmarshal(params, &requestParams)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &HttpUpstreamRequest{
-		id:          id,
-		method:      method,
-		requestBody: jsonRpcReqBytes,
-		requestType: JsonRpc,
-		requestKey:  requestHash,
-		isStream:    stream,
+		id:            id,
+		method:        method,
+		requestBody:   jsonRpcReqBytes,
+		requestType:   JsonRpc,
+		requestKey:    requestHash,
+		isStream:      stream,
+		requestParams: requestParams,
 	}, nil
 }
 
@@ -186,6 +208,23 @@ func (h *HttpUpstreamRequest) RequestHash() string {
 
 func (h *HttpUpstreamRequest) IsStream() bool {
 	return h.isStream
+}
+
+func (h *HttpUpstreamRequest) ParseParams(ctx context.Context, method *specs.Method) specs.MethodParam {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if method == nil {
+		return nil
+	}
+	if h.parsedParam != nil {
+		return h.parsedParam
+	}
+
+	parsedParam := method.Parse(ctx, h.requestParams)
+	h.parsedParam = parsedParam
+
+	return parsedParam
 }
 
 func (h *HttpUpstreamRequest) Id() string {

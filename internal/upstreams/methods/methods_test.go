@@ -92,10 +92,33 @@ func TestUpstreamMethodsAndDisableOneMethod(t *testing.T) {
 	checkMethods(t, expected, upstreamMethods)
 }
 
-func checkMethods(t *testing.T, expected mapset.Set[string], upstreamMethods *methods.UpstreamMethods) {
-	assert.Equal(t, expected, upstreamMethods.GetSupportedMethods())
+func TestChainMethodsMergeAllDelegates(t *testing.T) {
+	t.Setenv(specs.SpecPathVar, "full")
+	err := specs.Load()
+	assert.NoError(t, err)
+
+	methodsConfig1 := &config.MethodsConfig{DisableMethods: []string{"test2"}}
+	methodsConfig2 := &config.MethodsConfig{EnableMethods: []string{"newMethod"}}
+
+	upstreamMethods1, err := methods.NewUpstreamMethods("test", methodsConfig1)
+	assert.NoError(t, err)
+	upstreamMethods2, err := methods.NewUpstreamMethods("test", methodsConfig2)
+	assert.NoError(t, err)
+
+	chainMethods := methods.NewChainMethods([]methods.Methods{upstreamMethods1, upstreamMethods2})
+
+	expected := mapset.NewThreadUnsafeSet[string]("test", "test_another", "newMethod", "test2")
+	checkMethods(t, expected, chainMethods)
+}
+
+func checkMethods(t *testing.T, expected mapset.Set[string], methods methods.Methods) {
+	assert.Equal(t, expected, methods.GetSupportedMethods())
 
 	for _, methodName := range expected.ToSlice() {
-		assert.True(t, upstreamMethods.HasMethod(methodName))
+		method := methods.GetMethod(methodName)
+
+		assert.NotNil(t, method)
+		assert.Equal(t, methodName, method.Name)
+		assert.True(t, methods.HasMethod(methodName))
 	}
 }

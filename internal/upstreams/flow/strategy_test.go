@@ -9,7 +9,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -81,7 +81,7 @@ func createChainSupervisor() *upstreams.ChainSupervisor {
 }
 
 func publishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, status protocol.AvailabilityStatus) {
-	methodsMock := test_utils.NewMethodsMock()
+	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getBalance"))
 	methodsMock.On("HasMethod", "eth_getBalance").Return(true)
 	methodsMock.On("HasMethod", "test").Return(false)

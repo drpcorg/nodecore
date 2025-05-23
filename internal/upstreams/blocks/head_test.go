@@ -6,7 +6,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/blocks"
 	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"testing"
@@ -17,7 +17,7 @@ func TestRpcHead(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector := test_utils.NewHttpConnectorMock()
+	connector := mocks.NewHttpConnectorMock()
 	body := []byte(`{
 	  "jsonrpc": "2.0",
 	  "result": {
@@ -54,7 +54,7 @@ func TestWsHead(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector := test_utils.NewWsConnectorMock()
+	connector := mocks.NewWsConnectorMock()
 	body := []byte(`{
 	  "jsonrpc": "2.0",
 	  "method": "eth_subscription",

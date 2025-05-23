@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -37,7 +37,7 @@ func TestEvmParseSubBLock(t *testing.T) {
 
 func TestEvmGetLatestBlock(t *testing.T) {
 	ctx := context.Background()
-	connector := test_utils.NewHttpConnectorMock()
+	connector := mocks.NewHttpConnectorMock()
 	body := []byte(`{
 	  "jsonrpc": "2.0",
 	  "result": {
@@ -59,7 +59,7 @@ func TestEvmGetLatestBlock(t *testing.T) {
 
 func TestEvmGetLatestBlockWithError(t *testing.T) {
 	ctx := context.Background()
-	connector := test_utils.NewHttpConnectorMock()
+	connector := mocks.NewHttpConnectorMock()
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "block error", nil))
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)

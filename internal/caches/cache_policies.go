@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -29,7 +30,6 @@ type finalizationType int
 
 const (
 	Finalized finalizationType = iota
-	Unfinalized
 	None
 )
 
@@ -50,8 +50,6 @@ func NewCachePolicy(
 	cacheConnector CacheConnector,
 	policyConfig *config.CachePolicyConfig,
 ) *CachePolicy {
-	// TODO: add method config to check if method can be cached or not
-
 	ttl, err := time.ParseDuration(policyConfig.TTL)
 	if err != nil {
 		ttl = 10 * time.Minute
@@ -71,18 +69,13 @@ func NewCachePolicy(
 }
 
 func (c *CachePolicy) Store(
+	ctx context.Context,
 	chain chains.Chain,
 	request protocol.RequestHolder,
 	response []byte,
 ) bool {
-	if c.chainNotMatched(chain) { // check policy and request chains
+	if !c.baseCacheableCheck(ctx, chain, request) {
 		return false
-	}
-	if !c.methods.IsEmpty() { // check policy and request methods
-		matched := c.methodMatched(request)
-		if !matched {
-			return false
-		}
 	}
 	if len(response) > c.maxSizeBytes { // check if a response body doesn't exceed the maximum size of a cacheable item
 		return false
@@ -106,14 +99,8 @@ func (c *CachePolicy) Store(
 
 func (c *CachePolicy) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
 	localLog := zerolog.Ctx(ctx)
-	if c.chainNotMatched(chain) {
+	if !c.baseCacheableCheck(ctx, chain, request) {
 		return nil, false
-	}
-	if !c.methods.IsEmpty() {
-		matched := c.methodMatched(request)
-		if !matched {
-			return nil, false
-		}
 	}
 	cacheKey := getCacheKey(chain, request.RequestHash())
 
@@ -132,8 +119,6 @@ func mapFinalizationType(finalizationType config.FinalizationType) finalizationT
 	switch finalizationType {
 	case config.Finalized:
 		return Finalized
-	case config.Unfinalized:
-		return Unfinalized
 	case config.None:
 		return None
 	}
@@ -230,4 +215,56 @@ func (c *CachePolicy) chainNotMatched(chain chains.Chain) bool {
 
 func getCacheKey(chain chains.Chain, requestHash string) string {
 	return fmt.Sprintf("%s_%s", chain, requestHash)
+}
+
+func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) bool {
+	chainsSupervisor := c.upstreamSupervisor.GetChainSupervisor(chain)
+	if chainsSupervisor == nil {
+		return false
+	}
+
+	method := chainsSupervisor.GetMethod(request.Method())
+	if method == nil {
+		return false // not cache if no method
+	}
+
+	if !method.IsCacheable() {
+		return false // according to the method setting check if it's cacheable or not
+	}
+	methodParam := request.ParseParams(ctx, method)
+	switch param := methodParam.(type) {
+	case *specs.BlockNumberParam:
+		if specs.IsBlockTagNumber(param.BlockNumber) {
+			return false // not cache requests with block tags
+		}
+		if c.finalizationType == Finalized {
+			chainFinalizedBlock, ok := chainsSupervisor.GetChainState().Blocks[protocol.FinalizedBlock]
+			if ok {
+				if uint64(param.BlockNumber.Int64()) > chainFinalizedBlock.Height {
+					return false
+				}
+			}
+		}
+	}
+
+	return true
+}
+
+func (c *CachePolicy) baseCacheableCheck(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) bool {
+	if request.IsStream() {
+		return false
+	}
+	if !c.isMethodCacheable(ctx, chain, request) { // check spec config if a requested method is cacheable or not
+		return false
+	}
+	if c.chainNotMatched(chain) { // check policy and request chains
+		return false
+	}
+	if !c.methods.IsEmpty() { // check policy and request methods
+		matched := c.methodMatched(request)
+		if !matched {
+			return false
+		}
+	}
+	return true
 }
