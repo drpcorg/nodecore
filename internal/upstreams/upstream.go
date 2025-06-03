@@ -87,6 +87,29 @@ func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
 	}
 }
 
+func NewUpstreamWithParams(
+	ctx context.Context,
+	id string,
+	chain chains.Chain,
+	apiConnectors []connectors.ApiConnector,
+	headProcessor *blocks.HeadProcessor,
+	state *utils.Atomic[protocol.UpstreamState],
+) *Upstream {
+	ctx, cancel := context.WithCancel(ctx)
+
+	return &Upstream{
+		Id:            id,
+		Chain:         chain,
+		ctx:           ctx,
+		cancelFunc:    cancel,
+		upstreamState: state,
+		apiConnectors: apiConnectors,
+		headProcessor: headProcessor,
+		subManager:    utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
+		stateChan:     make(chan protocol.AbstractUpstreamStateEvent, 100),
+	}
+}
+
 func (u *Upstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
 	return u.subManager.Subscribe(name)
 }

@@ -128,9 +128,8 @@ type RedisCacheConnectorConfig struct {
 type FinalizationType string
 
 const (
-	Finalized   FinalizationType = "finalized"
-	Unfinalized FinalizationType = "unfinalized"
-	None        FinalizationType = "none"
+	Finalized FinalizationType = "finalized"
+	None      FinalizationType = "none"
 )
 
 type CachePolicyConfig struct {

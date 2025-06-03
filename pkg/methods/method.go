@@ -32,6 +32,21 @@ func DefaultMethod(name string) *Method {
 	}
 }
 
+func MethodWithSettings(name string, settings *MethodSettings, tagParser *TagParser) *Method {
+	methodData := &MethodData{
+		Name:      name,
+		Enabled:   lo.ToPtr(true),
+		Settings:  settings,
+		TagParser: tagParser,
+	}
+
+	method, err := fromMethodData(methodData)
+	if err != nil {
+		return nil
+	}
+	return method
+}
+
 func (m *Method) IsCacheable() bool {
 	return m.cacheable
 }
@@ -53,9 +68,14 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 		}
 	}
 
+	cacheable := true
+	if methodData.Settings != nil && methodData.Settings.Cacheable != nil {
+		cacheable = *methodData.Settings.Cacheable
+	}
+
 	return &Method{
 		enabled:   lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
-		cacheable: lo.Ternary(methodData.Settings != nil && methodData.Settings.Cacheable != nil, *methodData.Settings.Cacheable, true),
+		cacheable: cacheable,
 		Name:      methodData.Name,
 		parser:    parser,
 	}, nil
@@ -142,6 +162,15 @@ func isHexNumberOrTag(param string) bool {
 func isBlockTag(param string) bool {
 	switch param {
 	case "latest", "earliest", "pending", "finalized", "safe":
+		return true
+	default:
+		return false
+	}
+}
+
+func IsBlockTagNumber(num rpc.BlockNumber) bool {
+	switch num {
+	case rpc.SafeBlockNumber, rpc.LatestBlockNumber, rpc.PendingBlockNumber, rpc.FinalizedBlockNumber, rpc.EarliestBlockNumber:
 		return true
 	default:
 		return false

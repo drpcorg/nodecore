@@ -60,7 +60,7 @@ func (e *SingleRequestExecutionFlow) Execute(ctx context.Context, requests []pro
 	for response := range e.responsesInternal {
 		if !response.Response.HasError() && !response.Response.HasStream() {
 			if request, ok := requestMap[response.RequestId]; ok {
-				go e.cacheProcessor.Store(e.chain, request, response.Response.ResponseResult())
+				go e.cacheProcessor.Store(ctx, e.chain, request, response.Response.ResponseResult())
 			}
 		}
 

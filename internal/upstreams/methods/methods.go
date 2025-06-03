@@ -11,7 +11,8 @@ import (
 
 type Methods interface {
 	GetSupportedMethods() mapset.Set[string]
-	HasMethod(string) bool
+	HasMethod(method string) bool
+	GetMethod(methodName string) *specs.Method
 }
 
 type UpstreamMethods struct {
@@ -66,6 +67,13 @@ func (u *UpstreamMethods) HasMethod(method string) bool {
 	return u.methodNames.ContainsOne(method)
 }
 
+func (u *UpstreamMethods) GetMethod(methodName string) *specs.Method {
+	if !u.HasMethod(methodName) {
+		return nil
+	}
+	return u.availableMethods[methodName]
+}
+
 var _ Methods = (*UpstreamMethods)(nil)
 
 type ChainMethods struct {
@@ -91,6 +99,15 @@ func (c *ChainMethods) GetSupportedMethods() mapset.Set[string] {
 
 func (c *ChainMethods) HasMethod(method string) bool {
 	return c.availableMethods.ContainsOne(method)
+}
+
+func (c *ChainMethods) GetMethod(methodName string) *specs.Method {
+	for _, delegate := range c.delegates {
+		if delegate.HasMethod(methodName) {
+			return delegate.GetMethod(methodName)
+		}
+	}
+	return nil
 }
 
 var _ Methods = (*ChainMethods)(nil)

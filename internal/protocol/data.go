@@ -1,10 +1,12 @@
 package protocol
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"io"
 	"math"
@@ -66,6 +68,7 @@ type RequestHolder interface {
 	Method() string
 	Headers() map[string]string
 	Body() []byte
+	ParseParams(ctx context.Context, method *specs.Method) specs.MethodParam
 	IsStream() bool
 	Count() int
 	RequestType() RequestType
@@ -142,6 +145,17 @@ func NewBlockInfo() *BlockInfo {
 	return &BlockInfo{
 		blocks: utils.CMap[BlockType, BlockData]{},
 	}
+}
+
+func (b *BlockInfo) GetBlocks() map[BlockType]*BlockData {
+	blocks := map[BlockType]*BlockData{}
+
+	b.blocks.Range(func(key BlockType, val *BlockData) bool {
+		blocks[key] = val
+		return true
+	})
+
+	return blocks
 }
 
 func (b *BlockInfo) AddBlock(data *BlockData, blockType BlockType) {

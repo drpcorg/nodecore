@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -50,7 +50,7 @@ func TestSolanaParseSubBLock(t *testing.T) {
 
 func TestSolanaGetLatestBlock(t *testing.T) {
 	ctx := context.Background()
-	connector := test_utils.NewHttpConnectorMock()
+	connector := mocks.NewHttpConnectorMock()
 	slotBody := []byte(`{
 		"id": 1,
 		"jsonrpc": "2.0",
@@ -88,7 +88,7 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 
 func TestSolanaGetLatestBlockWithError(t *testing.T) {
 	ctx := context.Background()
-	connector := test_utils.NewHttpConnectorMock()
+	connector := mocks.NewHttpConnectorMock()
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "block error", nil))
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)

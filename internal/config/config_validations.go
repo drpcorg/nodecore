@@ -106,7 +106,7 @@ func (p *CachePolicyConfig) validate(connectors mapset.Set[string]) error {
 
 func (f FinalizationType) validate() error {
 	switch f {
-	case Finalized, Unfinalized, None:
+	case Finalized, None:
 	default:
 		return fmt.Errorf("invalid finalization type - %s", f)
 	}

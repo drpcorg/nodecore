@@ -48,12 +48,13 @@ func NewCacheProcessor(
 }
 
 func (c *CacheProcessor) Store(
+	ctx context.Context,
 	chain chains.Chain,
 	request protocol.RequestHolder,
 	response []byte,
 ) {
 	for _, policy := range c.policies {
-		policy.Store(chain, request, response)
+		policy.Store(ctx, chain, request, response)
 	}
 }
 

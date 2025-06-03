@@ -7,6 +7,12 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/upstreams"
+	"github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
+	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
+	"github.com/drpcorg/dsheltie/pkg/chains"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/mock"
 	"time"
 )
@@ -18,112 +24,6 @@ func GetResultAsBytes(json []byte) []byte {
 		panic(err)
 	}
 	return parsed["result"]
-}
-
-type HttpConnectorMock struct {
-	mock.Mock
-}
-
-func NewHttpConnectorMock() *HttpConnectorMock {
-	return &HttpConnectorMock{}
-}
-
-func (c *HttpConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	args := c.Called(ctx, request)
-	return args.Get(0).(protocol.ResponseHolder)
-}
-
-func (c *HttpConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
-	return nil, nil
-}
-
-func (c *HttpConnectorMock) GetType() protocol.ApiConnectorType {
-	return protocol.JsonRpcConnector
-}
-
-type WsConnectorMock struct {
-	mock.Mock
-}
-
-func NewWsConnectorMock() *WsConnectorMock {
-	return &WsConnectorMock{}
-}
-
-func (c *WsConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	return nil
-}
-
-func (c *WsConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
-	args := c.Called(ctx, request)
-	var err error
-	if args.Get(1) == nil {
-		err = nil
-	} else {
-		err = args.Get(1).(error)
-	}
-	return args.Get(0).(protocol.UpstreamSubscriptionResponse), err
-}
-
-func (c *WsConnectorMock) GetType() protocol.ApiConnectorType {
-	return protocol.WsConnector
-}
-
-type CacheConnectorMock struct {
-	mock.Mock
-}
-
-func NewCacheConnectorMock() *CacheConnectorMock {
-	return &CacheConnectorMock{}
-}
-
-func (c *CacheConnectorMock) Id() string {
-	args := c.Called()
-	return args.Get(0).(string)
-}
-
-func (c *CacheConnectorMock) Store(ctx context.Context, key string, object string, ttl time.Duration) error {
-	args := c.Called(ctx, key, object, ttl)
-	var err error
-	if args.Get(0) == nil {
-		err = nil
-	} else {
-		err = args.Get(0).(error)
-	}
-	return err
-}
-
-func (c *CacheConnectorMock) Receive(ctx context.Context, key string) ([]byte, error) {
-	args := c.Called(ctx, key)
-	var err error
-	if args.Get(1) == nil {
-		err = nil
-	} else {
-		err = args.Get(1).(error)
-	}
-	return args.Get(0).([]byte), err
-}
-
-type DelayedConnector struct {
-	sleep time.Duration
-	CacheConnectorMock
-}
-
-func NewDelayedConnector(sleep time.Duration) *DelayedConnector {
-	return &DelayedConnector{sleep: sleep}
-}
-
-func (d *DelayedConnector) Id() string {
-	return d.CacheConnectorMock.Id()
-}
-
-func (d *DelayedConnector) Store(ctx context.Context, key string, object string, ttl time.Duration) error {
-	time.Sleep(d.sleep)
-	return d.CacheConnectorMock.Store(ctx, key, object, ttl)
-}
-
-func (d *DelayedConnector) Receive(ctx context.Context, key string) ([]byte, error) {
-	time.Sleep(d.sleep)
-	return d.CacheConnectorMock.Receive(ctx, key)
 }
 
 func PolicyConfig(chain, method, connector, maxSize, ttl string, cacheEmpty bool) *config.CachePolicyConfig {
@@ -139,22 +39,57 @@ func PolicyConfig(chain, method, connector, maxSize, ttl string, cacheEmpty bool
 	}
 }
 
-type MethodsMock struct {
-	mock.Mock
+func PolicyConfigFinalized(chain, method, connector, maxSize, ttl string, cacheEmpty bool) *config.CachePolicyConfig {
+	return &config.CachePolicyConfig{
+		Id:               "policy",
+		Chain:            chain,
+		Method:           method,
+		FinalizationType: config.Finalized,
+		CacheEmpty:       cacheEmpty,
+		Connector:        connector,
+		ObjectMaxSize:    maxSize,
+		TTL:              ttl,
+	}
 }
 
-func NewMethodsMock() *MethodsMock {
-	return &MethodsMock{}
+func CreateEvent(id string, status protocol.AvailabilityStatus, height uint64, methods methods.Methods) protocol.UpstreamEvent {
+	return CreateEventWithBlocData(id, status, height, methods, nil)
 }
 
-func (m *MethodsMock) GetSupportedMethods() mapset.Set[string] {
-	args := m.Called()
-
-	return args.Get(0).(mapset.Set[string])
+func CreateEventWithBlocData(
+	id string,
+	status protocol.AvailabilityStatus,
+	height uint64,
+	methods methods.Methods,
+	blockInfo *protocol.BlockInfo,
+) protocol.UpstreamEvent {
+	return protocol.UpstreamEvent{
+		Id: id,
+		State: &protocol.UpstreamState{
+			Status: status,
+			HeadData: &protocol.BlockData{
+				Height: height,
+			},
+			UpstreamMethods: methods,
+			BlockInfo:       blockInfo,
+		},
+	}
 }
 
-func (m *MethodsMock) HasMethod(s string) bool {
-	args := m.Called(s)
+func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice())
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("GetMethod", mock.Anything).Return(specs.DefaultMethod("name"))
+	methodsMock.On("HasMethod", mock.Anything).Return(true)
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
-	return args.Get(0).(bool)
+	go chainSupervisor.Start()
+
+	chainSupervisor.Publish(CreateEvent("id", protocol.Available, 100, methodsMock))
+	time.Sleep(5 * time.Millisecond)
+
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
+
+	return methodsMock, upSupervisor
 }

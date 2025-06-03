@@ -3,7 +3,7 @@ package flow_test
 import (
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -12,7 +12,7 @@ func TestMultiMatcher(t *testing.T) {
 	method := flow.NewMethodMatcher("eth_getBalance")
 	status := flow.NewStatusMatcher()
 	multiMatcher := flow.NewMultiMatcher(method, status)
-	methods := test_utils.NewMethodsMock()
+	methods := mocks.NewMethodsMock()
 	methods.On("HasMethod", "eth_getBalance").Return(true)
 	state := protocol.UpstreamState{Status: protocol.Available, UpstreamMethods: methods}
 
@@ -26,7 +26,7 @@ func TestMultiMatcherResponseMethodType(t *testing.T) {
 	method := flow.NewMethodMatcher("no-method")
 	status := flow.NewStatusMatcher()
 	multiMatcher := flow.NewMultiMatcher(method, status)
-	methods := test_utils.NewMethodsMock()
+	methods := mocks.NewMethodsMock()
 	methods.On("HasMethod", "no-method").Return(false)
 	state := protocol.UpstreamState{Status: protocol.Unavailable, UpstreamMethods: methods}
 
@@ -39,7 +39,7 @@ func TestMultiMatcherResponseMethodType(t *testing.T) {
 
 func TestMethodMatcher(t *testing.T) {
 	matcher := flow.NewMethodMatcher("eth_getBalance")
-	methods := test_utils.NewMethodsMock()
+	methods := mocks.NewMethodsMock()
 	methods.On("HasMethod", "eth_getBalance").Return(true)
 	state := protocol.UpstreamState{UpstreamMethods: methods}
 
@@ -51,7 +51,7 @@ func TestMethodMatcher(t *testing.T) {
 
 func TestMethodMatcherNoMethod(t *testing.T) {
 	matcher := flow.NewMethodMatcher("no-method")
-	methods := test_utils.NewMethodsMock()
+	methods := mocks.NewMethodsMock()
 	methods.On("HasMethod", "no-method").Return(false)
 	state := protocol.UpstreamState{UpstreamMethods: methods}
 
