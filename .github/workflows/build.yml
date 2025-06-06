@@ -1,0 +1,23 @@
+name: Build
+
+on:
+  workflow_dispatch: null
+  pull_request: null
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '^1.24.0'
+
+      - name: Build
+        run: make build
