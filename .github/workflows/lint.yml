@@ -1,0 +1,26 @@
+name: Lint
+
+on:
+  workflow_dispatch: null
+  pull_request: null
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '^1.24.0'
+
+      - run: make generate-networks
+
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1
