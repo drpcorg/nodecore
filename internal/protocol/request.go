@@ -53,7 +53,7 @@ func (r RequestType) String() string {
 	panic(fmt.Sprintf("unknown RequestType - %d", r))
 }
 
-type HttpUpstreamRequest struct {
+type BaseUpstreamRequest struct {
 	id             string
 	method         string
 	requestHeaders map[string]string
@@ -61,19 +61,20 @@ type HttpUpstreamRequest struct {
 	requestParams  any // for json-rpc it's params array or object
 	parsedParam    specs.MethodParam
 	isStream       bool
+	isSub          bool
 	requestType    RequestType
 	requestKey     string
 
 	mu sync.Mutex
 }
 
-var _ RequestHolder = (*HttpUpstreamRequest)(nil)
+var _ RequestHolder = (*BaseUpstreamRequest)(nil)
 
 func NewHttpUpstreamRequest(
 	method string,
 	headers map[string]string,
 	body []byte,
-) *HttpUpstreamRequest {
+) *BaseUpstreamRequest {
 	return newRestRequest(method, headers, body, false)
 }
 
@@ -81,17 +82,17 @@ func NewStreamRestUpstreamRequest(
 	method string,
 	headers map[string]string,
 	body []byte,
-) *HttpUpstreamRequest {
+) *BaseUpstreamRequest {
 	return newRestRequest(method, headers, body, true)
 }
 
-func newRestRequest(method string, headers map[string]string, body []byte, stream bool) *HttpUpstreamRequest {
+func newRestRequest(method string, headers map[string]string, body []byte, stream bool) *BaseUpstreamRequest {
 	requestBytes := body
 	if len(requestBytes) == 0 {
 		requestBytes = []byte(method)
 	}
 
-	return &HttpUpstreamRequest{
+	return &BaseUpstreamRequest{
 		id:             "1",
 		method:         method,
 		requestHeaders: headers,
@@ -103,7 +104,7 @@ func newRestRequest(method string, headers map[string]string, body []byte, strea
 	}
 }
 
-func NewInternalJsonRpcUpstreamRequest(method string, params any) (*HttpUpstreamRequest, error) {
+func NewInternalJsonRpcUpstreamRequest(method string, params any) (*BaseUpstreamRequest, error) {
 	jsonRpcReq := map[string]interface{}{
 		"id":      "1",
 		"jsonrpc": "2.0",
@@ -115,7 +116,7 @@ func NewInternalJsonRpcUpstreamRequest(method string, params any) (*HttpUpstream
 		return nil, err
 	}
 
-	return &HttpUpstreamRequest{
+	return &BaseUpstreamRequest{
 		id:            "1",
 		method:        method,
 		requestBody:   jsonRpcReqBytes,
@@ -124,15 +125,15 @@ func NewInternalJsonRpcUpstreamRequest(method string, params any) (*HttpUpstream
 	}, nil
 }
 
-func NewSimpleJsonRpcUpstreamRequest(id string, realId json.RawMessage, method string, params json.RawMessage) (*HttpUpstreamRequest, error) {
-	return newJsonRpcRequest(id, realId, method, params, false)
+func NewSimpleJsonRpcUpstreamRequest(id string, realId json.RawMessage, method string, params json.RawMessage, isSub bool) (*BaseUpstreamRequest, error) {
+	return newJsonRpcRequest(id, realId, method, params, false, isSub)
 }
 
-func NewStreamJsonRpcUpstreamRequest(id string, realId json.RawMessage, method string, params json.RawMessage) (*HttpUpstreamRequest, error) {
-	return newJsonRpcRequest(id, realId, method, params, true)
+func NewStreamJsonRpcUpstreamRequest(id string, realId json.RawMessage, method string, params json.RawMessage) (*BaseUpstreamRequest, error) {
+	return newJsonRpcRequest(id, realId, method, params, true, false)
 }
 
-func newJsonRpcRequest(id string, realId json.RawMessage, method string, params json.RawMessage, stream bool) (*HttpUpstreamRequest, error) {
+func newJsonRpcRequest(id string, realId json.RawMessage, method string, params json.RawMessage, stream bool, isSub bool) (*BaseUpstreamRequest, error) {
 	jsonRpcReqBytes, err := jsonRpcRequestBytes(realId, method, params)
 	if err != nil {
 		return nil, err
@@ -155,7 +156,7 @@ func newJsonRpcRequest(id string, realId json.RawMessage, method string, params 
 		}
 	}
 
-	return &HttpUpstreamRequest{
+	return &BaseUpstreamRequest{
 		id:            id,
 		method:        method,
 		requestBody:   jsonRpcReqBytes,
@@ -163,6 +164,7 @@ func newJsonRpcRequest(id string, realId json.RawMessage, method string, params 
 		requestKey:    requestHash,
 		isStream:      stream,
 		requestParams: requestParams,
+		isSub:         isSub,
 	}, nil
 }
 
@@ -182,35 +184,35 @@ func jsonRpcRequestBytes(id json.RawMessage, method string, params json.RawMessa
 
 const MethodSeparator = "#"
 
-func (h *HttpUpstreamRequest) RequestType() RequestType {
+func (h *BaseUpstreamRequest) RequestType() RequestType {
 	return h.requestType
 }
 
-func (h *HttpUpstreamRequest) Count() int {
-	return 1
-}
-
-func (h *HttpUpstreamRequest) Method() string {
+func (h *BaseUpstreamRequest) Method() string {
 	return h.method
 }
 
-func (h *HttpUpstreamRequest) Headers() map[string]string {
+func (h *BaseUpstreamRequest) Headers() map[string]string {
 	return h.requestHeaders
 }
 
-func (h *HttpUpstreamRequest) Body() []byte {
+func (h *BaseUpstreamRequest) Body() []byte {
 	return h.requestBody
 }
 
-func (h *HttpUpstreamRequest) RequestHash() string {
+func (h *BaseUpstreamRequest) RequestHash() string {
 	return h.requestKey
 }
 
-func (h *HttpUpstreamRequest) IsStream() bool {
+func (h *BaseUpstreamRequest) IsStream() bool {
 	return h.isStream
 }
 
-func (h *HttpUpstreamRequest) ParseParams(ctx context.Context, method *specs.Method) specs.MethodParam {
+func (h *BaseUpstreamRequest) IsSubscribe() bool {
+	return h.isSub
+}
+
+func (h *BaseUpstreamRequest) ParseParams(ctx context.Context, method *specs.Method) specs.MethodParam {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -227,6 +229,6 @@ func (h *HttpUpstreamRequest) ParseParams(ctx context.Context, method *specs.Met
 	return parsedParam
 }
 
-func (h *HttpUpstreamRequest) Id() string {
+func (h *BaseUpstreamRequest) Id() string {
 	return h.id
 }

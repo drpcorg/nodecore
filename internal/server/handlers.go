@@ -8,6 +8,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/pkg/chains"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"io"
@@ -77,11 +79,12 @@ type JsonRpcHandler struct {
 	requestBody     []byte
 	single          bool
 	jsonRpcRequests []protocol.JsonRpcRequestBody
+	isWsCtx         bool
 }
 
 var _ RequestHandler = (*JsonRpcHandler)(nil)
 
-func NewJsonRpcHandler(preReq *Request, requestBody io.Reader) (*JsonRpcHandler, error) {
+func NewJsonRpcHandler(preReq *Request, requestBody io.Reader, isWsCtx bool) (*JsonRpcHandler, error) {
 	body, err := io.ReadAll(requestBody)
 	if err != nil {
 		return nil, err
@@ -108,6 +111,7 @@ func NewJsonRpcHandler(preReq *Request, requestBody io.Reader) (*JsonRpcHandler,
 	}
 
 	return &JsonRpcHandler{
+		isWsCtx:         isWsCtx,
 		preReq:          preReq,
 		requestBody:     body,
 		jsonRpcRequests: jsonRpcRequests,
@@ -137,12 +141,16 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 			return nil, err
 		}
 		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
+
+		isSub := j.isWsCtx && specs.IsSubscribeMethod(chains.GetMethodSpecNameByChainName(j.preReq.Chain), jsonRpcReq.Method)
+
 		var upstreamReq protocol.RequestHolder
 		if protocol.IsStream(jsonRpcReq.Method) { // for tests
 			upstreamReq, err = protocol.NewStreamJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params)
 		} else {
-			upstreamReq, err = protocol.NewSimpleJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params)
+			upstreamReq, err = protocol.NewSimpleJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params, isSub)
 		}
+
 		if err != nil {
 			return nil, err
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
@@ -70,7 +71,7 @@ type RequestHolder interface {
 	Body() []byte
 	ParseParams(ctx context.Context, method *specs.Method) specs.MethodParam
 	IsStream() bool
-	Count() int
+	IsSubscribe() bool
 	RequestType() RequestType
 	RequestHash() string
 }
@@ -122,18 +123,26 @@ type UpstreamEvent struct {
 	State *UpstreamState
 }
 
+type Cap int
+
+const (
+	WsCap Cap = iota
+)
+
 type UpstreamState struct {
 	Status          AvailabilityStatus
 	HeadData        *BlockData
 	UpstreamMethods methods.Methods
 	BlockInfo       *BlockInfo
+	Caps            mapset.Set[Cap]
 }
 
-func DefaultUpstreamState(upstreamMethods methods.Methods) UpstreamState {
+func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap]) UpstreamState {
 	return UpstreamState{
 		Status:          Available,
 		UpstreamMethods: upstreamMethods,
 		BlockInfo:       NewBlockInfo(),
+		Caps:            caps,
 	}
 }
 

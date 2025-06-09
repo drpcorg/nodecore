@@ -149,10 +149,33 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	assert.Equal(t, "1: incorrect response body: wrong json-rpc response - there is neither result nor error", r.GetError().Error())
 }
 
+func TestHttpConnectorType(t *testing.T) {
+	tests := []struct {
+		name     string
+		connType protocol.ApiConnectorType
+	}{
+		{
+			name:     "json-rpc connector",
+			connType: protocol.JsonRpcConnector,
+		},
+		{
+			name:     "rest connector",
+			connType: protocol.RestConnector,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(te *testing.T) {
+			connector := connectors.NewHttpConnector("http://localhost:8080", test.connType, nil)
+
+			assert.Equal(te, test.connType, connector.GetType())
+		})
+	}
+}
+
 func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 	httpmock.Activate()
 	defer httpmock.Deactivate()
-
 	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
 		resp := httpmock.NewBytesResponse(200, []byte(`{"id": 1, "jsonrpc": "2.0", "result": {"number": "0x11"} }`))
 		return resp, nil

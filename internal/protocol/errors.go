@@ -23,6 +23,14 @@ func (b *ResponseError) Error() string {
 	return fmt.Sprintf("%d: %s", b.Code, b.Message)
 }
 
+func CreateReplyError(request RequestHolder, responseError *ResponseError) *ReplyError {
+	return NewReplyError(
+		request.Id(),
+		responseError,
+		request.RequestType(),
+	)
+}
+
 func ResponseErrorWithMessage(message string) *ResponseError {
 	return &ResponseError{
 		Message: message,

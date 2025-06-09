@@ -235,7 +235,10 @@ func (w *SubscriptionHead) OnNoHeadUpdates() {
 }
 
 func (w *SubscriptionHead) processMessages(subResponse protocol.UpstreamSubscriptionResponse, cancelFunc context.CancelFunc) {
-	defer cancelFunc()
+	defer func() {
+		w.headStopped.Store(true)
+		cancelFunc()
+	}()
 	for {
 		select {
 		case message, ok := <-subResponse.ResponseChan():
@@ -258,7 +261,6 @@ func (w *SubscriptionHead) processMessages(subResponse protocol.UpstreamSubscrip
 		case <-w.ctx.Done():
 			return
 		case <-w.stopped:
-			w.headStopped.Store(true)
 			return
 		}
 	}

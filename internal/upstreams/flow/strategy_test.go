@@ -86,7 +86,7 @@ func publishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, statu
 	methodsMock.On("HasMethod", "eth_getBalance").Return(true)
 	methodsMock.On("HasMethod", "test").Return(false)
 	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock))
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 }
 
 func createEvent(id string, status protocol.AvailabilityStatus, height uint64, methods methods.Methods) protocol.UpstreamEvent {

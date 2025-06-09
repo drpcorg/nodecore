@@ -140,7 +140,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", test.params)
+			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", test.params, false)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -363,7 +363,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x3"]`))
+			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x3"]`), false)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 			assert.True(t, ok)

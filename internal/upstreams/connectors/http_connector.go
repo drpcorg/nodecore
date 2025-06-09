@@ -34,7 +34,7 @@ func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, 
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	url, httpMethod, err := h.requestParams(request)
 	if err != nil {
-		return h.createReplyError(
+		return protocol.CreateReplyError(
 			request,
 			protocol.ClientError(err),
 		)
@@ -42,7 +42,7 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 
 	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewReader(request.Body()))
 	if err != nil {
-		return h.createReplyError(
+		return protocol.CreateReplyError(
 			request,
 			protocol.ClientError(fmt.Errorf("error creating an http request: %v", err)),
 		)
@@ -54,7 +54,7 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return h.createReplyError(
+		return protocol.CreateReplyError(
 			request,
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to get an http response: %v", err)),
 		)
@@ -88,21 +88,13 @@ func closeBodyReader(ctx context.Context, bodyReader io.ReadCloser) {
 func (h *HttpConnector) receiveWholeResponse(request protocol.RequestHolder, status int, reader io.Reader) protocol.ResponseHolder {
 	body, err := io.ReadAll(reader)
 	if err != nil {
-		return h.createReplyError(
+		return protocol.CreateReplyError(
 			request,
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to read an http response: %v", err)),
 		)
 	}
 
 	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType())
-}
-
-func (h *HttpConnector) createReplyError(request protocol.RequestHolder, responseError *protocol.ResponseError) *protocol.ReplyError {
-	return protocol.NewReplyError(
-		request.Id(),
-		responseError,
-		request.RequestType(),
-	)
 }
 
 func (h *HttpConnector) GetType() protocol.ApiConnectorType {

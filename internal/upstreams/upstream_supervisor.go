@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
+	"github.com/rs/zerolog/log"
 )
 
 type UpstreamSupervisor interface {
@@ -34,7 +35,7 @@ func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.Upst
 		chainSupervisors: utils.CMap[chains.Chain, ChainSupervisor]{},
 		eventsChan:       make(chan protocol.UpstreamEvent, 100),
 		upstreamsConfig:  upstreamsConfig,
-		executor:         createExecutor(createHedgePolicy(upstreamsConfig.FailsafeConfig.HedgeConfig)),
+		executor:         CreateExecutor(CreateHedgePolicy(upstreamsConfig.FailsafeConfig.HedgeConfig)),
 	}
 }
 
@@ -61,7 +62,11 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 	for _, upConfig := range u.upstreamsConfig.Upstreams {
 		go func() {
-			up := NewUpstream(u.ctx, upConfig)
+			up, err := NewUpstream(u.ctx, upConfig)
+			if err != nil {
+				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
+				return
+			}
 			up.Start()
 
 			u.upstreams.Store(up.Id, up)

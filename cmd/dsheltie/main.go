@@ -36,7 +36,7 @@ func main() {
 	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig)
 	go upstreamSupervisor.StartUpstreams()
 
-	cacheProcessor := caches.NewCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, 1*time.Second)
+	cacheProcessor := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, 1*time.Second)
 
 	appCtx := server.NewApplicationContext(upstreamSupervisor, cacheProcessor)
 

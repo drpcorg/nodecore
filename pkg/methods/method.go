@@ -13,10 +13,11 @@ import (
 )
 
 type Method struct {
-	enabled   bool
-	cacheable bool
-	parser    *jqParser
-	Name      string
+	enabled      bool
+	cacheable    bool
+	parser       *jqParser
+	Subscription *Subscription
+	Name         string
 }
 
 type jqParser struct {
@@ -68,16 +69,23 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 		}
 	}
 
+	var sub *Subscription
 	cacheable := true
-	if methodData.Settings != nil && methodData.Settings.Cacheable != nil {
-		cacheable = *methodData.Settings.Cacheable
+	if methodData.Settings != nil {
+		if methodData.Settings.Cacheable != nil {
+			cacheable = *methodData.Settings.Cacheable
+		}
+		if methodData.Settings.Subscription != nil {
+			sub = methodData.Settings.Subscription
+		}
 	}
 
 	return &Method{
-		enabled:   lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
-		cacheable: cacheable,
-		Name:      methodData.Name,
-		parser:    parser,
+		enabled:      lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
+		cacheable:    cacheable,
+		Name:         methodData.Name,
+		parser:       parser,
+		Subscription: sub,
 	}, nil
 }
 

@@ -83,7 +83,7 @@ type MethodMatcher struct {
 	method string
 }
 
-func (m *MethodMatcher) Match(upId string, state *protocol.UpstreamState) MatchResponse {
+func (m *MethodMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
 	if state.UpstreamMethods.HasMethod(m.method) {
 		return SuccessResponse{}
 	} else {
@@ -97,6 +97,24 @@ func NewMethodMatcher(method string) *MethodMatcher {
 
 var _ Matcher = (*MethodMatcher)(nil)
 
+type WsCapMatcher struct {
+	method string
+}
+
+func (w *WsCapMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if state.Caps.ContainsOne(protocol.WsCap) {
+		return SuccessResponse{}
+	} else {
+		return MethodResponse{method: w.method}
+	}
+}
+
+var _ Matcher = (*WsCapMatcher)(nil)
+
+func NewWsCapMatcher(method string) *WsCapMatcher {
+	return &WsCapMatcher{method: method}
+}
+
 type MultiMatcher struct {
 	matchers []Matcher
 }
@@ -106,7 +124,7 @@ func (m *MultiMatcher) Match(upId string, state *protocol.UpstreamState) MatchRe
 	for _, matcher := range m.matchers {
 		matchedResponse := matcher.Match(upId, state)
 		if matchedResponse.Type() != SuccessType {
-			log.Debug().Msgf("upstream %s check: %s", upId, matchedResponse.Cause())
+			log.Info().Msgf("upstream %s check: %s", upId, matchedResponse.Cause())
 		}
 		if matchedResponse.Type() < response.Type() {
 			response = matchedResponse

@@ -37,7 +37,13 @@ func (b *BaseStrategy) SelectUpstream(request protocol.RequestHolder) (string, e
 
 	pos := index.Add(1) % uint64(len(upstreamIds))
 	upstreamIds = append(upstreamIds[pos:], upstreamIds[:pos]...)
-	multiMatcher := NewMultiMatcher(NewStatusMatcher(), NewMethodMatcher(request.Method()))
+
+	matchers := append(make([]Matcher, 0), NewStatusMatcher(), NewMethodMatcher(request.Method()))
+	if request.IsSubscribe() {
+		matchers = append(matchers, NewWsCapMatcher(request.Method()))
+	}
+
+	multiMatcher := NewMultiMatcher(matchers...)
 
 	for i := 0; i < len(upstreamIds); i++ {
 		upstreamState := b.chainSupervisor.GetUpstreamState(upstreamIds[i])

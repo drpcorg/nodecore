@@ -12,16 +12,21 @@ import (
 	"time"
 )
 
-type CacheProcessor struct {
+type CacheProcessor interface {
+	Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte)
+	Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool)
+}
+
+type BaseCacheProcessor struct {
 	policies       []*CachePolicy
 	receiveTimeout time.Duration
 }
 
-func NewCacheProcessor(
+func NewBaseCacheProcessor(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheConfig *config.CacheConfig,
 	receiveTimeout time.Duration,
-) *CacheProcessor {
+) *BaseCacheProcessor {
 	cacheConnectors := lo.FilterMap(cacheConfig.CacheConnectors, func(item *config.CacheConnectorConfig, index int) (CacheConnector, bool) {
 		switch item.Driver {
 		case config.Memory:
@@ -41,13 +46,13 @@ func NewCacheProcessor(
 		return nil, false
 	})
 
-	return &CacheProcessor{
+	return &BaseCacheProcessor{
 		receiveTimeout: receiveTimeout,
 		policies:       cachePolicies,
 	}
 }
 
-func (c *CacheProcessor) Store(
+func (c *BaseCacheProcessor) Store(
 	ctx context.Context,
 	chain chains.Chain,
 	request protocol.RequestHolder,
@@ -58,7 +63,7 @@ func (c *CacheProcessor) Store(
 	}
 }
 
-func (c *CacheProcessor) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
+func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
 	if len(c.policies) == 0 {
 		return nil, false
 	}
