@@ -30,10 +30,10 @@ type Response struct {
 
 type ApplicationContext struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
-	cacheProcessor     *caches.CacheProcessor
+	cacheProcessor     caches.CacheProcessor
 }
 
-func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor, cacheProcessor *caches.CacheProcessor) *ApplicationContext {
+func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor, cacheProcessor caches.CacheProcessor) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
 		cacheProcessor:     cacheProcessor,
@@ -65,6 +65,10 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpGroup := httpServer.Group("/queries/:chain")
 	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			if c.Request().Header.Get("Upgrade") == "websocket" {
+				handleWebsocket(c, appCtx)
+				return nil
+			}
 			return handleHttp(c, appCtx)
 		}
 	})
@@ -85,7 +89,7 @@ func handleHttp(reqCtx echo.Context, appCtx *ApplicationContext) error {
 	var err error
 	var reqType protocol.RequestType
 	if httpRequest.Method == "POST" && len(path) == 2 && path[1] == "" {
-		requestHandler, err = NewJsonRpcHandler(preRequest, httpRequest.Body)
+		requestHandler, err = NewJsonRpcHandler(preRequest, httpRequest.Body, false)
 		reqType = protocol.JsonRpc
 	} else {
 		requestHandler, err = NewRestHandler(preRequest, "", httpRequest.Body)
@@ -100,7 +104,7 @@ func handleHttp(reqCtx echo.Context, appCtx *ApplicationContext) error {
 			resp.EncodeResponse([]byte("0")),
 		)
 	}
-	responseWrappers := handleRequest(ctx, requestHandler, appCtx)
+	responseWrappers := handleRequest(ctx, requestHandler, appCtx, nil)
 
 	return handleResponse(ctx, requestHandler, reqCtx.Response(), responseWrappers)
 }
@@ -144,10 +148,10 @@ func writeResponse(httpResponse *echo.Response, code int, responseReader io.Read
 	return err
 }
 
-func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *ApplicationContext) chan *protocol.ResponseHolderWrapper {
+func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *ApplicationContext, subCtx *flow.SubCtx) chan *protocol.ResponseHolderWrapper {
 	request, err := requestHandler.RequestDecode(ctx)
 	if err != nil {
-		return createWrapperFromError(request, protocol.ParseError(), requestHandler.GetRequestType())
+		return createWrapperFromError(request, err, requestHandler.GetRequestType())
 	}
 	if !chains.IsSupported(request.Chain) {
 		return createWrapperFromError(request, protocol.WrongChainError(request.Chain), requestHandler.GetRequestType())
@@ -158,7 +162,7 @@ func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *A
 		return createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType())
 	}
 
-	executionFlow := flow.NewSingleRequestExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor)
+	executionFlow := flow.NewBaseExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor, subCtx)
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 
@@ -175,7 +179,7 @@ func createWrapperFromError(request *Request, err error, requestType protocol.Re
 		}
 	}
 	go func() {
-		if len(request.UpstreamRequests) == 0 {
+		if request == nil || len(request.UpstreamRequests) == 0 {
 			respChan <- errWrapper("0")
 		} else {
 			for _, req := range request.UpstreamRequests {

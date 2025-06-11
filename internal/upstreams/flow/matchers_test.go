@@ -1,6 +1,7 @@
 package flow_test
 
 import (
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
@@ -81,4 +82,25 @@ func TestStatusMatcherNotAvailable(t *testing.T) {
 	assert.Equal(t, flow.AvailabilityResponse{}, resp)
 	assert.Equal(t, "upstream is not available", resp.Cause())
 	assert.Equal(t, flow.AvailabilityType, resp.Type())
+}
+
+func TestWsCapMatcher(t *testing.T) {
+	matcher := flow.NewWsCapMatcher("sub")
+	state := protocol.UpstreamState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap)}
+
+	resp := matcher.Match("1", &state)
+
+	assert.Equal(t, flow.SuccessResponse{}, resp)
+	assert.Equal(t, flow.SuccessType, resp.Type())
+}
+
+func TestWsCapMatcherNotAvailable(t *testing.T) {
+	matcher := flow.NewWsCapMatcher("sub")
+	state := protocol.UpstreamState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()}
+
+	resp := matcher.Match("1", &state)
+
+	assert.IsType(t, flow.MethodResponse{}, resp)
+	assert.Equal(t, flow.MethodType, resp.Type())
+	assert.Equal(t, "method sub is not supported", resp.Cause())
 }

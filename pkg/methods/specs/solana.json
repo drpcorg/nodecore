@@ -391,6 +391,132 @@
       "settings": {
         "cacheable": false
       }
+    },
+    {
+      "name": "accountSubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "accountUnsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "accountUnsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "blockSubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "blockUnsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "blockUnsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "logsSubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "logsUnsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "logsUnsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "programSubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "programUnsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "programUnsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "signatureSubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "signatureUnsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "signatureUnsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "slotSubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "slotUnsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "slotUnsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
     }
   ]
 }

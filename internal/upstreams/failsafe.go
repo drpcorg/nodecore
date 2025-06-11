@@ -28,11 +28,11 @@ func ExecutionError(hedgeCount int, err error) error {
 	}
 }
 
-func createExecutor(policies ...failsafe.Policy[*protocol.ResponseHolderWrapper]) failsafe.Executor[*protocol.ResponseHolderWrapper] {
+func CreateExecutor(policies ...failsafe.Policy[*protocol.ResponseHolderWrapper]) failsafe.Executor[*protocol.ResponseHolderWrapper] {
 	return failsafe.NewExecutor[*protocol.ResponseHolderWrapper](policies...)
 }
 
-func createHedgePolicy(hedgeConfig *config.HedgeConfig) failsafe.Policy[*protocol.ResponseHolderWrapper] {
+func CreateHedgePolicy(hedgeConfig *config.HedgeConfig) failsafe.Policy[*protocol.ResponseHolderWrapper] {
 	hedgePolicy := hedgepolicy.BuilderWithDelay[*protocol.ResponseHolderWrapper](hedgeConfig.Delay).
 		WithMaxHedges(hedgeConfig.Count).
 		OnHedge(func(event failsafe.ExecutionEvent[*protocol.ResponseHolderWrapper]) {

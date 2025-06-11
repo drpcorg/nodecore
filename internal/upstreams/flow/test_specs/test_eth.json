@@ -1,0 +1,33 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Ethereum JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "eth"
+  },
+  "methods": [
+    {
+      "name": "eth_subscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "unsubscribe-method": "eth_unsubscribe"
+        }
+      },
+      "params": []
+    },
+    {
+      "name": "eth_unsubscribe",
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-unsubscribe": true
+        }
+      },
+      "params": []
+    }
+  ]
+}

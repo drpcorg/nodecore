@@ -21,7 +21,7 @@ type jsonRpcReqWithoutId struct {
 func TestCreateJsonRpcHandlerOk(t *testing.T) {
 	req := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(`{"method": "eth_test"}`))
-	handler, err := server.NewJsonRpcHandler(&req, bodyReader)
+	handler, err := server.NewJsonRpcHandler(&req, bodyReader, false)
 
 	assert.Nil(t, err)
 	assert.True(t, handler.IsSingle())
@@ -31,7 +31,7 @@ func TestCreateJsonRpcHandlerOk(t *testing.T) {
 func TestCreateJsonRpcHandlerWithArrayOk(t *testing.T) {
 	req := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(`[{"method": "eth_test"}]`))
-	handler, err := server.NewJsonRpcHandler(&req, bodyReader)
+	handler, err := server.NewJsonRpcHandler(&req, bodyReader, false)
 
 	assert.Nil(t, err)
 	assert.False(t, handler.IsSingle())
@@ -41,7 +41,7 @@ func TestCreateJsonRpcHandlerWithArrayOk(t *testing.T) {
 func TestCreateJsonRpcHandlerWithEmptyBodyThenError(t *testing.T) {
 	req := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(``))
-	_, err := server.NewJsonRpcHandler(&req, bodyReader)
+	_, err := server.NewJsonRpcHandler(&req, bodyReader, false)
 
 	assert.True(t, errors.Is(err, decoder.SyntaxError{}))
 }
@@ -49,7 +49,7 @@ func TestCreateJsonRpcHandlerWithEmptyBodyThenError(t *testing.T) {
 func TestDecodeSingleRequestJsonRpcHandler(t *testing.T) {
 	preReq := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(`{"id":1,"method": "eth_test", "params": [false, 0, {"key": "value"}]}`))
-	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader)
+	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader, false)
 
 	assert.Nil(t, err)
 
@@ -77,7 +77,7 @@ func TestDecodeSingleRequestJsonRpcHandler(t *testing.T) {
 func TestDecodeSingleMultipleJsonRpcHandler(t *testing.T) {
 	preReq := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(`[{"id":1,"method": "eth_test", "params": [false, 0, {"key": "value"}]}, {"id":1,"method": "eth_test2"}]`))
-	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader)
+	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader, false)
 
 	assert.Nil(t, err)
 
@@ -125,7 +125,7 @@ func TestDecodeSingleMultipleJsonRpcHandler(t *testing.T) {
 func TestEncodeResponseJsonRpcHandlerWithNoRequests(t *testing.T) {
 	req := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(`{"method": "eth_test"}`))
-	handler, err := server.NewJsonRpcHandler(&req, bodyReader)
+	handler, err := server.NewJsonRpcHandler(&req, bodyReader, false)
 
 	assert.Nil(t, err)
 
@@ -138,7 +138,7 @@ func TestEncodeResponseJsonRpcHandlerWithNoRequests(t *testing.T) {
 func TestEncodeResponseJsonRpcHandlerOk(t *testing.T) {
 	preReq := server.Request{Chain: "chain"}
 	bodyReader := bytes.NewReader([]byte(`{"id":1,"method": "eth_test", "params": [false, 0, {"key": "value"}]}`))
-	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader)
+	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader, false)
 
 	assert.Nil(t, err)
 

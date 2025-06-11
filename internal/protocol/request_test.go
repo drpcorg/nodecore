@@ -12,7 +12,7 @@ import (
 )
 
 func TestGenerateRequestHashWithoutParams(t *testing.T) {
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil)
+	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil, false)
 
 	assert.Nil(t, err)
 	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte(request.Method())))
@@ -25,7 +25,7 @@ func TestGenerateRequestHashWithoutParams(t *testing.T) {
 }
 
 func TestGenerateRequestHashWithParams(t *testing.T) {
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`"params"`))
+	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`"params"`), false)
 
 	assert.Nil(t, err)
 	expected := fmt.Sprintf("%x", blake2b.Sum256(append([]byte(`"params"`), []byte(request.Method())...)))
@@ -59,7 +59,7 @@ func TestRestRequestHashFromBody(t *testing.T) {
 }
 
 func TestHttpRequestParseParamWithoutMethodThenNil(t *testing.T) {
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil)
+	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil, false)
 	assert.Nil(t, err)
 
 	param := request.ParseParams(context.Background(), nil)
@@ -69,7 +69,7 @@ func TestHttpRequestParseParamWithoutMethodThenNil(t *testing.T) {
 func TestHttpRequestParseParams(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
 	method := specs.MethodWithSettings("eth_call", nil, &tagParser)
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x4"]`))
+	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x4"]`), false)
 	assert.Nil(t, err)
 
 	param := request.ParseParams(context.Background(), method)

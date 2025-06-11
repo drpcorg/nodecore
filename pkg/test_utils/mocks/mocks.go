@@ -5,7 +5,6 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
-	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
@@ -13,12 +12,47 @@ import (
 	"time"
 )
 
-type HttpConnectorMock struct {
+type MockStrategy struct {
 	mock.Mock
 }
 
+func (m *MockStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
+	args := m.Called(request)
+	return args.Get(0).(string), args.Error(1)
+}
+
+func NewMockStrategy() *MockStrategy {
+	return &MockStrategy{}
+}
+
+type CacheProcessorMock struct {
+	mock.Mock
+}
+
+func (c *CacheProcessorMock) Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte) {
+	c.Called(ctx, chain, request, response)
+}
+
+func (c *CacheProcessorMock) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
+	args := c.Called(ctx, chain, request)
+	return args.Get(0).([]byte), args.Get(1).(bool)
+}
+
+func NewCacheProcessorMock() *CacheProcessorMock {
+	return &CacheProcessorMock{}
+}
+
+type HttpConnectorMock struct {
+	mock.Mock
+	connectorType protocol.ApiConnectorType
+}
+
 func NewHttpConnectorMock() *HttpConnectorMock {
-	return &HttpConnectorMock{}
+	return &HttpConnectorMock{connectorType: protocol.JsonRpcConnector}
+}
+
+func NewHttpConnectorMockWithType(connectorType protocol.ApiConnectorType) *HttpConnectorMock {
+	return &HttpConnectorMock{connectorType: connectorType}
 }
 
 func (c *HttpConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
@@ -31,7 +65,7 @@ func (c *HttpConnectorMock) Subscribe(ctx context.Context, request protocol.Requ
 }
 
 func (c *HttpConnectorMock) GetType() protocol.ApiConnectorType {
-	return protocol.JsonRpcConnector
+	return c.connectorType
 }
 
 type WsConnectorMock struct {
@@ -48,13 +82,13 @@ func (c *WsConnectorMock) SendRequest(ctx context.Context, request protocol.Requ
 
 func (c *WsConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	args := c.Called(ctx, request)
-	var err error
-	if args.Get(1) == nil {
-		err = nil
+	var response protocol.UpstreamSubscriptionResponse
+	if args.Get(0) == nil {
+		response = nil
 	} else {
-		err = args.Get(1).(error)
+		response = args.Get(0).(protocol.UpstreamSubscriptionResponse)
 	}
-	return args.Get(0).(protocol.UpstreamSubscriptionResponse), err
+	return response, args.Error(1)
 }
 
 func (c *WsConnectorMock) GetType() protocol.ApiConnectorType {
@@ -76,24 +110,12 @@ func (c *CacheConnectorMock) Id() string {
 
 func (c *CacheConnectorMock) Store(ctx context.Context, key string, object string, ttl time.Duration) error {
 	args := c.Called(ctx, key, object, ttl)
-	var err error
-	if args.Get(0) == nil {
-		err = nil
-	} else {
-		err = args.Get(0).(error)
-	}
-	return err
+	return args.Error(0)
 }
 
 func (c *CacheConnectorMock) Receive(ctx context.Context, key string) ([]byte, error) {
 	args := c.Called(ctx, key)
-	var err error
-	if args.Get(1) == nil {
-		err = nil
-	} else {
-		err = args.Get(1).(error)
-	}
-	return args.Get(0).([]byte), err
+	return args.Get(0).([]byte), args.Error(1)
 }
 
 type DelayedConnector struct {
@@ -122,8 +144,6 @@ func (d *DelayedConnector) Receive(ctx context.Context, key string) ([]byte, err
 type MethodsMock struct {
 	mock.Mock
 }
-
-var _ methods.Methods = (*MethodsMock)(nil)
 
 func NewMethodsMock() *MethodsMock {
 	return &MethodsMock{}
@@ -186,4 +206,32 @@ func (u *UpstreamSupervisorMock) StartUpstreams() {
 	u.Called()
 }
 
-var _ upstreams.UpstreamSupervisor = (*UpstreamSupervisorMock)(nil)
+type WsConnectionMock struct {
+	mock.Mock
+}
+
+func (w *WsConnectionMock) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
+	args := w.Called(ctx, upstreamRequest)
+	var response *protocol.WsResponse
+	if args.Get(0) == nil {
+		response = nil
+	} else {
+		response = args.Get(0).(*protocol.WsResponse)
+	}
+	return response, args.Error(1)
+}
+
+func (w *WsConnectionMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+	args := w.Called(ctx, upstreamRequest)
+	var responses chan *protocol.WsResponse
+	if args.Get(0) == nil {
+		responses = nil
+	} else {
+		responses = args.Get(0).(chan *protocol.WsResponse)
+	}
+	return responses, args.Error(1)
+}
+
+func NewWsConnectionMock() *WsConnectionMock {
+	return &WsConnectionMock{}
+}

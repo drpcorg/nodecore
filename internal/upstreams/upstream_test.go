@@ -4,13 +4,9 @@ import (
 	"context"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams"
-	"github.com/drpcorg/dsheltie/internal/upstreams/blocks"
-	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
-	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"testing"
@@ -37,7 +33,7 @@ func TestUpstreamEvents(t *testing.T) {
 		PollInterval: 10 * time.Millisecond,
 	}
 
-	upstream := testUpstream(ctx, connector, upConfig)
+	upstream := test_utils.TestUpstream(ctx, connector, upConfig)
 	go upstream.Start()
 
 	sub := upstream.Subscribe("name")
@@ -60,18 +56,4 @@ func TestUpstreamEvents(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, expected, event)
 	assert.Equal(t, state, upstream.GetUpstreamState())
-}
-
-func testUpstream(ctx context.Context, connector connectors.ApiConnector, upConfig *config.Upstream) *upstreams.Upstream {
-	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.UpstreamState{Status: protocol.Available})
-
-	return upstreams.NewUpstreamWithParams(
-		context.Background(),
-		"id",
-		chains.ETHEREUM,
-		[]connectors.ApiConnector{connector},
-		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
-		upState,
-	)
 }

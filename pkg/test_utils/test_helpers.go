@@ -8,11 +8,15 @@ import (
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
+	"github.com/drpcorg/dsheltie/internal/upstreams/blocks"
+	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
+	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
+	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/stretchr/testify/mock"
 	"time"
 )
@@ -86,10 +90,24 @@ func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervis
 	go chainSupervisor.Start()
 
 	chainSupervisor.Publish(CreateEvent("id", protocol.Available, 100, methodsMock))
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
 
 	return methodsMock, upSupervisor
+}
+
+func TestUpstream(ctx context.Context, connector connectors.ApiConnector, upConfig *config.Upstream) *upstreams.Upstream {
+	upState := utils.NewAtomic[protocol.UpstreamState]()
+	upState.Store(protocol.UpstreamState{Status: protocol.Available})
+
+	return upstreams.NewUpstreamWithParams(
+		context.Background(),
+		"id",
+		chains.ETHEREUM,
+		[]connectors.ApiConnector{connector},
+		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
+		upState,
+	)
 }

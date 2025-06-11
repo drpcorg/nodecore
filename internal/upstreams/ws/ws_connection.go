@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
@@ -21,20 +22,27 @@ const (
 
 var wsBufferPool = new(sync.Pool)
 
-type WsConnection struct {
+type WsConnection interface {
+	SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error)
+	SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error)
+}
+
+type JsonRpcWsConnection struct {
 	writeMutex sync.Mutex
 
+	upId        string
+	methodSpec  string
 	endpoint    string
 	rpcTimeout  time.Duration
 	ctx         context.Context
 	connectFunc func() (*websocket.Conn, error)
-	connection  *websocket.Conn
+	connection  *utils.Atomic[*websocket.Conn]
 	internalId  atomic.Uint64
 	requests    utils.CMap[string, reqOp] // to store internal ids and websocket requests
 	subs        utils.CMap[string, reqOp] // to store a subId and its request to identify events
 }
 
-func NewWsConnection(ctx context.Context, endpoint string, additionalHeaders map[string]string) *WsConnection {
+func NewJsonRpcWsConnection(ctx context.Context, upId, methodSpec, endpoint string, additionalHeaders map[string]string) WsConnection {
 	log.Info().Msgf("connecting to %s", endpoint)
 
 	dialer := &websocket.Dialer{
@@ -43,7 +51,7 @@ func NewWsConnection(ctx context.Context, endpoint string, additionalHeaders map
 		WriteBufferPool: wsBufferPool,
 		Proxy:           http.ProxyFromEnvironment,
 	}
-	var header http.Header
+	var header http.Header = map[string][]string{}
 	for key, val := range additionalHeaders {
 		header.Add(key, val)
 	}
@@ -56,13 +64,16 @@ func NewWsConnection(ctx context.Context, endpoint string, additionalHeaders map
 		return conn, nil
 	}
 
-	wsConnection := &WsConnection{
+	wsConnection := &JsonRpcWsConnection{
+		upId:        upId,
+		methodSpec:  methodSpec,
 		endpoint:    endpoint,
 		ctx:         ctx,
 		connectFunc: connectFunc,
 		requests:    utils.CMap[string, reqOp]{},
 		subs:        utils.CMap[string, reqOp]{},
 		rpcTimeout:  1 * time.Minute,
+		connection:  utils.NewAtomic[*websocket.Conn](),
 	}
 
 	err := wsConnection.connect()
@@ -73,7 +84,7 @@ func NewWsConnection(ctx context.Context, endpoint string, additionalHeaders map
 	return wsConnection
 }
 
-func (w *WsConnection) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
+func (w *JsonRpcWsConnection) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -95,7 +106,7 @@ func (w *WsConnection) SendRpcRequest(ctx context.Context, upstreamRequest proto
 	}
 }
 
-func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+func (w *JsonRpcWsConnection) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
 	jsonBody, err := sonic.Get(upstreamRequest.Body())
 	if err != nil {
 		return nil, fmt.Errorf("invalid json-rpc request, cause %s", err.Error())
@@ -129,31 +140,31 @@ func (w *WsConnection) SendWsRequest(ctx context.Context, upstreamRequest protoc
 	return req.responseChan, nil
 }
 
-func (w *WsConnection) connect() error {
+func (w *JsonRpcWsConnection) connect() error {
 	conn, err := w.connectFunc()
 	if err != nil {
 		log.Warn().Err(err).Msgf("couldn't connect to %s, trying to reconnect", w.endpoint)
 		return err
 	} else {
-		if w.connection != nil {
+		if w.connection.Load() != nil {
 			w.completeAll()
 		}
 
 		log.Info().Msgf("connected to %s, listening to messages", w.endpoint)
 
-		w.connection = conn
+		w.connection.Store(conn)
 		go w.processMessages()
 	}
 	return nil
 }
 
-func (w *WsConnection) reconnect() {
+func (w *JsonRpcWsConnection) reconnect() {
 	for {
 		err := w.connect()
 		if err == nil {
 			break
 		}
-		time.Sleep(5 * time.Second) //TODO: refactor to exponential backoff policy
+		time.Sleep(10 * time.Second) //TODO: refactor to exponential backoff policy
 	}
 }
 
@@ -161,7 +172,7 @@ func (r *reqOp) writeInternal(message *protocol.WsResponse) {
 	r.internalMessages <- message
 }
 
-func (w *WsConnection) startProcess(r *reqOp) {
+func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 	for {
 		select {
 		case <-r.ctx.Done():
@@ -176,9 +187,9 @@ func (w *WsConnection) startProcess(r *reqOp) {
 	}
 }
 
-func (w *WsConnection) processMessages() {
+func (w *JsonRpcWsConnection) processMessages() {
 	for {
-		_, message, err := w.connection.ReadMessage()
+		_, message, err := w.connection.Load().ReadMessage()
 		if err != nil {
 			log.Warn().Err(err).Msgf("couldn't read message from %s, trying to reconnect", w.endpoint)
 			w.reconnect()
@@ -196,7 +207,7 @@ func (w *WsConnection) processMessages() {
 	}
 }
 
-func (w *WsConnection) onRpcMessage(response *protocol.WsResponse) {
+func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 	if req, ok := w.requests.Load(response.Id); ok {
 		defer w.requests.Delete(response.Id)
 
@@ -205,14 +216,14 @@ func (w *WsConnection) onRpcMessage(response *protocol.WsResponse) {
 		}
 
 		req.writeInternal(response)
-		if IsSubscribeMethod(req.method) {
+		if response.Error == nil && specs.IsSubscribeMethod(w.methodSpec, req.method) {
 			req.subId = protocol.ResultAsString(response.Message)
 			w.subs.Store(req.subId, req)
 		}
 	}
 }
 
-func (w *WsConnection) onSubscriptionMessage(response *protocol.WsResponse) {
+func (w *JsonRpcWsConnection) onSubscriptionMessage(response *protocol.WsResponse) {
 	if req, ok := w.subs.Load(response.SubId); ok {
 		if req.completed.Load() {
 			w.subs.Delete(response.SubId)
@@ -222,15 +233,15 @@ func (w *WsConnection) onSubscriptionMessage(response *protocol.WsResponse) {
 	}
 }
 
-func (w *WsConnection) writeMessage(message []byte) error {
+func (w *JsonRpcWsConnection) writeMessage(message []byte) error {
 	w.writeMutex.Lock()
 	defer w.writeMutex.Unlock()
 
-	if w.connection == nil {
+	if w.connection.Load() == nil {
 		return fmt.Errorf("no connection to %s", w.endpoint)
 	}
 
-	err := w.connection.WriteMessage(websocket.TextMessage, message)
+	err := w.connection.Load().WriteMessage(websocket.TextMessage, message)
 	if err != nil {
 		return err
 	}
@@ -238,8 +249,8 @@ func (w *WsConnection) writeMessage(message []byte) error {
 	return nil
 }
 
-func (w *WsConnection) completeAll() {
-	err := w.connection.Close()
+func (w *JsonRpcWsConnection) completeAll() {
+	err := w.connection.Load().Close()
 	if err != nil {
 		log.Warn().Err(err).Msg("couldn't close a ws connection")
 	}
@@ -254,9 +265,9 @@ func (w *WsConnection) completeAll() {
 	})
 }
 
-func (w *WsConnection) unsubscribe(op *reqOp) {
+func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
-		if unsubMethod, ok := GetUnsubscribeMethod(op.method); ok {
+		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method); ok {
 			params := []interface{}{op.subId}
 			unsubReq, err := protocol.NewInternalJsonRpcUpstreamRequest(unsubMethod, params)
 			if err != nil {
@@ -266,7 +277,7 @@ func (w *WsConnection) unsubscribe(op *reqOp) {
 				if err != nil {
 					log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s and subId %s", unsubMethod, op.subId)
 				} else {
-					log.Debug().Msgf("sub %s has been successfully stopped", op.subId)
+					log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
 				}
 			}
 		}

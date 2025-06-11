@@ -52,25 +52,33 @@ func (u *Upstream) Stop() {
 	u.cancelFunc()
 }
 
-func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
+func NewUpstream(ctx context.Context, config *config.Upstream) (*Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(config.ChainName)
 	apiConnectors := make([]connectors.ApiConnector, 0)
+	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
 
 	var headConnector connectors.ApiConnector
 	for _, connectorConfig := range config.Connectors {
-		apiConnector := createConnector(ctx, connectorConfig)
+		apiConnector := createConnector(ctx, config.Id, configuredChain.MethodSpec, connectorConfig)
 		if connectorConfig.Type == config.HeadConnector {
 			headConnector = apiConnector
+		}
+		if apiConnector.GetType() == protocol.WsConnector {
+			caps.Add(protocol.WsCap)
 		}
 		apiConnectors = append(apiConnectors, apiConnector)
 	}
 	chainSpecific := getChainSpecific(configuredChain.Type)
 
-	upstreamMethods, _ := methods.NewUpstreamMethods(configuredChain.MethodSpec, config.Methods)
+	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, config.Methods)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.DefaultUpstreamState(upstreamMethods))
+	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps))
 
 	return &Upstream{
 		Id:             config.Id,
@@ -84,7 +92,7 @@ func NewUpstream(ctx context.Context, config *config.Upstream) *Upstream {
 		subManager:     utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", config.Id)),
 		stateChan:      make(chan protocol.AbstractUpstreamStateEvent, 100),
 		chainSpecific:  chainSpecific,
-	}
+	}, nil
 }
 
 func NewUpstreamWithParams(
@@ -112,14 +120,6 @@ func NewUpstreamWithParams(
 
 func (u *Upstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
 	return u.subManager.Subscribe(name)
-}
-
-func (u *Upstream) GetSupportedMethods() mapset.Set[string] {
-	return u.upstreamState.Load().UpstreamMethods.GetSupportedMethods()
-}
-
-func (u *Upstream) HasMethod(method string) bool {
-	return u.upstreamState.Load().UpstreamMethods.HasMethod(method)
 }
 
 func (u *Upstream) GetUpstreamState() protocol.UpstreamState {
@@ -203,12 +203,12 @@ func (u *Upstream) handleSubscriptions() {
 	}
 }
 
-func createConnector(ctx context.Context, connectorConfig *config.ApiConnectorConfig) connectors.ApiConnector {
+func createConnector(ctx context.Context, upId, methodSpec string, connectorConfig *config.ApiConnectorConfig) connectors.ApiConnector {
 	switch connectorConfig.Type {
 	case config.JsonRpc:
 		return connectors.NewHttpConnector(connectorConfig.Url, protocol.JsonRpcConnector, connectorConfig.Headers)
 	case config.Ws:
-		connection := ws.NewWsConnection(ctx, connectorConfig.Url, connectorConfig.Headers)
+		connection := ws.NewJsonRpcWsConnection(ctx, upId, methodSpec, connectorConfig.Url, connectorConfig.Headers)
 		return connectors.NewWsConnector(connection)
 	case config.Rest:
 		return connectors.NewHttpConnector(connectorConfig.Url, protocol.RestConnector, connectorConfig.Headers)

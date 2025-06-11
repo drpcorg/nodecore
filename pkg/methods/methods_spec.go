@@ -38,7 +38,14 @@ type MethodData struct {
 }
 
 type MethodSettings struct {
-	Cacheable *bool `json:"cacheable"`
+	Cacheable    *bool         `json:"cacheable"`
+	Subscription *Subscription `json:"subscription"`
+}
+
+type Subscription struct {
+	IsSubscribe   bool   `json:"is-subscribe"`
+	IsUnsubscribe bool   `json:"is-unsubscribe"`
+	UnsubMethod   string `json:"unsubscribe-method"`
 }
 
 type ParserReturnType string
@@ -63,6 +70,42 @@ func GetSpecMethods(specName string) map[string]map[string]*Method {
 		return nil
 	}
 	return maps.Clone(methods)
+}
+
+func IsSubscribeMethod(specName, methodName string) bool {
+	subSettings := subscribeSettings(specName, methodName)
+	if subSettings == nil {
+		return false
+	}
+	return subSettings.IsSubscribe
+}
+
+func IsUnsubscribeMethod(specName, methodName string) bool {
+	subSettings := subscribeSettings(specName, methodName)
+	if subSettings == nil {
+		return false
+	}
+	return subSettings.IsUnsubscribe
+}
+
+func GetUnsubscribeMethod(specName, methodName string) (string, bool) {
+	subSettings := subscribeSettings(specName, methodName)
+	if subSettings == nil {
+		return "", false
+	}
+	return subSettings.UnsubMethod, true
+}
+
+func subscribeSettings(specName, methodName string) *Subscription {
+	methods, ok := specMethods[specName]
+	if !ok {
+		return nil
+	}
+	method, ok := methods[DefaultMethodGroup][methodName]
+	if !ok {
+		return nil
+	}
+	return method.Subscription
 }
 
 func Load() error {

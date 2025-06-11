@@ -12,7 +12,82 @@ import (
 	"testing/iotest"
 )
 
-type HttpUpstreamResponse struct {
+type SubscriptionEventResponse struct {
+	id    string
+	event []byte
+}
+
+func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventResponse {
+	return &SubscriptionEventResponse{event: event, id: id}
+}
+
+func (s *SubscriptionEventResponse) ResponseResult() []byte {
+	return s.event
+}
+
+func (s *SubscriptionEventResponse) GetError() *ResponseError {
+	return nil
+}
+
+func (s *SubscriptionEventResponse) EncodeResponse(realId []byte) io.Reader {
+	return bytes.NewReader(s.event)
+}
+
+func (s *SubscriptionEventResponse) HasError() bool {
+	return false
+}
+
+func (s *SubscriptionEventResponse) HasStream() bool {
+	return false
+}
+
+func (s *SubscriptionEventResponse) Id() string {
+	return s.id
+}
+
+type WsJsonRpcResponse struct {
+	id     string
+	result []byte
+	error  *ResponseError
+}
+
+func NewWsJsonRpcResponse(id string, result []byte, error *ResponseError) *WsJsonRpcResponse {
+	return &WsJsonRpcResponse{
+		id:     id,
+		result: result,
+		error:  error,
+	}
+}
+
+func (w *WsJsonRpcResponse) ResponseResult() []byte {
+	return w.result
+}
+
+func (w *WsJsonRpcResponse) GetError() *ResponseError {
+	return w.error
+}
+
+func (w *WsJsonRpcResponse) EncodeResponse(realId []byte) io.Reader {
+	if w.HasError() {
+		return jsonRpcResponseReader(realId, "error", w.ResponseResult())
+	} else {
+		return jsonRpcResponseReader(realId, "result", w.ResponseResult())
+	}
+}
+
+func (w *WsJsonRpcResponse) HasError() bool {
+	return w.error != nil
+}
+
+func (w *WsJsonRpcResponse) HasStream() bool {
+	return false
+}
+
+func (w *WsJsonRpcResponse) Id() string {
+	return w.id
+}
+
+type BaseUpstreamResponse struct {
 	id          string
 	result      []byte
 	error       *ResponseError
@@ -20,49 +95,40 @@ type HttpUpstreamResponse struct {
 	stream      io.Reader
 }
 
-var _ ResponseHolder = (*HttpUpstreamResponse)(nil)
+var _ ResponseHolder = (*BaseUpstreamResponse)(nil)
 
-func (h *HttpUpstreamResponse) Id() string {
+func (h *BaseUpstreamResponse) Id() string {
 	return h.id
 }
 
-func (h *HttpUpstreamResponse) ResponseResult() []byte {
-	if h.HasError() {
-		return nil
-	}
+func (h *BaseUpstreamResponse) ResponseResult() []byte {
 	return h.result
 }
 
-func (h *HttpUpstreamResponse) HasStream() bool {
+func (h *BaseUpstreamResponse) HasStream() bool {
 	return h.stream != nil
 }
 
-func (h *HttpUpstreamResponse) GetError() *ResponseError {
+func (h *BaseUpstreamResponse) GetError() *ResponseError {
 	return h.error
 }
 
-func (h *HttpUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
+func (h *BaseUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	if h.requestType == JsonRpc {
 		if h.HasError() {
-			var errBody []byte
-			if h.result != nil {
-				errBody = h.result
-			} else {
-				errBody = []byte(h.error.Error())
-			}
-			return jsonRpcResponseReader(realId, "error", errBody)
+			return jsonRpcResponseReader(realId, "error", h.ResponseResult())
 		} else {
 			if h.stream != nil {
 				return h.stream
 			} else {
-				return jsonRpcResponseReader(realId, "result", h.result)
+				return jsonRpcResponseReader(realId, "result", h.ResponseResult())
 			}
 		}
 	}
 	return bytes.NewReader(h.result)
 }
 
-func (h *HttpUpstreamResponse) HasError() bool {
+func (h *BaseUpstreamResponse) HasError() bool {
 	return h.error != nil
 }
 
@@ -76,24 +142,24 @@ func jsonRpcResponseReader(id []byte, bodyName string, body []byte) io.Reader {
 	)
 }
 
-func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *HttpUpstreamResponse {
-	return &HttpUpstreamResponse{
+func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *BaseUpstreamResponse {
+	return &BaseUpstreamResponse{
 		id:          id,
 		requestType: requestType,
 		stream:      reader,
 	}
 }
 
-func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *HttpUpstreamResponse {
-	return &HttpUpstreamResponse{
+func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *BaseUpstreamResponse {
+	return &BaseUpstreamResponse{
 		id:          id,
 		result:      body,
 		requestType: requestType,
 	}
 }
 
-func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *HttpUpstreamResponse {
-	var response *HttpUpstreamResponse
+func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *BaseUpstreamResponse {
+	var response *BaseUpstreamResponse
 	switch requestType {
 	case JsonRpc:
 		response = parseJsonRpcBody(id, body)
@@ -106,20 +172,20 @@ func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestTy
 	return response
 }
 
-func parseHttpResponse(id string, body []byte, responseCode int) *HttpUpstreamResponse {
+func parseHttpResponse(id string, body []byte, responseCode int) *BaseUpstreamResponse {
 	var err *ResponseError
 	result := body
 	if responseCode != 200 {
 		err, result = parseError(body), body
 	}
-	return &HttpUpstreamResponse{
+	return &BaseUpstreamResponse{
 		id:     id,
 		result: result,
 		error:  err,
 	}
 }
 
-func parseJsonRpcBody(id string, body []byte) *HttpUpstreamResponse {
+func parseJsonRpcBody(id string, body []byte) *BaseUpstreamResponse {
 	var upstreamError *ResponseError
 	var result []byte
 
@@ -145,7 +211,7 @@ func parseJsonRpcBody(id string, body []byte) *HttpUpstreamResponse {
 		upstreamError = IncorrectResponseBodyError(errors.New("wrong json-rpc response - there is neither result nor error"))
 	}
 
-	return &HttpUpstreamResponse{
+	return &BaseUpstreamResponse{
 		id:     id,
 		result: result,
 		error:  upstreamError,
@@ -215,6 +281,7 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 			}
 			if len(wsMessage.Error) > 0 {
 				responseType = JsonRpc
+				message = wsMessage.Error
 				upstreamError = parseError(wsMessage.Error)
 			}
 		}
@@ -230,6 +297,7 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 		Message: message,
 		SubId:   subId,
 		Error:   upstreamError,
+		Event:   body,
 	}
 }
 
@@ -256,8 +324,8 @@ func ResultAsNumber(result []byte) uint64 {
 	return uint64(num)
 }
 
-func NewHttpUpstreamResponseWithError(error *ResponseError) *HttpUpstreamResponse {
-	return &HttpUpstreamResponse{
+func NewHttpUpstreamResponseWithError(error *ResponseError) *BaseUpstreamResponse {
+	return &BaseUpstreamResponse{
 		error: error,
 	}
 }
@@ -268,6 +336,7 @@ type WsResponse struct {
 	Message []byte
 	Type    RequestType
 	Error   *ResponseError
+	Event   []byte
 }
 
 type JsonRpcWsUpstreamResponse struct {

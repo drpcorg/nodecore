@@ -93,6 +93,15 @@ func GetChain(chainName string) ConfiguredChain {
 	return found
 }
 
+func GetMethodSpecNameByChain(chain Chain) string {
+	configuredChain := GetChain(chain.String())
+	return configuredChain.MethodSpec
+}
+
+func GetMethodSpecNameByChainName(chainName string) string {
+	return GetChain(chainName).MethodSpec
+}
+
 func configureChains() (map[string]ConfiguredChain, error) {
 	configuredChains := make(map[string]ConfiguredChain)
 
