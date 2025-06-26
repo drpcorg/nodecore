@@ -57,10 +57,10 @@ func PolicyConfigFinalized(chain, method, connector, maxSize, ttl string, cacheE
 }
 
 func CreateEvent(id string, status protocol.AvailabilityStatus, height uint64, methods methods.Methods) protocol.UpstreamEvent {
-	return CreateEventWithBlocData(id, status, height, methods, nil)
+	return CreateEventWithBlockData(id, status, height, methods, nil)
 }
 
-func CreateEventWithBlocData(
+func CreateEventWithBlockData(
 	id string,
 	status protocol.AvailabilityStatus,
 	height uint64,
@@ -81,7 +81,7 @@ func CreateEventWithBlocData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetMethod", mock.Anything).Return(specs.DefaultMethod("name"))
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
@@ -110,4 +110,35 @@ func TestUpstream(ctx context.Context, connector connectors.ApiConnector, upConf
 		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
 		upState,
 	)
+}
+
+func CreateChainSupervisor() *upstreams.ChainSupervisor {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+
+	go chainSupervisor.Start()
+
+	return chainSupervisor
+}
+
+func PublishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, status protocol.AvailabilityStatus, caps mapset.Set[protocol.Cap]) {
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getBalance"))
+	methodsMock.On("HasMethod", "eth_getBalance").Return(true)
+	methodsMock.On("HasMethod", "test").Return(false)
+	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock, caps))
+	time.Sleep(10 * time.Millisecond)
+}
+
+func createEvent(id string, status protocol.AvailabilityStatus, height uint64, methods methods.Methods, caps mapset.Set[protocol.Cap]) protocol.UpstreamEvent {
+	return protocol.UpstreamEvent{
+		Id: id,
+		State: &protocol.UpstreamState{
+			Status: status,
+			HeadData: &protocol.BlockData{
+				Height: height,
+			},
+			UpstreamMethods: methods,
+			Caps:            caps,
+		},
+	}
 }

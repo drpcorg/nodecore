@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/dimensions"
+	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/server"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	_ "github.com/drpcorg/dsheltie/pkg/chains"
+	_ "github.com/drpcorg/dsheltie/pkg/errors_config"
 	_ "github.com/drpcorg/dsheltie/pkg/logger"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/rs/zerolog/log"
@@ -19,7 +22,6 @@ import (
 )
 
 func main() {
-
 	flag.Parse()
 
 	appConfig, err := config.NewAppConfig()
@@ -33,12 +35,17 @@ func main() {
 
 	mainCtx, mainCtxCancel := context.WithCancel(context.Background())
 
-	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig)
+	dimensionTracker := dimensions.NewDimensionTracker()
+
+	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker)
 	go upstreamSupervisor.StartUpstreams()
+
+	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
+	go ratingRegistry.Start()
 
 	cacheProcessor := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, 1*time.Second)
 
-	appCtx := server.NewApplicationContext(upstreamSupervisor, cacheProcessor)
+	appCtx := server.NewApplicationContext(upstreamSupervisor, cacheProcessor, ratingRegistry)
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 

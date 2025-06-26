@@ -154,6 +154,10 @@ func validatePolicyChain(chain string) error {
 }
 
 func (u *UpstreamConfig) validate() error {
+	if err := u.ScorePolicyConfig.validate(); err != nil {
+		return fmt.Errorf("error during score policy config, cause: %s", err.Error())
+	}
+
 	for chain, chainDefault := range u.ChainDefaults {
 		if !chains.IsSupported(chain) {
 			return fmt.Errorf("error during chain defaults validation, cause: not supported chain %s", chain)
@@ -188,9 +192,46 @@ func (u *UpstreamConfig) validate() error {
 	return nil
 }
 
+func (s *ScorePolicyConfig) validate() error {
+	if s.CalculationInterval <= 0 {
+		return errors.New("the calculation interval can't be less than 0")
+	}
+	_, err := s.compileFunc()
+	if err != nil {
+		return fmt.Errorf("invalid score script, %s", err.Error())
+	}
+	return nil
+}
+
 func (f *FailsafeConfig) validate() error {
-	if err := f.HedgeConfig.validate(); err != nil {
-		return fmt.Errorf("hedge config validation error - %s", err.Error())
+	if f.HedgeConfig != nil {
+		if err := f.HedgeConfig.validate(); err != nil {
+			return fmt.Errorf("hedge config validation error - %s", err.Error())
+		}
+	}
+	if f.RetryConfig != nil {
+		if err := f.RetryConfig.validate(); err != nil {
+			return fmt.Errorf("retry config validation error - %s", err.Error())
+		}
+	}
+	return nil
+}
+
+func (r *RetryConfig) validate() error {
+	if r.Attempts < 1 {
+		return errors.New("the number of attempts can't be less than 1")
+	}
+	if r.Delay <= 0 {
+		return errors.New("the retry delay can't be less than 0")
+	}
+	if r.MaxDelay <= 0 {
+		return errors.New("the retry max delay can't be less than 0")
+	}
+	if r.Jitter <= 0 {
+		return errors.New("the retry jitter can't be 0")
+	}
+	if r.Delay > r.MaxDelay {
+		return errors.New("the retry delay can't be greater than the retry max delay")
 	}
 	return nil
 }
@@ -235,6 +276,10 @@ func (u *Upstream) validate() error {
 
 	if !connectorTypeSet.Contains(u.HeadConnector) {
 		return fmt.Errorf("there is no %s connector for head", u.HeadConnector)
+	}
+
+	if err := u.FailsafeConfig.validate(); err != nil {
+		return err
 	}
 
 	return nil

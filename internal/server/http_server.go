@@ -6,6 +6,7 @@ import (
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/chains"
@@ -31,12 +32,14 @@ type Response struct {
 type ApplicationContext struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	cacheProcessor     caches.CacheProcessor
+	registry           *rating.RatingRegistry
 }
 
-func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor, cacheProcessor caches.CacheProcessor) *ApplicationContext {
+func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor, cacheProcessor caches.CacheProcessor, registry *rating.RatingRegistry) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
 		cacheProcessor:     cacheProcessor,
+		registry:           registry,
 	}
 }
 
@@ -97,7 +100,7 @@ func handleHttp(reqCtx echo.Context, appCtx *ApplicationContext) error {
 	}
 
 	if err != nil {
-		resp := protocol.NewReplyError("0", protocol.ParseError(), reqType)
+		resp := protocol.NewTotalFailureFromErr("0", protocol.ParseError(), reqType)
 		return writeResponse(
 			reqCtx.Response(),
 			protocol.ToHttpCode(resp),
@@ -125,7 +128,7 @@ func handleResponse(
 	} else {
 		select {
 		case <-ctx.Done():
-			resp := protocol.NewReplyError("0", protocol.RequestTimeoutError(), requestHandler.GetRequestType())
+			resp := protocol.NewTotalFailureFromErr("0", protocol.RequestTimeoutError(), requestHandler.GetRequestType())
 			return writeResponse(
 				httpResponse,
 				protocol.ToHttpCode(resp),
@@ -162,7 +165,7 @@ func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *A
 		return createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType())
 	}
 
-	executionFlow := flow.NewBaseExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor, subCtx)
+	executionFlow := flow.NewBaseExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor, appCtx.registry, subCtx)
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 
@@ -175,7 +178,7 @@ func createWrapperFromError(request *Request, err error, requestType protocol.Re
 		return &protocol.ResponseHolderWrapper{
 			UpstreamId: flow.NoUpstream,
 			RequestId:  id,
-			Response:   protocol.NewReplyErrorFromErr(id, err, requestType),
+			Response:   protocol.NewTotalFailureFromErr(id, err, requestType),
 		}
 	}
 	go func() {

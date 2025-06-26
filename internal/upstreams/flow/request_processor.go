@@ -66,7 +66,7 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 		response = &protocol.ResponseHolderWrapper{
 			UpstreamId: NoUpstream,
 			RequestId:  request.Id(),
-			Response:   protocol.NewReplyErrorFromErr(request.Id(), err, request.RequestType()),
+			Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 		}
 	} else {
 		result, ok := u.cacheProcessor.Receive(ctx, u.chain, request)
@@ -84,11 +84,11 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 				GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
 					upstreamId, err := upstreamStrategy.SelectUpstream(request)
 					if err != nil {
-						return nil, upstreams.ExecutionError(exec.Hedges(), err)
+						return nil, protocol.ExecutionError(exec.Hedges(), err)
 					}
 					responseHolder, err := sendUnaryRequest(ctx, u.upstreamSupervisor.GetUpstream(upstreamId), request)
 					if err != nil {
-						return nil, upstreams.ExecutionError(exec.Hedges(), err)
+						return nil, protocol.ExecutionError(exec.Hedges(), err)
 					}
 					return responseHolder, nil
 				})
@@ -96,7 +96,7 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 				response = &protocol.ResponseHolderWrapper{
 					UpstreamId: NoUpstream,
 					RequestId:  request.Id(),
-					Response:   protocol.NewReplyErrorFromErr(request.Id(), err, request.RequestType()),
+					Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 				}
 			}
 		}
@@ -176,7 +176,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				RequestId:  request.Id(),
-				Response:   protocol.NewReplyErrorFromErr(request.Id(), err, request.RequestType()),
+				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
 			responses <- response
 			return
@@ -196,7 +196,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				RequestId:  request.Id(),
-				Response:   protocol.NewReplyErrorFromErr(request.Id(), err, request.RequestType()),
+				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
 			responses <- response
 			return

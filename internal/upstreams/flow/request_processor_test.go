@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
@@ -240,7 +239,7 @@ func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
-	apiConnector := mocks.NewHttpConnectorMockWithType(protocol.RestConnector)
+	apiConnector := mocks.NewConnectorMockWithType(protocol.RestConnector)
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
@@ -274,7 +273,7 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
-	apiConnector := mocks.NewHttpConnectorMock()
+	apiConnector := mocks.NewConnectorMock()
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
@@ -308,7 +307,7 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 }
 
 func createExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
-	return upstreams.CreateExecutor()
+	return protocol.CreateFlowExecutor()
 }
 
 func upConfig() *config.Upstream {

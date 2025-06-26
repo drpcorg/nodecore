@@ -355,19 +355,39 @@ func NewJsonRpcWsUpstreamResponse(messages chan *WsResponse) *JsonRpcWsUpstreamR
 
 type ReplyError struct {
 	id            string
+	ErrorKind     ResponseErrorKind
 	responseError *ResponseError
 	responseType  RequestType
 }
 
-func NewReplyError(id string, responseError *ResponseError, responseType RequestType) *ReplyError {
+func NewPartialFailure(request RequestHolder, responseError *ResponseError) *ReplyError {
+	return NewReplyError(
+		request.Id(),
+		responseError,
+		request.RequestType(),
+		PartialFailure,
+	)
+}
+
+func NewTotalFailure(request RequestHolder, responseError *ResponseError) *ReplyError {
+	return NewReplyError(
+		request.Id(),
+		responseError,
+		request.RequestType(),
+		TotalFailure,
+	)
+}
+
+func NewReplyError(id string, responseError *ResponseError, responseType RequestType, errorKind ResponseErrorKind) *ReplyError {
 	return &ReplyError{
 		id:            id,
 		responseError: responseError,
 		responseType:  responseType,
+		ErrorKind:     errorKind,
 	}
 }
 
-func NewReplyErrorFromErr(id string, err error, responseType RequestType) *ReplyError {
+func NewTotalFailureFromErr(id string, err error, responseType RequestType) *ReplyError {
 	var respErr *ResponseError
 	if errors.As(err, &respErr) {
 		return &ReplyError{
@@ -376,7 +396,7 @@ func NewReplyErrorFromErr(id string, err error, responseType RequestType) *Reply
 			responseType:  responseType,
 		}
 	}
-	return NewReplyError(id, ServerErrorWithCause(err), responseType)
+	return NewReplyError(id, ServerErrorWithCause(err), responseType, TotalFailure)
 }
 
 func (r *ReplyError) HasStream() bool {

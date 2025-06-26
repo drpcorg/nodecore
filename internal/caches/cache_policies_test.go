@@ -22,7 +22,7 @@ import (
 )
 
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("HasMethod", mock.Anything).Return(false)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
@@ -53,7 +53,7 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 }
 
 func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
 	methodsMock.On("GetMethod", mock.Anything).Return(nil)
@@ -118,7 +118,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
 	method := specs.MethodWithSettings("eth_call", nil, &tagParser)
 
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
 	methodsMock.On("GetMethod", mock.Anything).Return(method)
@@ -129,7 +129,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id", protocol.Available, 100, methodsMock, blockInfo1))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methodsMock, blockInfo1))
 	time.Sleep(5 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -305,7 +305,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
 	method := specs.MethodWithSettings("eth_call", nil, &tagParser)
 
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
 	methodsMock.On("GetMethod", mock.Anything).Return(method)
@@ -316,7 +316,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id", protocol.Available, 100, methodsMock, blockInfo1))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methodsMock, blockInfo1))
 	time.Sleep(5 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()

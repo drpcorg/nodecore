@@ -47,6 +47,10 @@ func TestReadFullConfig(t *testing.T) {
 			},
 		},
 		UpstreamConfig: &config.UpstreamConfig{
+			ScorePolicyConfig: &config.ScorePolicyConfig{
+				CalculationInterval: 10 * time.Second,
+				CalculationFunction: config.DefaultLatencyPolicyFunc,
+			},
 			FailsafeConfig: &config.FailsafeConfig{
 				HedgeConfig: &config.HedgeConfig{
 					Delay: 500 * time.Millisecond,
@@ -78,13 +82,15 @@ func TestReadFullConfig(t *testing.T) {
 							Url:  "wss://test.com",
 						},
 					},
+					FailsafeConfig: &config.FailsafeConfig{},
 				},
 				{
-					Id:            "another",
-					HeadConnector: config.Rest,
-					PollInterval:  1 * time.Minute,
-					ChainName:     "polygon",
-					Methods:       &config.MethodsConfig{},
+					Id:             "another",
+					HeadConnector:  config.Rest,
+					PollInterval:   1 * time.Minute,
+					ChainName:      "polygon",
+					Methods:        &config.MethodsConfig{},
+					FailsafeConfig: &config.FailsafeConfig{},
 					Connectors: []*config.ApiConnectorConfig{
 						{
 							Type: config.Rest,
@@ -172,11 +178,12 @@ func TestSetDefaultPollInterval(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:            "eth-upstream",
-		Methods:       &config.MethodsConfig{},
-		HeadConnector: config.JsonRpc,
-		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
+		Id:             "eth-upstream",
+		Methods:        &config.MethodsConfig{},
+		HeadConnector:  config.JsonRpc,
+		PollInterval:   1 * time.Minute,
+		ChainName:      "ethereum",
+		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
 				Type: config.JsonRpc,
@@ -194,11 +201,12 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:            "eth-upstream",
-		HeadConnector: config.JsonRpc,
-		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
-		Methods:       &config.MethodsConfig{},
+		Id:             "eth-upstream",
+		HeadConnector:  config.JsonRpc,
+		PollInterval:   1 * time.Minute,
+		ChainName:      "ethereum",
+		Methods:        &config.MethodsConfig{},
+		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
 				Type: config.JsonRpc,
@@ -220,11 +228,12 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:            "eth-upstream",
-		HeadConnector: config.Rest,
-		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
-		Methods:       &config.MethodsConfig{},
+		Id:             "eth-upstream",
+		HeadConnector:  config.Rest,
+		PollInterval:   1 * time.Minute,
+		ChainName:      "ethereum",
+		Methods:        &config.MethodsConfig{},
+		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
 				Type: config.Ws,
@@ -266,11 +275,12 @@ func TestSetChainsDefault(t *testing.T) {
 			},
 			Upstreams: []*config.Upstream{
 				{
-					Id:            "eth-upstream",
-					Methods:       &config.MethodsConfig{},
-					HeadConnector: config.JsonRpc,
-					PollInterval:  10 * time.Minute,
-					ChainName:     "ethereum",
+					Id:             "eth-upstream",
+					Methods:        &config.MethodsConfig{},
+					HeadConnector:  config.JsonRpc,
+					PollInterval:   10 * time.Minute,
+					ChainName:      "ethereum",
+					FailsafeConfig: &config.FailsafeConfig{},
 					Connectors: []*config.ApiConnectorConfig{
 						{
 							Type: config.JsonRpc,
@@ -375,7 +385,7 @@ func TestIfNoCacheSettingsThenNil(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	assert.Nil(t, appConfig.CacheConfig)
+	assert.Equal(t, &config.CacheConfig{}, appConfig.CacheConfig)
 }
 
 func TestDefaultMemorySettings(t *testing.T) {
@@ -388,7 +398,7 @@ func TestDefaultMemorySettings(t *testing.T) {
 		ExpiredRemoveInterval: 30 * time.Second,
 	}
 
-	assert.Equal(t, appConfig.CacheConfig.CacheConnectors[0].Memory, expected)
+	assert.Equal(t, expected, appConfig.CacheConfig.CacheConnectors[0].Memory)
 }
 
 func TestDefaultPolicySettings(t *testing.T) {
@@ -427,4 +437,22 @@ func TestDefaultPolicySettingsWithZeroTtl(t *testing.T) {
 	}
 
 	assert.Equal(t, appConfig.CacheConfig.CachePolicies[0], expected)
+}
+
+func TestScorePolicyConfigInvalidIntervalThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-interval.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during score policy config, cause: the calculation interval can't be less than 0")
+}
+
+func TestScorePolicyConfigNoSortFuncThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-score-policy-func.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during score policy config, cause: invalid score script, no sortUpstreams() function in the specified script")
+}
+
+func TestScorePolicyConfigTypoInScriptThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-typo-sortUpstream.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during score policy config, cause: invalid score script, SyntaxError: SyntaxError: (anonymous): Line 1:27 Unexpected token :")
 }

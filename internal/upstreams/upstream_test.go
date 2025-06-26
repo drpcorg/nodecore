@@ -17,7 +17,7 @@ func TestUpstreamEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	connector := mocks.NewHttpConnectorMock()
+	connector := mocks.NewConnectorMock()
 	body := []byte(`{
 	  "jsonrpc": "2.0",
 	  "result": {

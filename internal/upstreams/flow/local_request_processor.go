@@ -52,6 +52,6 @@ func processedServerError(request protocol.RequestHolder, cause error) *protocol
 	return &protocol.ResponseHolderWrapper{
 		UpstreamId: NoUpstream,
 		RequestId:  request.Id(),
-		Response:   protocol.NewReplyErrorFromErr(request.Id(), serverErr, request.RequestType()),
+		Response:   protocol.NewTotalFailureFromErr(request.Id(), serverErr, request.RequestType()),
 	}
 }

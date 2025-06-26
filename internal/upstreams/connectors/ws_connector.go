@@ -22,7 +22,8 @@ func NewWsConnector(connection ws.WsConnection) *WsConnector {
 func (w *WsConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	wsResponse, err := w.connection.SendRpcRequest(ctx, request)
 	if err != nil {
-		return protocol.CreateReplyError(
+		// ws rpc requests won't be retried
+		return protocol.NewTotalFailure(
 			request,
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to get a response via ws - %v", err)),
 		)

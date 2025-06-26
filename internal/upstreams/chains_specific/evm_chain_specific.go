@@ -55,7 +55,7 @@ func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder,
 }
 
 func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector connectors.ApiConnector, blockTag rpc.BlockNumber) (*protocol.Block, error) {
-	request, err := protocol.NewInternalJsonRpcUpstreamRequest("eth_getBlockByNumber", []interface{}{blockTag, false})
+	request, err := protocol.NewInternalJsonRpcUpstreamRequest("eth_getBlockByNumber", []interface{}{blockTag, true})
 	if err != nil {
 		return nil, err
 	}

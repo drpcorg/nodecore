@@ -34,7 +34,7 @@ func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, 
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	url, httpMethod, err := h.requestParams(request)
 	if err != nil {
-		return protocol.CreateReplyError(
+		return protocol.NewTotalFailure(
 			request,
 			protocol.ClientError(err),
 		)
@@ -42,7 +42,7 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 
 	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewReader(request.Body()))
 	if err != nil {
-		return protocol.CreateReplyError(
+		return protocol.NewTotalFailure(
 			request,
 			protocol.ClientError(fmt.Errorf("error creating an http request: %v", err)),
 		)
@@ -54,7 +54,10 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return protocol.CreateReplyError(
+		if ctx.Err() != nil {
+			return protocol.NewTotalFailure(request, protocol.CtxError(err))
+		}
+		return protocol.NewPartialFailure(
 			request,
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to get an http response: %v", err)),
 		)
@@ -70,11 +73,11 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 			return protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
 		} else {
 			defer closeBodyReader(ctx, resp.Body)
-			return h.receiveWholeResponse(request, resp.StatusCode, bufReader)
+			return h.receiveWholeResponse(ctx, request, resp.StatusCode, bufReader)
 		}
 	} else {
 		defer closeBodyReader(ctx, resp.Body)
-		return h.receiveWholeResponse(request, resp.StatusCode, resp.Body)
+		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Body)
 	}
 }
 
@@ -85,10 +88,13 @@ func closeBodyReader(ctx context.Context, bodyReader io.ReadCloser) {
 	}
 }
 
-func (h *HttpConnector) receiveWholeResponse(request protocol.RequestHolder, status int, reader io.Reader) protocol.ResponseHolder {
+func (h *HttpConnector) receiveWholeResponse(ctx context.Context, request protocol.RequestHolder, status int, reader io.Reader) protocol.ResponseHolder {
 	body, err := io.ReadAll(reader)
 	if err != nil {
-		return protocol.CreateReplyError(
+		if ctx.Err() != nil {
+			return protocol.NewTotalFailure(request, protocol.CtxError(err))
+		}
+		return protocol.NewPartialFailure(
 			request,
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to read an http response: %v", err)),
 		)

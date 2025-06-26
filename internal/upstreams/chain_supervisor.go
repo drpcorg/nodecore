@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
@@ -18,11 +19,12 @@ import (
 
 type ChainSupervisor struct {
 	ctx            context.Context
-	chain          chains.Chain
+	Chain          chains.Chain
 	fc             choice.ForkChoice
 	state          *utils.Atomic[ChainSupervisorState]
 	eventsChan     chan protocol.UpstreamEvent
-	upstreamStates utils.CMap[string, protocol.UpstreamState]
+	upstreamStates *utils.CMap[string, protocol.UpstreamState]
+	tracker        *dimensions.DimensionTracker
 }
 
 type ChainSupervisorState struct {
@@ -32,16 +34,17 @@ type ChainSupervisorState struct {
 	Blocks  map[protocol.BlockType]*protocol.BlockData
 }
 
-func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice) *ChainSupervisor {
+func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker *dimensions.DimensionTracker) *ChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
 	state.Store(ChainSupervisorState{Status: protocol.Available, Blocks: make(map[protocol.BlockType]*protocol.BlockData)})
 
 	return &ChainSupervisor{
 		ctx:            ctx,
-		chain:          chain,
+		tracker:        tracker,
+		Chain:          chain,
 		fc:             fc,
 		eventsChan:     make(chan protocol.UpstreamEvent, 100),
-		upstreamStates: utils.CMap[string, protocol.UpstreamState]{},
+		upstreamStates: utils.NewCMap[string, protocol.UpstreamState](),
 		state:          utils.NewAtomic[ChainSupervisorState](),
 	}
 }
@@ -68,6 +71,10 @@ func (c *ChainSupervisor) GetChainState() ChainSupervisorState {
 
 func (c *ChainSupervisor) GetMethod(methodName string) *specs.Method {
 	return c.GetChainState().Methods.GetMethod(methodName)
+}
+
+func (c *ChainSupervisor) GetMethods() []string {
+	return c.GetChainState().Methods.GetSupportedMethods().ToSlice()
 }
 
 func (c *ChainSupervisor) Publish(event protocol.UpstreamEvent) {
@@ -115,8 +122,28 @@ func (c *ChainSupervisor) processEvents() {
 				state.Blocks = c.processUpstreamBlocks(availableUpstreams)
 
 				c.state.Store(state)
+
+				c.calculateLags()
 			}
 		}
+	}
+}
+
+func (c *ChainSupervisor) calculateLags() {
+	if c.tracker != nil {
+		state := c.state.Load()
+
+		c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
+			headLag := state.Head - val.HeadData.Height
+			finalizationBlock, ok := state.Blocks[protocol.FinalizedBlock]
+			finalizationLag := uint64(0)
+			if ok {
+				finalizationLag = finalizationBlock.Height - val.BlockInfo.GetBlock(protocol.FinalizedBlock).Height
+			}
+			c.tracker.TrackLags(c.Chain, key, headLag, finalizationLag)
+
+			return true
+		})
 	}
 }
 
@@ -203,7 +230,7 @@ func (c *ChainSupervisor) monitor() {
 
 	upstreamStatuses, weakUpstreams := c.getStatuses()
 
-	log.Info().Msgf("State of %s: height=%s, statuses=[%s], weak=[%s]", strings.ToUpper(c.chain.String()), height, upstreamStatuses, weakUpstreams)
+	log.Info().Msgf("State of %s: height=%s, statuses=[%s], weak=[%s]", strings.ToUpper(c.Chain.String()), height, upstreamStatuses, weakUpstreams)
 }
 
 func (c *ChainSupervisor) getStatuses() (string, string) {

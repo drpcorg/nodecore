@@ -5,6 +5,7 @@ import (
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/blocks"
 	"github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
@@ -13,6 +14,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/ws"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/failsafe-go/failsafe-go"
 	"github.com/samber/lo"
 )
 
@@ -52,7 +54,12 @@ func (u *Upstream) Stop() {
 	u.cancelFunc()
 }
 
-func NewUpstream(ctx context.Context, config *config.Upstream) (*Upstream, error) {
+func NewUpstream(
+	ctx context.Context,
+	config *config.Upstream,
+	tracker *dimensions.DimensionTracker,
+	executor failsafe.Executor[protocol.ResponseHolder],
+) (*Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(config.ChainName)
 	apiConnectors := make([]connectors.ApiConnector, 0)
@@ -61,6 +68,7 @@ func NewUpstream(ctx context.Context, config *config.Upstream) (*Upstream, error
 	var headConnector connectors.ApiConnector
 	for _, connectorConfig := range config.Connectors {
 		apiConnector := createConnector(ctx, config.Id, configuredChain.MethodSpec, connectorConfig)
+		apiConnector = connectors.NewDimensionTrackerConnector(configuredChain.Chain, config.Id, apiConnector, tracker, executor)
 		if connectorConfig.Type == config.HeadConnector {
 			headConnector = apiConnector
 		}

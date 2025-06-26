@@ -1,6 +1,10 @@
 package config
 
 import (
+	"errors"
+	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/console"
+	"github.com/dop251/goja_nodejs/require"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 	"os"
@@ -31,14 +35,63 @@ type TlsConfig struct {
 }
 
 type UpstreamConfig struct {
-	Upstreams      []*Upstream               `yaml:"upstreams"`
-	ChainDefaults  map[string]*ChainDefaults `yaml:"chain-defaults"`
-	FailsafeConfig *FailsafeConfig           `yaml:"failsafe-config"`
+	Upstreams         []*Upstream               `yaml:"upstreams"`
+	ChainDefaults     map[string]*ChainDefaults `yaml:"chain-defaults"`
+	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config"`
+	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
+}
+
+type ScorePolicyConfig struct {
+	CalculationInterval time.Duration `yaml:"calculation-interval"`
+	CalculationFunction string        `yaml:"calculation-function"`
+
+	calculationFunc goja.Callable
+}
+
+var registry = new(require.Registry)
+
+func (s *ScorePolicyConfig) GetScoreFunc() (goja.Callable, error) {
+	if s.calculationFunc == nil {
+		sortUpstreams, err := s.compileFunc()
+		if err != nil {
+			panic(err)
+		}
+		s.calculationFunc = sortUpstreams
+	}
+	return s.calculationFunc, nil
+}
+
+func (s *ScorePolicyConfig) compileFunc() (goja.Callable, error) {
+	vm := goja.New()
+	_, err := vm.RunString(s.CalculationFunction)
+	if err != nil {
+		return nil, err
+	}
+	registry.Enable(vm)
+	console.Enable(vm)
+
+	valueFunc := vm.Get("sortUpstreams")
+	if valueFunc == nil {
+		return nil, errors.New(`no sortUpstreams() function in the specified script`)
+	}
+	sortUpstreams, ok := goja.AssertFunction(valueFunc)
+	if !ok {
+		return nil, errors.New("sortUpstreams is not a function")
+	}
+	return sortUpstreams, nil
 }
 
 type FailsafeConfig struct {
 	HedgeConfig   *HedgeConfig   `yaml:"hedge"`
 	TimeoutConfig *TimeoutConfig `yaml:"timeout"`
+	RetryConfig   *RetryConfig   `yaml:"retry"`
+}
+
+type RetryConfig struct {
+	Attempts int           `yaml:"attempts"`
+	Delay    time.Duration `yaml:"delay"`
+	MaxDelay time.Duration `yaml:"maxDelay"`
+	Jitter   time.Duration `yaml:"jitter"`
 }
 
 type HedgeConfig struct { // works only on the execution flow level

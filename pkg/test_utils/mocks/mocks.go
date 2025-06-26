@@ -42,29 +42,29 @@ func NewCacheProcessorMock() *CacheProcessorMock {
 	return &CacheProcessorMock{}
 }
 
-type HttpConnectorMock struct {
+type ConnectorMock struct {
 	mock.Mock
 	connectorType protocol.ApiConnectorType
 }
 
-func NewHttpConnectorMock() *HttpConnectorMock {
-	return &HttpConnectorMock{connectorType: protocol.JsonRpcConnector}
+func NewConnectorMock() *ConnectorMock {
+	return &ConnectorMock{connectorType: protocol.JsonRpcConnector}
 }
 
-func NewHttpConnectorMockWithType(connectorType protocol.ApiConnectorType) *HttpConnectorMock {
-	return &HttpConnectorMock{connectorType: connectorType}
+func NewConnectorMockWithType(connectorType protocol.ApiConnectorType) *ConnectorMock {
+	return &ConnectorMock{connectorType: connectorType}
 }
 
-func (c *HttpConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
+func (c *ConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	args := c.Called(ctx, request)
 	return args.Get(0).(protocol.ResponseHolder)
 }
 
-func (c *HttpConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
+func (c *ConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
 }
 
-func (c *HttpConnectorMock) GetType() protocol.ApiConnectorType {
+func (c *ConnectorMock) GetType() protocol.ApiConnectorType {
 	return c.connectorType
 }
 
@@ -182,6 +182,12 @@ type UpstreamSupervisorMock struct {
 
 func NewUpstreamSupervisorMock() *UpstreamSupervisorMock {
 	return &UpstreamSupervisorMock{}
+}
+
+func (u *UpstreamSupervisorMock) GetChainSupervisors() []*upstreams.ChainSupervisor {
+	args := u.Called()
+
+	return args.Get(0).([]*upstreams.ChainSupervisor)
 }
 
 func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) *upstreams.ChainSupervisor {

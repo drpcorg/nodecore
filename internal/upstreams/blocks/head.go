@@ -112,7 +112,7 @@ type Head interface {
 
 type RpcHead struct {
 	ctx            context.Context
-	block          utils.Atomic[protocol.Block]
+	block          *utils.Atomic[protocol.Block]
 	chainSpecific  specific.ChainSpecific
 	pollInterval   time.Duration
 	connector      connectors.ApiConnector
@@ -126,7 +126,7 @@ var _ Head = (*RpcHead)(nil)
 func newRpcHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific, pollInterval time.Duration) *RpcHead {
 	head := RpcHead{
 		ctx:            ctx,
-		block:          *utils.NewAtomic[protocol.Block](),
+		block:          utils.NewAtomic[protocol.Block](),
 		chainSpecific:  chainSpecific,
 		pollInterval:   pollInterval,
 		connector:      connector,

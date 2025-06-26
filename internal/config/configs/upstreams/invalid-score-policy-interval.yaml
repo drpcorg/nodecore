@@ -1,0 +1,3 @@
+upstream-config:
+  score-policy-config:
+    calculation-interval: -1s

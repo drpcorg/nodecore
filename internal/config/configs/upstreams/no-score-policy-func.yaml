@@ -1,0 +1,4 @@
+upstream-config:
+  score-policy-config:
+    calculation-function:
+      "function sum() {return 0}"
