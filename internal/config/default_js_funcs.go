@@ -1,16 +1,16 @@
 package config
 
 const DefaultLatencyPolicyFunc = `
-	function sortUpstreams(upstreamData) {
-		const normalizeValuesFunc = (values) => {
+	function sortUpstreams(upstreamData: UpstreamData[]): string[] {
+		const normalizeValuesFunc = (values: number[]): number[] => {
 			if (values.length === 0) {
 				return []
 			}
 			const max = Math.max(...values)
 	
-			return values.map((x) => max > 0 ? x / max : 0)
+			return values.map((x: number) => max > 0 ? x / max : 0)
 		}
-		const scoreFunc = (value) => {
+		const scoreFunc = (value: number): number => {
 			return Math.pow(value, 2)
 		}
 	

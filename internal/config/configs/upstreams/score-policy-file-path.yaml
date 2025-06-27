@@ -1,0 +1,9 @@
+upstream-config:
+  score-policy-config:
+    calculation-function-file-path: "configs/upstreams/func.ts"
+  upstreams:
+    - id: another
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -83,7 +83,7 @@ func (s *ScorePolicyConfig) setDefaults() {
 	if s.CalculationInterval == 0 {
 		s.CalculationInterval = 10 * time.Second
 	}
-	if s.CalculationFunction == "" {
+	if s.CalculationFunction == "" && s.CalculationFunctionFilePath == "" {
 		log.Info().Msg("no explicit rating function is specified, 'DefaultLatencyPolicyFunc' will be used to calculate rating")
 		s.CalculationFunction = DefaultLatencyPolicyFunc
 	}

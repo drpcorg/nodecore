@@ -1,0 +1,5 @@
+upstream-config:
+  score-policy-config:
+    calculation-function:
+      "function sortUpstreams(val: string) {retur 0}"
+    calculation-function-file-path: "configs/upstreams/func.ts"

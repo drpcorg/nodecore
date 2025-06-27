@@ -5,9 +5,12 @@ import (
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/dop251/goja_nodejs/require"
+	"github.com/evanw/esbuild/pkg/api"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -42,8 +45,9 @@ type UpstreamConfig struct {
 }
 
 type ScorePolicyConfig struct {
-	CalculationInterval time.Duration `yaml:"calculation-interval"`
-	CalculationFunction string        `yaml:"calculation-function"`
+	CalculationInterval         time.Duration `yaml:"calculation-interval"`
+	CalculationFunction         string        `yaml:"calculation-function"`
+	CalculationFunctionFilePath string        `yaml:"calculation-function-file-path"`
 
 	calculationFunc goja.Callable
 }
@@ -62,8 +66,29 @@ func (s *ScorePolicyConfig) GetScoreFunc() (goja.Callable, error) {
 }
 
 func (s *ScorePolicyConfig) compileFunc() (goja.Callable, error) {
+	var tsFunc string
+	if s.CalculationFunction != "" {
+		tsFunc = s.CalculationFunction
+	} else {
+		funcBytes, err := os.ReadFile(s.CalculationFunctionFilePath)
+		if err != nil {
+			return nil, err
+		}
+		tsFunc = string(funcBytes)
+	}
+
+	result := api.Transform(tsFunc, api.TransformOptions{
+		Loader: api.LoaderTS,
+	})
+	if len(result.Errors) > 0 {
+		errorsText := lo.Map(result.Errors, func(item api.Message, index int) string {
+			return item.Text
+		})
+		return nil, errors.New(strings.Join(errorsText, "; "))
+	}
+
 	vm := goja.New()
-	_, err := vm.RunString(s.CalculationFunction)
+	_, err := vm.RunString(string(result.Code))
 	if err != nil {
 		return nil, err
 	}

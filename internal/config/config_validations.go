@@ -196,9 +196,12 @@ func (s *ScorePolicyConfig) validate() error {
 	if s.CalculationInterval <= 0 {
 		return errors.New("the calculation interval can't be less than 0")
 	}
+	if s.CalculationFunction != "" && s.CalculationFunctionFilePath != "" {
+		return errors.New("one setting must be specified - either 'calculation-function' or 'calculation-function-file-path'")
+	}
 	_, err := s.compileFunc()
 	if err != nil {
-		return fmt.Errorf("invalid score script, %s", err.Error())
+		return fmt.Errorf("couldn't read a ts script, %s", err.Error())
 	}
 	return nil
 }

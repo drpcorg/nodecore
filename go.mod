@@ -9,6 +9,7 @@ require (
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
 	github.com/ethereum/go-ethereum v1.15.11
+	github.com/evanw/esbuild v0.25.5
 	github.com/failsafe-go/failsafe-go v0.6.9
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

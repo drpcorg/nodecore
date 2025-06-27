@@ -439,6 +439,25 @@ func TestDefaultPolicySettingsWithZeroTtl(t *testing.T) {
 	assert.Equal(t, appConfig.CacheConfig.CachePolicies[0], expected)
 }
 
+func TestScorePolicyConfigFilePath(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/score-policy-file-path.yaml")
+	appCfg, err := config.NewAppConfig()
+
+	expected := &config.ScorePolicyConfig{
+		CalculationInterval:         10 * time.Second,
+		CalculationFunctionFilePath: "configs/upstreams/func.ts",
+	}
+
+	assert.Nil(t, err)
+	assert.Equal(t, expected, appCfg.UpstreamConfig.ScorePolicyConfig)
+}
+
+func TestScorePolicyConfigBothCalculationFuncAndFilePathThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-both-params.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during score policy config, cause: one setting must be specified - either 'calculation-function' or 'calculation-function-file-path'`)
+}
+
 func TestScorePolicyConfigInvalidIntervalThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-interval.yaml")
 	_, err := config.NewAppConfig()
@@ -448,11 +467,11 @@ func TestScorePolicyConfigInvalidIntervalThenError(t *testing.T) {
 func TestScorePolicyConfigNoSortFuncThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-score-policy-func.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during score policy config, cause: invalid score script, no sortUpstreams() function in the specified script")
+	assert.ErrorContains(t, err, "error during score policy config, cause: couldn't read a ts script, no sortUpstreams() function in the specified script")
 }
 
 func TestScorePolicyConfigTypoInScriptThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-typo-sortUpstream.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during score policy config, cause: invalid score script, SyntaxError: SyntaxError: (anonymous): Line 1:27 Unexpected token :")
+	assert.ErrorContains(t, err, `error during score policy config, cause: couldn't read a ts script, Expected ";" but found "0"`)
 }
