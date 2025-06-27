@@ -54,13 +54,11 @@ func (c *CacheConnectorConfig) setDefaults() {
 		if c.Memory == nil {
 			c.Memory = &MemoryCacheConnectorConfig{}
 		}
-		if c.Memory != nil {
-			if c.Memory.MaxItems == 0 {
-				c.Memory.MaxItems = 10000
-			}
-			if c.Memory.ExpiredRemoveInterval == 0 {
-				c.Memory.ExpiredRemoveInterval = 30 * time.Second
-			}
+		if c.Memory.MaxItems == 0 {
+			c.Memory.MaxItems = 10000
+		}
+		if c.Memory.ExpiredRemoveInterval == 0 {
+			c.Memory.ExpiredRemoveInterval = 30 * time.Second
 		}
 	}
 }
