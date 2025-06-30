@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
@@ -23,12 +24,14 @@ type BaseExecutionFlow struct {
 	responseChan       chan *protocol.ResponseHolderWrapper
 	cacheProcessor     caches.CacheProcessor
 	subCtx             *SubCtx
+	registry           *rating.RatingRegistry
 }
 
 func NewBaseExecutionFlow(
 	chain chains.Chain,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheProcessor caches.CacheProcessor,
+	registry *rating.RatingRegistry,
 	subCtx *SubCtx,
 ) *BaseExecutionFlow {
 	return &BaseExecutionFlow{
@@ -37,6 +40,7 @@ func NewBaseExecutionFlow(
 		upstreamSupervisor: upstreamSupervisor,
 		responseChan:       make(chan *protocol.ResponseHolderWrapper),
 		subCtx:             subCtx,
+		registry:           registry,
 	}
 }
 
@@ -49,16 +53,23 @@ func (e *BaseExecutionFlow) Execute(ctx context.Context, requests []protocol.Req
 	e.wg.Add(len(requests))
 
 	for _, request := range requests {
-		upstreamStrategy := NewBaseStrategy(e.upstreamSupervisor.GetChainSupervisor(e.chain))
-		e.processRequest(ctx, upstreamStrategy, request)
+		e.processRequest(ctx, e.createStrategy(request), request)
 	}
 
 	e.wg.Wait()
 }
 
+func (e *BaseExecutionFlow) createStrategy(request protocol.RequestHolder) UpstreamStrategy {
+	if request.IsSubscribe() {
+		// TODO: calculate rating of subscription methods
+		return NewBaseStrategy(e.upstreamSupervisor.GetChainSupervisor(e.chain))
+	}
+	return NewRatingStrategy(e.chain, request.Method(), e.upstreamSupervisor.GetChainSupervisor(e.chain), e.registry)
+}
+
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
-		execCtx := context.WithValue(ctx, upstreams.RequestKey, request)
+		execCtx := context.WithValue(ctx, protocol.RequestKey, request)
 		var requestProcessor RequestProcessor
 
 		if request.IsSubscribe() {
@@ -89,12 +100,12 @@ func isLocalRequest(chain chains.Chain, method string) bool {
 }
 
 type SubCtx struct {
-	subscriptions utils.CMap[string, context.CancelFunc]
+	subscriptions *utils.CMap[string, context.CancelFunc]
 }
 
 func NewSubCtx() *SubCtx {
 	return &SubCtx{
-		subscriptions: utils.CMap[string, context.CancelFunc]{},
+		subscriptions: utils.NewCMap[string, context.CancelFunc](),
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/pkg/chains"
@@ -14,6 +15,7 @@ import (
 
 type UpstreamSupervisor interface {
 	GetChainSupervisor(chain chains.Chain) *ChainSupervisor
+	GetChainSupervisors() []*ChainSupervisor
 	GetUpstream(string) *Upstream
 	GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper]
 	StartUpstreams()
@@ -21,22 +23,34 @@ type UpstreamSupervisor interface {
 
 type BaseUpstreamSupervisor struct {
 	ctx              context.Context
-	chainSupervisors utils.CMap[chains.Chain, ChainSupervisor]
-	upstreams        utils.CMap[string, Upstream]
+	chainSupervisors *utils.CMap[chains.Chain, ChainSupervisor]
+	upstreams        *utils.CMap[string, Upstream]
 	eventsChan       chan protocol.UpstreamEvent
 	upstreamsConfig  *config.UpstreamConfig
 	executor         failsafe.Executor[*protocol.ResponseHolderWrapper]
+	tracker          *dimensions.DimensionTracker
 }
 
-func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig) UpstreamSupervisor {
+func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
 		ctx:              ctx,
-		upstreams:        utils.CMap[string, Upstream]{},
-		chainSupervisors: utils.CMap[chains.Chain, ChainSupervisor]{},
+		upstreams:        utils.NewCMap[string, Upstream](),
+		chainSupervisors: utils.NewCMap[chains.Chain, ChainSupervisor](),
 		eventsChan:       make(chan protocol.UpstreamEvent, 100),
 		upstreamsConfig:  upstreamsConfig,
-		executor:         CreateExecutor(CreateHedgePolicy(upstreamsConfig.FailsafeConfig.HedgeConfig)),
+		tracker:          tracker,
+		executor:         createFlowExecutor(upstreamsConfig.FailsafeConfig),
 	}
+}
+
+func (u *BaseUpstreamSupervisor) GetChainSupervisors() []*ChainSupervisor {
+	result := make([]*ChainSupervisor, 0)
+	u.chainSupervisors.Range(func(key chains.Chain, val *ChainSupervisor) bool {
+		result = append(result, val)
+		return true
+	})
+
+	return result
 }
 
 func (u *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) *ChainSupervisor {
@@ -62,7 +76,8 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 	for _, upConfig := range u.upstreamsConfig.Upstreams {
 		go func() {
-			up, err := NewUpstream(u.ctx, upConfig)
+			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
+			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
@@ -88,6 +103,26 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 	}
 }
 
+func createFlowExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor[*protocol.ResponseHolderWrapper] {
+	policies := make([]failsafe.Policy[*protocol.ResponseHolderWrapper], 0)
+
+	if failsafeConfig.HedgeConfig != nil {
+		policies = append(policies, protocol.CreateFlowHedgePolicy(failsafeConfig.HedgeConfig))
+	}
+
+	return protocol.CreateFlowExecutor(policies...)
+}
+
+func createUpstreamExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor[protocol.ResponseHolder] {
+	policies := make([]failsafe.Policy[protocol.ResponseHolder], 0)
+
+	if failsafeConfig.RetryConfig != nil {
+		policies = append(policies, protocol.CreateUpstreamRetryPolicy(failsafeConfig.RetryConfig))
+	}
+
+	return protocol.CreateUpstreamExecutor(policies...)
+}
+
 func (u *BaseUpstreamSupervisor) processEvents() {
 	for {
 		select {
@@ -95,7 +130,7 @@ func (u *BaseUpstreamSupervisor) processEvents() {
 			return
 		case event, ok := <-u.eventsChan:
 			if ok {
-				chainSupervisor, exists := u.chainSupervisors.LoadOrStore(event.Chain, NewChainSupervisor(u.ctx, event.Chain, choice.NewHeightForkChoice()))
+				chainSupervisor, exists := u.chainSupervisors.LoadOrStore(event.Chain, NewChainSupervisor(u.ctx, event.Chain, choice.NewHeightForkChoice(), u.tracker))
 
 				if !exists {
 					chainSupervisor.Start()

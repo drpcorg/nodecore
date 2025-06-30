@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -47,6 +48,10 @@ func TestReadFullConfig(t *testing.T) {
 			},
 		},
 		UpstreamConfig: &config.UpstreamConfig{
+			ScorePolicyConfig: &config.ScorePolicyConfig{
+				CalculationInterval: 10 * time.Second,
+				CalculationFunction: config.DefaultLatencyPolicyFunc,
+			},
 			FailsafeConfig: &config.FailsafeConfig{
 				HedgeConfig: &config.HedgeConfig{
 					Delay: 500 * time.Millisecond,
@@ -78,6 +83,14 @@ func TestReadFullConfig(t *testing.T) {
 							Url:  "wss://test.com",
 						},
 					},
+					FailsafeConfig: &config.FailsafeConfig{
+						RetryConfig: &config.RetryConfig{
+							MaxDelay: lo.ToPtr(1 * time.Second),
+							Attempts: 5,
+							Delay:    500 * time.Millisecond,
+							Jitter:   lo.ToPtr(6 * time.Second),
+						},
+					},
 				},
 				{
 					Id:            "another",
@@ -85,6 +98,12 @@ func TestReadFullConfig(t *testing.T) {
 					PollInterval:  1 * time.Minute,
 					ChainName:     "polygon",
 					Methods:       &config.MethodsConfig{},
+					FailsafeConfig: &config.FailsafeConfig{
+						RetryConfig: &config.RetryConfig{
+							Attempts: 7,
+							Delay:    300 * time.Millisecond,
+						},
+					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
 							Type: config.Rest,
@@ -172,11 +191,12 @@ func TestSetDefaultPollInterval(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:            "eth-upstream",
-		Methods:       &config.MethodsConfig{},
-		HeadConnector: config.JsonRpc,
-		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
+		Id:             "eth-upstream",
+		Methods:        &config.MethodsConfig{},
+		HeadConnector:  config.JsonRpc,
+		PollInterval:   1 * time.Minute,
+		ChainName:      "ethereum",
+		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
 				Type: config.JsonRpc,
@@ -194,11 +214,12 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:            "eth-upstream",
-		HeadConnector: config.JsonRpc,
-		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
-		Methods:       &config.MethodsConfig{},
+		Id:             "eth-upstream",
+		HeadConnector:  config.JsonRpc,
+		PollInterval:   1 * time.Minute,
+		ChainName:      "ethereum",
+		Methods:        &config.MethodsConfig{},
+		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
 				Type: config.JsonRpc,
@@ -220,11 +241,12 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:            "eth-upstream",
-		HeadConnector: config.Rest,
-		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
-		Methods:       &config.MethodsConfig{},
+		Id:             "eth-upstream",
+		HeadConnector:  config.Rest,
+		PollInterval:   1 * time.Minute,
+		ChainName:      "ethereum",
+		Methods:        &config.MethodsConfig{},
+		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
 				Type: config.Ws,
@@ -266,11 +288,12 @@ func TestSetChainsDefault(t *testing.T) {
 			},
 			Upstreams: []*config.Upstream{
 				{
-					Id:            "eth-upstream",
-					Methods:       &config.MethodsConfig{},
-					HeadConnector: config.JsonRpc,
-					PollInterval:  10 * time.Minute,
-					ChainName:     "ethereum",
+					Id:             "eth-upstream",
+					Methods:        &config.MethodsConfig{},
+					HeadConnector:  config.JsonRpc,
+					PollInterval:   10 * time.Minute,
+					ChainName:      "ethereum",
+					FailsafeConfig: &config.FailsafeConfig{},
 					Connectors: []*config.ApiConnectorConfig{
 						{
 							Type: config.JsonRpc,
@@ -375,7 +398,7 @@ func TestIfNoCacheSettingsThenNil(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	assert.Nil(t, appConfig.CacheConfig)
+	assert.Equal(t, &config.CacheConfig{}, appConfig.CacheConfig)
 }
 
 func TestDefaultMemorySettings(t *testing.T) {
@@ -388,7 +411,7 @@ func TestDefaultMemorySettings(t *testing.T) {
 		ExpiredRemoveInterval: 30 * time.Second,
 	}
 
-	assert.Equal(t, appConfig.CacheConfig.CacheConnectors[0].Memory, expected)
+	assert.Equal(t, expected, appConfig.CacheConfig.CacheConnectors[0].Memory)
 }
 
 func TestDefaultPolicySettings(t *testing.T) {
@@ -427,4 +450,65 @@ func TestDefaultPolicySettingsWithZeroTtl(t *testing.T) {
 	}
 
 	assert.Equal(t, appConfig.CacheConfig.CachePolicies[0], expected)
+}
+
+func TestScorePolicyConfigFilePath(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/score-policy-file-path.yaml")
+	appCfg, err := config.NewAppConfig()
+
+	expected := &config.ScorePolicyConfig{
+		CalculationInterval:         10 * time.Second,
+		CalculationFunctionFilePath: "configs/upstreams/func.ts",
+	}
+
+	assert.Nil(t, err)
+	assert.Equal(t, expected, appCfg.UpstreamConfig.ScorePolicyConfig)
+}
+
+func TestScorePolicyConfigBothCalculationFuncAndFilePathThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-both-params.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during score policy config validation, cause: one setting must be specified - either 'calculation-function' or 'calculation-function-file-path'`)
+}
+
+func TestScorePolicyConfigInvalidIntervalThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-interval.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during score policy config validation, cause: the calculation interval can't be less than 0")
+}
+
+func TestScorePolicyConfigNoSortFuncThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-score-policy-func.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during score policy config validation, cause: couldn't read a ts script, no sortUpstreams() function in the specified script")
+}
+
+func TestScorePolicyConfigTypoInScriptThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-typo-sortUpstream.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during score policy config validation, cause: couldn't read a ts script, Expected ";" but found "0"`)
+}
+
+func TestRetryConfigAttemptsLess1ThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-attempts-less-1.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the number of attempts can't be less than 1`)
+}
+
+func TestRetryConfigMaxDelaysIsZeroThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-max-delay-0.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry max delay can't be less than 0`)
+}
+
+func TestRetryConfigJitterIsZeroThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-jitter-0.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry jitter can't be 0`)
+}
+
+func TestRetryConfigDelayGreaterMaxDelayThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-delay-greater-max-delay.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry delay can't be greater than the retry max delay`)
 }

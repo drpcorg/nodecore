@@ -3,6 +3,7 @@ package upstreams_test
 import (
 	"context"
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
@@ -15,7 +16,7 @@ import (
 )
 
 func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -38,8 +39,40 @@ func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().Head)
 }
 
+func TestChainSupervisorTrackLags(t *testing.T) {
+	tracker := dimensions.NewDimensionTracker()
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), tracker)
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	blockInfo1 := protocol.NewBlockInfo()
+	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(600), protocol.FinalizedBlock)
+	blockInfo2 := protocol.NewBlockInfo()
+	blockInfo2.AddBlock(protocol.NewBlockDataWithHeight(700), protocol.FinalizedBlock)
+
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id1", protocol.Available, 100, methodsMock, blockInfo1))
+	time.Sleep(3 * time.Millisecond)
+
+	chainDims1 := tracker.GetChainDimensions(chains.ARBITRUM, "id1")
+	assert.Equal(t, uint64(0), chainDims1.GetHeadLag())
+	assert.Equal(t, uint64(0), chainDims1.GetFinalizationLag())
+
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id2", protocol.Available, 300, methodsMock, blockInfo2))
+	time.Sleep(3 * time.Millisecond)
+
+	chainDims1 = tracker.GetChainDimensions(chains.ARBITRUM, "id1")
+	chainDims2 := tracker.GetChainDimensions(chains.ARBITRUM, "id2")
+
+	assert.Equal(t, uint64(0), chainDims2.GetHeadLag())
+	assert.Equal(t, uint64(0), chainDims2.GetFinalizationLag())
+	assert.Equal(t, uint64(200), chainDims1.GetHeadLag())
+	assert.Equal(t, uint64(100), chainDims1.GetFinalizationLag())
+}
+
 func TestChainSupervisorUpdateStatus(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -63,7 +96,7 @@ func TestChainSupervisorUpdateStatus(t *testing.T) {
 }
 
 func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 	methods1 := mocks.NewMethodsMock()
 	methods1.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 	methods2 := mocks.NewMethodsMock()
@@ -91,7 +124,7 @@ func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
 }
 
 func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice())
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
@@ -100,35 +133,35 @@ func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id", protocol.Available, 100, methods, blockInfo1))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methods, blockInfo1))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 
 	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(2000), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id", protocol.Available, 100, methods, blockInfo1))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methods, blockInfo1))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(2000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 
 	blockInfo2 := protocol.NewBlockInfo()
 	blockInfo2.AddBlock(protocol.NewBlockDataWithHeight(500), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id1", protocol.Available, 100, methods, blockInfo2))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id1", protocol.Available, 100, methods, blockInfo2))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(2000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 
 	blockInfo3 := protocol.NewBlockInfo()
 	blockInfo3.AddBlock(protocol.NewBlockDataWithHeight(50000), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id5", protocol.Available, 100, methods, blockInfo3))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id5", protocol.Available, 100, methods, blockInfo3))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(50000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id5", protocol.Unavailable, 100, methods, blockInfo3))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id5", protocol.Unavailable, 100, methods, blockInfo3))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(2000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlocData("id", protocol.Unavailable, 100, methods, blockInfo3))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Unavailable, 100, methods, blockInfo3))
 	time.Sleep(3 * time.Millisecond)
 	assert.Equal(t, uint64(500), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 }

@@ -36,6 +36,10 @@ type CMap[K any, V any] struct {
 	mp sync.Map
 }
 
+func NewCMap[K any, V any]() *CMap[K, V] {
+	return &CMap[K, V]{}
+}
+
 func (mp *CMap[K, V]) Load(key K) (*V, bool) {
 	res, loaded := mp.mp.Load(key)
 	if !loaded {

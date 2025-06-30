@@ -7,16 +7,37 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/dsheltie/pkg/errors_config"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"io"
 	"math"
 )
 
+func IsRetryable(response ResponseHolder) bool {
+	shouldRetry := false
+
+	switch resp := response.(type) {
+	case *BaseUpstreamResponse:
+		shouldRetry = response.HasError() && errors_config.IsRetryable(response.GetError().Message)
+	case *ReplyError:
+		shouldRetry = resp.ErrorKind == PartialFailure
+	}
+
+	return shouldRetry
+}
+
 func IsStream(method string) bool {
 	// TODO: implement logic to determine if a method is streaming or not
 	return method == "eth_getLogs" || method == "getProgramAccounts"
 }
+
+type ResponseErrorKind int
+
+const (
+	PartialFailure ResponseErrorKind = iota
+	TotalFailure
+)
 
 type BlockType int
 
@@ -143,16 +164,17 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap])
 		UpstreamMethods: upstreamMethods,
 		BlockInfo:       NewBlockInfo(),
 		Caps:            caps,
+		HeadData:        &BlockData{},
 	}
 }
 
 type BlockInfo struct {
-	blocks utils.CMap[BlockType, BlockData]
+	blocks *utils.CMap[BlockType, BlockData]
 }
 
 func NewBlockInfo() *BlockInfo {
 	return &BlockInfo{
-		blocks: utils.CMap[BlockType, BlockData]{},
+		blocks: utils.NewCMap[BlockType, BlockData](),
 	}
 }
 
@@ -172,7 +194,10 @@ func (b *BlockInfo) AddBlock(data *BlockData, blockType BlockType) {
 }
 
 func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
-	block, _ := b.blocks.Load(blockType)
+	block, ok := b.blocks.Load(blockType)
+	if !ok {
+		return &BlockData{}
+	}
 	return block
 }
 

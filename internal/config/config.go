@@ -1,9 +1,16 @@
 package config
 
 import (
+	"errors"
+	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/console"
+	"github.com/dop251/goja_nodejs/require"
+	"github.com/evanw/esbuild/pkg/api"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -31,14 +38,85 @@ type TlsConfig struct {
 }
 
 type UpstreamConfig struct {
-	Upstreams      []*Upstream               `yaml:"upstreams"`
-	ChainDefaults  map[string]*ChainDefaults `yaml:"chain-defaults"`
-	FailsafeConfig *FailsafeConfig           `yaml:"failsafe-config"`
+	Upstreams         []*Upstream               `yaml:"upstreams"`
+	ChainDefaults     map[string]*ChainDefaults `yaml:"chain-defaults"`
+	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config"`
+	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
+}
+
+type ScorePolicyConfig struct {
+	CalculationInterval         time.Duration `yaml:"calculation-interval"`
+	CalculationFunction         string        `yaml:"calculation-function"`
+	CalculationFunctionFilePath string        `yaml:"calculation-function-file-path"`
+
+	calculationFunc goja.Callable
+}
+
+var registry = new(require.Registry)
+
+func (s *ScorePolicyConfig) GetScoreFunc() (goja.Callable, error) {
+	if s.calculationFunc == nil {
+		sortUpstreams, err := s.compileFunc()
+		if err != nil {
+			panic(err)
+		}
+		s.calculationFunc = sortUpstreams
+	}
+	return s.calculationFunc, nil
+}
+
+func (s *ScorePolicyConfig) compileFunc() (goja.Callable, error) {
+	var tsFunc string
+	if s.CalculationFunction != "" {
+		tsFunc = s.CalculationFunction
+	} else {
+		funcBytes, err := os.ReadFile(s.CalculationFunctionFilePath)
+		if err != nil {
+			return nil, err
+		}
+		tsFunc = string(funcBytes)
+	}
+
+	result := api.Transform(tsFunc, api.TransformOptions{
+		Loader: api.LoaderTS,
+	})
+	if len(result.Errors) > 0 {
+		errorsText := lo.Map(result.Errors, func(item api.Message, index int) string {
+			return item.Text
+		})
+		return nil, errors.New(strings.Join(errorsText, "; "))
+	}
+
+	vm := goja.New()
+	_, err := vm.RunString(string(result.Code))
+	if err != nil {
+		return nil, err
+	}
+	registry.Enable(vm)
+	console.Enable(vm)
+
+	valueFunc := vm.Get("sortUpstreams")
+	if valueFunc == nil {
+		return nil, errors.New(`no sortUpstreams() function in the specified script`)
+	}
+	sortUpstreams, ok := goja.AssertFunction(valueFunc)
+	if !ok {
+		return nil, errors.New("sortUpstreams is not a function")
+	}
+	return sortUpstreams, nil
 }
 
 type FailsafeConfig struct {
 	HedgeConfig   *HedgeConfig   `yaml:"hedge"`
 	TimeoutConfig *TimeoutConfig `yaml:"timeout"`
+	RetryConfig   *RetryConfig   `yaml:"retry"`
+}
+
+type RetryConfig struct {
+	Attempts int            `yaml:"attempts"`
+	Delay    time.Duration  `yaml:"delay"`
+	MaxDelay *time.Duration `yaml:"max-delay"`
+	Jitter   *time.Duration `yaml:"jitter"`
 }
 
 type HedgeConfig struct { // works only on the execution flow level

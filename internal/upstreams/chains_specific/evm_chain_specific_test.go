@@ -37,7 +37,7 @@ func TestEvmParseSubBLock(t *testing.T) {
 
 func TestEvmGetLatestBlock(t *testing.T) {
 	ctx := context.Background()
-	connector := mocks.NewHttpConnectorMock()
+	connector := mocks.NewConnectorMock()
 	body := []byte(`{
 	  "jsonrpc": "2.0",
 	  "result": {
@@ -59,7 +59,7 @@ func TestEvmGetLatestBlock(t *testing.T) {
 
 func TestEvmGetLatestBlockWithError(t *testing.T) {
 	ctx := context.Background()
-	connector := mocks.NewHttpConnectorMock()
+	connector := mocks.NewConnectorMock()
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "block error", nil))
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)

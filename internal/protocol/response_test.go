@@ -116,7 +116,7 @@ func TestEncodeJsonRpcRequest(t *testing.T) {
 }
 
 func TestEncodeReplyErrorJsonRpc(t *testing.T) {
-	replyError := protocol.NewReplyError("1", protocol.ServerErrorWithCause(errors.New("err cause")), protocol.JsonRpc)
+	replyError := protocol.NewReplyError("1", protocol.ServerErrorWithCause(errors.New("err cause")), protocol.JsonRpc, protocol.TotalFailure)
 
 	respReader := replyError.EncodeResponse([]byte("55"))
 	respBytes, err := io.ReadAll(respReader)
@@ -131,7 +131,7 @@ func TestEncodeReplyErrorJsonRpc(t *testing.T) {
 }
 
 func TestEncodeReplyErrorRest(t *testing.T) {
-	replyError := protocol.NewReplyError("1", protocol.ServerErrorWithCause(errors.New("err cause")), protocol.Rest)
+	replyError := protocol.NewReplyError("1", protocol.ServerErrorWithCause(errors.New("err cause")), protocol.Rest, protocol.TotalFailure)
 
 	respReader := replyError.EncodeResponse([]byte("55"))
 	respBytes, err := io.ReadAll(respReader)

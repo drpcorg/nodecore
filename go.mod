@@ -3,9 +3,13 @@ module github.com/drpcorg/dsheltie
 go 1.24.1
 
 require (
+	github.com/DataDog/sketches-go v1.4.7
 	github.com/bytedance/sonic v1.13.2
 	github.com/deckarep/golang-set/v2 v2.8.0
+	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
+	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
 	github.com/ethereum/go-ethereum v1.15.11
+	github.com/evanw/esbuild v0.25.5
 	github.com/failsafe-go/failsafe-go v0.6.9
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -31,7 +35,10 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
+	github.com/google/pprof v0.0.0-20240727154555-813a5fbdbec8 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.3 // indirect

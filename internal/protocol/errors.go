@@ -1,12 +1,15 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+)
 
 const (
 	BaseError int = iota
 	IncorrectResponseBody
 	NoAvailableUpstreams
 	WrongChain
+	CtxErrorCode
 	ClientErrorCode         = 400
 	RequestTimeout          = 408
 	InternalServerErrorCode = 500
@@ -21,14 +24,6 @@ type ResponseError struct {
 
 func (b *ResponseError) Error() string {
 	return fmt.Sprintf("%d: %s", b.Code, b.Message)
-}
-
-func CreateReplyError(request RequestHolder, responseError *ResponseError) *ReplyError {
-	return NewReplyError(
-		request.Id(),
-		responseError,
-		request.RequestType(),
-	)
 }
 
 func ResponseErrorWithMessage(message string) *ResponseError {
@@ -70,6 +65,13 @@ func ServerErrorWithCause(cause error) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("internal server error: %s", cause.Error()),
 		Code:    InternalServerErrorCode,
+	}
+}
+
+func CtxError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("ctx error: %s", cause.Error()),
+		Code:    CtxErrorCode,
 	}
 }
 

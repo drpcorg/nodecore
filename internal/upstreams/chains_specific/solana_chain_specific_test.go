@@ -50,7 +50,7 @@ func TestSolanaParseSubBLock(t *testing.T) {
 
 func TestSolanaGetLatestBlock(t *testing.T) {
 	ctx := context.Background()
-	connector := mocks.NewHttpConnectorMock()
+	connector := mocks.NewConnectorMock()
 	slotBody := []byte(`{
 		"id": 1,
 		"jsonrpc": "2.0",
@@ -88,7 +88,7 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 
 func TestSolanaGetLatestBlockWithError(t *testing.T) {
 	ctx := context.Background()
-	connector := mocks.NewHttpConnectorMock()
+	connector := mocks.NewConnectorMock()
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "block error", nil))
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)

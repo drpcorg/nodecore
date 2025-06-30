@@ -21,37 +21,37 @@ func TestCodes(t *testing.T) {
 		},
 		{
 			name:         "client error",
-			response:     protocol.NewReplyErrorFromErr("1", protocol.ClientError(errors.New("err")), protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", protocol.ClientError(errors.New("err")), protocol.JsonRpc),
 			expectedCode: http.StatusBadRequest,
 		},
 		{
 			name:         "chain error",
-			response:     protocol.NewReplyErrorFromErr("1", protocol.WrongChainError("chain"), protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", protocol.WrongChainError("chain"), protocol.JsonRpc),
 			expectedCode: http.StatusBadRequest,
 		},
 		{
 			name:         "not supported error",
-			response:     protocol.NewReplyErrorFromErr("1", protocol.NotSupportedMethodError("method"), protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", protocol.NotSupportedMethodError("method"), protocol.JsonRpc),
 			expectedCode: http.StatusBadRequest,
 		},
 		{
 			name:         "request timeout error",
-			response:     protocol.NewReplyErrorFromErr("1", protocol.RequestTimeoutError(), protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", protocol.RequestTimeoutError(), protocol.JsonRpc),
 			expectedCode: http.StatusRequestTimeout,
 		},
 		{
 			name:         "internal error",
-			response:     protocol.NewReplyErrorFromErr("1", protocol.ServerError(), protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", protocol.ServerError(), protocol.JsonRpc),
 			expectedCode: http.StatusInternalServerError,
 		},
 		{
 			name:         "incorrect response body error",
-			response:     protocol.NewReplyErrorFromErr("1", protocol.IncorrectResponseBodyError(errors.New("err")), protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", protocol.IncorrectResponseBodyError(errors.New("err")), protocol.JsonRpc),
 			expectedCode: http.StatusInternalServerError,
 		},
 		{
 			name:         "default error",
-			response:     protocol.NewReplyErrorFromErr("1", &protocol.ResponseError{Code: 1}, protocol.JsonRpc),
+			response:     protocol.NewTotalFailureFromErr("1", &protocol.ResponseError{Code: 1}, protocol.JsonRpc),
 			expectedCode: http.StatusInternalServerError,
 		},
 	}
