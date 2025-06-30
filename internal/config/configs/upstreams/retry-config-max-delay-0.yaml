@@ -1,0 +1,11 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: polygon
+      failsafe-config:
+        retry:
+          attempts: 3
+          max-delay: 0s
+      connectors:
+        - type: json-rpc
+          url: https://test.com

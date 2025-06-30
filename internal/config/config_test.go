@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -82,15 +83,27 @@ func TestReadFullConfig(t *testing.T) {
 							Url:  "wss://test.com",
 						},
 					},
-					FailsafeConfig: &config.FailsafeConfig{},
+					FailsafeConfig: &config.FailsafeConfig{
+						RetryConfig: &config.RetryConfig{
+							MaxDelay: lo.ToPtr(1 * time.Second),
+							Attempts: 5,
+							Delay:    500 * time.Millisecond,
+							Jitter:   lo.ToPtr(6 * time.Second),
+						},
+					},
 				},
 				{
-					Id:             "another",
-					HeadConnector:  config.Rest,
-					PollInterval:   1 * time.Minute,
-					ChainName:      "polygon",
-					Methods:        &config.MethodsConfig{},
-					FailsafeConfig: &config.FailsafeConfig{},
+					Id:            "another",
+					HeadConnector: config.Rest,
+					PollInterval:  1 * time.Minute,
+					ChainName:     "polygon",
+					Methods:       &config.MethodsConfig{},
+					FailsafeConfig: &config.FailsafeConfig{
+						RetryConfig: &config.RetryConfig{
+							Attempts: 7,
+							Delay:    300 * time.Millisecond,
+						},
+					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
 							Type: config.Rest,
@@ -455,23 +468,47 @@ func TestScorePolicyConfigFilePath(t *testing.T) {
 func TestScorePolicyConfigBothCalculationFuncAndFilePathThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-both-params.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `error during score policy config, cause: one setting must be specified - either 'calculation-function' or 'calculation-function-file-path'`)
+	assert.ErrorContains(t, err, `error during score policy config validation, cause: one setting must be specified - either 'calculation-function' or 'calculation-function-file-path'`)
 }
 
 func TestScorePolicyConfigInvalidIntervalThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-interval.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during score policy config, cause: the calculation interval can't be less than 0")
+	assert.ErrorContains(t, err, "error during score policy config validation, cause: the calculation interval can't be less than 0")
 }
 
 func TestScorePolicyConfigNoSortFuncThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-score-policy-func.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during score policy config, cause: couldn't read a ts script, no sortUpstreams() function in the specified script")
+	assert.ErrorContains(t, err, "error during score policy config validation, cause: couldn't read a ts script, no sortUpstreams() function in the specified script")
 }
 
 func TestScorePolicyConfigTypoInScriptThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-score-policy-typo-sortUpstream.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `error during score policy config, cause: couldn't read a ts script, Expected ";" but found "0"`)
+	assert.ErrorContains(t, err, `error during score policy config validation, cause: couldn't read a ts script, Expected ";" but found "0"`)
+}
+
+func TestRetryConfigAttemptsLess1ThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-attempts-less-1.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the number of attempts can't be less than 1`)
+}
+
+func TestRetryConfigMaxDelaysIsZeroThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-max-delay-0.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry max delay can't be less than 0`)
+}
+
+func TestRetryConfigJitterIsZeroThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-jitter-0.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry jitter can't be 0`)
+}
+
+func TestRetryConfigDelayGreaterMaxDelayThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-delay-greater-max-delay.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry delay can't be greater than the retry max delay`)
 }

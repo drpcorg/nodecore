@@ -113,10 +113,10 @@ type FailsafeConfig struct {
 }
 
 type RetryConfig struct {
-	Attempts int           `yaml:"attempts"`
-	Delay    time.Duration `yaml:"delay"`
-	MaxDelay time.Duration `yaml:"maxDelay"`
-	Jitter   time.Duration `yaml:"jitter"`
+	Attempts int            `yaml:"attempts"`
+	Delay    time.Duration  `yaml:"delay"`
+	MaxDelay *time.Duration `yaml:"max-delay"`
+	Jitter   *time.Duration `yaml:"jitter"`
 }
 
 type HedgeConfig struct { // works only on the execution flow level

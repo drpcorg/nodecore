@@ -62,14 +62,14 @@ func CreateUpstreamRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[
 		retryPolicy.WithMaxAttempts(retryConfig.Attempts)
 	}
 	if retryConfig.Delay > 0 {
-		if retryConfig.MaxDelay > 0 {
-			retryPolicy.WithBackoff(retryConfig.Delay, retryConfig.MaxDelay)
+		if retryConfig.MaxDelay != nil && *retryConfig.MaxDelay > 0 {
+			retryPolicy.WithBackoff(retryConfig.Delay, *retryConfig.MaxDelay)
 		} else {
 			retryPolicy.WithDelay(retryConfig.Delay)
 		}
 	}
-	if retryConfig.Jitter > 0 {
-		retryPolicy.WithJitter(retryConfig.Jitter)
+	if retryConfig.Jitter != nil && *retryConfig.Jitter > 0 {
+		retryPolicy.WithJitter(*retryConfig.Jitter)
 	}
 
 	retryPolicy.HandleIf(func(response ResponseHolder, err error) bool {

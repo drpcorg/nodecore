@@ -94,6 +94,11 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 	if u.FailsafeConfig == nil {
 		u.FailsafeConfig = &FailsafeConfig{}
 	}
+	if u.FailsafeConfig != nil {
+		if u.FailsafeConfig.RetryConfig != nil {
+			u.FailsafeConfig.RetryConfig.setDefaults()
+		}
+	}
 	if u.HeadConnector == "" && len(u.Connectors) > 0 {
 		filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
 			_, ok := connectorTypesRating[item.Type]
@@ -114,5 +119,14 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 		if defaults.PollInterval != 0 {
 			u.PollInterval = defaults.PollInterval
 		}
+	}
+}
+
+func (r *RetryConfig) setDefaults() {
+	if r.Attempts == 0 {
+		r.Attempts = 3
+	}
+	if r.Delay == 0 {
+		r.Delay = 300 * time.Millisecond
 	}
 }

@@ -31,6 +31,12 @@ upstream-config:
       chain: ethereum
       head-connector: websocket
       poll-interval: 3m
+      failsafe-config:
+        retry:
+          attempts: 5
+          delay: 500ms
+          max-delay: 1s
+          jitter: 6s
       connectors:
         - type: json-rpc
           url: https://test.com
@@ -40,6 +46,9 @@ upstream-config:
           url: wss://test.com
     - id: another
       chain: polygon
+      failsafe-config:
+        retry:
+          attempts: 7
       connectors:
         - type: rest
           url: https://test.com

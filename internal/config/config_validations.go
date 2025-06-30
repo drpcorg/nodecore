@@ -155,7 +155,7 @@ func validatePolicyChain(chain string) error {
 
 func (u *UpstreamConfig) validate() error {
 	if err := u.ScorePolicyConfig.validate(); err != nil {
-		return fmt.Errorf("error during score policy config, cause: %s", err.Error())
+		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
 	}
 
 	for chain, chainDefault := range u.ChainDefaults {
@@ -227,13 +227,13 @@ func (r *RetryConfig) validate() error {
 	if r.Delay <= 0 {
 		return errors.New("the retry delay can't be less than 0")
 	}
-	if r.MaxDelay <= 0 {
+	if r.MaxDelay != nil && *r.MaxDelay <= 0 {
 		return errors.New("the retry max delay can't be less than 0")
 	}
-	if r.Jitter <= 0 {
+	if r.Jitter != nil && *r.Jitter <= 0 {
 		return errors.New("the retry jitter can't be 0")
 	}
-	if r.Delay > r.MaxDelay {
+	if r.MaxDelay != nil && r.Delay > *r.MaxDelay {
 		return errors.New("the retry delay can't be greater than the retry max delay")
 	}
 	return nil
