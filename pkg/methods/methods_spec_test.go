@@ -155,7 +155,3 @@ func TestLoadSpecMergeMethods(t *testing.T) {
 	method := spec2["superduper"]["my_method"]
 	assert.False(t, method.IsCacheable())
 }
-
-func TestLoadSpecsAndMergeMethods(t *testing.T) {
-
-}
