@@ -20,7 +20,7 @@ import (
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	err := errors.New("selection error")
 	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx())
 
@@ -46,7 +46,7 @@ func TestSubscriptionRequestProcessorAndCantSubscribeThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewWsConnectorMock()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
 	err := errors.New("sub error")
 	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx())
@@ -78,7 +78,7 @@ func TestSubscriptionRequestProcessorAndCancelCtxThenNothing(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewWsConnectorMock()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx())
@@ -107,7 +107,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewWsConnectorMock()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
 	ctx := context.Background()
 	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx())
@@ -149,7 +149,7 @@ func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
 	chain := chains.POLYGON
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_subscribe", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_subscribe", nil, false, nil)
 
 	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
 	response := processor.ProcessRequest(context.Background(), strategy, request)
@@ -177,7 +177,7 @@ func TestUnaryRequestProcessorReceiveFromCache(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	result := []byte("result")
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return(result, true)
 
@@ -209,7 +209,7 @@ func TestUnaryRequestProcessorCantGetUpstreamThenError(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	err := errors.New("selection error")
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	upSupervisor.On("GetExecutor").Return(createExecutor())
@@ -243,7 +243,7 @@ func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	upSupervisor.On("GetExecutor").Return(createExecutor())
@@ -277,7 +277,7 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestUpstream(context.Background(), apiConnector, upConfig())
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	result := []byte("result")
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", result, protocol.JsonRpc)
 
@@ -299,6 +299,7 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 	upSupervisor.AssertExpectations(t)
 	strategy.AssertExpectations(t)
 	cacheProcessor.AssertExpectations(t)
+	apiConnector.AssertExpectations(t)
 
 	assert.Equal(t, "id", unaryRespWrapper.UpstreamId)
 	assert.Equal(t, "223", unaryRespWrapper.RequestId)

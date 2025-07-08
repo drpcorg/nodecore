@@ -115,7 +115,14 @@ func TestLoadSpecWrongJqPathThenError(t *testing.T) {
 	t.Setenv(specs.SpecPathVar, "test_specs/wrong_parser_path")
 	err := specs.Load()
 
-	assert.ErrorContains(t, err, "couldn't merge method specs: spec 'test', error 'couldn't parse a jq path of method test'")
+	assert.ErrorContains(t, err, "couldn't merge method specs: spec 'test', error 'couldn't parse a jq path of method test - unexpected token \"!\"'")
+}
+
+func TestLoadSpecWrongStickySettings(t *testing.T) {
+	t.Setenv(specs.SpecPathVar, "test_specs/wrong_sticky")
+	err := specs.Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'eth_uninstallFilter' of 'test_specs/wrong_sticky/spec.json' validation, cause: both 'create-sticky' and 'send-sticky' are enabled")
 }
 
 func TestLoadSpecMergeMethods(t *testing.T) {

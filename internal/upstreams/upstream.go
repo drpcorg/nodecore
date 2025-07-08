@@ -28,17 +28,18 @@ func (u *Upstream) createEvent() protocol.UpstreamEvent {
 }
 
 type Upstream struct {
-	Id             string
-	Chain          chains.Chain
-	apiConnectors  []connectors.ApiConnector
-	ctx            context.Context
-	headProcessor  *blocks.HeadProcessor
-	blockProcessor blocks.BlockProcessor
-	subManager     *utils.SubscriptionManager[protocol.UpstreamEvent]
-	cancelFunc     context.CancelFunc
-	upstreamState  *utils.Atomic[protocol.UpstreamState]
-	stateChan      chan protocol.AbstractUpstreamStateEvent
-	chainSpecific  specific.ChainSpecific
+	Id               string
+	Chain            chains.Chain
+	apiConnectors    []connectors.ApiConnector
+	ctx              context.Context
+	headProcessor    *blocks.HeadProcessor
+	blockProcessor   blocks.BlockProcessor
+	subManager       *utils.SubscriptionManager[protocol.UpstreamEvent]
+	cancelFunc       context.CancelFunc
+	upstreamState    *utils.Atomic[protocol.UpstreamState]
+	stateChan        chan protocol.AbstractUpstreamStateEvent
+	chainSpecific    specific.ChainSpecific
+	upstreamIndexHex string
 }
 
 func (u *Upstream) Start() {
@@ -59,6 +60,7 @@ func NewUpstream(
 	config *config.Upstream,
 	tracker *dimensions.DimensionTracker,
 	executor failsafe.Executor[protocol.ResponseHolder],
+	upstreamIndex int,
 ) (*Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(config.ChainName)
@@ -84,22 +86,24 @@ func NewUpstream(
 		cancel()
 		return nil, err
 	}
+	upstreamIndexHex := fmt.Sprintf("%05x", upstreamIndex)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps))
+	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex))
 
 	return &Upstream{
-		Id:             config.Id,
-		Chain:          configuredChain.Chain,
-		apiConnectors:  apiConnectors,
-		ctx:            ctx,
-		cancelFunc:     cancel,
-		upstreamState:  upState,
-		headProcessor:  blocks.NewHeadProcessor(ctx, config, headConnector, chainSpecific),
-		blockProcessor: createBlockProcessor(ctx, config, headConnector, chainSpecific, configuredChain.Type),
-		subManager:     utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", config.Id)),
-		stateChan:      make(chan protocol.AbstractUpstreamStateEvent, 100),
-		chainSpecific:  chainSpecific,
+		Id:               config.Id,
+		Chain:            configuredChain.Chain,
+		apiConnectors:    apiConnectors,
+		ctx:              ctx,
+		cancelFunc:       cancel,
+		upstreamState:    upState,
+		headProcessor:    blocks.NewHeadProcessor(ctx, config, headConnector, chainSpecific),
+		blockProcessor:   createBlockProcessor(ctx, config, headConnector, chainSpecific, configuredChain.Type),
+		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", config.Id)),
+		stateChan:        make(chan protocol.AbstractUpstreamStateEvent, 100),
+		chainSpecific:    chainSpecific,
+		upstreamIndexHex: upstreamIndexHex,
 	}, nil
 }
 
@@ -110,19 +114,21 @@ func NewUpstreamWithParams(
 	apiConnectors []connectors.ApiConnector,
 	headProcessor *blocks.HeadProcessor,
 	state *utils.Atomic[protocol.UpstreamState],
+	upstreamIndexHex string,
 ) *Upstream {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &Upstream{
-		Id:            id,
-		Chain:         chain,
-		ctx:           ctx,
-		cancelFunc:    cancel,
-		upstreamState: state,
-		apiConnectors: apiConnectors,
-		headProcessor: headProcessor,
-		subManager:    utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
-		stateChan:     make(chan protocol.AbstractUpstreamStateEvent, 100),
+		Id:               id,
+		Chain:            chain,
+		ctx:              ctx,
+		cancelFunc:       cancel,
+		upstreamState:    state,
+		apiConnectors:    apiConnectors,
+		headProcessor:    headProcessor,
+		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
+		stateChan:        make(chan protocol.AbstractUpstreamStateEvent, 100),
+		upstreamIndexHex: upstreamIndexHex,
 	}
 }
 
@@ -139,6 +145,10 @@ func (u *Upstream) GetConnector(connectorType protocol.ApiConnectorType) connect
 		return item.GetType() == connectorType
 	})
 	return connector
+}
+
+func (u *Upstream) GetHashIndex() string {
+	return u.upstreamIndexHex
 }
 
 // update upstream state through one pipeline

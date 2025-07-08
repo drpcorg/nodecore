@@ -55,7 +55,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 			})
 
 			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-			req, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_test", nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
 
@@ -114,7 +114,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 			})
 
 			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-			req, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_test", nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
 
@@ -137,7 +137,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	})
 
 	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-	req, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_test", nil)
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 	r := connector.SendRequest(context.Background(), req)
 
@@ -182,51 +182,13 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 	})
 
 	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-	req, _ := protocol.NewStreamJsonRpcUpstreamRequest("id", json.RawMessage(`"real"`), "eth_test", nil)
+	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)
 
 	assert.True(t, r.HasStream())
 	assert.False(t, r.HasError())
 	assert.Nil(t, r.ResponseResult())
-}
-
-func TestRestRequestWith200CodeThenStream(t *testing.T) {
-	httpmock.Activate()
-	defer httpmock.Deactivate()
-
-	httpmock.RegisterResponder("GET", "/info", func(request *http.Request) (*http.Response, error) {
-		resp := httpmock.NewBytesResponse(200, []byte(`{"key": "value"}`))
-		return resp, nil
-	})
-
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.RestConnector, nil)
-	req := protocol.NewStreamRestUpstreamRequest("GET#/info", nil, nil)
-
-	r := connector.SendRequest(context.Background(), req)
-
-	assert.True(t, r.HasStream())
-	assert.False(t, r.HasError())
-	assert.Nil(t, r.ResponseResult())
-}
-
-func TestRestRequestWithNot200CodeThenNoStream(t *testing.T) {
-	httpmock.Activate()
-	defer httpmock.Deactivate()
-
-	httpmock.RegisterResponder("GET", "/info", func(request *http.Request) (*http.Response, error) {
-		resp := httpmock.NewBytesResponse(500, []byte(`{"message":"err"}`))
-		return resp, nil
-	})
-
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.RestConnector, nil)
-	req := protocol.NewStreamRestUpstreamRequest("GET#/info", nil, nil)
-
-	r := connector.SendRequest(context.Background(), req)
-
-	assert.False(t, r.HasStream())
-	assert.True(t, r.HasError())
-	assert.Equal(t, &protocol.ResponseError{Message: "err", Code: 500}, r.GetError())
 }
 
 func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
@@ -239,7 +201,7 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	})
 
 	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
-	req, _ := protocol.NewStreamJsonRpcUpstreamRequest("id", json.RawMessage(`"real"`), "eth_test", nil)
+	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)
 

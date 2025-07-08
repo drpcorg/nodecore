@@ -6,6 +6,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/samber/lo"
 	"sync/atomic"
 )
 
@@ -16,17 +17,25 @@ type UpstreamStrategy interface {
 }
 
 type RatingStrategy struct {
-	chainSupervisor   *upstreams.ChainSupervisor
-	selectedUpstreams mapset.Set[string]
-	ups               []string
+	chainSupervisor    *upstreams.ChainSupervisor
+	selectedUpstreams  mapset.Set[string]
+	ups                []string
+	additionalMatchers []Matcher
 }
 
-func NewRatingStrategy(chain chains.Chain, method string, chainSupervisor *upstreams.ChainSupervisor, registry *rating.RatingRegistry) *RatingStrategy {
+func NewRatingStrategy(
+	chain chains.Chain,
+	method string,
+	additionalMatchers []Matcher,
+	chainSupervisor *upstreams.ChainSupervisor,
+	registry *rating.RatingRegistry,
+) *RatingStrategy {
 	ups := registry.GetSortedUpstreams(chain, method)
 	return &RatingStrategy{
-		chainSupervisor:   chainSupervisor,
-		ups:               ups,
-		selectedUpstreams: mapset.NewSet[string](),
+		chainSupervisor:    chainSupervisor,
+		ups:                ups,
+		additionalMatchers: additionalMatchers,
+		selectedUpstreams:  mapset.NewSet[string](),
 	}
 }
 
@@ -35,7 +44,7 @@ func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string,
 		return "", protocol.NoAvailableUpstreamsError()
 	}
 
-	selectedUpstream, currentReason := filterUpstreams(request, r.ups, r.chainSupervisor, r.selectedUpstreams)
+	selectedUpstream, currentReason := filterUpstreams(request, r.ups, r.chainSupervisor, r.selectedUpstreams, r.additionalMatchers)
 	if selectedUpstream != "" {
 		return selectedUpstream, nil
 	}
@@ -68,7 +77,7 @@ func (b *BaseStrategy) SelectUpstream(request protocol.RequestHolder) (string, e
 	pos := index.Add(1) % uint64(len(upstreamIds))
 	upstreamIds = append(upstreamIds[pos:], upstreamIds[:pos]...)
 
-	selectedUpstream, currentReason := filterUpstreams(request, upstreamIds, b.chainSupervisor, b.selectedUpstreams)
+	selectedUpstream, currentReason := filterUpstreams(request, upstreamIds, b.chainSupervisor, b.selectedUpstreams, nil)
 	if selectedUpstream != "" {
 		return selectedUpstream, nil
 	}
@@ -81,9 +90,11 @@ func filterUpstreams(
 	upstreamIds []string,
 	chainSupervisor *upstreams.ChainSupervisor,
 	selectedUpstreams mapset.Set[string],
+	additionalMatchers []Matcher,
 ) (string, MatchResponse) {
 	var currentReason MatchResponse = AvailabilityResponse{}
-	matchers := append(make([]Matcher, 0), NewStatusMatcher(), NewMethodMatcher(request.Method()))
+	matchers := lo.Ternary(len(additionalMatchers) > 0, additionalMatchers, make([]Matcher, 0))
+	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
 	if request.IsSubscribe() {
 		matchers = append(matchers, NewWsCapMatcher(request.Method()))
 	}

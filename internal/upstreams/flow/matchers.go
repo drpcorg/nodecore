@@ -11,6 +11,7 @@ type MatchResponseType int
 const (
 	MethodType MatchResponseType = iota
 	AvailabilityType
+	UpstreamIndexType
 	SuccessType
 )
 
@@ -18,6 +19,20 @@ type MatchResponse interface {
 	Cause() string
 	Type() MatchResponseType
 }
+
+type UpstreamIndexResponse struct {
+	upstreamIndex string
+}
+
+func (u UpstreamIndexResponse) Cause() string {
+	return fmt.Sprintf("no upstream with index %s", u.upstreamIndex)
+}
+
+func (u UpstreamIndexResponse) Type() MatchResponseType {
+	return UpstreamIndexType
+}
+
+var _ MatchResponse = (*UpstreamIndexResponse)(nil)
 
 type SuccessResponse struct {
 }
@@ -115,6 +130,23 @@ func NewWsCapMatcher(method string) *WsCapMatcher {
 	return &WsCapMatcher{method: method}
 }
 
+type UpstreamIndexMatcher struct {
+	upstreamIndex string
+}
+
+func (u *UpstreamIndexMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if state.UpstreamIndex == u.upstreamIndex {
+		return SuccessResponse{}
+	}
+	return UpstreamIndexResponse{upstreamIndex: u.upstreamIndex}
+}
+
+var _ Matcher = (*UpstreamIndexMatcher)(nil)
+
+func NewUpstreamIndexMatcher(upstreamIndex string) *UpstreamIndexMatcher {
+	return &UpstreamIndexMatcher{upstreamIndex: upstreamIndex}
+}
+
 type MultiMatcher struct {
 	matchers []Matcher
 }
@@ -124,7 +156,7 @@ func (m *MultiMatcher) Match(upId string, state *protocol.UpstreamState) MatchRe
 	for _, matcher := range m.matchers {
 		matchedResponse := matcher.Match(upId, state)
 		if matchedResponse.Type() != SuccessType {
-			log.Info().Msgf("upstream %s check: %s", upId, matchedResponse.Cause())
+			log.Debug().Msgf("upstream %s check: %s", upId, matchedResponse.Cause())
 		}
 		if matchedResponse.Type() < response.Type() {
 			response = matchedResponse

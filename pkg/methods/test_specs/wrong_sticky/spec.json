@@ -1,0 +1,28 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TEST JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "test"
+  },
+  "methods": [
+    {
+      "name": "eth_uninstallFilter",
+      "group": "filter",
+      "settings": {
+        "sticky": {
+          "send-sticky": true,
+          "create-sticky": true
+        },
+        "cacheable": false
+      },
+      "params": [],
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
+      }
+    }
+  ]
+}

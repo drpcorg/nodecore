@@ -21,7 +21,7 @@ func TestDimensionConnectorSuccessfulResponse(t *testing.T) {
 	connectorMock := mocks.NewConnectorMock()
 	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
 
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.On("SendRequest", mock.Anything, request).Return(responseHolder)
 
@@ -46,7 +46,7 @@ func TestDimensionConnectorRetryRequest(t *testing.T) {
 	connectorMock := mocks.NewConnectorMock()
 	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
 
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.On("SendRequest", mock.Anything, request).Return(protocol.NewReplyError("1", protocol.ServerError(), protocol.JsonRpc, protocol.PartialFailure)).Once()
 	connectorMock.On("SendRequest", mock.Anything, request).Return(responseHolder).Once()
@@ -122,7 +122,7 @@ func TestDimensionConnectorRetryableNonRetryableErrors(t *testing.T) {
 			connectorMock := mocks.NewConnectorMock()
 			dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
 
-			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+			request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 			connectorMock.On("SendRequest", mock.Anything, request).Return(test.errorResponse)
 
 			result := dimensionConnector.SendRequest(context.Background(), request)

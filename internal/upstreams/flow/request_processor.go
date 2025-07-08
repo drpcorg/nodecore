@@ -78,20 +78,7 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), result, request.RequestType()),
 			}
 		} else {
-			response, err = u.upstreamSupervisor.
-				GetExecutor().
-				WithContext(ctx).
-				GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
-					upstreamId, err := upstreamStrategy.SelectUpstream(request)
-					if err != nil {
-						return nil, protocol.ExecutionError(exec.Hedges(), err)
-					}
-					responseHolder, err := sendUnaryRequest(ctx, u.upstreamSupervisor.GetUpstream(upstreamId), request)
-					if err != nil {
-						return nil, protocol.ExecutionError(exec.Hedges(), err)
-					}
-					return responseHolder, nil
-				})
+			response, err = executeUnaryRequest(ctx, request, u.upstreamSupervisor, upstreamStrategy)
 			if err != nil {
 				response = &protocol.ResponseHolderWrapper{
 					UpstreamId: NoUpstream,
@@ -107,6 +94,28 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 	}
 
 	return &UnaryResponse{ResponseWrapper: response}
+}
+
+func executeUnaryRequest(
+	ctx context.Context,
+	request protocol.RequestHolder,
+	upstreamSupervisor upstreams.UpstreamSupervisor,
+	upstreamStrategy UpstreamStrategy,
+) (*protocol.ResponseHolderWrapper, error) {
+	return upstreamSupervisor.
+		GetExecutor().
+		WithContext(ctx).
+		GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
+			upstreamId, err := upstreamStrategy.SelectUpstream(request)
+			if err != nil {
+				return nil, protocol.ExecutionError(exec.Hedges(), err)
+			}
+			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request)
+			if err != nil {
+				return nil, protocol.ExecutionError(exec.Hedges(), err)
+			}
+			return responseHolder, nil
+		})
 }
 
 func getUnaryCapableConnector(upstream *upstreams.Upstream, requestType protocol.RequestType) connectors.ApiConnector {
@@ -132,7 +141,7 @@ func sendUnaryRequest(
 	var apiConnector connectors.ApiConnector
 
 	switch request.(type) {
-	case *protocol.BaseUpstreamRequest:
+	case *protocol.UpstreamJsonRpcRequest:
 		apiConnector = getUnaryCapableConnector(upstream, request.RequestType())
 	}
 	if apiConnector == nil {

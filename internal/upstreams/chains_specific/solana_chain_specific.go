@@ -79,11 +79,11 @@ func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHold
 		"showRewards":        false,
 		"transactionDetails": "none",
 	}
-	return protocol.NewInternalJsonRpcUpstreamRequest("blockSubscribe", []interface{}{"all", params})
+	return protocol.NewInternalUpstreamJsonRpcRequest("blockSubscribe", []interface{}{"all", params})
 }
 
 func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint64, error) {
-	slotReq, err := protocol.NewInternalJsonRpcUpstreamRequest("getSlot", nil)
+	slotReq, err := protocol.NewInternalUpstreamJsonRpcRequest("getSlot", nil)
 	if err != nil {
 		return 0, err
 	}
@@ -98,7 +98,7 @@ func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint
 }
 
 func getMaxBlock(ctx context.Context, connector connectors.ApiConnector, slot uint64) (uint64, error) {
-	blocksReq, err := protocol.NewInternalJsonRpcUpstreamRequest("getBlocks", []interface{}{slot - 10, slot})
+	blocksReq, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlocks", []interface{}{slot - 10, slot})
 	if err != nil {
 		return 0, err
 	}
@@ -122,7 +122,7 @@ func getBlock(ctx context.Context, connector connectors.ApiConnector, block uint
 		"transactionDetails":             "none",
 		"maxSupportedTransactionVersion": 0,
 	}
-	blockReq, err := protocol.NewInternalJsonRpcUpstreamRequest("getBlock", []interface{}{block, params})
+	blockReq, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlock", []interface{}{block, params})
 	if err != nil {
 		return nil, err
 	}

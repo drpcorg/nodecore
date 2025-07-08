@@ -67,7 +67,10 @@ func TestDecodeSingleRequestJsonRpcHandler(t *testing.T) {
 			map[string]interface{}{"key": "value"},
 		},
 	}
-	reqBody := parseBody(upReq.Body())
+	body, err := upReq.Body()
+	assert.Nil(t, err)
+
+	reqBody := parseBody(body)
 
 	assert.Equal(t, "eth_test", upReq.Method())
 	assert.Equal(t, protocol.JsonRpc, upReq.RequestType())
@@ -116,8 +119,11 @@ func TestDecodeSingleMultipleJsonRpcHandler(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
+			body, reqErr := test.request.Body()
+
+			assert.Nil(te, reqErr)
 			assert.Equal(t, protocol.JsonRpc, test.request.RequestType())
-			assert.Equal(t, test.expected, parseBody(test.request.Body()))
+			assert.Equal(t, test.expected, parseBody(body))
 		})
 	}
 }

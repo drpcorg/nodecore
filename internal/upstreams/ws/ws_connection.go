@@ -107,16 +107,20 @@ func (w *JsonRpcWsConnection) SendRpcRequest(ctx context.Context, upstreamReques
 }
 
 func (w *JsonRpcWsConnection) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
-	jsonBody, err := sonic.Get(upstreamRequest.Body())
+	body, err := upstreamRequest.Body()
 	if err != nil {
-		return nil, fmt.Errorf("invalid json-rpc request, cause %s", err.Error())
+		return nil, fmt.Errorf("couldn't parse a request body, cause - %s", err.Error())
+	}
+	jsonBody, err := sonic.Get(body)
+	if err != nil {
+		return nil, fmt.Errorf("invalid json-rpc request, cause - %s", err.Error())
 	}
 
 	internalId := w.internalId.Add(1)
 	requestId := fmt.Sprintf("%d", internalId)
 	_, err = jsonBody.SetAny("id", requestId)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't replace an id, cause %s", err.Error())
+		return nil, fmt.Errorf("couldn't replace an id, cause - %s", err.Error())
 	}
 
 	req := &reqOp{
@@ -269,15 +273,20 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
 		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method); ok {
 			params := []interface{}{op.subId}
-			unsubReq, err := protocol.NewInternalJsonRpcUpstreamRequest(unsubMethod, params)
+			unsubReq, err := protocol.NewInternalUpstreamJsonRpcRequest(unsubMethod, params)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, op.subId)
 			} else {
-				err = w.writeMessage(unsubReq.Body())
+				body, err := unsubReq.Body()
 				if err != nil {
-					log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s and subId %s", unsubMethod, op.subId)
+					log.Warn().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, op.subId)
 				} else {
-					log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
+					err = w.writeMessage(body)
+					if err != nil {
+						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s and subId %s", unsubMethod, op.subId)
+					} else {
+						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
+					}
 				}
 			}
 		}

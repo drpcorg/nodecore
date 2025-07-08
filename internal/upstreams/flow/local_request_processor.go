@@ -27,7 +27,8 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	}
 
 	if l.subCtx != nil && specs.IsUnsubscribeMethod(chains.GetMethodSpecNameByChain(l.chain), request.Method()) {
-		node, err := sonic.Get(request.Body(), "params", 0)
+		body, _ := request.Body()
+		node, err := sonic.Get(body, "params", 0)
 		if err != nil {
 			return &UnaryResponse{processedServerError(request, err)}
 		}

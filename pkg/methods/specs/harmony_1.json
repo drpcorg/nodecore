@@ -153,6 +153,9 @@
       "params": [],
       "group": "filter",
       "settings": {
+        "sticky": {
+          "create-sticky": true
+        },
         "cacheable": false
       }
     },
@@ -161,6 +164,9 @@
       "params": [],
       "group": "filter",
       "settings": {
+        "sticky": {
+          "create-sticky": true
+        },
         "cacheable": false
       }
     },
@@ -169,6 +175,9 @@
       "params": [],
       "group": "filter",
       "settings": {
+        "sticky": {
+          "create-sticky": true
+        },
         "cacheable": false
       }
     },
@@ -177,7 +186,14 @@
       "params": [],
       "group": "filter",
       "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
         "cacheable": false
+      },
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
       }
     },
     {
@@ -185,7 +201,14 @@
       "params": [],
       "group": "filter",
       "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
         "cacheable": false
+      },
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
       }
     },
     {
