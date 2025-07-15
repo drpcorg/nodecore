@@ -12,17 +12,25 @@ import (
 	"strings"
 )
 
+const newValue = "$newValue"
+
 type Method struct {
 	enabled      bool
 	cacheable    bool
 	parser       *jqParser
+	modifyParser *modifyJqParser
 	Subscription *Subscription
+	Sticky       *Sticky
 	Name         string
 }
 
 type jqParser struct {
 	returnType ParserReturnType
 	query      *gojq.Query
+}
+
+type modifyJqParser struct {
+	code *gojq.Code
 }
 
 func DefaultMethod(name string) *Method {
@@ -61,7 +69,7 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	if methodData.TagParser != nil {
 		jqQuery, err := gojq.Parse(methodData.TagParser.Path)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't parse a jq path of method %s", methodData.Name)
+			return nil, fmt.Errorf("couldn't parse a jq path of method %s - %s", methodData.Name, err.Error())
 		}
 		parser = &jqParser{
 			returnType: methodData.TagParser.ReturnType,
@@ -70,6 +78,8 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	}
 
 	var sub *Subscription
+	var sticky *Sticky
+	var modifyParser *modifyJqParser
 	cacheable := true
 	if methodData.Settings != nil {
 		if methodData.Settings.Cacheable != nil {
@@ -78,6 +88,23 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 		if methodData.Settings.Subscription != nil {
 			sub = methodData.Settings.Subscription
 		}
+		if methodData.Settings.Sticky != nil {
+			sticky = methodData.Settings.Sticky
+			if methodData.Settings.Sticky.SendSticky && methodData.TagParser != nil {
+				query := fmt.Sprintf("%s = %s", methodData.TagParser.Path, newValue)
+				jqQuery, err := gojq.Parse(query)
+				if err != nil {
+					return nil, fmt.Errorf("cound't create a modify parser query for method %s, error - %s", methodData.Name, err.Error())
+				}
+				code, err := gojq.Compile(jqQuery, gojq.WithVariables([]string{newValue}))
+				if err != nil {
+					return nil, fmt.Errorf("cound't create a modify parser query for method %s, error - %s", methodData.Name, err.Error())
+				}
+				modifyParser = &modifyJqParser{
+					code: code,
+				}
+			}
+		}
 	}
 
 	return &Method{
@@ -85,6 +112,8 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 		cacheable:    cacheable,
 		Name:         methodData.Name,
 		parser:       parser,
+		modifyParser: modifyParser,
+		Sticky:       sticky,
 		Subscription: sub,
 	}, nil
 }
@@ -107,14 +136,40 @@ type HashTagParam struct { // hash
 func (b *HashTagParam) param() {
 }
 
+type StringParam struct { // any string value
+	Value string
+}
+
+func (s *StringParam) param() {}
+
+func (m *Method) Modify(ctx context.Context, data any, newV any) []byte {
+	if m.modifyParser == nil {
+		return nil
+	}
+	log := zerolog.Ctx(ctx)
+	iter := m.modifyParser.code.Run(data, newV)
+	modifiedValue, err := m.jqParse(iter)
+	if err != nil {
+		log.Warn().Err(err).Msgf("couldn't parse tag of method %s", m.Name)
+		return nil
+	}
+	modifiedData, err := sonic.Marshal(modifiedValue)
+	if err != nil {
+		log.Warn().Err(err).Msgf("couldn't marshall a modified body %v of method %s", modifiedValue, m.Name)
+		return nil
+	}
+	return modifiedData
+}
+
 func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 	if m.parser == nil {
 		return nil
 	}
 	log := zerolog.Ctx(ctx)
-	methodParam, err := m.jqParse(data)
+	iter := m.parser.query.Run(data)
+	methodParam, err := m.jqParse(iter)
 	if err != nil {
-		log.Warn().Msgf("couldn't parse tag of method %s, cause - %s", m.Name, err.Error())
+		log.Warn().Err(err).Msgf("couldn't parse tag of method %s", m.Name)
 		return nil
 	}
 	switch param := methodParam.(type) {
@@ -123,7 +178,7 @@ func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 			var num rpc.BlockNumber
 			err = sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &num)
 			if err != nil {
-				log.Warn().Msgf("couldn't parse tag of method to BlockNumber %s, cause - %s", m.Name, err.Error())
+				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", m.Name)
 				return nil
 			}
 			return &BlockNumberParam{BlockNumber: num}
@@ -131,7 +186,7 @@ func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 			var blockNumberOrHash rpc.BlockNumberOrHash
 			err = sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &blockNumberOrHash)
 			if err != nil {
-				log.Warn().Msgf("couldn't parse tag of method to BlockNumberOrHash %s, cause - %s", m.Name, err.Error())
+				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumberOrHash %s", m.Name)
 				return nil
 			}
 			if blockNumberOrHash.BlockHash != nil {
@@ -139,14 +194,15 @@ func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 			} else if blockNumberOrHash.BlockNumber != nil {
 				return &BlockNumberParam{BlockNumber: *blockNumberOrHash.BlockNumber}
 			}
+		} else if m.parser.returnType == StringType {
+			return &StringParam{Value: param}
 		}
 	}
 
 	return nil
 }
 
-func (m *Method) jqParse(data any) (any, error) {
-	iter := m.parser.query.Run(data)
+func (m *Method) jqParse(iter gojq.Iter) (any, error) {
 	for {
 		param, ok := iter.Next()
 		if !ok {

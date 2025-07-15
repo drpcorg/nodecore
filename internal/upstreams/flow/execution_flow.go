@@ -53,18 +53,31 @@ func (e *BaseExecutionFlow) Execute(ctx context.Context, requests []protocol.Req
 	e.wg.Add(len(requests))
 
 	for _, request := range requests {
-		e.processRequest(ctx, e.createStrategy(request), request)
+		e.processRequest(ctx, e.createStrategy(ctx, request), request)
 	}
 
 	e.wg.Wait()
 }
 
-func (e *BaseExecutionFlow) createStrategy(request protocol.RequestHolder) UpstreamStrategy {
+func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol.RequestHolder) UpstreamStrategy {
+	chainSupervisor := e.upstreamSupervisor.GetChainSupervisor(e.chain)
 	if request.IsSubscribe() {
 		// TODO: calculate rating of subscription methods
-		return NewBaseStrategy(e.upstreamSupervisor.GetChainSupervisor(e.chain))
+		return NewBaseStrategy(chainSupervisor)
 	}
-	return NewRatingStrategy(e.chain, request.Method(), e.upstreamSupervisor.GetChainSupervisor(e.chain), e.registry)
+	additionalMatchers := make([]Matcher, 0)
+	if specs.IsStickySendMethod(request.SpecMethod()) {
+		upstreamIndex := ""
+		methodParam := request.ParseParams(ctx)
+		switch param := methodParam.(type) {
+		case *specs.StringParam:
+			if len(param.Value) > maxBytes {
+				upstreamIndex = param.Value[len(param.Value)-maxBytes:]
+			}
+		}
+		additionalMatchers = append(additionalMatchers, NewUpstreamIndexMatcher(upstreamIndex))
+	}
+	return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry)
 }
 
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
@@ -76,6 +89,8 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			requestProcessor = NewSubscriptionRequestProcessor(e.upstreamSupervisor, e.subCtx)
 		} else if isLocalRequest(e.chain, request.Method()) {
 			requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
+		} else if isStickyRequest(request.SpecMethod()) {
+			requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
 		} else {
 			requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
 		}
@@ -97,6 +112,10 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 
 func isLocalRequest(chain chains.Chain, method string) bool {
 	return specs.IsUnsubscribeMethod(chains.GetMethodSpecNameByChain(chain), method)
+}
+
+func isStickyRequest(specMethod *specs.Method) bool {
+	return specs.IsStickyCreateMethod(specMethod) || specs.IsStickySendMethod(specMethod)
 }
 
 type SubCtx struct {

@@ -39,7 +39,13 @@ type MethodData struct {
 
 type MethodSettings struct {
 	Cacheable    *bool         `json:"cacheable"`
+	Sticky       *Sticky       `json:"sticky"`
 	Subscription *Subscription `json:"subscription"`
+}
+
+type Sticky struct {
+	SendSticky   bool `json:"send-sticky"`   // to send to the same node
+	CreateSticky bool `json:"create-sticky"` // to add an upstream index to the payload
 }
 
 type Subscription struct {
@@ -53,6 +59,7 @@ type ParserReturnType string
 const (
 	BlockNumberType ParserReturnType = "blockNumber" // hex number or tag (latest, earliest, etc)
 	BlockRefType    ParserReturnType = "blockRef"    // hash, hex number or tag (latest, earliest, etc)
+	StringType      ParserReturnType = "string"      // string values
 )
 
 type TagParser struct {
@@ -72,6 +79,18 @@ func GetSpecMethods(specName string) map[string]map[string]*Method {
 	return maps.Clone(methods)
 }
 
+func GetSpecMethod(specName, methodName string) *Method {
+	methodSpec := GetSpecMethods(specName)
+	if methodSpec == nil {
+		return nil
+	}
+	method, ok := methodSpec[DefaultMethodGroup][methodName]
+	if !ok {
+		return nil
+	}
+	return method
+}
+
 func IsSubscribeMethod(specName, methodName string) bool {
 	subSettings := subscribeSettings(specName, methodName)
 	if subSettings == nil {
@@ -88,6 +107,28 @@ func IsUnsubscribeMethod(specName, methodName string) bool {
 	return subSettings.IsUnsubscribe
 }
 
+func IsStickySendMethod(specMethod *Method) bool {
+	if specMethod == nil {
+		return false
+	}
+	sticky := specMethod.Sticky
+	if sticky == nil {
+		return false
+	}
+	return sticky.SendSticky
+}
+
+func IsStickyCreateMethod(specMethod *Method) bool {
+	if specMethod == nil {
+		return false
+	}
+	sticky := specMethod.Sticky
+	if sticky == nil {
+		return false
+	}
+	return sticky.CreateSticky
+}
+
 func GetUnsubscribeMethod(specName, methodName string) (string, bool) {
 	subSettings := subscribeSettings(specName, methodName)
 	if subSettings == nil {
@@ -96,13 +137,21 @@ func GetUnsubscribeMethod(specName, methodName string) (string, bool) {
 	return subSettings.UnsubMethod, true
 }
 
-func subscribeSettings(specName, methodName string) *Subscription {
+func getMethod(specName, methodName string) *Method {
 	methods, ok := specMethods[specName]
 	if !ok {
 		return nil
 	}
 	method, ok := methods[DefaultMethodGroup][methodName]
 	if !ok {
+		return nil
+	}
+	return method
+}
+
+func subscribeSettings(specName, methodName string) *Subscription {
+	method := getMethod(specName, methodName)
+	if method == nil {
 		return nil
 	}
 	return method.Subscription
@@ -319,7 +368,26 @@ func (m *MethodData) validate() error {
 			return err
 		}
 	}
+	if m.Settings != nil {
+		if err := m.Settings.validate(); err != nil {
+			return err
+		}
+	}
 
+	return nil
+}
+
+func (m *MethodSettings) validate() error {
+	if m.Sticky != nil {
+		if m.Sticky.CreateSticky && m.Sticky.SendSticky {
+			return errors.New("both 'create-sticky' and 'send-sticky' are enabled")
+		}
+	}
+	if m.Subscription != nil {
+		if m.Subscription.IsSubscribe && m.Subscription.IsUnsubscribe {
+			return errors.New("both 'is-subscribe' and 'is-unsubscribe' are enabled")
+		}
+	}
 	return nil
 }
 
@@ -336,7 +404,7 @@ func (p *TagParser) validate() error {
 
 func (p ParserReturnType) validate() error {
 	switch p {
-	case BlockRefType, BlockNumberType:
+	case BlockRefType, BlockNumberType, StringType:
 	default:
 		return fmt.Errorf("wrong return type of tag-parser - %s", p)
 	}

@@ -104,3 +104,24 @@ func TestWsCapMatcherNotAvailable(t *testing.T) {
 	assert.Equal(t, flow.MethodType, resp.Type())
 	assert.Equal(t, "method sub is not supported", resp.Cause())
 }
+
+func TestUpstreamIndexMatcher(t *testing.T) {
+	matcher := flow.NewUpstreamIndexMatcher("index")
+	state := protocol.UpstreamState{UpstreamIndex: "index"}
+
+	resp := matcher.Match("1", &state)
+
+	assert.Equal(t, flow.SuccessResponse{}, resp)
+	assert.Equal(t, flow.SuccessType, resp.Type())
+}
+
+func TestUpstreamIndexMatcherNotExist(t *testing.T) {
+	matcher := flow.NewUpstreamIndexMatcher("not-exist")
+	state := protocol.UpstreamState{UpstreamIndex: "index"}
+
+	resp := matcher.Match("1", &state)
+
+	assert.IsType(t, flow.UpstreamIndexResponse{}, resp)
+	assert.Equal(t, flow.UpstreamIndexType, resp.Type())
+	assert.Equal(t, "no upstream with index not-exist", resp.Cause())
+}

@@ -51,11 +51,11 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalJsonRpcUpstreamRequest("eth_subscribe", []interface{}{"newHeads"})
+	return protocol.NewInternalUpstreamJsonRpcRequest("eth_subscribe", []interface{}{"newHeads"})
 }
 
 func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector connectors.ApiConnector, blockTag rpc.BlockNumber) (*protocol.Block, error) {
-	request, err := protocol.NewInternalJsonRpcUpstreamRequest("eth_getBlockByNumber", []interface{}{blockTag, false})
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByNumber", []interface{}{blockTag, false})
 	if err != nil {
 		return nil, err
 	}

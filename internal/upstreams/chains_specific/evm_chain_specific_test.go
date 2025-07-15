@@ -14,12 +14,15 @@ import (
 
 func TestEvmSubscribeHeadRequest(t *testing.T) {
 	req, err := specific.EvmChainSpecific.SubscribeHeadRequest()
-
 	assert.Nil(t, err)
+
+	body, reqErr := req.Body()
+	assert.Nil(t, reqErr)
+
 	assert.Equal(t, "1", req.Id())
 	assert.Equal(t, "eth_subscribe", req.Method())
 	assert.False(t, req.IsStream())
-	require.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(req.Body()))
+	require.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(body))
 }
 
 func TestEvmParseSubBLock(t *testing.T) {

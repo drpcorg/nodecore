@@ -22,24 +22,28 @@ type UpstreamSupervisor interface {
 }
 
 type BaseUpstreamSupervisor struct {
-	ctx              context.Context
-	chainSupervisors *utils.CMap[chains.Chain, ChainSupervisor]
-	upstreams        *utils.CMap[string, Upstream]
-	eventsChan       chan protocol.UpstreamEvent
-	upstreamsConfig  *config.UpstreamConfig
-	executor         failsafe.Executor[*protocol.ResponseHolderWrapper]
-	tracker          *dimensions.DimensionTracker
+	ctx                    context.Context
+	chainSupervisors       *utils.CMap[chains.Chain, ChainSupervisor]
+	upstreams              *utils.CMap[string, Upstream]
+	eventsChan             chan protocol.UpstreamEvent
+	upstreamsConfig        *config.UpstreamConfig
+	executor               failsafe.Executor[*protocol.ResponseHolderWrapper]
+	tracker                *dimensions.DimensionTracker
+	upstreamIndices        *utils.CMap[string, int]
+	upstreamIndicesCounter int
 }
 
 func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
-		ctx:              ctx,
-		upstreams:        utils.NewCMap[string, Upstream](),
-		chainSupervisors: utils.NewCMap[chains.Chain, ChainSupervisor](),
-		eventsChan:       make(chan protocol.UpstreamEvent, 100),
-		upstreamsConfig:  upstreamsConfig,
-		tracker:          tracker,
-		executor:         createFlowExecutor(upstreamsConfig.FailsafeConfig),
+		ctx:                    ctx,
+		upstreams:              utils.NewCMap[string, Upstream](),
+		chainSupervisors:       utils.NewCMap[chains.Chain, ChainSupervisor](),
+		eventsChan:             make(chan protocol.UpstreamEvent, 100),
+		upstreamsConfig:        upstreamsConfig,
+		tracker:                tracker,
+		executor:               createFlowExecutor(upstreamsConfig.FailsafeConfig),
+		upstreamIndices:        utils.NewCMap[string, int](),
+		upstreamIndicesCounter: 1,
 	}
 }
 
@@ -75,9 +79,17 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 	go u.processEvents()
 
 	for _, upConfig := range u.upstreamsConfig.Upstreams {
-		go func() {
+		currentIndex := u.upstreamIndicesCounter
+		if currentIndex == 1048575 { // 0xfffff, which means that the next number will be 6 bytes
+			log.Error().Msgf("upstream indices overflow, max is %d", 1048575)
+			break
+		}
+
+		u.upstreamIndicesCounter++
+
+		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor)
+			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, currentIndex)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
@@ -99,7 +111,7 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 					}
 				}
 			}
-		}()
+		}(currentIndex)
 	}
 }
 

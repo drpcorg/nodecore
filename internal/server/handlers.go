@@ -45,7 +45,7 @@ func NewRestHandler(preReq *Request, method string, requestBody io.Reader) (*Res
 }
 
 func (r *RestHandler) RequestDecode(ctx context.Context) (*Request, error) {
-	upstreamReq := protocol.NewHttpUpstreamRequest(r.method, nil, r.requestBody)
+	upstreamReq := protocol.NewUpstreamRestRequest()
 	return &Request{
 		Chain:            r.preReq.Chain,
 		UpstreamRequests: []protocol.RequestHolder{upstreamReq},
@@ -143,16 +143,13 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
 
 		isSub := j.isWsCtx && specs.IsSubscribeMethod(chains.GetMethodSpecNameByChainName(j.preReq.Chain), jsonRpcReq.Method)
+		specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChainName(j.preReq.Chain), jsonRpcReq.Method)
 
 		var upstreamReq protocol.RequestHolder
 		if protocol.IsStream(jsonRpcReq.Method) { // for tests
-			upstreamReq, err = protocol.NewStreamJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params)
+			upstreamReq = protocol.NewStreamUpstreamJsonRpcRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params, specMethod)
 		} else {
-			upstreamReq, err = protocol.NewSimpleJsonRpcUpstreamRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params, isSub)
-		}
-
-		if err != nil {
-			return nil, err
+			upstreamReq = protocol.NewUpstreamJsonRpcRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params, isSub, specMethod)
 		}
 		upstreamRequests = append(upstreamRequests, upstreamReq)
 	}

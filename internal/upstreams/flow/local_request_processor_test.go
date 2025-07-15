@@ -20,7 +20,7 @@ func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
 	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)
 	subId := "0x112"
 	ctx, cancel := context.WithCancel(context.Background())
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_unsubscribe", []byte(fmt.Sprintf(`["%s"]`, subId)), false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_unsubscribe", []byte(fmt.Sprintf(`["%s"]`, subId)), false, nil)
 	subCtx.AddSub(subId, cancel)
 
 	response := processor.ProcessRequest(ctx, nil, request)
@@ -46,7 +46,7 @@ func TestLocalRequestProcessorCantParseUnsubReqThenError(t *testing.T) {
 	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)
 	subId := "0x112"
 	ctx, cancel := context.WithCancel(context.Background())
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_unsubscribe", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_unsubscribe", nil, false, nil)
 	subCtx.AddSub(subId, cancel)
 
 	response := processor.ProcessRequest(ctx, nil, request)

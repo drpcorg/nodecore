@@ -192,6 +192,9 @@ func (u *UpstreamSupervisorMock) GetChainSupervisors() []*upstreams.ChainSupervi
 
 func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) *upstreams.ChainSupervisor {
 	args := u.Called(chain)
+	if args.Get(0) == nil {
+		return nil
+	}
 
 	return args.Get(0).(*upstreams.ChainSupervisor)
 }

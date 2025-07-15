@@ -14,6 +14,7 @@ import (
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"os"
@@ -24,7 +25,7 @@ import (
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("HasMethod", mock.Anything).Return(false)
+	specMethod := specs.MethodWithSettings("eth_superTest", &specs.MethodSettings{Cacheable: lo.ToPtr(false)}, nil)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
@@ -37,7 +38,7 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("polygon", "*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("method", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -55,8 +56,6 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("HasMethod", mock.Anything).Return(true)
-	methodsMock.On("GetMethod", mock.Anything).Return(nil)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
@@ -69,7 +68,7 @@ func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("polygon", "*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("method", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -116,12 +115,10 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 	}
 
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
-	method := specs.MethodWithSettings("eth_call", nil, &tagParser)
+	method := specs.MethodWithSettings("eth_call", &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
 
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("HasMethod", mock.Anything).Return(true)
-	methodsMock.On("GetMethod", mock.Anything).Return(method)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	blockInfo1 := protocol.NewBlockInfo()
@@ -140,7 +137,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", test.params, false)
+			request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", test.params, false, method)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -162,7 +159,8 @@ func TestCachePolicyNotMatchedChainThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("not-supported", "*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("method", nil)
+	specMethod := specs.DefaultMethod("method")
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -182,7 +180,8 @@ func TestCachePolicyNotSupportedMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("method", nil)
+	specMethod := specs.DefaultMethod("method")
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -202,10 +201,11 @@ func TestCachePolicyIfConnectorErrorThenReceiveNothing(t *testing.T) {
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Receive", mock.Anything, mock.Anything).Return([]byte{}, caches.ErrCacheNotFound)
 	connectorMock.On("Id").Return("id")
+	specMethod := specs.DefaultMethod("test_method")
 
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("test_method", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -220,7 +220,8 @@ func TestCachePolicyTooBigResponseSizeThenStoreNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "1KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("test_method", nil)
+	specMethod := specs.DefaultMethod("test_method")
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	bigResponse, _ := os.ReadFile("responses/big_response.json")
 
@@ -235,7 +236,8 @@ func TestCachePolicyNotEmptyResponsesThenStoreNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", false)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("test_method", nil)
+	specMethod := specs.DefaultMethod("test_method")
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	for _, emptyResponse := range caches.EmptyResponses {
 		t.Run(fmt.Sprintf("test of emptyResponse %s", string(emptyResponse)), func(te *testing.T) {
@@ -250,6 +252,7 @@ func TestCachePolicyNotEmptyResponsesThenStoreNothing(t *testing.T) {
 
 func TestCachePolicyStoreErrorThenFalse(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("test_method")
 	err := errors.New("store error")
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(err)
@@ -257,7 +260,7 @@ func TestCachePolicyStoreErrorThenFalse(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", false)
 	policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("test_method", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	ok := policy.Store(context.Background(), chains.POLYGON, request, []byte(`result`))
 
@@ -269,6 +272,7 @@ func TestCachePolicyStoreErrorThenFalse(t *testing.T) {
 
 func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("test_method")
 	result1 := []byte(`result1`)
 	result2 := []byte(`result2`)
 
@@ -280,7 +284,7 @@ func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testi
 
 	policyCfg := test_utils.PolicyConfig("polygon|ethereum", "test_method|eth_*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("test_method", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 	assert.True(t, ok)
@@ -303,12 +307,10 @@ func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testi
 
 func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
-	method := specs.MethodWithSettings("eth_call", nil, &tagParser)
+	method := specs.MethodWithSettings("eth_call", &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
 
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("HasMethod", mock.Anything).Return(true)
-	methodsMock.On("GetMethod", mock.Anything).Return(method)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	blockInfo1 := protocol.NewBlockInfo()
@@ -363,7 +365,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x3"]`), false)
+			request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x3"]`), false, method)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 			assert.True(t, ok)
@@ -382,6 +384,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 func TestCachePolicyAllChainThenReceiveResult(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	result1 := []byte(`result1`)
+	specMethod := specs.DefaultMethod("method")
 
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Receive", mock.Anything, mock.Anything).Return(result1, nil)
@@ -392,7 +395,7 @@ func TestCachePolicyAllChainThenReceiveResult(t *testing.T) {
 
 	for _, configuredChain := range chains.GetAllChains() {
 		t.Run(fmt.Sprintf("test %s", configuredChain.Chain), func(te *testing.T) {
-			request, _ := protocol.NewInternalJsonRpcUpstreamRequest("method", nil)
+			request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 
 			result, ok := policy.Receive(context.Background(), configuredChain.Chain, request)
 			assert.True(t, ok)
@@ -457,7 +460,8 @@ func TestCachePolicySupportedMethodsThenReceiveResultAndStoreOrNothing(t *testin
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request, _ := protocol.NewInternalJsonRpcUpstreamRequest(test.method, nil)
+			specMethod := specs.DefaultMethod(test.method)
+			request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod(test.method, nil, specMethod)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 			assert.Equal(t, test.expected, ok)

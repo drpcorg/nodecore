@@ -89,12 +89,14 @@ type RequestHolder interface {
 	Id() string
 	Method() string
 	Headers() map[string]string
-	Body() []byte
-	ParseParams(ctx context.Context, method *specs.Method) specs.MethodParam
+	Body() ([]byte, error)
+	ParseParams(ctx context.Context) specs.MethodParam
+	ModifyParams(ctx context.Context, newValue any)
 	IsStream() bool
 	IsSubscribe() bool
 	RequestType() RequestType
 	RequestHash() string
+	SpecMethod() *specs.Method
 }
 
 type ResponseHolder interface {
@@ -156,15 +158,17 @@ type UpstreamState struct {
 	UpstreamMethods methods.Methods
 	BlockInfo       *BlockInfo
 	Caps            mapset.Set[Cap]
+	UpstreamIndex   string
 }
 
-func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap]) UpstreamState {
+func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string) UpstreamState {
 	return UpstreamState{
 		Status:          Available,
 		UpstreamMethods: upstreamMethods,
 		BlockInfo:       NewBlockInfo(),
 		Caps:            caps,
 		HeadData:        &BlockData{},
+		UpstreamIndex:   upstreamIndex,
 	}
 }
 

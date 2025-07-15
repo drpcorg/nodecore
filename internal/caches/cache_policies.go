@@ -87,9 +87,6 @@ func (c *CachePolicy) Store(
 			}
 		}
 	}
-	if c.finalizedStateNotMatched() { // extract a request block number and compare it to the chain finalization state
-		return false
-	}
 	if err := c.connector.Store(context.Background(), getCacheKey(chain, request.RequestHash()), string(response), c.ttl); err != nil {
 		log.Warn().Err(err).Msgf("connector %s of policy %s couldn't cache request %s", c.connector.Id(), c.id, request.Method())
 		return false
@@ -204,11 +201,6 @@ func (c *CachePolicy) methodMatched(request protocol.RequestHolder) bool {
 	return false
 }
 
-func (c *CachePolicy) finalizedStateNotMatched() bool {
-	// TODO: use future extractors to get the request block number and compare it to the chain finalization state
-	return false
-}
-
 func (c *CachePolicy) chainNotMatched(chain chains.Chain) bool {
 	return c.chains == nil || (!c.chains.IsEmpty() && !c.chains.ContainsOne(chain))
 }
@@ -223,7 +215,7 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 		return false
 	}
 
-	method := chainsSupervisor.GetMethod(request.Method())
+	method := request.SpecMethod()
 	if method == nil {
 		return false // not cache if no method
 	}
@@ -231,7 +223,7 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 	if !method.IsCacheable() {
 		return false // according to the method setting check if it's cacheable or not
 	}
-	methodParam := request.ParseParams(ctx, method)
+	methodParam := request.ParseParams(ctx)
 	switch param := methodParam.(type) {
 	case *specs.BlockNumberParam:
 		if specs.IsBlockTagNumber(param.BlockNumber) {

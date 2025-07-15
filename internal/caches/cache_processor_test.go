@@ -6,6 +6,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ import (
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {
 	cacheConfig := memoryCacheConfig(nil, nil)
 	cacheProcessor := NewBaseCacheProcessor(nil, cacheConfig, 1*time.Minute)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("method", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
 
 	result, ok := cacheProcessor.Receive(context.Background(), chains.ALEPHZERO, request)
 
@@ -31,9 +32,10 @@ func TestCacheProcessorStore(t *testing.T) {
 	connector1 := mocks.NewCacheConnectorMock()
 	connector1.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	policy1 := NewCachePolicy(upSupervisor, connector1, test_utils.PolicyConfig("polygon", "eth_*|getLastBlock|synscing", "conn-id", "10KB", "5s", true))
+	specMethod := specs.DefaultMethod("eth_superTest")
 
 	cacheProcessor := createCacheProcessor([]*CachePolicy{policy1}, 1*time.Minute)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_superTest", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_superTest", nil, specMethod)
 
 	cacheProcessor.Store(context.Background(), chains.POLYGON, request, []byte(`result`))
 
@@ -44,6 +46,7 @@ func TestCacheProcessorStore(t *testing.T) {
 
 func TestCacheProcessorReceiveFromMatchedConditions(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("getLastBlock")
 
 	result := []byte(`result`)
 
@@ -58,7 +61,7 @@ func TestCacheProcessorReceiveFromMatchedConditions(t *testing.T) {
 	policy3 := NewCachePolicy(upSupervisor, connector3, test_utils.PolicyConfig("gnosis|polygon", "eth_call", "conn-id", "10KB", "5s", true))
 
 	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 1*time.Minute)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("getLastBlock", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("getLastBlock", nil, specMethod)
 
 	actual, ok := cacheProcessor.Receive(context.Background(), chains.POLYGON, request)
 
@@ -74,6 +77,7 @@ func TestCacheProcessorReceiveFromMatchedConditions(t *testing.T) {
 
 func TestCacheProcessorNoResponseWithTimeoutThenReceiveNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("getLastBlock")
 
 	result := []byte(`result`)
 
@@ -90,7 +94,7 @@ func TestCacheProcessorNoResponseWithTimeoutThenReceiveNothing(t *testing.T) {
 	policy3 := NewCachePolicy(upSupervisor, connector3, test_utils.PolicyConfig("gnosis|polygon", "eth_call", "conn-id", "10KB", "5s", true))
 
 	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 10*time.Millisecond)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("getLastBlock", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("getLastBlock", nil, specMethod)
 
 	actual, ok := cacheProcessor.Receive(context.Background(), chains.POLYGON, request)
 
@@ -103,6 +107,7 @@ func TestCacheProcessorNoResponseWithTimeoutThenReceiveNothing(t *testing.T) {
 
 func TestCacheProcessorReturnFirstResponseAndIgnoreOthers(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("eth_call")
 	result := []byte(`result`)
 
 	connector1 := mocks.NewDelayedConnector(30 * time.Millisecond)
@@ -118,7 +123,7 @@ func TestCacheProcessorReturnFirstResponseAndIgnoreOthers(t *testing.T) {
 	policy3 := NewCachePolicy(upSupervisor, connector3, test_utils.PolicyConfig("gnosis|polygon", "eth_call", "conn-id", "10KB", "5s", true))
 
 	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 10*time.Millisecond)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_call", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_call", nil, specMethod)
 
 	actual, ok := cacheProcessor.Receive(context.Background(), chains.POLYGON, request)
 
@@ -136,6 +141,7 @@ func TestCacheProcessorReturnFirstResponseAndIgnoreOthers(t *testing.T) {
 
 func TestCacheProcessorNoResponseFromConnectorsThenNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("eth_call")
 	connector1 := mocks.NewDelayedConnector(0)
 	connector1.On("Receive", mock.Anything, mock.Anything).Return([]byte{}, ErrCacheNotFound)
 	connector1.On("Id").Return("id")
@@ -152,7 +158,7 @@ func TestCacheProcessorNoResponseFromConnectorsThenNothing(t *testing.T) {
 	policy3 := NewCachePolicy(upSupervisor, connector3, test_utils.PolicyConfig("gnosis|polygon", "eth_call", "conn-id", "10KB", "5s", true))
 
 	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 10*time.Millisecond)
-	request, _ := protocol.NewInternalJsonRpcUpstreamRequest("eth_call", nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_call", nil, specMethod)
 
 	actual, ok := cacheProcessor.Receive(context.Background(), chains.POLYGON, request)
 

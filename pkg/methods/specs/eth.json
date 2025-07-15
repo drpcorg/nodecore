@@ -12,30 +12,54 @@
       "name": "eth_getFilterChanges",
       "group": "filter",
       "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
         "cacheable": false
       },
-      "params": []
+      "params": [],
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
+      }
     },
     {
       "name": "eth_getFilterLogs",
       "group": "filter",
       "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
         "cacheable": false
       },
-      "params": []
+      "params": [],
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
+      }
     },
     {
       "name": "eth_uninstallFilter",
       "group": "filter",
       "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
         "cacheable": false
       },
-      "params": []
+      "params": [],
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
+      }
     },
     {
       "name": "eth_newFilter",
       "group": "filter",
       "settings": {
+        "sticky": {
+          "create-sticky": true
+        },
         "cacheable": false
       },
       "params": []
@@ -44,6 +68,9 @@
       "name": "eth_newBlockFilter",
       "group": "filter",
       "settings": {
+        "sticky": {
+          "create-sticky": true
+        },
         "cacheable": false
       },
       "params": []
@@ -52,6 +79,9 @@
       "name": "eth_newPendingTransactionFilter",
       "group": "filter",
       "settings": {
+        "sticky": {
+          "create-sticky": true
+        },
         "cacheable": false
       },
       "params": []

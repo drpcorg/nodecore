@@ -9,6 +9,21 @@
   },
   "methods": [
     {
+      "name": "eth_uninstallFilter",
+      "group": "filter",
+      "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
+        "cacheable": false
+      },
+      "params": [],
+      "tag-parser": {
+        "type": "string",
+        "path": ".[0]"
+      }
+    },
+    {
       "name": "test",
       "group": "trace",
       "params": [],

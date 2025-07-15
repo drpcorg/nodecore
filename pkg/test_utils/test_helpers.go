@@ -14,7 +14,6 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	"github.com/drpcorg/dsheltie/pkg/chains"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/stretchr/testify/mock"
@@ -83,8 +82,6 @@ func CreateEventWithBlockData(
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("GetMethod", mock.Anything).Return(specs.DefaultMethod("name"))
-	methodsMock.On("HasMethod", mock.Anything).Return(true)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
@@ -109,6 +106,7 @@ func TestUpstream(ctx context.Context, connector connectors.ApiConnector, upConf
 		[]connectors.ApiConnector{connector},
 		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
 		upState,
+		"00012",
 	)
 }
 
@@ -125,11 +123,18 @@ func PublishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, statu
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getBalance"))
 	methodsMock.On("HasMethod", "eth_getBalance").Return(true)
 	methodsMock.On("HasMethod", "test").Return(false)
-	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock, caps))
+	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock, caps, "index"))
 	time.Sleep(10 * time.Millisecond)
 }
 
-func createEvent(id string, status protocol.AvailabilityStatus, height uint64, methods methods.Methods, caps mapset.Set[protocol.Cap]) protocol.UpstreamEvent {
+func createEvent(
+	id string,
+	status protocol.AvailabilityStatus,
+	height uint64,
+	methods methods.Methods,
+	caps mapset.Set[protocol.Cap],
+	upstreamIndex string,
+) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
 		Id: id,
 		State: &protocol.UpstreamState{
@@ -139,6 +144,7 @@ func createEvent(id string, status protocol.AvailabilityStatus, height uint64, m
 			},
 			UpstreamMethods: methods,
 			Caps:            caps,
+			UpstreamIndex:   upstreamIndex,
 		},
 	}
 }

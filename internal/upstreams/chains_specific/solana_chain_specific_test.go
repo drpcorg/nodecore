@@ -14,12 +14,15 @@ import (
 
 func TestSolanaSubscribeHeadRequest(t *testing.T) {
 	req, err := specific.SolanaChainSpecific.SubscribeHeadRequest()
+	assert.Nil(t, err)
+
+	body, err := req.Body()
 
 	assert.Nil(t, err)
 	assert.Equal(t, "1", req.Id())
 	assert.Equal(t, "blockSubscribe", req.Method())
 	assert.False(t, req.IsStream())
-	require.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"blockSubscribe","params":["all",{"showRewards":false,"transactionDetails":"none"}]}`, string(req.Body()))
+	require.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"blockSubscribe","params":["all",{"showRewards":false,"transactionDetails":"none"}]}`, string(body))
 }
 
 func TestSolanaParseSubBLock(t *testing.T) {

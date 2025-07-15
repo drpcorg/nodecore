@@ -14,7 +14,7 @@ func TestWsConnectorSendUnaryRequestThenReceiveError(t *testing.T) {
 	connection := mocks.NewWsConnectionMock()
 	wsConnector := connectors.NewWsConnector(connection)
 	ctx := context.Background()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	err := errors.New("req error")
 
 	connection.On("SendRpcRequest", ctx, request).Return(nil, err)
@@ -34,7 +34,7 @@ func TestWsConnectorSendUnaryRequestThenResponse(t *testing.T) {
 	connection := mocks.NewWsConnectionMock()
 	wsConnector := connectors.NewWsConnector(connection)
 	ctx := context.Background()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	result := []byte("result")
 	wsResponse := &protocol.WsResponse{Message: result}
 
@@ -61,7 +61,7 @@ func TestWsConnectorSendSubThenError(t *testing.T) {
 	connection := mocks.NewWsConnectionMock()
 	wsConnector := connectors.NewWsConnector(connection)
 	ctx := context.Background()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	err := errors.New("sub error")
 
 	connection.On("SendWsRequest", ctx, request).Return(nil, err)
@@ -76,7 +76,7 @@ func TestWsConnectorSendSubThenResponseChan(t *testing.T) {
 	connection := mocks.NewWsConnectionMock()
 	wsConnector := connectors.NewWsConnector(connection)
 	ctx := context.Background()
-	request, _ := protocol.NewSimpleJsonRpcUpstreamRequest("223", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	responseChan := make(chan *protocol.WsResponse)
 	wsResponse := &protocol.WsResponse{Message: []byte("result")}
 	go func() {

@@ -12,67 +12,63 @@ import (
 )
 
 func TestGenerateRequestHashWithoutParams(t *testing.T) {
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil, false)
+	request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", nil, false, nil)
 
-	assert.Nil(t, err)
 	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte(request.Method())))
 	assert.Equal(t, expected, request.RequestHash())
 
-	request, err = protocol.NewStreamJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil)
+	request = protocol.NewStreamUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", nil, nil)
 
-	assert.Nil(t, err)
 	assert.Equal(t, expected, request.RequestHash())
 }
 
 func TestGenerateRequestHashWithParams(t *testing.T) {
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`"params"`), false)
+	request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", []byte(`"params"`), false, nil)
 
-	assert.Nil(t, err)
 	expected := fmt.Sprintf("%x", blake2b.Sum256(append([]byte(`"params"`), []byte(request.Method())...)))
 	assert.Equal(t, expected, request.RequestHash())
 
-	request, err = protocol.NewStreamJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`"params"`))
+	request = protocol.NewStreamUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", []byte(`"params"`), nil)
 
-	assert.Nil(t, err)
 	assert.Equal(t, expected, request.RequestHash())
 }
 
 func TestNotRequestHashForInternalJsonRpcRequest(t *testing.T) {
-	request, err := protocol.NewInternalJsonRpcUpstreamRequest("eth_call", []byte(`"params"`))
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", []byte(`"params"`))
 
 	assert.Nil(t, err)
 	assert.Empty(t, request.RequestHash())
 }
 
-func TestRestRequestHashFromMethod(t *testing.T) {
-	request := protocol.NewHttpUpstreamRequest("eth_call", nil, nil)
-	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte(request.Method())))
-
-	assert.Equal(t, expected, request.RequestHash())
-}
-
-func TestRestRequestHashFromBody(t *testing.T) {
-	request := protocol.NewHttpUpstreamRequest("eth_call", nil, []byte(`body`))
-	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte(`body`)))
-
-	assert.Equal(t, expected, request.RequestHash())
-}
-
 func TestHttpRequestParseParamWithoutMethodThenNil(t *testing.T) {
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", nil, false)
-	assert.Nil(t, err)
+	request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", nil, false, nil)
 
-	param := request.ParseParams(context.Background(), nil)
+	param := request.ParseParams(context.Background())
 	assert.Nil(t, param)
 }
 
 func TestHttpRequestParseParams(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
 	method := specs.MethodWithSettings("eth_call", nil, &tagParser)
-	request, err := protocol.NewSimpleJsonRpcUpstreamRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x4"]`), false)
-	assert.Nil(t, err)
+	request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x4"]`), false, method)
 
-	param := request.ParseParams(context.Background(), method)
+	param := request.ParseParams(context.Background())
 	assert.IsType(t, &specs.BlockNumberParam{}, param)
 	assert.Equal(t, rpc.BlockNumber(4), param.(*specs.BlockNumberParam).BlockNumber)
+}
+
+func TestUpstreamRequestParseAndModifyParams(t *testing.T) {
+	tagParser := specs.TagParser{ReturnType: specs.StringType, Path: ".[2].hash"}
+	method := specs.MethodWithSettings("eth_call", &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, &tagParser)
+	request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x4", {"hash": "235"}]`), false, method)
+
+	param := request.ParseParams(context.Background())
+	assert.IsType(t, &specs.StringParam{}, param)
+	assert.Equal(t, "235", param.(*specs.StringParam).Value)
+
+	request.ModifyParams(context.Background(), "superValue")
+
+	param = request.ParseParams(context.Background())
+	assert.IsType(t, &specs.StringParam{}, param)
+	assert.Equal(t, "superValue", param.(*specs.StringParam).Value)
 }

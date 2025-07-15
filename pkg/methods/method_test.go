@@ -179,6 +179,35 @@ func TestParseBlockRef(t *testing.T) {
 	}
 }
 
+func TestParseStringValue(t *testing.T) {
+	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
+	err := specs.Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethods("test")
+	method := spec[specs.DefaultMethodGroup]["eth_uninstallFilter"]
+
+	result := method.Parse(context.Background(), []any{"testValue"})
+
+	assert.IsType(t, &specs.StringParam{}, result)
+	assert.Equal(t, "testValue", result.(*specs.StringParam).Value)
+}
+
+func TestModifyValue(t *testing.T) {
+	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
+	err := specs.Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethods("test")
+	method := spec[specs.DefaultMethodGroup]["eth_uninstallFilter"]
+	input := []any{"oldVal"}
+	newVal := "newVal"
+
+	result := method.Modify(context.Background(), input, newVal)
+
+	assert.Equal(t, `["newVal"]`, string(result))
+}
+
 func TestUnableParseBlockNumberThenNil(t *testing.T) {
 	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
 	err := specs.Load()

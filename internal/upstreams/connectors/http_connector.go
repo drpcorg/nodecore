@@ -40,7 +40,15 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 		)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewReader(request.Body()))
+	body, err := request.Body()
+	if err != nil {
+		return protocol.NewTotalFailure(
+			request,
+			protocol.ClientError(fmt.Errorf("error parsing a request body: %v", err)),
+		)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewReader(body))
 	if err != nil {
 		return protocol.NewTotalFailure(
 			request,
