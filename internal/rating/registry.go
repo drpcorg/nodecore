@@ -1,17 +1,32 @@
 package rating
 
 import (
+	"fmt"
 	"github.com/dop251/goja"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo/mutable"
+	"github.com/spf13/cast"
 	"reflect"
 	"time"
 )
+
+var rating = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: "upstream",
+		Name:      "rating",
+	},
+	[]string{"chain", "method", "upstream"},
+)
+
+func init() {
+	prometheus.MustRegister(rating)
+}
 
 type RatingRegistry struct {
 	upstreamSupervisor  upstreams.UpstreamSupervisor
@@ -83,22 +98,43 @@ func (r *RatingRegistry) calculateRating() {
 			}
 
 			if len(upDataArr) > 0 {
-				sortedUpstreams := make([]string, 0)
 				resultValue, err := r.scoreFunc(nil, r.runtime.ToValue(upDataArr)) // can't be executed in parallel due to a limitation of the goja lib
 				if err != nil {
 					log.Error().Err(err).Msg("couldn't execute the score function")
 					return
 				}
 				result := resultValue.Export()
-				sortedUpstreamAsObjects, ok := result.([]interface{})
+				sortResponse, ok := result.(map[string]interface{})
 				if !ok {
-					log.Error().Msgf("unexpected return value %s from the score function, must be an array of objects", reflect.TypeOf(result))
+					log.Error().Msgf("unexpected return value %s from the score function, must be an object", reflect.TypeOf(result))
 					return
 				}
-				for _, upstreamAsObject := range sortedUpstreamAsObjects {
+				sortedUpstreamsAsObjects, ok := sortResponse["sortedUpstreams"]
+				if !ok {
+					log.Error().Msg("there must be 'sortedUpstreams' field in the return value from the score function")
+					return
+				}
+				sortedUpstreamsArray, ok := sortedUpstreamsAsObjects.([]interface{})
+				if !ok {
+					log.Error().Msgf("unexpected return value %s from the score function, 'sortedUpstreams' must be an array", reflect.TypeOf(sortedUpstreamsAsObjects))
+					return
+				}
+				scoresAsObjects, ok := sortResponse["scores"]
+				if !ok {
+					log.Error().Msg("there must be 'scores' field in the return value from the score function")
+					return
+				}
+				err = r.processScores(scoresAsObjects, chSupervisor.Chain, method)
+				if err != nil {
+					log.Error().Msg(err.Error())
+					return
+				}
+
+				sortedUpstreams := make([]string, 0)
+				for _, upstreamAsObject := range sortedUpstreamsArray {
 					upstream, ok := upstreamAsObject.(string)
 					if !ok {
-						log.Error().Msgf("unexpected value %s in the array from the score function, must be string", reflect.TypeOf(upstreamAsObject))
+						log.Error().Msgf("unexpected value %s in the array 'sortedUpstreams' from the score function, must be string", reflect.TypeOf(upstreamAsObject))
 						return
 					}
 					sortedUpstreams = append(sortedUpstreams, upstream)
@@ -114,6 +150,37 @@ func (r *RatingRegistry) calculateRating() {
 	}
 
 	r.sortedUpstreams.Store(newSortedUpstreams)
+}
+
+func (r *RatingRegistry) processScores(scoresAsObjects interface{}, chain chains.Chain, method string) error {
+	scoresAsArray, ok := scoresAsObjects.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected return value %s from the score function, 'scores' must be an array", reflect.TypeOf(scoresAsObjects))
+	}
+	for _, scoreObject := range scoresAsArray {
+		score, ok := scoreObject.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected return value %s from the score function, score element must be an object", reflect.TypeOf(scoreObject))
+		}
+		idValue, ok := score["id"]
+		if !ok {
+			log.Error().Msg("there must be 'id' field in a score element")
+		}
+		idString, ok := idValue.(string)
+		if !ok {
+			return fmt.Errorf("unexpected return value %s from the score function, 'id' must be string", reflect.TypeOf(idValue))
+		}
+		scoreValue, ok := score["score"]
+		if !ok {
+			log.Error().Msg("there must be 'score' field in a score element")
+		}
+		scoreNum, err := cast.ToFloat64E(scoreValue)
+		if err != nil {
+			return fmt.Errorf("unexpected return value %s from the score function, 'score' must be number", reflect.TypeOf(scoreValue))
+		}
+		rating.WithLabelValues(chain.String(), method, idString).Set(scoreNum)
+	}
+	return nil
 }
 
 func getUpstreamData(upstreamId, method string, fullDims *dimensions.FullDimensions) map[string]interface{} {

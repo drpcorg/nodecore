@@ -3,8 +3,68 @@ package dimensions
 import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"sync/atomic"
 )
+
+var requestTotalMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Subsystem: "upstream",
+		Name:      "request_total",
+	},
+	[]string{"chain", "method", "upstream"},
+)
+
+var successfulRetriesMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Subsystem: "upstream",
+		Name:      "successful_retries_total",
+	},
+	[]string{"chain", "method", "upstream"},
+)
+
+var errorTotalMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Subsystem: "upstream",
+		Name:      "error_total",
+	},
+	[]string{"chain", "method", "upstream"},
+)
+
+var requestDurationMetric = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Subsystem: "upstream",
+		Name:      "request_duration",
+	},
+	[]string{"chain", "method", "upstream"},
+)
+
+var headLagMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: "upstream",
+		Name:      "head_lag",
+	},
+	[]string{"chain", "upstream"},
+)
+
+var finalizationLagMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: "upstream",
+		Name:      "finalization_lag",
+	},
+	[]string{"chain", "upstream"},
+)
+
+func init() {
+	prometheus.MustRegister(
+		requestTotalMetric,
+		errorTotalMetric,
+		requestDurationMetric,
+		headLagMetric,
+		finalizationLagMetric,
+		successfulRetriesMetric,
+	)
+}
 
 type DimensionTracker struct {
 	upstreamDimensionsMap *utils.CMap[upstreamDimensionKey, UpstreamDimensions]
@@ -19,8 +79,11 @@ func NewDimensionTracker() *DimensionTracker {
 }
 
 func (d *DimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, method string) *FullDimensions {
-	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStore(newUpstreamDimensionKey(chain, upstreamId, method), NewDimensions())
-	chainDims, _ := d.chainDimensionsMap.LoadOrStore(newChainDimensionKey(chain, upstreamId), &ChainDimensions{})
+	upstreamKey := newUpstreamDimensionKey(chain, upstreamId, method)
+	chainKey := newChainDimensionKey(chain, upstreamId)
+
+	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStore(upstreamKey, newUpstreamDimensions(upstreamKey))
+	chainDims, _ := d.chainDimensionsMap.LoadOrStore(chainKey, newChainDimensions(chainKey))
 	return &FullDimensions{
 		UpstreamDimensions: upstreamDimensions,
 		ChainDimensions:    chainDims,
@@ -28,19 +91,27 @@ func (d *DimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, meth
 }
 
 func (d *DimensionTracker) GetUpstreamDimensions(chain chains.Chain, upstreamId, method string) *UpstreamDimensions {
-	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStore(newUpstreamDimensionKey(chain, upstreamId, method), NewDimensions())
+	upstreamKey := newUpstreamDimensionKey(chain, upstreamId, method)
+	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStore(upstreamKey, newUpstreamDimensions(upstreamKey))
 	return upstreamDimensions
 }
 
 func (d *DimensionTracker) GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions {
-	chainDimensions, _ := d.chainDimensionsMap.LoadOrStore(newChainDimensionKey(chain, upstreamId), &ChainDimensions{})
+	chainKey := newChainDimensionKey(chain, upstreamId)
+
+	chainDimensions, _ := d.chainDimensionsMap.LoadOrStore(chainKey, newChainDimensions(chainKey))
 	return chainDimensions
 }
 
 func (d *DimensionTracker) TrackLags(chain chains.Chain, upstreamId string, headLag, finalizationLag uint64) {
-	chainDims, _ := d.chainDimensionsMap.LoadOrStore(newChainDimensionKey(chain, upstreamId), &ChainDimensions{})
+	chainKey := newChainDimensionKey(chain, upstreamId)
+
+	chainDims, _ := d.chainDimensionsMap.LoadOrStore(chainKey, newChainDimensions(chainKey))
 	chainDims.headLag.Store(headLag)
 	chainDims.finalizationLag.Store(finalizationLag)
+
+	headLagMetric.WithLabelValues(chainKey.chain.String(), chainKey.upstreamId).Set(float64(headLag))
+	finalizationLagMetric.WithLabelValues(chainKey.chain.String(), chainKey.upstreamId).Set(float64(finalizationLag))
 }
 
 type FullDimensions struct {
@@ -51,6 +122,15 @@ type FullDimensions struct {
 type ChainDimensions struct {
 	headLag         atomic.Uint64
 	finalizationLag atomic.Uint64
+	key             *utils.Atomic[chainDimensionKey]
+}
+
+func newChainDimensions(key chainDimensionKey) *ChainDimensions {
+	chainKey := utils.NewAtomic[chainDimensionKey]()
+	chainKey.Store(key)
+	return &ChainDimensions{
+		key: chainKey,
+	}
 }
 
 func (c *ChainDimensions) GetHeadLag() uint64 {
@@ -66,22 +146,31 @@ type UpstreamDimensions struct {
 	totalRequests     atomic.Uint64
 	totalErrors       atomic.Uint64
 	successfulRetries atomic.Uint64
+	key               *utils.Atomic[upstreamDimensionKey]
 }
 
 func (d *UpstreamDimensions) TrackSuccessfulRetries() {
 	d.successfulRetries.Add(1)
+	key := d.key.Load()
+	successfulRetriesMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Inc()
 }
 
 func (d *UpstreamDimensions) TrackRequestDuration(duration float64) {
 	d.quantileTracker.add(duration)
+	key := d.key.Load()
+	requestDurationMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Observe(duration)
 }
 
 func (d *UpstreamDimensions) TrackTotalRequests() {
 	d.totalRequests.Add(1)
+	key := d.key.Load()
+	requestTotalMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Inc()
 }
 
 func (d *UpstreamDimensions) TrackTotalErrors() {
 	d.totalErrors.Add(1)
+	key := d.key.Load()
+	errorTotalMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Inc()
 }
 
 func (d *UpstreamDimensions) GetSuccessfulRetries() uint64 {
@@ -108,9 +197,12 @@ func (d *UpstreamDimensions) GetValueAtQuantile(quantile float64) float64 {
 	return d.quantileTracker.getValueAtQuantile(quantile).Seconds()
 }
 
-func NewDimensions() *UpstreamDimensions {
+func newUpstreamDimensions(key upstreamDimensionKey) *UpstreamDimensions {
+	upstreamKey := utils.NewAtomic[upstreamDimensionKey]()
+	upstreamKey.Store(key)
 	return &UpstreamDimensions{
 		quantileTracker: newQuantileTracker(),
+		key:             upstreamKey,
 	}
 }
 

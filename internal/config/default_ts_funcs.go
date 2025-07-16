@@ -1,7 +1,7 @@
 package config
 
 const DefaultLatencyPolicyFunc = `
-	function sortUpstreams(upstreamData: UpstreamData[]): string[] {
+	function sortUpstreams(upstreamData: UpstreamData[]): SortResponse {
 		const normalizeValuesFunc = (values: number[]): number[] => {
 			if (values.length === 0) {
 				return []
@@ -16,13 +16,18 @@ const DefaultLatencyPolicyFunc = `
 	
 		const normalizedLatencies = normalizeValuesFunc(upstreamData.map((data) => data.metrics.latencyP90))
 		const normalizedTotalRequests = normalizeValuesFunc(upstreamData.map((data) => data.metrics.totalRequests))
-	
-		return upstreamData.map((data, index) => {
+
+		const scores = upstreamData.map((data, index) => {
 			const score = (scoreFunc(1 - normalizedLatencies[index]) * 1.5) + scoreFunc(1 - normalizedTotalRequests[index])
 			return {
 				"id": data.id,
 				"score": score
 			}
-		}).sort((a, b) => b.score - a.score).map(data => data.id)
+		})
+		
+		return {
+        	sortedUpstreams: scores.sort((a, b) => b.score - a.score).map(data => data.id),
+        	scores: scores
+    	}
 	}
 `

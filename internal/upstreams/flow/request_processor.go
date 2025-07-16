@@ -9,8 +9,23 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"sync/atomic"
 )
+
+var hedgeMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Subsystem: "request",
+		Name:      "hedge_hit",
+	},
+	[]string{"chain", "method", "upstream"},
+)
+
+func init() {
+	prometheus.MustRegister(hedgeMetric)
+}
 
 type ProcessedResponse interface {
 	response()
@@ -78,7 +93,7 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), result, request.RequestType()),
 			}
 		} else {
-			response, err = executeUnaryRequest(ctx, request, u.upstreamSupervisor, upstreamStrategy)
+			response, err = executeUnaryRequest(ctx, u.chain, request, u.upstreamSupervisor, upstreamStrategy)
 			if err != nil {
 				response = &protocol.ResponseHolderWrapper{
 					UpstreamId: NoUpstream,
@@ -98,11 +113,15 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 
 func executeUnaryRequest(
 	ctx context.Context,
+	chain chains.Chain,
 	request protocol.RequestHolder,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	upstreamStrategy UpstreamStrategy,
 ) (*protocol.ResponseHolderWrapper, error) {
-	return upstreamSupervisor.
+	firstUpstream := utils.NewAtomic[string]()
+	hedged := atomic.Bool{}
+
+	result, err := upstreamSupervisor.
 		GetExecutor().
 		WithContext(ctx).
 		GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
@@ -110,12 +129,26 @@ func executeUnaryRequest(
 			if err != nil {
 				return nil, protocol.ExecutionError(exec.Hedges(), err)
 			}
+			if firstUpstream.Load() == "" {
+				firstUpstream.Store(upstreamId)
+			}
+
 			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request)
 			if err != nil {
 				return nil, protocol.ExecutionError(exec.Hedges(), err)
 			}
+			if exec.Hedges() > 0 {
+				hedged.Store(true)
+			}
 			return responseHolder, nil
 		})
+
+	if hedged.Load() {
+		// it's important to track the very first upstream that caused the hedge logic
+		hedgeMetric.WithLabelValues(chain.String(), request.Method(), firstUpstream.Load()).Inc()
+	}
+
+	return result, err
 }
 
 func getUnaryCapableConnector(upstream *upstreams.Upstream, requestType protocol.RequestType) connectors.ApiConnector {

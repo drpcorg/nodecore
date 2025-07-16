@@ -6,11 +6,24 @@ import (
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"sync"
 	"time"
 )
+
+var requestCache = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Subsystem: "request",
+		Name:      "cache_hit",
+	},
+	[]string{"chain", "method"},
+)
+
+func init() {
+	prometheus.MustRegister(requestCache)
+}
 
 type CacheProcessor interface {
 	Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte)
@@ -100,6 +113,7 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 			if ok {
 				once.Do(func() {
 					resultChan <- result
+					requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
 					cancel()
 				})
 			}

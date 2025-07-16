@@ -5,6 +5,7 @@ retryable-errors:
   - str: Disconnected from WebSocket
   - str: Unsupported blockchain
   - str: No state available for
+  - str: failed to proxy request
   - str: body not found for block
   - str: does not exist/is not available
   - str: SSLEngine closed already
