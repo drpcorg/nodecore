@@ -45,6 +45,15 @@ const (
 	FinalizedBlock BlockType = iota
 )
 
+func (b BlockType) String() string {
+	switch b {
+	case FinalizedBlock:
+		return "finalized"
+	default:
+		panic(fmt.Sprintf("unknown blockType %d", b))
+	}
+}
+
 type ApiConnectorType int
 
 const (

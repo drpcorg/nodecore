@@ -51,9 +51,11 @@ func (d *DimensionTrackerConnector) SendRequest(ctx context.Context, request pro
 			responseHolder := d.delegate.SendRequest(ctx, request)
 
 			if exec.IsRetry() && !responseHolder.HasError() {
-				zerolog.Ctx(ctx).Debug().Msgf("successful retry of %s", request.Method())
+				zerolog.Ctx(ctx).Debug().Msgf("successful retry of %s by upstream %s", request.Method(), d.upstreamId)
 				dims.TrackSuccessfulRetries()
 			}
+			// we should track only retryable errors since there could be errors that are ok, like 'nonce too low'
+			// that's why such errors shouldn't affect the rating
 			if protocol.IsRetryable(responseHolder) {
 				dims.TrackTotalErrors() // since there cound be retries we should track all such errors
 			}

@@ -39,7 +39,7 @@ func (s *StickyRequestProcessor) ProcessRequest(
 				request.ModifyParams(ctx, newStringPayload)
 			}
 		}
-		response, err = executeUnaryRequest(ctx, request, s.upstreamSupervisor, upstreamStrategy)
+		response, err = executeUnaryRequest(ctx, s.chain, request, s.upstreamSupervisor, upstreamStrategy)
 		if err != nil {
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
@@ -48,7 +48,7 @@ func (s *StickyRequestProcessor) ProcessRequest(
 			}
 		}
 	} else if specs.IsStickyCreateMethod(request.SpecMethod()) {
-		response, err = executeUnaryRequest(ctx, request, s.upstreamSupervisor, upstreamStrategy)
+		response, err = executeUnaryRequest(ctx, s.chain, request, s.upstreamSupervisor, upstreamStrategy)
 		if err != nil {
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,

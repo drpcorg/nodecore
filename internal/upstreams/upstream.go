@@ -15,8 +15,29 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/lo"
 )
+
+var blocksMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: "upstream",
+		Name:      "blocks",
+	},
+	[]string{"upstream", "blockType", "chain"},
+)
+
+var headsMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: "upstream",
+		Name:      "heads",
+	},
+	[]string{"chain", "upstream"},
+)
+
+func init() {
+	prometheus.MustRegister(blocksMetric, headsMetric)
+}
 
 func (u *Upstream) createEvent() protocol.UpstreamEvent {
 	state := u.upstreamState.Load()
@@ -192,6 +213,7 @@ func (u *Upstream) processHeads() {
 		case e, ok := <-sub.Events:
 			if ok {
 				u.publishUpstreamStateEvent(&protocol.HeadUpstreamStateEvent{HeadData: e.HeadData})
+				headsMetric.WithLabelValues(u.Chain.String(), u.Id).Set(float64(e.HeadData.Height))
 			}
 		}
 	}
@@ -208,6 +230,7 @@ func (u *Upstream) processBlocks() {
 		case e, ok := <-sub.Events:
 			if ok {
 				u.publishUpstreamStateEvent(&protocol.BlockUpstreamStateEvent{BlockData: e.BlockData, BlockType: e.BlockType})
+				blocksMetric.WithLabelValues(u.Id, e.BlockType.String(), u.Chain.String()).Set(float64(e.BlockData.Height))
 			}
 		}
 	}
