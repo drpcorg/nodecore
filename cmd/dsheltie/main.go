@@ -32,6 +32,12 @@ func main() {
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to load method specs")
 	}
+	scoreConfig := appConfig.UpstreamConfig.ScorePolicyConfig
+	if scoreConfig.CalculationFunctionName != "" {
+		log.Info().Msgf("the '%s' default score function will be used to calculate rating", scoreConfig.CalculationFunctionName)
+	} else if scoreConfig.CalculationFunctionFilePath != "" {
+		log.Info().Msgf("the score function from the %s file will be used to calculate rating", scoreConfig.CalculationFunctionFilePath)
+	}
 
 	mainCtx, mainCtxCancel := context.WithCancel(context.Background())
 

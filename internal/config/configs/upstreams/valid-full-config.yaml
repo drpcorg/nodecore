@@ -20,6 +20,11 @@ cache:
 
 upstream-config:
   failsafe-config:
+    retry:
+      attempts: 10
+      delay: 2s
+      max-delay: 5s
+      jitter: 3s
     hedge:
       delay: 500ms
       max: 2
