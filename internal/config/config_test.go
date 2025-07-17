@@ -49,10 +49,16 @@ func TestReadFullConfig(t *testing.T) {
 		},
 		UpstreamConfig: &config.UpstreamConfig{
 			ScorePolicyConfig: &config.ScorePolicyConfig{
-				CalculationInterval: 10 * time.Second,
-				CalculationFunction: config.DefaultLatencyPolicyFunc,
+				CalculationInterval:     10 * time.Second,
+				CalculationFunctionName: config.DefaultLatencyPolicyFuncName,
 			},
 			FailsafeConfig: &config.FailsafeConfig{
+				RetryConfig: &config.RetryConfig{
+					Attempts: 10,
+					Delay:    2 * time.Second,
+					MaxDelay: lo.ToPtr(5 * time.Second),
+					Jitter:   lo.ToPtr(3 * time.Second),
+				},
 				HedgeConfig: &config.HedgeConfig{
 					Delay: 500 * time.Millisecond,
 					Count: 2,
@@ -480,7 +486,7 @@ func TestScorePolicyConfigInvalidIntervalThenError(t *testing.T) {
 func TestScorePolicyConfigNoSortFuncThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-score-policy-func.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during score policy config validation, cause: couldn't read a ts script, no sortUpstreams() function in the specified script")
+	assert.ErrorContains(t, err, "error during score policy config validation, cause: 'not-existed' default function doesn't exist")
 }
 
 func TestScorePolicyConfigTypoInScriptThenError(t *testing.T) {

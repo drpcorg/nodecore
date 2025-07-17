@@ -23,7 +23,7 @@ func TestRatingStrategyWithUpstreamIndexMatcherNotExist(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
 
-	ratingRegistry := rating.NewRatingRegistry(upSupervisor, nil, &config.ScorePolicyConfig{CalculationFunction: config.DefaultLatencyPolicyFunc, CalculationInterval: 1 * time.Minute})
+	ratingRegistry := rating.NewRatingRegistry(upSupervisor, nil, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName, CalculationInterval: 1 * time.Minute})
 
 	additionalMatchers := []flow.Matcher{flow.NewUpstreamIndexMatcher("notExist")}
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil)
@@ -58,7 +58,7 @@ func TestRatingStrategyGetBestByLatency(t *testing.T) {
 	dims5 := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id5", "eth_getBalance")
 	dims5.TrackRequestDuration(8000000)
 
-	ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunction: config.DefaultLatencyPolicyFunc, CalculationInterval: 1 * time.Minute})
+	ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName, CalculationInterval: 1 * time.Minute})
 	go ratingRegistry.Start()
 	time.Sleep(10 * time.Millisecond)
 
@@ -153,7 +153,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			upSupervisor.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
 
 			tracker := dimensions.NewDimensionTracker()
-			ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunction: config.DefaultLatencyPolicyFunc})
+			ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName})
 
 			request := test.requestFunc(test.method)
 

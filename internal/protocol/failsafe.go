@@ -32,6 +32,41 @@ func CreateFlowExecutor(policies ...failsafe.Policy[*ResponseHolderWrapper]) fai
 	return failsafe.NewExecutor[*ResponseHolderWrapper](policies...)
 }
 
+func CreateFlowRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[*ResponseHolderWrapper] {
+	retryPolicy := retrypolicy.Builder[*ResponseHolderWrapper]()
+
+	if retryConfig.Attempts > 0 {
+		retryPolicy.WithMaxAttempts(retryConfig.Attempts)
+	}
+	if retryConfig.Delay > 0 {
+		if retryConfig.MaxDelay != nil && *retryConfig.MaxDelay > 0 {
+			retryPolicy.WithBackoff(retryConfig.Delay, *retryConfig.MaxDelay)
+		} else {
+			retryPolicy.WithDelay(retryConfig.Delay)
+		}
+	}
+	if retryConfig.Jitter != nil && *retryConfig.Jitter > 0 {
+		retryPolicy.WithJitter(*retryConfig.Jitter)
+	}
+
+	retryPolicy.HandleIf(func(wrapper *ResponseHolderWrapper, err error) bool {
+		return IsRetryable(wrapper.Response)
+	})
+
+	retryPolicy.OnRetry(func(event failsafe.ExecutionEvent[*ResponseHolderWrapper]) {
+		ctx := event.Context()
+		request := ctx.Value(RequestKey).(RequestHolder)
+		if request != nil {
+			wrapper := event.LastResult()
+			zerolog.Ctx(ctx).Warn().Err(wrapper.Response.GetError()).Msgf("attemting to retry a request %s", request.Method())
+		}
+	})
+
+	retryPolicy.ReturnLastFailure()
+
+	return retryPolicy.Build()
+}
+
 func CreateFlowHedgePolicy(hedgeConfig *config.HedgeConfig) failsafe.Policy[*ResponseHolderWrapper] {
 	hedgePolicy := hedgepolicy.BuilderWithDelay[*ResponseHolderWrapper](hedgeConfig.Delay).
 		WithMaxHedges(hedgeConfig.Count).

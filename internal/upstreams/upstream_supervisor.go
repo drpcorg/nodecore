@@ -121,6 +121,9 @@ func createFlowExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor
 	if failsafeConfig.HedgeConfig != nil {
 		policies = append(policies, protocol.CreateFlowHedgePolicy(failsafeConfig.HedgeConfig))
 	}
+	if failsafeConfig.RetryConfig != nil {
+		policies = append(policies, protocol.CreateFlowRetryPolicy(failsafeConfig.RetryConfig))
+	}
 
 	return protocol.CreateFlowExecutor(policies...)
 }

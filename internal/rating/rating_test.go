@@ -16,7 +16,7 @@ func TestRatingRegistryNoUpstreams(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	tracker := dimensions.NewDimensionTracker()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunction: config.DefaultLatencyPolicyFunc, CalculationInterval: 1 * time.Minute})
+	ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName, CalculationInterval: 1 * time.Minute})
 
 	upSupervisor.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
 

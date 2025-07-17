@@ -196,8 +196,14 @@ func (s *ScorePolicyConfig) validate() error {
 	if s.CalculationInterval <= 0 {
 		return errors.New("the calculation interval can't be less than 0")
 	}
-	if s.CalculationFunction != "" && s.CalculationFunctionFilePath != "" {
+	if s.CalculationFunctionName != "" && s.CalculationFunctionFilePath != "" {
 		return errors.New("one setting must be specified - either 'calculation-function' or 'calculation-function-file-path'")
+	}
+	if s.CalculationFunctionName != "" {
+		_, ok := defaultRatingFunctions[s.CalculationFunctionName]
+		if !ok {
+			return fmt.Errorf("'%s' default function doesn't exist", s.CalculationFunctionName)
+		}
 	}
 	_, err := s.compileFunc()
 	if err != nil {

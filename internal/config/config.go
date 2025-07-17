@@ -46,8 +46,8 @@ type UpstreamConfig struct {
 
 type ScorePolicyConfig struct {
 	CalculationInterval         time.Duration `yaml:"calculation-interval"`
-	CalculationFunction         string        `yaml:"calculation-function"`
-	CalculationFunctionFilePath string        `yaml:"calculation-function-file-path"`
+	CalculationFunctionName     string        `yaml:"calculation-function-name"`      // a func name from a 'defaultRatingFunctions' map
+	CalculationFunctionFilePath string        `yaml:"calculation-function-file-path"` // a path to the file with a function
 
 	calculationFunc goja.Callable
 }
@@ -67,8 +67,8 @@ func (s *ScorePolicyConfig) GetScoreFunc() (goja.Callable, error) {
 
 func (s *ScorePolicyConfig) compileFunc() (goja.Callable, error) {
 	var tsFunc string
-	if s.CalculationFunction != "" {
-		tsFunc = s.CalculationFunction
+	if s.CalculationFunctionName != "" {
+		tsFunc = defaultRatingFunctions[s.CalculationFunctionName]
 	} else {
 		funcBytes, err := os.ReadFile(s.CalculationFunctionFilePath)
 		if err != nil {

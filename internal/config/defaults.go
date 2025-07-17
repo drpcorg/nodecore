@@ -67,6 +67,9 @@ func (u *UpstreamConfig) setDefaults() {
 	if u.FailsafeConfig == nil {
 		u.FailsafeConfig = &FailsafeConfig{}
 	}
+	if u.FailsafeConfig.RetryConfig != nil {
+		u.FailsafeConfig.RetryConfig.setDefaults()
+	}
 	if u.ScorePolicyConfig == nil {
 		u.ScorePolicyConfig = &ScorePolicyConfig{}
 	}
@@ -81,9 +84,9 @@ func (s *ScorePolicyConfig) setDefaults() {
 	if s.CalculationInterval == 0 {
 		s.CalculationInterval = 10 * time.Second
 	}
-	if s.CalculationFunction == "" && s.CalculationFunctionFilePath == "" {
-		log.Info().Msg("no explicit rating function is specified, 'DefaultLatencyPolicyFunc' will be used to calculate rating")
-		s.CalculationFunction = DefaultLatencyPolicyFunc
+	if s.CalculationFunctionName == "" && s.CalculationFunctionFilePath == "" {
+		log.Warn().Msgf("no explicit rating function is specified, '%s' will be used to calculate rating", DefaultLatencyPolicyFuncName)
+		s.CalculationFunctionName = DefaultLatencyPolicyFuncName
 	}
 }
 
