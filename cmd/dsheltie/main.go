@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to parse the config file")
 	}
-	err = specs.Load()
+	err = specs.NewMethodSpecLoader().Load()
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to load method specs")
 	}

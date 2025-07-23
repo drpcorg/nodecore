@@ -3,12 +3,12 @@ package specs_test
 import (
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
 func TestLoadSpecAndCheckGroupsAndDefaultParams(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/full")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -40,8 +40,7 @@ func TestLoadSpecAndCheckGroupsAndDefaultParams(t *testing.T) {
 }
 
 func TestLoadSpecAndCheckCacheableAndEnabledParams(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/full")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("another_test")
@@ -56,78 +55,67 @@ func TestLoadSpecAndCheckCacheableAndEnabledParams(t *testing.T) {
 }
 
 func TestLoadSpecWithTheSameNameThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/same_names")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/same_names")).Load()
 
 	assert.ErrorContains(t, err, "couldn't read method specs: spec with name 'test' already exists")
 }
 
 func TestLoadSpecEmptyDirThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/empty")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/empty")).Load()
 
-	assert.ErrorContains(t, err, "no method specs, path 'test_specs/empty'")
+	assert.ErrorContains(t, err, "no method specs")
 }
 
 func TestLoadSpecEmptyNameThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/empty_name")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/empty_name")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: empty spec name, file - 'test_specs/empty_name/spec1.json'")
+	assert.ErrorContains(t, err, "couldn't read method specs: empty spec name, file - 'spec1.json'")
 }
 
 func TestLoadSpecEmptySpecDataThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/empty_spec_data")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/empty_spec_data")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: empty spec name, file - 'test_specs/empty_spec_data/spec1.json'")
+	assert.ErrorContains(t, err, "couldn't read method specs: empty spec name, file - 'spec1.json'")
 }
 
 func TestLoadSpecEmptyMethodNameThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/empty_method_name")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/empty_method_name")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: empty method name, file - 'test_specs/empty_method_name/spec1.json', index - 0")
+	assert.ErrorContains(t, err, "couldn't read method specs: empty method name, file - 'spec1.json', index - 0")
 }
 
 func TestLoadSpecEmptyParserPathThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/empty_parser_path")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/empty_parser_path")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'test' of 'test_specs/empty_parser_path/spec1.json' validation, cause: empty tag-parser path")
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'test' of 'spec1.json' validation, cause: empty tag-parser path")
 }
 
 func TestLoadSpecWrongParserReturnTypeThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/wrong_parser_return_type")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/wrong_parser_return_type")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'test' of 'test_specs/wrong_parser_return_type/spec1.json' validation, cause: wrong return type of tag-parser - wrong")
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'test' of 'spec1.json' validation, cause: wrong return type of tag-parser - wrong")
 }
 
 func TestLoadSpecExistedMethodThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/existed_method")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/existed_method")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: method 'test_another' already exists, file - 'test_specs/existed_method/spec1.json'")
+	assert.ErrorContains(t, err, "couldn't read method specs: method 'test_another' already exists, file - 'spec1.json'")
 }
 
 func TestLoadSpecWrongJqPathThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/wrong_parser_path")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/wrong_parser_path")).Load()
 
 	assert.ErrorContains(t, err, "couldn't merge method specs: spec 'test', error 'couldn't parse a jq path of method test - unexpected token \"!\"'")
 }
 
 func TestLoadSpecWrongStickySettings(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/wrong_sticky")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/wrong_sticky")).Load()
 
-	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'eth_uninstallFilter' of 'test_specs/wrong_sticky/spec.json' validation, cause: both 'create-sticky' and 'send-sticky' are enabled")
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'eth_uninstallFilter' of 'spec.json' validation, cause: both 'create-sticky' and 'send-sticky' are enabled")
 }
 
 func TestLoadSpecMergeMethods(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/merge_methods")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/merge_methods")).Load()
 
 	assert.NoError(t, err)
 

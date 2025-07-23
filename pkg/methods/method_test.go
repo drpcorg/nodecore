@@ -5,6 +5,7 @@ import (
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -18,8 +19,7 @@ func TestDefaultMethod(t *testing.T) {
 }
 
 func TestParseBlockNumberArray(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -74,8 +74,7 @@ func TestParseBlockNumberArray(t *testing.T) {
 }
 
 func TestParseBlockNumberObject(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -89,8 +88,7 @@ func TestParseBlockNumberObject(t *testing.T) {
 }
 
 func TestParseBlockRef(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -180,8 +178,7 @@ func TestParseBlockRef(t *testing.T) {
 }
 
 func TestParseStringValue(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -194,8 +191,7 @@ func TestParseStringValue(t *testing.T) {
 }
 
 func TestModifyValue(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -209,8 +205,7 @@ func TestModifyValue(t *testing.T) {
 }
 
 func TestUnableParseBlockNumberThenNil(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
@@ -223,8 +218,7 @@ func TestUnableParseBlockNumberThenNil(t *testing.T) {
 }
 
 func TestUnableParseBlockRefThenNil(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs/parsers")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
 
 	spec := specs.GetSpecMethods("test")
