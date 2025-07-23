@@ -9,12 +9,12 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
 func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
 	assert.NoError(t, err)
 	subCtx := flow.NewSubCtx()
 	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)
@@ -39,8 +39,7 @@ func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
 }
 
 func TestLocalRequestProcessorCantParseUnsubReqThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
 	assert.NoError(t, err)
 	subCtx := flow.NewSubCtx()
 	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)

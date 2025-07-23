@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	"github.com/bytedance/sonic"
@@ -9,10 +10,12 @@ import (
 	"github.com/samber/lo"
 	"io/fs"
 	"maps"
-	"os"
 	"path/filepath"
 	"reflect"
 )
+
+//go:embed specs/*.json
+var specsFS embed.FS
 
 const (
 	DefaultMethodGroup = "default"
@@ -157,21 +160,41 @@ func subscribeSettings(specName, methodName string) *Subscription {
 	return method.Subscription
 }
 
-func Load() error {
+type MethodSpecLoader struct {
+	specsFS fs.ReadFileFS
+}
+
+func NewMethodSpecLoader() MethodSpecLoader {
+	return MethodSpecLoader{
+		specsFS: specsFS,
+	}
+}
+
+func NewMethodSpecLoaderWithFs(specsFS fs.FS) MethodSpecLoader {
+	readFileFs, ok := specsFS.(fs.ReadFileFS)
+	if !ok {
+		panic("not ReadFileFS")
+	}
+	return MethodSpecLoader{
+		specsFS: readFileFs,
+	}
+}
+
+func (m MethodSpecLoader) Load() error {
 	specMethods = map[string]groupMethods{}
 
-	specsPath := os.Getenv(SpecPathVar)
-	if specsPath == "" {
-		specsPath = "pkg/methods/specs"
-	}
-
 	specs := map[string]*MethodSpec{}
-	err := filepath.Walk(specsPath, func(path string, file fs.FileInfo, err error) error {
+	err := fs.WalkDir(m.specsFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		spec, err := loadSpec(path, file)
+		fileInfo, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		spec, err := m.loadSpec(path, fileInfo)
 		if err != nil {
 			return err
 		}
@@ -192,7 +215,7 @@ func Load() error {
 	}
 
 	if len(specs) == 0 {
-		return fmt.Errorf("no method specs, path '%s'", specsPath)
+		return fmt.Errorf("no method specs")
 	}
 
 	err = enrichSpecs(specs)
@@ -308,9 +331,9 @@ func getGroupMethods(spec *MethodSpec, removeDisabled bool) (groupMethods, error
 	return specGroupMethodsByName, nil
 }
 
-func loadSpec(path string, file fs.FileInfo) (*MethodSpec, error) {
+func (m MethodSpecLoader) loadSpec(path string, file fs.FileInfo) (*MethodSpec, error) {
 	if !file.IsDir() && filepath.Ext(path) == ".json" {
-		specBytes, err := os.ReadFile(path)
+		specBytes, err := m.specsFS.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}

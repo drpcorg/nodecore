@@ -6,6 +6,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"testing"
 )
 
@@ -16,8 +17,7 @@ func TestUpstreamMethodsNoSpecThenError(t *testing.T) {
 }
 
 func TestUpstreamMethodsOnlyFromSpec(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{})
@@ -28,8 +28,7 @@ func TestUpstreamMethodsOnlyFromSpec(t *testing.T) {
 }
 
 func TestUpstreamMethodsAndEnabledMethodInConfig(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{EnableMethods: []string{"newMethod"}})
@@ -40,8 +39,7 @@ func TestUpstreamMethodsAndEnabledMethodInConfig(t *testing.T) {
 }
 
 func TestUpstreamMethodsAndDisableDefaultGroup(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{DisableMethods: []string{specs.DefaultMethodGroup}})
@@ -51,8 +49,7 @@ func TestUpstreamMethodsAndDisableDefaultGroup(t *testing.T) {
 }
 
 func TestUpstreamMethodsAndDisableDefaultGroupAndEnableCustomMethod(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	methodsConfig := &config.MethodsConfig{EnableMethods: []string{"newMethod"}, DisableMethods: []string{specs.DefaultMethodGroup}}
@@ -65,8 +62,7 @@ func TestUpstreamMethodsAndDisableDefaultGroupAndEnableCustomMethod(t *testing.T
 }
 
 func TestUpstreamMethodsAndDisableDefaultGroupAndEnableAnotherGroup(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	methodsConfig := &config.MethodsConfig{EnableMethods: []string{"trace"}, DisableMethods: []string{specs.DefaultMethodGroup}}
@@ -79,8 +75,7 @@ func TestUpstreamMethodsAndDisableDefaultGroupAndEnableAnotherGroup(t *testing.T
 }
 
 func TestUpstreamMethodsAndDisableOneMethod(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	methodsConfig := &config.MethodsConfig{DisableMethods: []string{"test_another"}}
@@ -93,8 +88,7 @@ func TestUpstreamMethodsAndDisableOneMethod(t *testing.T) {
 }
 
 func TestChainMethodsMergeAllDelegates(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "full")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
 	methodsConfig1 := &config.MethodsConfig{DisableMethods: []string{"test2"}}

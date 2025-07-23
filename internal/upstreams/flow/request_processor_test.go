@@ -13,6 +13,7 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"os"
 	"testing"
 	"time"
 )
@@ -141,8 +142,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 }
 
 func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
-	t.Setenv(specs.SpecPathVar, "test_specs")
-	err := specs.Load()
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
 	assert.NoError(t, err)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
