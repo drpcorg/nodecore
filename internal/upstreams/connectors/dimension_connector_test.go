@@ -6,6 +6,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/resilience"
 	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
@@ -17,7 +18,7 @@ import (
 
 func TestDimensionConnectorSuccessfulResponse(t *testing.T) {
 	tracker := dimensions.NewDimensionTracker()
-	executor := protocol.CreateUpstreamExecutor()
+	executor := resilience.CreateUpstreamExecutor()
 	connectorMock := mocks.NewConnectorMock()
 	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
 
@@ -40,8 +41,8 @@ func TestDimensionConnectorSuccessfulResponse(t *testing.T) {
 
 func TestDimensionConnectorRetryRequest(t *testing.T) {
 	tracker := dimensions.NewDimensionTracker()
-	executor := protocol.CreateUpstreamExecutor(
-		protocol.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 3 * time.Millisecond}),
+	executor := resilience.CreateUpstreamExecutor(
+		resilience.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 3 * time.Millisecond}),
 	)
 	connectorMock := mocks.NewConnectorMock()
 	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
@@ -118,7 +119,7 @@ func TestDimensionConnectorRetryableNonRetryableErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			tracker := dimensions.NewDimensionTracker()
-			executor := protocol.CreateUpstreamExecutor()
+			executor := resilience.CreateUpstreamExecutor()
 			connectorMock := mocks.NewConnectorMock()
 			dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
 

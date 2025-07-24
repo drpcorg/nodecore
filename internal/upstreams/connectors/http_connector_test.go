@@ -143,10 +143,10 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 
 	assert.True(t, r.HasError())
 	assert.False(t, r.HasStream())
-	assert.Equal(t, 1, r.GetError().Code)
+	assert.Equal(t, -32001, r.GetError().Code)
 	assert.Equal(t, "incorrect response body: wrong json-rpc response - there is neither result nor error", r.GetError().Message)
 	assert.Nil(t, r.GetError().Data)
-	assert.Equal(t, "1: incorrect response body: wrong json-rpc response - there is neither result nor error", r.GetError().Error())
+	assert.Equal(t, "-32001: incorrect response body: wrong json-rpc response - there is neither result nor error", r.GetError().Error())
 }
 
 func TestHttpConnectorType(t *testing.T) {

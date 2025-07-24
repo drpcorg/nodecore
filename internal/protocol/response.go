@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
+	"github.com/samber/lo"
 	"io"
 	"strconv"
 	"testing/iotest"
@@ -208,7 +209,7 @@ func parseJsonRpcBody(id string, body []byte) *BaseUpstreamResponse {
 	}
 
 	if upstreamError == nil && len(result) == 0 {
-		upstreamError = IncorrectResponseBodyError(errors.New("wrong json-rpc response - there is neither result nor error"))
+		upstreamError, result = incorrectJsonRpcBody()
 	}
 
 	return &BaseUpstreamResponse{
@@ -216,6 +217,13 @@ func parseJsonRpcBody(id string, body []byte) *BaseUpstreamResponse {
 		result: result,
 		error:  upstreamError,
 	}
+}
+
+func incorrectJsonRpcBody() (*ResponseError, []byte) {
+	err := IncorrectResponseBodyError(errors.New("wrong json-rpc response - there is neither result nor error"))
+	jsonRpcErr := jsonRpcError{Message: err.Message, Code: lo.ToPtr(err.Code)}
+	errBytes, _ := sonic.Marshal(jsonRpcErr)
+	return err, errBytes
 }
 
 func parseError(errorRaw []byte) *ResponseError {

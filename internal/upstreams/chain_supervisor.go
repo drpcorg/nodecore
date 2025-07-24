@@ -10,12 +10,25 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"slices"
 	"strings"
 	"time"
 )
+
+var availabilityMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Subsystem: "upstream",
+		Name:      "availability_status",
+	},
+	[]string{"chain", "upstream"},
+)
+
+func init() {
+	prometheus.MustRegister(availabilityMetric)
+}
 
 type ChainSupervisor struct {
 	ctx            context.Context
@@ -105,6 +118,8 @@ func (c *ChainSupervisor) processEvents() {
 			return
 		case event, ok := <-c.eventsChan:
 			if ok {
+				availabilityMetric.WithLabelValues(c.Chain.String(), event.Id).Set(float64(event.State.Status))
+
 				state := c.state.Load()
 				c.upstreamStates.Store(event.Id, event.State)
 

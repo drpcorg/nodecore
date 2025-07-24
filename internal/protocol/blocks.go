@@ -11,6 +11,10 @@ type BlockData struct {
 	Hash   string
 }
 
+func (b *BlockData) IsEmpty() bool {
+	return b.Height == 0 && b.Slot == 0 && b.Hash == ""
+}
+
 func NewBlockDataWithHeight(height uint64) *BlockData {
 	return &BlockData{Height: height}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/resilience"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog"
@@ -38,8 +39,8 @@ func (d *DimensionTrackerConnector) SendRequest(ctx context.Context, request pro
 	dims := d.tracker.GetUpstreamDimensions(d.chain, d.upstreamId, request.Method())
 
 	executorCtx := context.WithoutCancel(ctx)
-	if executorCtx.Value(protocol.RequestKey) == nil {
-		executorCtx = context.WithValue(executorCtx, protocol.RequestKey, request)
+	if executorCtx.Value(resilience.RequestKey) == nil {
+		executorCtx = context.WithValue(executorCtx, resilience.RequestKey, request)
 	}
 	now := time.Now()
 

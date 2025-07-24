@@ -6,7 +6,6 @@ import (
 
 const (
 	BaseError int = iota
-	IncorrectResponseBody
 	NoAvailableUpstreams
 	WrongChain
 	CtxErrorCode
@@ -14,6 +13,7 @@ const (
 	RequestTimeout          = 408
 	InternalServerErrorCode = 500
 	NoSupportedMethod       = -32601
+	IncorrectResponseBody   = -32001
 )
 
 type ResponseError struct {

@@ -46,6 +46,9 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 	if err != nil {
 		return nil, fmt.Errorf("couldn't parse the evm block, reason - %s", err.Error())
 	}
+	if evmBlock.Height == nil {
+		return nil, fmt.Errorf("couldn't parse the evm block, got '%s'", string(blockBytes))
+	}
 
 	return protocol.NewBlock(uint64(evmBlock.Height.Int64()), 0, evmBlock.Hash, blockBytes), nil
 }
