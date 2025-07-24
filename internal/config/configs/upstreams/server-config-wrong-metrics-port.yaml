@@ -1,0 +1,2 @@
+server:
+  metrics-port: -23555

@@ -27,8 +27,9 @@ type AppConfig struct {
 }
 
 type ServerConfig struct {
-	Port      int        `yaml:"port"`
-	TlsConfig *TlsConfig `yaml:"tls"`
+	Port        int        `yaml:"port"`
+	MetricsPort int        `yaml:"metrics-port"`
+	TlsConfig   *TlsConfig `yaml:"tls"`
 }
 
 type TlsConfig struct {

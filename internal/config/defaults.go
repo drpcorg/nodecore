@@ -6,15 +6,19 @@ import (
 	"time"
 )
 
+const (
+	defaultPort       = 9090
+	defaultMetricPort = 9093
+)
+
 func (a *AppConfig) setDefaults() {
 	if a.UpstreamConfig == nil {
 		a.UpstreamConfig = &UpstreamConfig{}
 	}
 	if a.ServerConfig == nil {
-		a.ServerConfig = &ServerConfig{
-			Port: 9090,
-		}
+		a.ServerConfig = &ServerConfig{}
 	}
+	a.ServerConfig.setDefaults()
 	if a.CacheConfig == nil {
 		a.CacheConfig = &CacheConfig{}
 	}
@@ -22,6 +26,15 @@ func (a *AppConfig) setDefaults() {
 		a.CacheConfig.setDefaults()
 	}
 	a.UpstreamConfig.setDefaults()
+}
+
+func (s *ServerConfig) setDefaults() {
+	if s.Port == 0 {
+		s.Port = defaultPort
+	}
+	if s.MetricsPort == 0 {
+		s.MetricsPort = defaultMetricPort
+	}
 }
 
 func (c *CacheConfig) setDefaults() {

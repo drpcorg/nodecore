@@ -21,7 +21,8 @@ func TestReadFullConfig(t *testing.T) {
 
 	expected := &config.AppConfig{
 		ServerConfig: &config.ServerConfig{
-			Port: 9095,
+			Port:        9095,
+			MetricsPort: 9093,
 		},
 		CacheConfig: &config.CacheConfig{
 			CacheConnectors: []*config.CacheConnectorConfig{
@@ -274,10 +275,32 @@ func TestServerConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := config.ServerConfig{
-		Port: 9095,
+		Port:        9095,
+		MetricsPort: 9093,
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
+}
+
+func TestServerConfigEqualPortsThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-equal-ports.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "server and metric ports can't be the same")
+}
+
+func TestServerConfigWrongServerPortThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-wrong-server-port.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "incorrect server port - -9095")
+}
+
+func TestServerConfigWrongMetricsPortThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-wrong-metrics-port.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "incorrect metrics port - -23555")
 }
 
 func TestSetChainsDefault(t *testing.T) {

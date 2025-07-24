@@ -14,6 +14,8 @@ import (
 	_ "github.com/drpcorg/dsheltie/pkg/errors_config"
 	_ "github.com/drpcorg/dsheltie/pkg/logger"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/labstack/echo-contrib/echoprometheus"
+	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"os"
 	"os/signal"
@@ -55,12 +57,22 @@ func main() {
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 
+	metricsServer := echo.New()
+	metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
+	metricsServer.GET("/metrics", echoprometheus.NewHandler())
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigs
 		log.Info().Msgf("got signal %v", sig)
 		mainCtxCancel()
+	}()
+
+	go func() {
+		if err = metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort)); err != nil {
+			log.Panic().Err(err).Msg("metrics server couldn't start")
+		}
 	}()
 
 	go func() {

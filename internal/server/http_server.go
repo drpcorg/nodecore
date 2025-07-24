@@ -5,14 +5,12 @@ import (
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/dsheltie/internal/caches"
-	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
-	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"io"
@@ -66,9 +64,6 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	}
 	httpServer.JSONSerializer = &FastJSONSerializer{}
 	httpServer.Use(middleware.Decompress())
-
-	httpServer.Use(echoprometheus.NewMiddleware(config.AppName))
-	httpServer.GET("/metrics", echoprometheus.NewHandler())
 
 	httpGroup := httpServer.Group("/queries/:chain")
 	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
