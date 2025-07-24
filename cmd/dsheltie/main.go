@@ -58,6 +58,7 @@ func main() {
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 
 	metricsServer := echo.New()
+	metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
 	metricsServer.GET("/metrics", echoprometheus.NewHandler())
 
 	sigs := make(chan os.Signal, 1)
