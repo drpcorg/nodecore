@@ -32,8 +32,8 @@ func (s *ServerConfig) setDefaults() {
 	if s.Port == 0 {
 		s.Port = defaultPort
 	}
-	if s.MetricPort == 0 {
-		s.MetricPort = defaultMetricPort
+	if s.MetricsPort == 0 {
+		s.MetricsPort = defaultMetricPort
 	}
 }
 

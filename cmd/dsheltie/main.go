@@ -69,7 +69,7 @@ func main() {
 	}()
 
 	go func() {
-		if err = metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricPort)); err != nil {
+		if err = metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort)); err != nil {
 			log.Panic().Err(err).Msg("metrics server couldn't start")
 		}
 	}()

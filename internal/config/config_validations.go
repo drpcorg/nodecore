@@ -259,10 +259,10 @@ func (s *ServerConfig) validate() error {
 	if s.Port < 0 {
 		return fmt.Errorf("incorrect server port - %d", s.Port)
 	}
-	if s.MetricPort < 0 {
-		return fmt.Errorf("incorrect metrics port - %d", s.MetricPort)
+	if s.MetricsPort < 0 {
+		return fmt.Errorf("incorrect metrics port - %d", s.MetricsPort)
 	}
-	if s.Port == s.MetricPort {
+	if s.Port == s.MetricsPort {
 		return errors.New("server and metric ports can't be the same")
 	}
 	return nil

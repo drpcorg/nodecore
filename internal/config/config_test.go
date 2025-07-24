@@ -21,8 +21,8 @@ func TestReadFullConfig(t *testing.T) {
 
 	expected := &config.AppConfig{
 		ServerConfig: &config.ServerConfig{
-			Port:       9095,
-			MetricPort: 9093,
+			Port:        9095,
+			MetricsPort: 9093,
 		},
 		CacheConfig: &config.CacheConfig{
 			CacheConnectors: []*config.CacheConnectorConfig{
@@ -275,8 +275,8 @@ func TestServerConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := config.ServerConfig{
-		Port:       9095,
-		MetricPort: 9093,
+		Port:        9095,
+		MetricsPort: 9093,
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
