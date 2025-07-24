@@ -256,6 +256,15 @@ func (h *HedgeConfig) validate() error {
 }
 
 func (s *ServerConfig) validate() error {
+	if s.Port < 0 {
+		return fmt.Errorf("incorrect server port - %d", s.Port)
+	}
+	if s.MetricPort < 0 {
+		return fmt.Errorf("incorrect metrics port - %d", s.MetricPort)
+	}
+	if s.Port == s.MetricPort {
+		return errors.New("server and metric ports can't be the same")
+	}
 	return nil
 }
 

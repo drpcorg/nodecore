@@ -68,7 +68,6 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpServer.Use(middleware.Decompress())
 
 	httpServer.Use(echoprometheus.NewMiddleware(config.AppName))
-	httpServer.GET("/metrics", echoprometheus.NewHandler())
 
 	httpGroup := httpServer.Group("/queries/:chain")
 	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
