@@ -183,6 +183,9 @@ func (u *Upstream) processStateEvents() {
 
 			switch stateEvent := event.(type) {
 			case *protocol.HeadUpstreamStateEvent:
+				if state.HeadData != nil && state.HeadData.IsEmpty() {
+					state.Status = protocol.Available
+				}
 				state.HeadData = stateEvent.HeadData
 			case *protocol.BlockUpstreamStateEvent:
 				state.BlockInfo.AddBlock(stateEvent.BlockData, stateEvent.BlockType)

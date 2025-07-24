@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
@@ -13,6 +14,47 @@ import (
 	"io"
 	"math"
 )
+
+type ResultType int
+
+const (
+	ResultOk ResultType = iota
+	ResultOkWithError
+	ResultPartialFailure
+	ResultTotalFailure
+	ResultStop
+)
+
+type StopRetryErr struct {
+}
+
+func (s StopRetryErr) Error() string {
+	return "no retry"
+}
+
+func GetResponseType(wrapper *ResponseHolderWrapper, err error) ResultType {
+	if wrapper != nil {
+		switch response := wrapper.Response.(type) {
+		case *ReplyError:
+			if response.ErrorKind == PartialFailure {
+				return ResultPartialFailure
+			} else {
+				return ResultTotalFailure
+			}
+		case *BaseUpstreamResponse:
+			if response.HasError() {
+				return ResultOkWithError
+			}
+		}
+	}
+	if err != nil {
+		if errors.Is(err, StopRetryErr{}) {
+			return ResultStop
+		}
+		return ResultTotalFailure
+	}
+	return ResultOk
+}
 
 func IsRetryable(response ResponseHolder) bool {
 	shouldRetry := false
@@ -172,7 +214,7 @@ type UpstreamState struct {
 
 func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string) UpstreamState {
 	return UpstreamState{
-		Status:          Available,
+		Status:          Unavailable,
 		UpstreamMethods: upstreamMethods,
 		BlockInfo:       NewBlockInfo(),
 		Caps:            caps,

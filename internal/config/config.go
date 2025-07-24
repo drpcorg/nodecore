@@ -166,7 +166,7 @@ var connectorTypesRating = map[ApiConnectorType]int{
 type ApiConnectorConfig struct {
 	Type    ApiConnectorType  `yaml:"type"`
 	Url     string            `yaml:"url"`
-	Headers map[string]string `yaml:"headers"`
+	Headers map[string]string `yaml:"headers,omitempty"`
 }
 
 type CacheConfig struct {

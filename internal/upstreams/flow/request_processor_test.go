@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/resilience"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
@@ -308,7 +309,7 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 }
 
 func createExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
-	return protocol.CreateFlowExecutor()
+	return resilience.CreateFlowExecutor()
 }
 
 func upConfig() *config.Upstream {

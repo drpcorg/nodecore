@@ -63,6 +63,7 @@ retryable-errors:
   - str: Pool#acquire(Duration) has been pending
   - str: Pending acquire queue has reached
   - str: You have reached the maximum CUPS limit
+  - str: "You have reached the maximum API usage limit of public"
   - str: credits limited to
   - str: requests limited to
   - str: base64 encoded solana_program
@@ -95,6 +96,8 @@ retryable-errors:
   - str: Cannot assign requested address
   - str: request limit reached
   - str: rate limit exceeded
+  - str: state transitaion failed
+  - str: incorrect response body
   - str: 504 Gateway Timeout
   - str: Request was canceled due to enabled timeout" //
   - str: invalid block range
@@ -145,6 +148,7 @@ retryable-errors:
   - str: Node state is pruned
   - str: "blockstore get: ipld: could not find"
   - str: more errors
+  - str: Unknown state
   - str: failed to get the finalized block number from ethereum
   - str: invalid character '<'
   - str: required historical state unavailable
@@ -186,12 +190,18 @@ retryable-errors:
   - str: "empty reader set"
   - str: "Access to archival, debug, or trace data is not included in your current plan"
   - str: "Unable to perform request"
+  - str: "Method is not allowed"
+  - str: "wrong json-rpc response"
   - re: ([a-z0-9]+) could not be found
   - re: block ([a-z0-9]+) not found
+  - re: block \#([a-z0-9]+) not found
   - re: Block ([0-9]+) cleaned up, does not exist on node
   - re: requested to block ([a-z0-9]+) after last accepted block
   - re: method [A-Za-z0-9_]+ is not available
+  - re: the resource [A-Za-z0-9_]+ is not available
   - re: Method [A-Za-z0-9_]+ is not supported
+  - re: method [A-Za-z0-9_]+ is not supported
+  - re: method [A-Za-z0-9_]+ not supported
   - re: Node is behind by ([0-9]+) slots
   - re: query timeout of ([0-9]+) seconds exceeded
   - re: height ([0-9]+) is not available

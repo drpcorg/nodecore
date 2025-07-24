@@ -29,6 +29,7 @@ var ethErrorsToDisable = []string{
 type BlockProcessor interface {
 	Start()
 	Subscribe(name string) *utils.Subscription[BlockEvent]
+	DisabledBlocks() mapset.Set[protocol.BlockType]
 }
 
 type BlockEvent struct {
@@ -65,6 +66,10 @@ func (b *EthLikeBlockProcessor) Subscribe(name string) *utils.Subscription[Block
 	return b.subManager.Subscribe(name)
 }
 
+func (b *EthLikeBlockProcessor) DisabledBlocks() mapset.Set[protocol.BlockType] {
+	return b.disableDetection
+}
+
 func (b *EthLikeBlockProcessor) Start() {
 	for {
 		b.poll(protocol.FinalizedBlock)
@@ -83,7 +88,8 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 
 		block, err := b.chainSpecific.GetFinalizedBlock(ctx, b.connector)
 		if err != nil {
-			if errors.Is(err, &protocol.ResponseError{}) {
+			var respErr *protocol.ResponseError
+			if errors.As(err, &respErr) {
 				errStr := err.Error()
 				for _, errToDisable := range ethErrorsToDisable {
 					if strings.Contains(errStr, errToDisable) {
@@ -97,3 +103,5 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 		}
 	}
 }
+
+var _ BlockProcessor = (*EthLikeBlockProcessor)(nil)

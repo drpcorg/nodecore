@@ -12,6 +12,7 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 	"sync/atomic"
 )
 
@@ -111,6 +112,13 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 	return &UnaryResponse{ResponseWrapper: response}
 }
 
+func handleErrors(exec failsafe.Execution[*protocol.ResponseHolderWrapper], err error) error {
+	if exec.Retries() > 0 {
+		return protocol.StopRetryErr{}
+	}
+	return err
+}
+
 func executeUnaryRequest(
 	ctx context.Context,
 	chain chains.Chain,
@@ -127,7 +135,7 @@ func executeUnaryRequest(
 		GetWithExecution(func(exec failsafe.Execution[*protocol.ResponseHolderWrapper]) (*protocol.ResponseHolderWrapper, error) {
 			upstreamId, err := upstreamStrategy.SelectUpstream(request)
 			if err != nil {
-				return nil, protocol.ExecutionError(exec.Hedges(), err)
+				return nil, handleErrors(exec, err)
 			}
 			if firstUpstream.Load() == "" {
 				firstUpstream.Store(upstreamId)
@@ -135,7 +143,7 @@ func executeUnaryRequest(
 
 			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request)
 			if err != nil {
-				return nil, protocol.ExecutionError(exec.Hedges(), err)
+				return nil, handleErrors(exec, err)
 			}
 			if exec.Hedges() > 0 {
 				hedged.Store(true)
@@ -171,6 +179,8 @@ func sendUnaryRequest(
 	upstream *upstreams.Upstream,
 	request protocol.RequestHolder,
 ) (*protocol.ResponseHolderWrapper, error) {
+	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.Id)
+
 	var apiConnector connectors.ApiConnector
 
 	switch request.(type) {

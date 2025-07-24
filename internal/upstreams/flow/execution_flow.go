@@ -5,6 +5,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/rating"
+	"github.com/drpcorg/dsheltie/internal/resilience"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
@@ -82,7 +83,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
-		execCtx := context.WithValue(ctx, protocol.RequestKey, request)
+		execCtx := context.WithValue(ctx, resilience.RequestKey, request)
 		var requestProcessor RequestProcessor
 
 		if request.IsSubscribe() {

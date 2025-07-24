@@ -141,6 +141,7 @@ func handleResponse(
 			)
 		case responseWrapper, ok := <-responseWrappers:
 			if ok {
+				httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
 				code = protocol.ToHttpCode(responseWrapper.Response)
 				responseReader = requestHandler.ResponseEncode(responseWrapper.Response).ResponseReader
 			}

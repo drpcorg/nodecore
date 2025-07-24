@@ -6,6 +6,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/internal/resilience"
 	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
@@ -119,23 +120,23 @@ func createFlowExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor
 	policies := make([]failsafe.Policy[*protocol.ResponseHolderWrapper], 0)
 
 	if failsafeConfig.HedgeConfig != nil {
-		policies = append(policies, protocol.CreateFlowHedgePolicy(failsafeConfig.HedgeConfig))
+		policies = append(policies, resilience.CreateFlowParallelHedgePolicy(failsafeConfig.HedgeConfig))
 	}
 	if failsafeConfig.RetryConfig != nil {
-		policies = append(policies, protocol.CreateFlowRetryPolicy(failsafeConfig.RetryConfig))
+		policies = append(policies, resilience.CreateFlowRetryPolicy(failsafeConfig.RetryConfig))
 	}
 
-	return protocol.CreateFlowExecutor(policies...)
+	return resilience.CreateFlowExecutor(policies...)
 }
 
 func createUpstreamExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor[protocol.ResponseHolder] {
 	policies := make([]failsafe.Policy[protocol.ResponseHolder], 0)
 
 	if failsafeConfig.RetryConfig != nil {
-		policies = append(policies, protocol.CreateUpstreamRetryPolicy(failsafeConfig.RetryConfig))
+		policies = append(policies, resilience.CreateUpstreamRetryPolicy(failsafeConfig.RetryConfig))
 	}
 
-	return protocol.CreateUpstreamExecutor(policies...)
+	return resilience.CreateUpstreamExecutor(policies...)
 }
 
 func (u *BaseUpstreamSupervisor) processEvents() {

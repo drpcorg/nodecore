@@ -7,6 +7,8 @@ import (
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 	"net/http"
@@ -40,6 +42,7 @@ type JsonRpcWsConnection struct {
 	internalId  atomic.Uint64
 	requests    *utils.CMap[string, reqOp] // to store internal ids and websocket requests
 	subs        *utils.CMap[string, reqOp] // to store a subId and its request to identify events
+	executor    failsafe.Executor[bool]
 }
 
 func NewJsonRpcWsConnection(ctx context.Context, upId, methodSpec, endpoint string, additionalHeaders map[string]string) WsConnection {
@@ -74,6 +77,7 @@ func NewJsonRpcWsConnection(ctx context.Context, upId, methodSpec, endpoint stri
 		subs:        utils.NewCMap[string, reqOp](),
 		rpcTimeout:  1 * time.Minute,
 		connection:  utils.NewAtomic[*websocket.Conn](),
+		executor:    failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),
 	}
 
 	err := wsConnection.connect()
@@ -163,13 +167,14 @@ func (w *JsonRpcWsConnection) connect() error {
 }
 
 func (w *JsonRpcWsConnection) reconnect() {
-	for {
+	_, _ = w.executor.GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
 		err := w.connect()
-		if err == nil {
-			break
+		if err != nil {
+			return false, err
 		}
-		time.Sleep(10 * time.Second) //TODO: refactor to exponential backoff policy
-	}
+
+		return true, nil
+	})
 }
 
 func (r *reqOp) writeInternal(message *protocol.WsResponse) {
@@ -310,4 +315,22 @@ type reqOp struct {
 	ctx              context.Context
 	method           string
 	subId            string
+}
+
+func createConnectionRetryPolicy(url string) failsafe.Policy[bool] {
+	retryPolicy := retrypolicy.Builder[bool]()
+
+	retryPolicy.WithMaxAttempts(-1) // endless retries
+	retryPolicy.WithBackoff(1*time.Second, 60*time.Second)
+	retryPolicy.WithJitter(3 * time.Second)
+
+	retryPolicy.HandleIf(func(result bool, err error) bool {
+		return !result
+	})
+
+	retryPolicy.OnRetry(func(event failsafe.ExecutionEvent[bool]) {
+		log.Warn().Msgf("attemtring to reconnect to %s", url)
+	})
+
+	return retryPolicy.Build()
 }
