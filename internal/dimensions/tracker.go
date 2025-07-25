@@ -8,6 +8,28 @@ import (
 	"sync/atomic"
 )
 
+var DefBuckets = []float64{
+	.005,
+	.01,
+	.025,
+	.05,
+	.1,
+	.25,
+	.5,
+	1,
+	2,
+	3,
+	4,
+	5,
+	6,
+	7,
+	8,
+	15,
+	25,
+	50,
+	100,
+}
+
 var requestTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: config.AppName,
@@ -40,6 +62,7 @@ var requestDurationMetric = prometheus.NewHistogramVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "request_duration",
+		Buckets:   DefBuckets,
 	},
 	[]string{"chain", "method", "upstream"},
 )
