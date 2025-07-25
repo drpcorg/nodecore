@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/drpcorg/dsheltie/internal/caches"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
@@ -18,6 +19,7 @@ import (
 
 var hedgeMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
+		Namespace: config.AppName,
 		Subsystem: "request",
 		Name:      "hedge_hit",
 	},

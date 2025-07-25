@@ -18,6 +18,7 @@ import (
 
 var rating = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "rating",
 	},

@@ -21,6 +21,7 @@ import (
 
 var blocksMetric = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "blocks",
 	},
@@ -29,6 +30,7 @@ var blocksMetric = prometheus.NewGaugeVec(
 
 var headsMetric = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "heads",
 	},

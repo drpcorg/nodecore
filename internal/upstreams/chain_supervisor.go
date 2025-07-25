@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
@@ -20,6 +21,7 @@ import (
 
 var availabilityMetric = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "availability_status",
 	},

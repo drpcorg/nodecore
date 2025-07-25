@@ -1,6 +1,7 @@
 package dimensions
 
 import (
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
@@ -9,6 +10,7 @@ import (
 
 var requestTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "request_total",
 	},
@@ -17,6 +19,7 @@ var requestTotalMetric = prometheus.NewCounterVec(
 
 var successfulRetriesMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "successful_retries_total",
 	},
@@ -25,6 +28,7 @@ var successfulRetriesMetric = prometheus.NewCounterVec(
 
 var errorTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "error_total",
 	},
@@ -33,6 +37,7 @@ var errorTotalMetric = prometheus.NewCounterVec(
 
 var requestDurationMetric = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "request_duration",
 	},
@@ -41,6 +46,7 @@ var requestDurationMetric = prometheus.NewHistogramVec(
 
 var headLagMetric = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "head_lag",
 	},
@@ -49,6 +55,7 @@ var headLagMetric = prometheus.NewGaugeVec(
 
 var finalizationLagMetric = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
+		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "finalization_lag",
 	},

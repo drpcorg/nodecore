@@ -15,6 +15,7 @@ import (
 
 var requestCache = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
+		Namespace: config.AppName,
 		Subsystem: "request",
 		Name:      "cache_hit",
 	},
