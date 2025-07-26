@@ -83,6 +83,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
+		defer e.wg.Done()
 		execCtx := context.WithValue(ctx, resilience.RequestKey, request)
 		var requestProcessor RequestProcessor
 
@@ -106,8 +107,6 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 				e.responseChan <- wrapper
 			}
 		}
-
-		e.wg.Done()
 	}()
 }
 
