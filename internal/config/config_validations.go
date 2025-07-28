@@ -262,9 +262,19 @@ func (s *ServerConfig) validate() error {
 	if s.MetricsPort < 0 {
 		return fmt.Errorf("incorrect metrics port - %d", s.MetricsPort)
 	}
-	if s.Port == s.MetricsPort {
-		return errors.New("server and metric ports can't be the same")
+	if s.PprofPort < 0 {
+		return fmt.Errorf("incorrect pprof port - %d", s.PprofPort)
 	}
+
+	ports := mapset.NewThreadUnsafeSet[int](s.Port)
+	if ports.Contains(s.MetricsPort) && s.MetricsPort != 0 {
+		return fmt.Errorf("metrics port %d is already in use", s.MetricsPort)
+	}
+	ports.Add(s.MetricsPort)
+	if ports.Contains(s.PprofPort) && s.PprofPort != 0 {
+		return fmt.Errorf("pprof port %d is already in use", s.PprofPort)
+	}
+
 	return nil
 }
 

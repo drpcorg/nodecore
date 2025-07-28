@@ -1,0 +1,4 @@
+server:
+  port: 8095
+  metrics-port: 8094
+  pprof-port: 8094

@@ -21,8 +21,7 @@ func TestReadFullConfig(t *testing.T) {
 
 	expected := &config.AppConfig{
 		ServerConfig: &config.ServerConfig{
-			Port:        9095,
-			MetricsPort: 9093,
+			Port: 9095,
 		},
 		CacheConfig: &config.CacheConfig{
 			CacheConnectors: []*config.CacheConnectorConfig{
@@ -277,16 +276,24 @@ func TestServerConfig(t *testing.T) {
 	expected := config.ServerConfig{
 		Port:        9095,
 		MetricsPort: 9093,
+		PprofPort:   6061,
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
 }
 
-func TestServerConfigEqualPortsThenError(t *testing.T) {
+func TestServerConfigEqualMetricsPortThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-equal-ports.yaml")
 	_, err := config.NewAppConfig()
 
-	assert.ErrorContains(t, err, "server and metric ports can't be the same")
+	assert.ErrorContains(t, err, "metrics port 9095 is already in use")
+}
+
+func TestServerConfigEqualPprofPortThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-equal-pprof-ports.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "pprof port 8094 is already in use")
 }
 
 func TestServerConfigWrongServerPortThenError(t *testing.T) {
