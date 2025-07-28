@@ -64,13 +64,17 @@ func main() {
 	metricsServer.GET("/metrics", echoprometheus.NewHandler())
 
 	go func() {
-		pprofServer := http.Server{
-			Addr: fmt.Sprintf("localhost:%d", appConfig.ServerConfig.PprofPort),
-		}
-		log.Info().Msgf("starting pprof server on port %d", appConfig.ServerConfig.PprofPort)
-		pprofErr := pprofServer.ListenAndServe()
-		if pprofErr != nil {
-			log.Error().Err(pprofErr).Msg("pprof server couldn't start")
+		if appConfig.ServerConfig.PprofPort != 0 {
+			pprofServer := http.Server{
+				Addr: fmt.Sprintf("localhost:%d", appConfig.ServerConfig.PprofPort),
+			}
+			log.Info().Msgf("starting pprof server on port %d", appConfig.ServerConfig.PprofPort)
+			pprofErr := pprofServer.ListenAndServe()
+			if pprofErr != nil {
+				log.Error().Err(pprofErr).Msg("pprof server couldn't start")
+			}
+		} else {
+			log.Warn().Msg("pprof server is disabled")
 		}
 	}()
 
@@ -83,8 +87,12 @@ func main() {
 	}()
 
 	go func() {
-		if metricsServerErr := metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort)); metricsServerErr != nil {
-			log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
+		if appConfig.ServerConfig.MetricsPort != 0 {
+			if metricsServerErr := metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort)); metricsServerErr != nil {
+				log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
+			}
+		} else {
+			log.Warn().Msg("metrics server is disabled")
 		}
 	}()
 

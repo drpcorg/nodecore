@@ -21,9 +21,7 @@ func TestReadFullConfig(t *testing.T) {
 
 	expected := &config.AppConfig{
 		ServerConfig: &config.ServerConfig{
-			Port:        9095,
-			MetricsPort: 9093,
-			PprofPort:   6061,
+			Port: 9095,
 		},
 		CacheConfig: &config.CacheConfig{
 			CacheConnectors: []*config.CacheConnectorConfig{
