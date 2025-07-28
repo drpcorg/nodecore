@@ -9,6 +9,7 @@ import (
 const (
 	defaultPort       = 9090
 	defaultMetricPort = 9093
+	defaultPprofPort  = 6061
 )
 
 func (a *AppConfig) setDefaults() {
@@ -34,6 +35,9 @@ func (s *ServerConfig) setDefaults() {
 	}
 	if s.MetricsPort == 0 {
 		s.MetricsPort = defaultMetricPort
+	}
+	if s.PprofPort == 0 {
+		s.PprofPort = defaultPprofPort
 	}
 }
 

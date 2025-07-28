@@ -65,8 +65,9 @@ func main() {
 
 	go func() {
 		pprofServer := http.Server{
-			Addr: "localhost:6061",
+			Addr: fmt.Sprintf("localhost:%d", appConfig.ServerConfig.PprofPort),
 		}
+		log.Info().Msgf("starting pprof server on port %d", appConfig.ServerConfig.PprofPort)
 		pprofErr := pprofServer.ListenAndServe()
 		if pprofErr != nil {
 			log.Error().Err(pprofErr).Msg("pprof server couldn't start")
