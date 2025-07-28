@@ -63,10 +63,15 @@ func main() {
 	metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
 	metricsServer.GET("/metrics", echoprometheus.NewHandler())
 
-	pprofServer := http.Server{
-		Addr: "localhost:6061",
-	}
-	go pprofServer.ListenAndServe()
+	go func() {
+		pprofServer := http.Server{
+			Addr: "localhost:6061",
+		}
+		pprofErr := pprofServer.ListenAndServe()
+		if pprofErr != nil {
+			log.Error().Err(pprofErr).Msg("pprof server couldn't start")
+		}
+	}()
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -77,14 +82,14 @@ func main() {
 	}()
 
 	go func() {
-		if err = metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort)); err != nil {
-			log.Panic().Err(err).Msg("metrics server couldn't start")
+		if metricsServerErr := metricsServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort)); metricsServerErr != nil {
+			log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
 		}
 	}()
 
 	go func() {
-		if err = httpServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.Port)); err != nil {
-			log.Panic().Err(err).Msg("http server couldn't start")
+		if httpServerErr := httpServer.Start(fmt.Sprintf(":%d", appConfig.ServerConfig.Port)); httpServerErr != nil {
+			log.Panic().Err(httpServerErr).Msg("http server couldn't start")
 		}
 	}()
 
