@@ -17,6 +17,8 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -60,6 +62,11 @@ func main() {
 	metricsServer := echo.New()
 	metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
 	metricsServer.GET("/metrics", echoprometheus.NewHandler())
+
+	pprofServer := http.Server{
+		Addr: "localhost:6061",
+	}
+	go pprofServer.ListenAndServe()
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

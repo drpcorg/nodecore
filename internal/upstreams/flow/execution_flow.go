@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/rs/zerolog"
 	"sync"
 )
 
@@ -101,13 +102,21 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 
 		switch resp := processedResponse.(type) {
 		case *UnaryResponse:
-			e.responseChan <- resp.ResponseWrapper
+			e.sendResponse(ctx, resp.ResponseWrapper, request)
 		case *SubscriptionResponse:
 			for wrapper := range resp.ResponseWrappers {
-				e.responseChan <- wrapper
+				e.sendResponse(ctx, wrapper, request)
 			}
 		}
 	}()
+}
+
+func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {
+	select {
+	case <-ctx.Done():
+		zerolog.Ctx(ctx).Trace().Msgf("request %s has been cancelled, dropping the response", request.Method())
+	case e.responseChan <- wrapper:
+	}
 }
 
 func isLocalRequest(chain chains.Chain, method string) bool {
