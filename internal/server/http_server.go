@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"io"
@@ -64,6 +65,7 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	}
 	httpServer.JSONSerializer = &FastJSONSerializer{}
 	httpServer.Use(middleware.Decompress())
+	httpServer.Use(GzipWithConfig(GzipConfig{Level: gzip.BestSpeed}))
 
 	httpGroup := httpServer.Group("/queries/:chain")
 	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {

@@ -17,6 +17,7 @@ require (
 	github.com/imdario/mergo v0.3.16
 	github.com/itchyny/gojq v0.12.17
 	github.com/jarcoal/httpmock v1.4.0
+	github.com/klauspost/compress v1.18.0
 	github.com/labstack/echo-contrib v0.17.4
 	github.com/labstack/echo/v4 v4.13.3
 	github.com/prometheus/client_golang v1.22.0
