@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"github.com/drpcorg/dsheltie/internal/caches"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/resilience"
@@ -10,9 +11,30 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	"sync"
 )
+
+var requestTotalMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: config.AppName,
+		Name:      "request_total",
+	},
+	[]string{"chain", "method"},
+)
+
+var requestErrorsMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: config.AppName,
+		Name:      "errors_total",
+	},
+	[]string{"chain", "method"},
+)
+
+func init() {
+	prometheus.MustRegister(requestTotalMetric, requestErrorsMetric)
+}
 
 type ExecutionFlow interface {
 	Execute(ctx context.Context, requests []protocol.RequestHolder)
@@ -84,6 +106,8 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
+		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
+
 		defer e.wg.Done()
 		execCtx := context.WithValue(ctx, resilience.RequestKey, request)
 		var requestProcessor RequestProcessor
@@ -102,6 +126,9 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 
 		switch resp := processedResponse.(type) {
 		case *UnaryResponse:
+			if protocol.IsRetryable(resp.ResponseWrapper.Response) {
+				requestErrorsMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
+			}
 			e.sendResponse(ctx, resp.ResponseWrapper, request)
 		case *SubscriptionResponse:
 			for wrapper := range resp.ResponseWrappers {
