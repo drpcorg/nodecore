@@ -34,7 +34,7 @@ var requestTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: config.AppName,
 		Subsystem: "upstream",
-		Name:      "request_total",
+		Name:      "requests_total",
 	},
 	[]string{"chain", "method", "upstream"},
 )
@@ -52,7 +52,7 @@ var errorTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: config.AppName,
 		Subsystem: "upstream",
-		Name:      "error_total",
+		Name:      "errors_total",
 	},
 	[]string{"chain", "method", "upstream"},
 )
