@@ -19,7 +19,7 @@ import (
 var requestTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: config.AppName,
-		Name:      "request_total",
+		Name:      "requests_total",
 	},
 	[]string{"chain", "method"},
 )
