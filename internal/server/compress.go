@@ -6,6 +6,7 @@ package server
 
 import (
 	"bufio"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net"
 	"net/http"
@@ -94,7 +95,10 @@ func GzipWithConfig(config GzipConfig) echo.MiddlewareFunc {
 						res.Writer = rw
 						w.Reset(io.Discard)
 					}
-					w.Close()
+					err := w.Close()
+					if err != nil {
+						log.Warn().Err(err).Msg("couldn't close writer")
+					}
 					pool.Put(w)
 				}()
 				res.Writer = grw
