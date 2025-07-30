@@ -1,7 +1,6 @@
 package pyroscope
 
 import (
-	"context"
 	"os"
 	"runtime"
 
@@ -14,7 +13,7 @@ type PyroConfig interface {
 	GetServerPassword() string
 }
 
-func InitPyroscope(ctx context.Context, namespace string, appName string, config PyroConfig) error {
+func InitPyroscope(namespace string, appName string, config PyroConfig) error {
 	runtime.SetMutexProfileFraction(5)
 	runtime.SetBlockProfileRate(5)
 

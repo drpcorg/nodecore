@@ -80,7 +80,7 @@ func main() {
 	}()
 
 	if appConfig.ServerConfig.PyroscopeConfig.Enabled {
-		err = pyroscope.InitPyroscope(mainCtx, fmt.Sprintf("%s-namespace", config.AppName), config.AppName, appConfig.ServerConfig.PyroscopeConfig)
+		err = pyroscope.InitPyroscope(fmt.Sprintf("%s-namespace", config.AppName), config.AppName, appConfig.ServerConfig.PyroscopeConfig)
 		if err != nil {
 			log.Warn().Err(err).Msg("error during pyroscope initialization")
 		}
