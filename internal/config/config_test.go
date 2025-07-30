@@ -22,6 +22,12 @@ func TestReadFullConfig(t *testing.T) {
 	expected := &config.AppConfig{
 		ServerConfig: &config.ServerConfig{
 			Port: 9095,
+			PyroscopeConfig: &config.PyroscopeConfig{
+				Enabled:  true,
+				Url:      "url",
+				Username: "pyro-username",
+				Password: "pyro-password",
+			},
 		},
 		CacheConfig: &config.CacheConfig{
 			CacheConnectors: []*config.CacheConnectorConfig{
@@ -274,9 +280,10 @@ func TestServerConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := config.ServerConfig{
-		Port:        9095,
-		MetricsPort: 9093,
-		PprofPort:   6061,
+		Port:            9095,
+		MetricsPort:     9093,
+		PprofPort:       6061,
+		PyroscopeConfig: &config.PyroscopeConfig{},
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
@@ -547,4 +554,22 @@ func TestRetryConfigDelayGreaterMaxDelayThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-delay-greater-max-delay.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry delay can't be greater than the retry max delay`)
+}
+
+func TestPyroConfigNoUrlThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-pyro-no-url.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `pyroscope is enabled, url must be specified`)
+}
+
+func TestPyroConfigNoUsernameThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-pyro-no-username.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `pyroscope is enabled, username must be specified`)
+}
+
+func TestPyroConfigNoPasswordThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-pyro-no-password.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, `pyroscope is enabled, password must be specified`)
 }

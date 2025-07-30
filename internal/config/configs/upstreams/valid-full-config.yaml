@@ -1,5 +1,10 @@
 server:
   port: 9095
+  pyroscope-config:
+    enabled: true
+    url: url
+    username: pyro-username
+    password: pyro-password
 
 cache:
   connectors:

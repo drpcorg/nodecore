@@ -14,6 +14,7 @@ import (
 	_ "github.com/drpcorg/dsheltie/pkg/errors_config"
 	_ "github.com/drpcorg/dsheltie/pkg/logger"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/dsheltie/pkg/pyroscope"
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -77,6 +78,13 @@ func main() {
 			log.Warn().Msg("pprof server is disabled")
 		}
 	}()
+
+	if appConfig.ServerConfig.PyroscopeConfig.Enabled {
+		err = pyroscope.InitPyroscope(fmt.Sprintf("%s-namespace", config.AppName), config.AppName, appConfig.ServerConfig.PyroscopeConfig)
+		if err != nil {
+			log.Warn().Err(err).Msg("error during pyroscope initialization")
+		}
+	}
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
