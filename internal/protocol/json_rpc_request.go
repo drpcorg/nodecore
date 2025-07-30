@@ -51,6 +51,20 @@ func NewInternalUpstreamJsonRpcRequest(method string, params any) (*UpstreamJson
 	}, nil
 }
 
+func NewInternalSubUpstreamJsonRpcRequest(method string, params any) (*UpstreamJsonRpcRequest, error) {
+	requestParams, err := sonic.Marshal(params)
+	if err != nil {
+		return nil, err
+	}
+	return &UpstreamJsonRpcRequest{
+		id:            "1",
+		method:        method,
+		realId:        []byte(`"1"`),
+		requestParams: requestParams,
+		isSub:         true,
+	}, nil
+}
+
 func NewUpstreamJsonRpcRequest(
 	id string,
 	realId json.RawMessage,

@@ -92,7 +92,7 @@ func NewUpstream(
 
 	var headConnector connectors.ApiConnector
 	for _, connectorConfig := range config.Connectors {
-		apiConnector := createConnector(ctx, config.Id, configuredChain.MethodSpec, connectorConfig)
+		apiConnector := createConnector(ctx, config.Id, configuredChain, connectorConfig)
 		apiConnector = connectors.NewDimensionTrackerConnector(configuredChain.Chain, config.Id, apiConnector, tracker, executor)
 		if connectorConfig.Type == config.HeadConnector {
 			headConnector = apiConnector
@@ -249,12 +249,12 @@ func (u *Upstream) handleSubscriptions() {
 	}
 }
 
-func createConnector(ctx context.Context, upId, methodSpec string, connectorConfig *config.ApiConnectorConfig) connectors.ApiConnector {
+func createConnector(ctx context.Context, upId string, configuredChain chains.ConfiguredChain, connectorConfig *config.ApiConnectorConfig) connectors.ApiConnector {
 	switch connectorConfig.Type {
 	case config.JsonRpc:
 		return connectors.NewHttpConnector(connectorConfig.Url, protocol.JsonRpcConnector, connectorConfig.Headers)
 	case config.Ws:
-		connection := ws.NewJsonRpcWsConnection(ctx, upId, methodSpec, connectorConfig.Url, connectorConfig.Headers)
+		connection := ws.NewJsonRpcWsConnection(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec, connectorConfig.Url, connectorConfig.Headers)
 		return connectors.NewWsConnector(connection)
 	case config.Rest:
 		return connectors.NewHttpConnector(connectorConfig.Url, protocol.RestConnector, connectorConfig.Headers)

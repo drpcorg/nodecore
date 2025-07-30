@@ -188,3 +188,19 @@ func TestEncodeSubscriptionEventResponse(t *testing.T) {
 	assert.Equal(t, result, response.ResponseResult())
 	assert.Equal(t, result, respBytes)
 }
+
+func TestEncodeSubscriptionWithRealIdEventResponse(t *testing.T) {
+	result := []byte("event")
+	response := protocol.NewSubscriptionMessageEventResponse("11", result)
+
+	respReader := response.EncodeResponse([]byte("32"))
+	respBytes, err := io.ReadAll(respReader)
+
+	assert.Nil(t, err)
+	assert.False(t, response.HasError())
+	assert.Equal(t, "11", response.Id())
+	assert.Nil(t, response.GetError())
+	assert.False(t, response.HasStream())
+	assert.Equal(t, result, response.ResponseResult())
+	assert.Equal(t, []byte(`{"id":32,"jsonrpc":"2.0","result":event}`), respBytes)
+}

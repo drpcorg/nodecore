@@ -116,7 +116,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	respChan := make(chan *protocol.WsResponse)
 	event := []byte("event")
 	go func() {
-		respChan <- &protocol.WsResponse{Event: event}
+		respChan <- &protocol.WsResponse{Event: event, SubId: "id"}
 	}()
 
 	strategy.On("SelectUpstream", request).Return("id", nil)

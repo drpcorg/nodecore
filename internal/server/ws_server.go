@@ -4,15 +4,32 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 	"io"
+	"net/http"
 	"sync"
 )
 
-var upgrader = websocket.Upgrader{}
+var wsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: config.AppName,
+	Subsystem: "request",
+	Name:      "ws_connections",
+}, []string{"chain"})
+
+func init() {
+	prometheus.MustRegister(wsConnectionsMetric)
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
 
 func handleWebsocket(reqCtx echo.Context, appCtx *ApplicationContext) {
 	chain := reqCtx.Param("chain")
@@ -30,7 +47,11 @@ func handleWebsocket(reqCtx echo.Context, appCtx *ApplicationContext) {
 		log.Error().Err(err).Msg("couldn't upgrade http to ws")
 		return
 	}
+
+	wsConnectionsMetric.WithLabelValues(chain).Inc()
+
 	defer func() {
+		wsConnectionsMetric.WithLabelValues(chain).Dec()
 		err = conn.Close()
 		if err != nil {
 			log.Warn().Err(err).Msg("couldn't close a client websocket connection")
