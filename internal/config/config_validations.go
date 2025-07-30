@@ -275,6 +275,26 @@ func (s *ServerConfig) validate() error {
 		return fmt.Errorf("pprof port %d is already in use", s.PprofPort)
 	}
 
+	if err := s.PyroscopeConfig.validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (p *PyroscopeConfig) validate() error {
+	if p.Enabled {
+		if p.Url == "" {
+			return errors.New("pyroscope is enabled, url must be specified")
+		}
+		if p.Username == "" {
+			return errors.New("pyroscope is enabled, username must be specified")
+		}
+		if p.Password == "" {
+			return errors.New("pyroscope is enabled, password must be specified")
+		}
+	}
+
 	return nil
 }
 

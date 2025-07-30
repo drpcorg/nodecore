@@ -31,6 +31,9 @@ func (s *ServerConfig) setDefaults() {
 	if s.Port == 0 {
 		s.Port = defaultPort
 	}
+	if s.PyroscopeConfig == nil {
+		s.PyroscopeConfig = &PyroscopeConfig{}
+	}
 }
 
 func (c *CacheConfig) setDefaults() {

@@ -27,10 +27,30 @@ type AppConfig struct {
 }
 
 type ServerConfig struct {
-	Port        int        `yaml:"port"`
-	MetricsPort int        `yaml:"metrics-port"`
-	PprofPort   int        `yaml:"pprof-port"`
-	TlsConfig   *TlsConfig `yaml:"tls"`
+	Port            int              `yaml:"port"`
+	MetricsPort     int              `yaml:"metrics-port"`
+	PprofPort       int              `yaml:"pprof-port"`
+	TlsConfig       *TlsConfig       `yaml:"tls"`
+	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
+}
+
+type PyroscopeConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Url      string `yaml:"url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+func (p *PyroscopeConfig) GetServerAddress() string {
+	return p.Url
+}
+
+func (p *PyroscopeConfig) GetServerUsername() string {
+	return p.Username
+}
+
+func (p *PyroscopeConfig) GetServerPassword() string {
+	return p.Password
 }
 
 type TlsConfig struct {

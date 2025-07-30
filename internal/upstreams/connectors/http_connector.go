@@ -77,7 +77,7 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 		// if this is a JSON-RPC request, first it's necessary to understand if there is an error or not
 		canBeStreamed := request.RequestType() == protocol.Rest || protocol.ResponseCanBeStreamed(bufReader, protocol.MaxChunkSize)
 		if canBeStreamed {
-			zerolog.Ctx(ctx).Info().Msgf("streaming response of method %s", request.Method())
+			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
 			return protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
 		} else {
 			defer closeBodyReader(ctx, resp.Body)
