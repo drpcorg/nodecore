@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Request struct {
@@ -63,6 +64,7 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpServer.Server.BaseContext = func(listener net.Listener) context.Context {
 		return ctx
 	}
+	httpServer.Server.IdleTimeout = 1 * time.Minute // TODO: pass it to the config
 	httpServer.JSONSerializer = &FastJSONSerializer{}
 	httpServer.Use(middleware.Decompress())
 	httpServer.Use(GzipWithConfig(GzipConfig{Level: gzip.BestSpeed}))
