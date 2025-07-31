@@ -14,8 +14,13 @@ import (
 )
 
 type SubscriptionEventResponse struct {
-	id    string
-	event []byte
+	id      string
+	event   []byte
+	message []byte
+}
+
+func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionEventResponse {
+	return &SubscriptionEventResponse{message: message, id: id}
 }
 
 func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventResponse {
@@ -23,6 +28,9 @@ func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventRes
 }
 
 func (s *SubscriptionEventResponse) ResponseResult() []byte {
+	if len(s.message) != 0 {
+		return s.message
+	}
 	return s.event
 }
 
@@ -31,7 +39,10 @@ func (s *SubscriptionEventResponse) GetError() *ResponseError {
 }
 
 func (s *SubscriptionEventResponse) EncodeResponse(realId []byte) io.Reader {
-	return bytes.NewReader(s.event)
+	if len(s.message) == 0 {
+		return bytes.NewReader(s.event)
+	}
+	return jsonRpcResponseReader(realId, "result", s.message)
 }
 
 func (s *SubscriptionEventResponse) HasError() bool {

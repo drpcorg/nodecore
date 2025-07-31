@@ -79,7 +79,7 @@ func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHold
 		"showRewards":        false,
 		"transactionDetails": "none",
 	}
-	return protocol.NewInternalUpstreamJsonRpcRequest("blockSubscribe", []interface{}{"all", params})
+	return protocol.NewInternalSubUpstreamJsonRpcRequest("blockSubscribe", []interface{}{"all", params})
 }
 
 func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint64, error) {

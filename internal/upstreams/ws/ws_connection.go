@@ -4,18 +4,32 @@ import (
 	"context"
 	"fmt"
 	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/ast"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/dsheltie/pkg/chains"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+var jsonWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: config.AppName,
+	Subsystem: "request",
+	Name:      "json_ws_connections",
+}, []string{"chain", "upstream", "subscription"})
+
+func init() {
+	prometheus.MustRegister(jsonWsConnectionsMetric)
+}
 
 const (
 	wsReadBuffer  = 1024
@@ -33,6 +47,7 @@ type JsonRpcWsConnection struct {
 	writeMutex sync.Mutex
 
 	upId        string
+	chain       chains.Chain
 	methodSpec  string
 	endpoint    string
 	rpcTimeout  time.Duration
@@ -45,7 +60,14 @@ type JsonRpcWsConnection struct {
 	executor    failsafe.Executor[bool]
 }
 
-func NewJsonRpcWsConnection(ctx context.Context, upId, methodSpec, endpoint string, additionalHeaders map[string]string) WsConnection {
+func NewJsonRpcWsConnection(
+	ctx context.Context,
+	chain chains.Chain,
+	upId,
+	methodSpec,
+	endpoint string,
+	additionalHeaders map[string]string,
+) WsConnection {
 	log.Info().Msgf("connecting to %s", endpoint)
 
 	dialer := &websocket.Dialer{
@@ -69,6 +91,7 @@ func NewJsonRpcWsConnection(ctx context.Context, upId, methodSpec, endpoint stri
 
 	wsConnection := &JsonRpcWsConnection{
 		upId:        upId,
+		chain:       chain,
 		methodSpec:  methodSpec,
 		endpoint:    endpoint,
 		ctx:         ctx,
@@ -133,6 +156,7 @@ func (w *JsonRpcWsConnection) SendWsRequest(ctx context.Context, upstreamRequest
 		completed:        atomic.Bool{},
 		ctx:              ctx,
 		method:           upstreamRequest.Method(),
+		subType:          getSubscription(&jsonBody, upstreamRequest),
 	}
 
 	rawBody, _ := jsonBody.Raw()
@@ -141,11 +165,28 @@ func (w *JsonRpcWsConnection) SendWsRequest(ctx context.Context, upstreamRequest
 	if err != nil {
 		return nil, err
 	}
+
 	w.requests.Store(requestId, req)
 
 	go w.startProcess(req)
 
 	return req.responseChan, nil
+}
+
+func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string {
+	if !request.IsSubscribe() {
+		return ""
+	}
+	if request.Method() == "eth_subscribe" {
+		ethSubType := jsonBody.GetByPath("params", 0)
+		if ethSubType != nil {
+			sub, err := ethSubType.Raw()
+			if err == nil {
+				return sub[1 : len(sub)-2]
+			}
+		}
+	}
+	return request.Method()
 }
 
 func (w *JsonRpcWsConnection) connect() error {
@@ -226,6 +267,7 @@ func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 
 		req.writeInternal(response)
 		if response.Error == nil && specs.IsSubscribeMethod(w.methodSpec, req.method) {
+			jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType).Inc()
 			req.subId = protocol.ResultAsString(response.Message)
 			w.subs.Store(req.subId, req)
 		}
@@ -290,6 +332,7 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 					if err != nil {
 						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s and subId %s", unsubMethod, op.subId)
 					} else {
+						jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, op.subType).Dec()
 						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
 					}
 				}
@@ -315,6 +358,7 @@ type reqOp struct {
 	ctx              context.Context
 	method           string
 	subId            string
+	subType          string
 }
 
 func createConnectionRetryPolicy(url string) failsafe.Policy[bool] {

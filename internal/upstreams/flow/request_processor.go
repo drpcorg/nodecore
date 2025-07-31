@@ -260,13 +260,17 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			select {
 			case r, ok := <-subResp.ResponseChan():
 				if ok {
+					var subResponse protocol.ResponseHolder
 					if r.SubId == "" {
 						s.subCtx.AddSub(protocol.ResultAsString(r.Message), cancel)
+						subResponse = protocol.NewSubscriptionMessageEventResponse(request.Id(), r.Message)
+					} else {
+						subResponse = protocol.NewSubscriptionEventResponse(request.Id(), r.Event)
 					}
 					wrapper := &protocol.ResponseHolderWrapper{
 						UpstreamId: upstreamId,
 						RequestId:  request.Id(),
-						Response:   protocol.NewSubscriptionEventResponse(request.Id(), r.Event),
+						Response:   subResponse,
 					}
 					responses <- wrapper
 				}
