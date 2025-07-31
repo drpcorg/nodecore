@@ -267,9 +267,11 @@ func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 
 		req.writeInternal(response)
 		if response.Error == nil && specs.IsSubscribeMethod(w.methodSpec, req.method) {
-			jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType).Inc()
 			req.subId = protocol.ResultAsString(response.Message)
 			w.subs.Store(req.subId, req)
+			if req.subId != "" {
+				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType).Inc()
+			}
 		}
 	}
 }
