@@ -273,6 +273,8 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 						Response:   subResponse,
 					}
 					responses <- wrapper
+				} else {
+					return
 				}
 			case <-execCtx.Done():
 				return
