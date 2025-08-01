@@ -186,7 +186,7 @@ type SubscriptionHead struct {
 	connector     connectors.ApiConnector
 	upstreamId    string
 	headsChan     chan *protocol.Block
-	restart       chan struct{}
+	cancelFunc    *utils.Atomic[context.CancelFunc]
 }
 
 var _ Head = (*SubscriptionHead)(nil)
@@ -204,7 +204,11 @@ func (w *SubscriptionHead) Start() {
 	}
 
 	ctx, cancel := context.WithCancel(w.ctx)
-	defer cancel()
+	w.cancelFunc.Store(cancel)
+	defer func() {
+		log.Info().Msg("cancel")
+		cancel()
+	}()
 	subResponse, err := w.connector.Subscribe(ctx, subReq)
 	if err != nil {
 		log.Warn().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
@@ -231,8 +235,6 @@ func (w *SubscriptionHead) Start() {
 			}
 		case <-ctx.Done():
 			return
-		case <-w.restart:
-			return
 		}
 	}
 }
@@ -243,7 +245,7 @@ func (w *SubscriptionHead) HeadsChan() chan *protocol.Block {
 
 func (w *SubscriptionHead) OnNoHeadUpdates() {
 	log.Info().Msgf("trying to resubscribe to new heads of upstream %s", w.upstreamId)
-	w.restart <- struct{}{}
+	w.cancelFunc.Load()()
 	go w.Start()
 }
 
@@ -255,7 +257,7 @@ func newWsHead(ctx context.Context, upstreamId string, connector connectors.ApiC
 		connector:     connector,
 		block:         utils.NewAtomic[protocol.Block](),
 		headsChan:     make(chan *protocol.Block),
-		restart:       make(chan struct{}),
+		cancelFunc:    utils.NewAtomic[context.CancelFunc](),
 	}
 
 	return &head
