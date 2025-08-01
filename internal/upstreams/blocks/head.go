@@ -205,10 +205,7 @@ func (w *SubscriptionHead) Start() {
 
 	ctx, cancel := context.WithCancel(w.ctx)
 	w.cancelFunc.Store(cancel)
-	defer func() {
-		log.Info().Msg("cancel")
-		cancel()
-	}()
+	defer cancel()
 	subResponse, err := w.connector.Subscribe(ctx, subReq)
 	if err != nil {
 		log.Warn().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
