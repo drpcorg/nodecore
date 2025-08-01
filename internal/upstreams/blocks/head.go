@@ -180,15 +180,13 @@ func (r *RpcHead) poll() {
 }
 
 type SubscriptionHead struct {
-	ctx             context.Context
-	block           *utils.Atomic[protocol.Block]
-	chainSpecific   specific.ChainSpecific
-	connector       connectors.ApiConnector
-	upstreamId      string
-	headsChan       chan *protocol.Block
-	stopped         chan struct{}
-	startInProgress atomic.Bool
-	headStopped     atomic.Bool
+	ctx           context.Context
+	block         *utils.Atomic[protocol.Block]
+	chainSpecific specific.ChainSpecific
+	connector     connectors.ApiConnector
+	upstreamId    string
+	headsChan     chan *protocol.Block
+	restart       chan struct{}
 }
 
 var _ Head = (*SubscriptionHead)(nil)
@@ -199,46 +197,19 @@ func (w *SubscriptionHead) GetCurrentBlock() *protocol.Block {
 }
 
 func (w *SubscriptionHead) Start() {
-	if !w.startInProgress.Load() {
-		w.startInProgress.Store(true)
-		defer w.startInProgress.Store(false)
-
-		subReq, err := w.chainSpecific.SubscribeHeadRequest()
-		if err != nil {
-			log.Warn().Err(err).Msgf("couldn't create a subscription request to upstream %s", w.upstreamId)
-			return
-		}
-
-		ctx, cancel := context.WithCancel(w.ctx)
-		subResponse, err := w.connector.Subscribe(ctx, subReq)
-		if err != nil {
-			log.Warn().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
-			cancel()
-			return
-		}
-		w.headStopped.Store(false)
-		go w.processMessages(subResponse, cancel)
-	}
-}
-
-func (w *SubscriptionHead) HeadsChan() chan *protocol.Block {
-	return w.headsChan
-}
-
-func (w *SubscriptionHead) OnNoHeadUpdates() {
-	if !w.headStopped.Load() {
-		w.stopped <- struct{}{}
+	subReq, err := w.chainSpecific.SubscribeHeadRequest()
+	if err != nil {
+		log.Warn().Err(err).Msgf("couldn't create a subscription request to upstream %s", w.upstreamId)
+		return
 	}
 
-	log.Info().Msgf("trying to resubscribe to new heads of upstream %s", w.upstreamId)
-	go w.Start()
-}
-
-func (w *SubscriptionHead) processMessages(subResponse protocol.UpstreamSubscriptionResponse, cancelFunc context.CancelFunc) {
-	defer func() {
-		w.headStopped.Store(true)
-		cancelFunc()
-	}()
+	ctx, cancel := context.WithCancel(w.ctx)
+	defer cancel()
+	subResponse, err := w.connector.Subscribe(ctx, subReq)
+	if err != nil {
+		log.Warn().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
+		return
+	}
 	for {
 		select {
 		case message, ok := <-subResponse.ResponseChan():
@@ -258,25 +229,33 @@ func (w *SubscriptionHead) processMessages(subResponse protocol.UpstreamSubscrip
 				w.block.Store(*block)
 				w.headsChan <- block
 			}
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
-		case <-w.stopped:
+		case <-w.restart:
 			return
 		}
 	}
 }
 
+func (w *SubscriptionHead) HeadsChan() chan *protocol.Block {
+	return w.headsChan
+}
+
+func (w *SubscriptionHead) OnNoHeadUpdates() {
+	log.Info().Msgf("trying to resubscribe to new heads of upstream %s", w.upstreamId)
+	w.restart <- struct{}{}
+	go w.Start()
+}
+
 func newWsHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific) *SubscriptionHead {
 	head := SubscriptionHead{
-		ctx:             ctx,
-		upstreamId:      upstreamId,
-		chainSpecific:   chainSpecific,
-		connector:       connector,
-		block:           utils.NewAtomic[protocol.Block](),
-		headsChan:       make(chan *protocol.Block),
-		stopped:         make(chan struct{}),
-		startInProgress: atomic.Bool{},
-		headStopped:     atomic.Bool{},
+		ctx:           ctx,
+		upstreamId:    upstreamId,
+		chainSpecific: chainSpecific,
+		connector:     connector,
+		block:         utils.NewAtomic[protocol.Block](),
+		headsChan:     make(chan *protocol.Block),
+		restart:       make(chan struct{}),
 	}
 
 	return &head

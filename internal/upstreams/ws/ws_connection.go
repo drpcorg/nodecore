@@ -182,7 +182,7 @@ func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string 
 		if ethSubType != nil {
 			sub, err := ethSubType.Raw()
 			if err == nil {
-				return sub[1 : len(sub)-2]
+				return sub[1 : len(sub)-1]
 			}
 		}
 	}
