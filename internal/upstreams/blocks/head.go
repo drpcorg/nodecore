@@ -242,7 +242,9 @@ func (w *SubscriptionHead) HeadsChan() chan *protocol.Block {
 
 func (w *SubscriptionHead) OnNoHeadUpdates() {
 	log.Info().Msgf("trying to resubscribe to new heads of upstream %s", w.upstreamId)
-	w.cancelFunc.Load()()
+	if w.cancelFunc.Load() != nil {
+		w.cancelFunc.Load()()
+	}
 	go w.Start()
 }
 
