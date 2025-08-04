@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -82,45 +82,34 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 		return nil, false
 	}
 
+	resultSent := atomic.Bool{}
+	resultCount := atomic.Int32{}
 	resultChan := make(chan []byte)
-	newCtx, cancel := context.WithTimeout(ctx, c.receiveTimeout)
-	defer func() {
-		cancel()
-		close(resultChan)
-	}()
 
-	var once sync.Once
-
-	var wg sync.WaitGroup
-	wg.Add(len(c.policies))
-	notFoundFunc := func() {
-		once.Do(func() {
-			resultChan <- nil
-		})
-	}
-	go func() { // wait for all responses if there is nothing in cache
-		wg.Wait()
-		notFoundFunc()
-	}()
-	go func() {
-		<-newCtx.Done()
-		notFoundFunc()
-	}()
+	ctx, cancel := context.WithTimeout(ctx, c.receiveTimeout)
+	defer cancel()
 
 	for _, policy := range c.policies {
 		go func() {
-			defer wg.Done()
-			result, ok := policy.Receive(newCtx, chain, request)
-			if ok {
-				once.Do(func() {
-					resultChan <- result
-					requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
-					cancel()
-				})
+			result, ok := policy.Receive(ctx, chain, request)
+			isFinalResult := int(resultCount.Add(1)) == len(c.policies)
+
+			if ok && resultSent.CompareAndSwap(false, true) {
+				requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
+				resultChan <- result
+			} else if isFinalResult {
+				cancel()
 			}
 		}()
 	}
 
-	result := <-resultChan
+	var result []byte
+
+	select {
+	case <-ctx.Done():
+	case cacheResult := <-resultChan:
+		result = cacheResult
+	}
+
 	return result, len(result) > 0
 }
