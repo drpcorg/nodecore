@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
+	_ "go.uber.org/automaxprocs"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -61,6 +62,7 @@ func main() {
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 
 	metricsServer := echo.New()
+	metricsServer.HideBanner = true
 	metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
 	metricsServer.GET("/metrics", echoprometheus.NewHandler())
 
