@@ -95,6 +95,7 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 			isFinalResult := int(resultCount.Add(1)) == len(c.policies)
 
 			if ok && resultSent.CompareAndSwap(false, true) {
+				requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
 				resultChan <- result
 			} else if isFinalResult {
 				cancel()
