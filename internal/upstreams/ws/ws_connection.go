@@ -50,6 +50,7 @@ type JsonRpcWsConnection struct {
 	chain       chains.Chain
 	methodSpec  string
 	endpoint    string
+	connClosed  atomic.Bool
 	rpcTimeout  time.Duration
 	ctx         context.Context
 	connectFunc func() (*websocket.Conn, error)
@@ -101,6 +102,7 @@ func NewJsonRpcWsConnection(
 		rpcTimeout:  1 * time.Minute,
 		connection:  utils.NewAtomic[*websocket.Conn](),
 		executor:    failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),
+		connClosed:  atomic.Bool{},
 	}
 
 	err := wsConnection.connect()
@@ -150,20 +152,25 @@ func (w *JsonRpcWsConnection) SendWsRequest(ctx context.Context, upstreamRequest
 		return nil, fmt.Errorf("couldn't replace an id, cause - %s", err.Error())
 	}
 
-	req := &reqOp{
-		responseChan:     make(chan *protocol.WsResponse, 50),
-		internalMessages: make(chan *protocol.WsResponse, 50),
-		completed:        atomic.Bool{},
-		ctx:              ctx,
-		method:           upstreamRequest.Method(),
-		subType:          getSubscription(&jsonBody, upstreamRequest),
-	}
-
 	rawBody, _ := jsonBody.Raw()
 
 	err = w.writeMessage([]byte(rawBody))
 	if err != nil {
 		return nil, err
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	cancelFunc := utils.NewAtomic[context.CancelFunc]()
+	cancelFunc.Store(cancel)
+
+	req := &reqOp{
+		responseChan:     make(chan *protocol.WsResponse, 50),
+		internalMessages: make(chan *protocol.WsResponse, 50),
+		completed:        atomic.Bool{},
+		ctx:              ctx,
+		cancel:           cancelFunc,
+		method:           upstreamRequest.Method(),
+		subType:          getSubscription(&jsonBody, upstreamRequest),
 	}
 
 	w.requests.Store(requestId, req)
@@ -200,6 +207,7 @@ func (w *JsonRpcWsConnection) connect() error {
 		}
 
 		log.Info().Msgf("connected to %s, listening to messages", w.endpoint)
+		w.connClosed.Store(false)
 
 		w.connection.Store(conn)
 		go w.processMessages()
@@ -227,7 +235,13 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 		select {
 		case <-r.ctx.Done():
 			r.completeReq()
-			w.unsubscribe(r)
+			if !w.connClosed.Load() {
+				if done := w.unsubscribe(r); done {
+					jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
+				}
+			} else if r.subId != "" && w.connClosed.Load() {
+				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
+			}
 			return
 		case message, ok := <-r.internalMessages:
 			if ok {
@@ -304,6 +318,7 @@ func (w *JsonRpcWsConnection) writeMessage(message []byte) error {
 
 func (w *JsonRpcWsConnection) completeAll() {
 	err := w.connection.Load().Close()
+	w.connClosed.Store(true)
 	if err != nil {
 		log.Warn().Err(err).Msg("couldn't close a ws connection")
 	}
@@ -313,12 +328,12 @@ func (w *JsonRpcWsConnection) completeAll() {
 	})
 	w.subs.Range(func(key string, val *reqOp) bool {
 		w.subs.Delete(key)
-		val.completeReq()
+		val.cancel.Load()()
 		return true
 	})
 }
 
-func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
+func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) bool {
 	if op.subId != "" {
 		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method); ok {
 			params := []interface{}{op.subId}
@@ -332,20 +347,20 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 				} else {
 					err = w.writeMessage(body)
 					if err != nil {
-						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s and subId %s", unsubMethod, op.subId)
+						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, op.subId)
 					} else {
-						jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, op.subType).Dec()
 						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
+						return true
 					}
 				}
 			}
 		}
 	}
+	return false
 }
 
 func (r *reqOp) completeReq() {
-	if !r.completed.Load() {
-		r.completed.Store(true)
+	if r.completed.CompareAndSwap(false, true) {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			close(r.responseChan)
@@ -358,6 +373,7 @@ type reqOp struct {
 	internalMessages chan *protocol.WsResponse
 	completed        atomic.Bool
 	ctx              context.Context
+	cancel           *utils.Atomic[context.CancelFunc]
 	method           string
 	subId            string
 	subType          string
