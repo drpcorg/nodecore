@@ -61,6 +61,7 @@ func (FastJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
 
 func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpServer := echo.New()
+	httpServer.HideBanner = true
 	httpServer.Server.BaseContext = func(listener net.Listener) context.Context {
 		return ctx
 	}
