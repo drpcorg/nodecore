@@ -50,7 +50,6 @@ type JsonRpcWsConnection struct {
 	chain       chains.Chain
 	methodSpec  string
 	endpoint    string
-	connClosed  atomic.Bool
 	rpcTimeout  time.Duration
 	ctx         context.Context
 	connectFunc func() (*websocket.Conn, error)
@@ -102,7 +101,6 @@ func NewJsonRpcWsConnection(
 		rpcTimeout:  1 * time.Minute,
 		connection:  utils.NewAtomic[*websocket.Conn](),
 		executor:    failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),
-		connClosed:  atomic.Bool{},
 	}
 
 	err := wsConnection.connect()
@@ -207,7 +205,6 @@ func (w *JsonRpcWsConnection) connect() error {
 		}
 
 		log.Info().Msgf("connected to %s, listening to messages", w.endpoint)
-		w.connClosed.Store(false)
 
 		w.connection.Store(conn)
 		go w.processMessages()
@@ -235,11 +232,8 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 		select {
 		case <-r.ctx.Done():
 			r.completeReq()
-			if !w.connClosed.Load() {
-				if done := w.unsubscribe(r); done {
-					jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
-				}
-			} else if r.subId != "" && w.connClosed.Load() {
+			w.unsubscribe(r)
+			if r.subId != "" {
 				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
 			}
 			return
@@ -318,7 +312,6 @@ func (w *JsonRpcWsConnection) writeMessage(message []byte) error {
 
 func (w *JsonRpcWsConnection) completeAll() {
 	err := w.connection.Load().Close()
-	w.connClosed.Store(true)
 	if err != nil {
 		log.Warn().Err(err).Msg("couldn't close a ws connection")
 	}
@@ -333,7 +326,7 @@ func (w *JsonRpcWsConnection) completeAll() {
 	})
 }
 
-func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) bool {
+func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
 		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method); ok {
 			params := []interface{}{op.subId}
@@ -350,13 +343,11 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) bool {
 						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, op.subId)
 					} else {
 						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
-						return true
 					}
 				}
 			}
 		}
 	}
-	return false
 }
 
 func (r *reqOp) completeReq() {
