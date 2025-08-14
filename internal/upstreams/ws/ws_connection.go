@@ -50,6 +50,7 @@ type JsonRpcWsConnection struct {
 	chain       chains.Chain
 	methodSpec  string
 	endpoint    string
+	connClosed  atomic.Bool
 	rpcTimeout  time.Duration
 	ctx         context.Context
 	connectFunc func() (*websocket.Conn, error)
@@ -101,6 +102,7 @@ func NewJsonRpcWsConnection(
 		rpcTimeout:  1 * time.Minute,
 		connection:  utils.NewAtomic[*websocket.Conn](),
 		executor:    failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),
+		connClosed:  atomic.Bool{},
 	}
 
 	err := wsConnection.connect()
@@ -205,6 +207,7 @@ func (w *JsonRpcWsConnection) connect() error {
 		}
 
 		log.Info().Msgf("connected to %s, listening to messages", w.endpoint)
+		w.connClosed.Store(false)
 
 		w.connection.Store(conn)
 		go w.processMessages()
@@ -232,7 +235,9 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 		select {
 		case <-r.ctx.Done():
 			r.completeReq()
-			w.unsubscribe(r)
+			if !w.connClosed.Load() {
+				w.unsubscribe(r)
+			}
 			if r.subId != "" {
 				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
 			}
@@ -312,6 +317,7 @@ func (w *JsonRpcWsConnection) writeMessage(message []byte) error {
 
 func (w *JsonRpcWsConnection) completeAll() {
 	err := w.connection.Load().Close()
+	w.connClosed.Store(true)
 	if err != nil {
 		log.Warn().Err(err).Msg("couldn't close a ws connection")
 	}
