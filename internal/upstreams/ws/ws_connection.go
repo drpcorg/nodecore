@@ -236,10 +236,9 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 		case <-r.ctx.Done():
 			r.completeReq()
 			if !w.connClosed.Load() {
-				if done := w.unsubscribe(r); done {
-					jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
-				}
-			} else if r.subId != "" && w.connClosed.Load() {
+				w.unsubscribe(r)
+			}
+			if r.subId != "" {
 				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
 			}
 			return
@@ -333,7 +332,7 @@ func (w *JsonRpcWsConnection) completeAll() {
 	})
 }
 
-func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) bool {
+func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 	if op.subId != "" {
 		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method); ok {
 			params := []interface{}{op.subId}
@@ -350,13 +349,11 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) bool {
 						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, op.subId)
 					} else {
 						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
-						return true
 					}
 				}
 			}
 		}
 	}
-	return false
 }
 
 func (r *reqOp) completeReq() {
