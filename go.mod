@@ -2,6 +2,8 @@ module github.com/drpcorg/dsheltie
 
 go 1.24.1
 
+replace github.com/itchyny/gojq => github.com/drpcorg/gojq v0.0.0-20250828154704-4517ca0cd43c
+
 require (
 	github.com/DataDog/sketches-go v1.4.7
 	github.com/bytedance/sonic v1.13.2

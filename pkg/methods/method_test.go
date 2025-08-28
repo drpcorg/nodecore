@@ -178,6 +178,23 @@ func TestParseBlockRef(t *testing.T) {
 	}
 }
 
+func TestParseBlockRefLogs(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("specs")).Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethods("eth")
+	method := spec[specs.DefaultMethodGroup]["eth_getLogs"]
+
+	result := method.Parse(context.Background(), []any{map[string]interface{}{"blockHash": "0xe0594250efac73640aeff78ec40aaaaa87f91edb54e5af926ee71a32ef32da34"}})
+	assert.Equal(t, "0xe0594250efac73640aeff78ec40aaaaa87f91edb54e5af926ee71a32ef32da34", result.(*specs.HashTagParam).Hash)
+
+	result = method.Parse(context.Background(), []any{map[string]interface{}{"toBlock": "latest"}})
+	assert.Equal(t, rpc.LatestBlockNumber, result.(*specs.BlockNumberParam).BlockNumber)
+
+	result = method.Parse(context.Background(), []any{map[string]interface{}{"toBlock": "0x100"}})
+	assert.Equal(t, rpc.BlockNumber(256), result.(*specs.BlockNumberParam).BlockNumber)
+}
+
 func TestParseStringValue(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)
