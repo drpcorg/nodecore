@@ -245,6 +245,22 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 		if param.To != nil && specs.IsBlockTagNumber(*param.To) {
 			return false // not cache requests with block tags
 		}
+		if c.finalizationType == Finalized {
+			chainFinalizedBlock, ok := chainsSupervisor.GetChainState().Blocks[protocol.FinalizedBlock]
+			if ok {
+				var maxBlock int64
+				if param.From == nil {
+					maxBlock = param.To.Int64()
+				} else if param.To == nil {
+					maxBlock = param.To.Int64()
+				} else {
+					maxBlock = lo.Max([]int64{param.From.Int64(), param.To.Int64()})
+				}
+				if uint64(maxBlock) > chainFinalizedBlock.Height {
+					return false
+				}
+			}
+		}
 	}
 
 	return true
