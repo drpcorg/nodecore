@@ -7,6 +7,7 @@ import (
 
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -189,10 +190,16 @@ func TestParseBlockRefLogs(t *testing.T) {
 	assert.Equal(t, "0xe0594250efac73640aeff78ec40aaaaa87f91edb54e5af926ee71a32ef32da34", result.(*specs.HashTagParam).Hash)
 
 	result = method.Parse(context.Background(), []any{map[string]interface{}{"toBlock": "latest"}})
-	assert.Equal(t, rpc.LatestBlockNumber, result.(*specs.BlockNumberParam).BlockNumber)
+	assert.Equal(t, &specs.BlockRangeParam{To: lo.ToPtr(rpc.LatestBlockNumber)}, result.(*specs.BlockRangeParam))
 
 	result = method.Parse(context.Background(), []any{map[string]interface{}{"toBlock": "0x100"}})
-	assert.Equal(t, rpc.BlockNumber(256), result.(*specs.BlockNumberParam).BlockNumber)
+	assert.Equal(t, &specs.BlockRangeParam{To: lo.ToPtr(rpc.BlockNumber(256))}, result.(*specs.BlockRangeParam))
+
+	result = method.Parse(context.Background(), []any{map[string]interface{}{"fromBlock": "0x100", "toBlock": "0x200"}})
+	assert.Equal(t, &specs.BlockRangeParam{From: lo.ToPtr(rpc.BlockNumber(256)), To: lo.ToPtr(rpc.BlockNumber(512))}, result.(*specs.BlockRangeParam))
+
+	result = method.Parse(context.Background(), []any{map[string]interface{}{"fromBlock": "earliest", "toBlock": "latest"}})
+	assert.Equal(t, &specs.BlockRangeParam{From: lo.ToPtr(rpc.EarliestBlockNumber), To: lo.ToPtr(rpc.LatestBlockNumber)}, result.(*specs.BlockRangeParam))
 }
 
 func TestParseStringValue(t *testing.T) {

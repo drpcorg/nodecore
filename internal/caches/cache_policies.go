@@ -238,6 +238,13 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 				}
 			}
 		}
+	case *specs.BlockRangeParam:
+		if param.From != nil && specs.IsBlockTagNumber(*param.From) {
+			return false // not cache requests with block tags
+		}
+		if param.To != nil && specs.IsBlockTagNumber(*param.To) {
+			return false // not cache requests with block tags
+		}
 	}
 
 	return true

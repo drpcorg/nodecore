@@ -286,8 +286,8 @@
         "cacheable": false
       },
       "tag-parser": {
-        "type": "blockRef",
-        "path": ".[0] | if .blockHash then .blockHash else .toBlock end"
+        "type": "object",
+        "path": ".[0] | if .blockHash then {blockRef: .blockHash} else {blockRange: {from: .fromBlock, to: .toBlock}} end"
       }
     },
     {
