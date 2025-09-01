@@ -51,7 +51,7 @@ const defaultLatencyErrorRatePolicyFunc = `
 		const normalizedErrorRates = normalizeValuesFunc(upstreamData.map((data) => data.metrics.errorRate))
 
 		const scores = upstreamData.map((data, index) => {
-			const score = (scoreFunc(1 - normalizedLatencies[index]) * 2) + scoreFunc(1 - normalizedTotalRequests[index]) + (scoreFunc(1 - normalizedErrorRates[index]) * 1.5)
+			const score = (scoreFunc(1 - normalizedLatencies[index]) * 2) + scoreFunc(1 - normalizedTotalRequests[index]) + (scoreFunc(1 - normalizedErrorRates[index]) * 5)
 			return {
 				"id": data.id,
 				"score": score
