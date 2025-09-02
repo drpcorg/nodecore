@@ -1,13 +1,14 @@
 package methods_test
 
 import (
+	"os"
+	"testing"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 func TestUpstreamMethodsNoSpecThenError(t *testing.T) {

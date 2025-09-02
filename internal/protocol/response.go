@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/ast"
-	"github.com/samber/lo"
 	"io"
 	"strconv"
 	"testing/iotest"
+
+	"github.com/bytedance/sonic"
+	"github.com/bytedance/sonic/ast"
+	"github.com/samber/lo"
 )
 
 type SubscriptionEventResponse struct {

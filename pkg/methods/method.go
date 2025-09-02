@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/bytedance/sonic"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/itchyny/gojq"
 	"github.com/rs/zerolog"
 	"github.com/samber/lo"
-	"strings"
 )
 
 const newValue = "$newValue"

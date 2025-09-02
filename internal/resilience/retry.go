@@ -3,12 +3,12 @@ package resilience
 import (
 	"errors"
 	"fmt"
-	"github.com/failsafe-go/failsafe-go/common"
 	"math/rand"
 	"slices"
 	"time"
 
 	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/common"
 	"github.com/failsafe-go/failsafe-go/policy"
 )
 

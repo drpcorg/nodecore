@@ -3,12 +3,13 @@ package protocol_test
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
-	"testing"
 )
 
 func TestGenerateRequestHashWithoutParams(t *testing.T) {

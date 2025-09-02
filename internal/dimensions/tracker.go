@@ -1,11 +1,12 @@
 package dimensions
 
 import (
+	"sync/atomic"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
-	"sync/atomic"
 )
 
 var DefBuckets = []float64{

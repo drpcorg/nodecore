@@ -3,6 +3,8 @@ package flow_test
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/drpcorg/dsheltie/pkg/chains"
@@ -11,7 +13,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"testing"
 )
 
 func TestNotStickyRequestThenError(t *testing.T) {

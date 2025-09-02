@@ -2,6 +2,10 @@ package config
 
 import (
 	"errors"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/dop251/goja_nodejs/require"
@@ -9,9 +13,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
-	"os"
-	"strings"
-	"time"
 )
 
 const (

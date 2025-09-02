@@ -1,14 +1,15 @@
 package resilience
 
 import (
+	"sync/atomic"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/common"
 	"github.com/failsafe-go/failsafe-go/policy"
 	"github.com/samber/lo"
-	"sync/atomic"
-	"time"
 )
 
 // ParallelHedgePolicy is a copy of failsafe.ParallelHedgePolicy but that allows to execute all hedges requests in parallel at the same time

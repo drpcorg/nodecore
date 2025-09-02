@@ -3,6 +3,10 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -14,9 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
-	"slices"
-	"strings"
-	"time"
 )
 
 var availabilityMetric = prometheus.NewGaugeVec(

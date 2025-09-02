@@ -2,6 +2,9 @@ package rating
 
 import (
 	"fmt"
+	"reflect"
+	"time"
+
 	"github.com/dop251/goja"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
@@ -12,8 +15,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo/mutable"
 	"github.com/spf13/cast"
-	"reflect"
-	"time"
 )
 
 var rating = prometheus.NewGaugeVec(

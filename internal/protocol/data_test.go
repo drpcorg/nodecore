@@ -2,11 +2,12 @@ package protocol_test
 
 import (
 	"errors"
+	"testing"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestIsRetryable(t *testing.T) {

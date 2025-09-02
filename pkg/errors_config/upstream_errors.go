@@ -3,9 +3,10 @@ package errors_config
 import (
 	_ "embed"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type ErrorConfig struct {

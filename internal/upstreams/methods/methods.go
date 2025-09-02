@@ -2,11 +2,12 @@ package methods
 
 import (
 	"fmt"
+	"maps"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/samber/lo"
-	"maps"
 )
 
 type Methods interface {

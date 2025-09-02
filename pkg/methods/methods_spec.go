@@ -4,14 +4,15 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"github.com/bytedance/sonic"
-	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/imdario/mergo"
-	"github.com/samber/lo"
 	"io/fs"
 	"maps"
 	"path/filepath"
 	"reflect"
+
+	"github.com/bytedance/sonic"
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/imdario/mergo"
+	"github.com/samber/lo"
 )
 
 //go:embed specs/*.json

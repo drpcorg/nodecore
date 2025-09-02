@@ -2,6 +2,9 @@ package upstreams_test
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -11,8 +14,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {

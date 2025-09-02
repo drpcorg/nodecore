@@ -3,6 +3,9 @@ package caches
 import (
 	"bytes"
 	"context"
+	"testing"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/pkg/chains"
@@ -11,8 +14,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"testing"
-	"time"
 )
 
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {

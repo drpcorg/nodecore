@@ -3,11 +3,12 @@ package connectors_test
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestWsConnectorSendUnaryRequestThenReceiveError(t *testing.T) {

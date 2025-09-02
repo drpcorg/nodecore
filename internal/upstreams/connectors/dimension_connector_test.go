@@ -3,6 +3,9 @@ package connectors_test
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -12,8 +15,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"testing"
-	"time"
 )
 
 func TestDimensionConnectorSuccessfulResponse(t *testing.T) {

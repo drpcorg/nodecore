@@ -3,6 +3,7 @@ package connectors
 import (
 	"context"
 	"fmt"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/ws"
 )

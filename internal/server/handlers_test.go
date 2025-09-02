@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"testing"
+
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/server"
 	"github.com/stretchr/testify/assert"
-	"io"
-	"testing"
 )
 
 type jsonRpcReqWithoutId struct {
