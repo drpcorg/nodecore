@@ -1,12 +1,13 @@
 package config_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestNoConfigFileThenError(t *testing.T) {

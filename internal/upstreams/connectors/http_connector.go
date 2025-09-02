@@ -6,11 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/rs/zerolog"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/rs/zerolog"
 )
 
 type HttpConnector struct {

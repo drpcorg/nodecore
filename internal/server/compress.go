@@ -6,7 +6,6 @@ package server
 
 import (
 	"bufio"
-	"github.com/rs/zerolog/log"
 	"io"
 	"net"
 	"net/http"
@@ -14,9 +13,9 @@ import (
 	"sync"
 
 	"github.com/klauspost/compress/gzip"
-
 	"github.com/labstack/echo/v4"
 	emiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog/log"
 )
 
 type (

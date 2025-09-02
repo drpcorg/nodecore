@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -12,7 +14,6 @@ import (
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
-	"io"
 )
 
 type RequestHandler interface {

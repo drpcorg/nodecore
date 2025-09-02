@@ -3,11 +3,11 @@ package server
 import (
 	"bytes"
 	"context"
-	"github.com/rs/zerolog/log"
 	"io"
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 var (

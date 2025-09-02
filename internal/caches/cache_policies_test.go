@@ -5,6 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"testing"
+	"time"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -17,9 +21,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"os"
-	"testing"
-	"time"
 )
 
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {

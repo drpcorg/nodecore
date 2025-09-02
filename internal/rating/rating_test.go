@@ -1,6 +1,9 @@
 package rating_test
 
 import (
+	"testing"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/rating"
@@ -8,8 +11,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestRatingRegistryNoUpstreams(t *testing.T) {

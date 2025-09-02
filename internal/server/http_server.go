@@ -2,6 +2,12 @@ package server
 
 import (
 	"context"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/dsheltie/internal/caches"
@@ -14,11 +20,6 @@ import (
 	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"io"
-	"net"
-	"net/http"
-	"strings"
-	"time"
 )
 
 type Request struct {

@@ -3,6 +3,11 @@ package ws
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
 	"github.com/drpcorg/dsheltie/internal/config"
@@ -15,10 +20,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
-	"net/http"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 var jsonWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{

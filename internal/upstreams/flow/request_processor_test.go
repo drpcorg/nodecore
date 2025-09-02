@@ -3,6 +3,10 @@ package flow_test
 import (
 	"context"
 	"errors"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/resilience"
@@ -14,9 +18,6 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"os"
-	"testing"
-	"time"
 )
 
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {

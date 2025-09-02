@@ -1,10 +1,11 @@
 package dimensions
 
 import (
-	"github.com/DataDog/sketches-go/ddsketch"
-	"github.com/rs/zerolog/log"
 	"sync"
 	"time"
+
+	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/rs/zerolog/log"
 )
 
 type quantileTracker struct {

@@ -1,10 +1,11 @@
 package specs_test
 
 import (
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
+
+	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadSpecAndCheckGroupsAndDefaultParams(t *testing.T) {

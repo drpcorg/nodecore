@@ -1,14 +1,15 @@
 package flow
 
 import (
+	"sync"
+	"sync/atomic"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/samber/lo"
-	"sync"
-	"sync/atomic"
 )
 
 const NoUpstream = "NoUpstream"

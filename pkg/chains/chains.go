@@ -2,9 +2,10 @@ package chains
 
 import (
 	_ "embed"
-	"gopkg.in/yaml.v3"
 	"maps"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed public/chains.yaml

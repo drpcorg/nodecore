@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/rs/zerolog/log"
-	"gopkg.in/yaml.v3"
 	"os"
 	"strings"
 	"text/template"
 	"unicode"
+
+	"github.com/rs/zerolog/log"
+	"gopkg.in/yaml.v3"
 )
 
 type ChainConfig struct {

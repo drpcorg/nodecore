@@ -2,11 +2,12 @@ package specs_test
 
 import (
 	"context"
+	"os"
+	"testing"
+
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
-	"os"
-	"testing"
 )
 
 func TestDefaultMethod(t *testing.T) {

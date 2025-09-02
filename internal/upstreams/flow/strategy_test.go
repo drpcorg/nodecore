@@ -1,6 +1,9 @@
 package flow_test
 
 import (
+	"testing"
+	"time"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
@@ -12,8 +15,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils"
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestRatingStrategyWithUpstreamIndexMatcherNotExist(t *testing.T) {

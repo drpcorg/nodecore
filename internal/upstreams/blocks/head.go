@@ -3,6 +3,9 @@ package blocks
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
@@ -10,8 +13,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/rs/zerolog/log"
-	"sync/atomic"
-	"time"
 )
 
 type HeadEvent struct {

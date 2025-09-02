@@ -2,13 +2,14 @@ package connectors
 
 import (
 	"context"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/resilience"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog"
-	"time"
 )
 
 type DimensionTrackerConnector struct {

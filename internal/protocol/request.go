@@ -3,6 +3,7 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/bytedance/sonic"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 )

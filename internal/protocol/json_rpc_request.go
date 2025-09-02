@@ -3,10 +3,11 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"sync"
+
 	"github.com/bytedance/sonic"
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/rs/zerolog"
-	"sync"
 )
 
 type UpstreamJsonRpcRequest struct {

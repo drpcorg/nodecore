@@ -3,6 +3,8 @@ package test_utils
 import (
 	"context"
 	json2 "encoding/json"
+	"time"
+
 	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
@@ -17,7 +19,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/stretchr/testify/mock"
-	"time"
 )
 
 func GetResultAsBytes(json []byte) []byte {

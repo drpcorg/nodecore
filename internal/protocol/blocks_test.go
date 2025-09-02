@@ -1,9 +1,10 @@
 package protocol_test
 
 import (
+	"testing"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestBlockCreation(t *testing.T) {

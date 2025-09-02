@@ -3,12 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
-	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/pkg/chains"
-	"github.com/samber/lo"
 	"strconv"
 	"strings"
 	"time"
+
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/samber/lo"
 )
 
 func (a *AppConfig) validate() error {

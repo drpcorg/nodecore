@@ -1,9 +1,10 @@
 package config
 
 import (
+	"time"
+
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
-	"time"
 )
 
 const (

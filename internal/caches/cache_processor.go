@@ -2,6 +2,9 @@ package caches
 
 import (
 	"context"
+	"sync/atomic"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
@@ -9,8 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
-	"sync/atomic"
-	"time"
 )
 
 var requestCache = prometheus.NewCounterVec(

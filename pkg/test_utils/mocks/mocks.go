@@ -2,6 +2,8 @@ package mocks
 
 import (
 	"context"
+	"time"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
@@ -9,7 +11,6 @@ import (
 	specs "github.com/drpcorg/dsheltie/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
-	"time"
 )
 
 type MockStrategy struct {

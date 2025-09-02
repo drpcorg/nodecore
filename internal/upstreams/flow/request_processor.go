@@ -3,6 +3,8 @@ package flow
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
+
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -14,7 +16,6 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
-	"sync/atomic"
 )
 
 var hedgeMetric = prometheus.NewCounterVec(

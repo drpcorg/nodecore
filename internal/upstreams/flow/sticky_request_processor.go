@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
 	"github.com/drpcorg/dsheltie/pkg/chains"

@@ -1,10 +1,11 @@
 package dimensions_test
 
 import (
+	"testing"
+
 	"github.com/drpcorg/dsheltie/internal/dimensions"
 	"github.com/drpcorg/dsheltie/pkg/chains"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestTrackerAllDimensions(t *testing.T) {

@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"sync"
+
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -13,7 +15,6 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
-	"sync"
 )
 
 var requestTotalMetric = prometheus.NewCounterVec(

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestInMemoryCacheNotFoundThenError(t *testing.T) {

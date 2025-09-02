@@ -2,10 +2,11 @@ package protocol_test
 
 import (
 	"errors"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"testing"
+
+	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCodes(t *testing.T) {

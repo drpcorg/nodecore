@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
@@ -11,8 +14,6 @@ import (
 	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/rs/zerolog/log"
-	"strings"
-	"time"
 )
 
 var ethErrorsToDisable = []string{

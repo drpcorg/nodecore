@@ -2,6 +2,7 @@ package resilience
 
 import (
 	"errors"
+
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/failsafe-go/failsafe-go"
