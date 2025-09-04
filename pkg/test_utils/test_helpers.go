@@ -3,6 +3,7 @@ package test_utils
 import (
 	"context"
 	json2 "encoding/json"
+	"net/http"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -20,6 +21,20 @@ import (
 	"github.com/drpcorg/dsheltie/pkg/utils"
 	"github.com/stretchr/testify/mock"
 )
+
+func CtxWithRemoteAddr(remote string) context.Context {
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req.RemoteAddr = remote
+	return utils.ContextWithIps(context.Background(), req)
+}
+
+func CtxWithXFF(xff string) context.Context {
+	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	if xff != "" {
+		req.Header.Set("X-Forwarded-For", xff)
+	}
+	return utils.ContextWithIps(context.Background(), req)
+}
 
 func GetResultAsBytes(json []byte) []byte {
 	var parsed map[string]json2.RawMessage

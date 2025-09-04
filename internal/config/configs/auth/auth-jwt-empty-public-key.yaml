@@ -1,0 +1,9 @@
+server:
+  port: 9095
+
+auth:
+  enabled: true
+  request-strategy:
+    type: jwt
+    jwt:
+      public-key: ""

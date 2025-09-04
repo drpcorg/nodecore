@@ -8,12 +8,13 @@ require (
 	github.com/deckarep/golang-set/v2 v2.8.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
-	github.com/ethereum/go-ethereum v1.15.11
+	github.com/ethereum/go-ethereum v1.16.3
 	github.com/evanw/esbuild v0.25.5
 	github.com/failsafe-go/failsafe-go v0.6.9
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/pyroscope-go v1.2.0
+	github.com/grafana/pyroscope-go v1.2.7
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/imdario/mergo v0.3.16
 	github.com/itchyny/gojq v0.12.17
@@ -44,7 +45,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
-	github.com/grafana/pyroscope-go/godeltaprof v0.1.8 // indirect
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect

@@ -1,0 +1,10 @@
+server:
+  port: 9095
+
+auth:
+  enabled: true
+  key-management:
+    - id: key1
+      type: local
+      local:
+        key: ""

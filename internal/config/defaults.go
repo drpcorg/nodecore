@@ -25,7 +25,39 @@ func (a *AppConfig) setDefaults() {
 	if a.CacheConfig != nil {
 		a.CacheConfig.setDefaults()
 	}
+	if a.AuthConfig != nil {
+		a.AuthConfig.setDefaults()
+	}
 	a.UpstreamConfig.setDefaults()
+}
+
+func (a *AuthConfig) setDefaults() {
+	if len(a.KeyConfigs) > 0 {
+		for _, key := range a.KeyConfigs {
+			key.setDefaults()
+		}
+	}
+}
+
+func (k *KeyConfig) setDefaults() {
+	if k.LocalKeyConfig != nil {
+		k.LocalKeyConfig.setDefaults()
+	}
+}
+
+func (l *LocalKeyConfig) setDefaults() {
+	if l.KeySettingsConfig != nil {
+		l.KeySettingsConfig.setDefaults()
+	}
+}
+
+func (a *KeySettingsConfig) setDefaults() {
+	if a.Methods == nil {
+		a.Methods = &AuthMethods{}
+	}
+	if a.AuthContracts == nil {
+		a.AuthContracts = &AuthContracts{}
+	}
 }
 
 func (s *ServerConfig) setDefaults() {

@@ -13,16 +13,134 @@ import (
 )
 
 func (a *AppConfig) validate() error {
+	if a.CacheConfig != nil {
+		if err := a.CacheConfig.validate(); err != nil {
+			return err
+		}
+	}
+	if a.AuthConfig != nil {
+		if err := a.AuthConfig.validate(); err != nil {
+			return err
+		}
+	}
 	if err := a.ServerConfig.validate(); err != nil {
 		return err
 	}
 	if err := a.UpstreamConfig.validate(); err != nil {
 		return err
 	}
-	if a.CacheConfig != nil {
-		if err := a.CacheConfig.validate(); err != nil {
+	return nil
+}
+
+func (a *AuthConfig) validate() error {
+	if !a.Enabled {
+		return nil
+	}
+	if a.RequestStrategyConfig != nil {
+		if err := a.RequestStrategyConfig.validate(); err != nil {
 			return err
 		}
+	}
+	if len(a.KeyConfigs) > 0 {
+		keyIds := mapset.NewThreadUnsafeSet[string]()
+		keys := mapset.NewThreadUnsafeSet[string]()
+		for i, keyConfig := range a.KeyConfigs {
+			if keyConfig.Id == "" {
+				return fmt.Errorf("error during key config validation, cause: no key id under index %d", i)
+			}
+			if keyIds.ContainsOne(keyConfig.Id) {
+				return fmt.Errorf("error during key config validation, key with id '%s' already exists", keyConfig.Id)
+			}
+			if keyConfig.LocalKeyConfig != nil && keys.ContainsOne(keyConfig.LocalKeyConfig.Key) {
+				return fmt.Errorf("error during key config validation, local key '%s' already exists", keyConfig.LocalKeyConfig.Key)
+			}
+			if err := keyConfig.validate(); err != nil {
+				return fmt.Errorf("error during '%s' key config validation, cause: %s", keyConfig.Id, err.Error())
+			}
+			keyIds.Add(keyConfig.Id)
+			if keyConfig.LocalKeyConfig != nil {
+				keys.Add(keyConfig.LocalKeyConfig.Key)
+			}
+		}
+	}
+	return nil
+}
+
+func (k *KeyConfig) validate() error {
+	if err := k.Type.validate(); err != nil {
+		return err
+	}
+	switch k.Type {
+	case Local:
+		if k.LocalKeyConfig == nil {
+			return fmt.Errorf("specified '%s' key management rule type but there are no its settings", k.Type)
+		}
+		if err := k.LocalKeyConfig.validate(); err != nil {
+			return fmt.Errorf("error during '%s' key config validation, cause: %s", k.Id, err.Error())
+		}
+	}
+	return nil
+}
+
+func (l *LocalKeyConfig) validate() error {
+	if l.Key == "" {
+		return errors.New("'key' field is empty")
+	}
+	return nil
+}
+
+func (s KeyType) validate() error {
+	switch s {
+	case Local:
+	default:
+		return fmt.Errorf("invalid settings strategy type - '%s'", s)
+	}
+	return nil
+}
+
+func (r *RequestStrategyConfig) validate() error {
+	if err := r.Type.validate(); err != nil {
+		return err
+	}
+	switch r.Type {
+	case Token:
+		if r.TokenRequestStrategyConfig == nil {
+			return fmt.Errorf("specified '%s' request strategy type but there are no its settings", r.Type)
+		}
+		if err := r.TokenRequestStrategyConfig.validate(); err != nil {
+			return fmt.Errorf("error during '%s' request strategy validation, cause: %s", r.Type, err.Error())
+		}
+	case Jwt:
+		if r.JwtRequestStrategyConfig == nil {
+			return fmt.Errorf("specified '%s' request strategy type but there are no its settings", r.Type)
+		}
+		if err := r.JwtRequestStrategyConfig.validate(); err != nil {
+			return fmt.Errorf("error during '%s' request strategy validation, cause: %s", r.Type, err.Error())
+		}
+	}
+
+	return nil
+}
+
+func (j *JwtRequestStrategyConfig) validate() error {
+	if j.PublicKey == "" {
+		return errors.New("there is no the public key path")
+	}
+	return nil
+}
+
+func (t *TokenRequestStrategyConfig) validate() error {
+	if t.Value == "" {
+		return errors.New("there is no secret value")
+	}
+	return nil
+}
+
+func (r RequestStrategyType) validate() error {
+	switch r {
+	case Token, Jwt:
+	default:
+		return fmt.Errorf("invalid request strategy type - '%s'", r)
 	}
 	return nil
 }
@@ -34,10 +152,10 @@ func (c *CacheConfig) validate() error {
 			return fmt.Errorf("error during cache connectors validation, cause: no connector id under index %d", i)
 		}
 		if connectors.ContainsOne(connector.Id) {
-			return fmt.Errorf("error during cache connectors validation, connector with id %s already exists", connector.Id)
+			return fmt.Errorf("error during cache connectors validation, connector with id '%s' already exists", connector.Id)
 		}
 		if err := connector.validate(); err != nil {
-			return fmt.Errorf("error during cache connector %s validation, cause: %s", connector.Id, err.Error())
+			return fmt.Errorf("error during cache connector '%s' validation, cause: %s", connector.Id, err.Error())
 		}
 		connectors.Add(connector.Id)
 	}
@@ -47,10 +165,10 @@ func (c *CacheConfig) validate() error {
 			return fmt.Errorf("error during cache policies validation, cause: no policy id under index %d", i)
 		}
 		if policies.ContainsOne(policy.Id) {
-			return fmt.Errorf("error during cache policies validation, policy with id %s already exists", policy.Id)
+			return fmt.Errorf("error during cache policies validation, policy with id '%s' already exists", policy.Id)
 		}
 		if err := policy.validate(connectors); err != nil {
-			return fmt.Errorf("error during cache policy %s validation, cause: %s", policy.Id, err.Error())
+			return fmt.Errorf("error during cache policy '%s' validation, cause: %s", policy.Id, err.Error())
 		}
 		policies.Add(policy.Id)
 	}
@@ -75,7 +193,7 @@ func (d CacheConnectorDriver) validate() error {
 	switch d {
 	case Memory, Redis:
 	default:
-		return fmt.Errorf("invalid cache driver - %s", d)
+		return fmt.Errorf("invalid cache driver - '%s'", d)
 	}
 	return nil
 }
@@ -100,7 +218,7 @@ func (p *CachePolicyConfig) validate(connectors mapset.Set[string]) error {
 		return err
 	}
 	if !connectors.ContainsOne(p.Connector) {
-		return fmt.Errorf("there is no such connector - %s", p.Connector)
+		return fmt.Errorf("there is no such connector - '%s'", p.Connector)
 	}
 	return nil
 }
@@ -109,7 +227,7 @@ func (f FinalizationType) validate() error {
 	switch f {
 	case Finalized, None:
 	default:
-		return fmt.Errorf("invalid finalization type - %s", f)
+		return fmt.Errorf("invalid finalization type - '%s'", f)
 	}
 	return nil
 }
@@ -148,7 +266,7 @@ func validatePolicyChain(chain string) error {
 	})
 	for _, chainStr := range cacheChainsStr {
 		if !chains.IsSupported(chainStr) {
-			return fmt.Errorf("chain %s is not supported", chainStr)
+			return fmt.Errorf("chain '%s' is not supported", chainStr)
 		}
 	}
 	return nil
@@ -164,7 +282,7 @@ func (u *UpstreamConfig) validate() error {
 			return fmt.Errorf("error during chain defaults validation, cause: not supported chain %s", chain)
 		}
 		if err := chainDefault.validate(); err != nil {
-			return fmt.Errorf("error during chain %s defaults validation, cause: %s", chain, err.Error())
+			return fmt.Errorf("error during chain '%s' defaults validation, cause: %s", chain, err.Error())
 		}
 	}
 
@@ -182,10 +300,10 @@ func (u *UpstreamConfig) validate() error {
 			return fmt.Errorf("error during upstream validation, cause: no upstream id under index %d", i)
 		}
 		if idSet.Contains(upstream.Id) {
-			return fmt.Errorf("error during upstream validation, cause: upstream with id %s already exists", upstream.Id)
+			return fmt.Errorf("error during upstream validation, cause: upstream with id '%s' already exists", upstream.Id)
 		}
 		if err := upstream.validate(); err != nil {
-			return fmt.Errorf("error during upstream %s validation, cause: %s", upstream.Id, err.Error())
+			return fmt.Errorf("error during upstream '%s' validation, cause: %s", upstream.Id, err.Error())
 		}
 		idSet.Add(upstream.Id)
 	}
@@ -301,7 +419,7 @@ func (p *PyroscopeConfig) validate() error {
 
 func (u *Upstream) validate() error {
 	if !chains.IsSupported(u.ChainName) {
-		return fmt.Errorf("not supported chain %s", u.ChainName)
+		return fmt.Errorf("not supported chain '%s'", u.ChainName)
 	}
 
 	if len(u.Connectors) == 0 {
@@ -311,7 +429,7 @@ func (u *Upstream) validate() error {
 	connectorTypeSet := mapset.NewThreadUnsafeSet[ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.Type) {
-			return fmt.Errorf("there can be only one connector of type %s", connector.Type)
+			return fmt.Errorf("there can be only one connector of type '%s'", connector.Type)
 		}
 		if err := connector.validate(); err != nil {
 			return err
@@ -320,11 +438,11 @@ func (u *Upstream) validate() error {
 	}
 
 	if err := u.HeadConnector.validate(); err != nil {
-		return fmt.Errorf("invalid head connector - %s", u.HeadConnector)
+		return fmt.Errorf("invalid head connector - '%s'", u.HeadConnector)
 	}
 
 	if !connectorTypeSet.Contains(u.HeadConnector) {
-		return fmt.Errorf("there is no %s connector for head", u.HeadConnector)
+		return fmt.Errorf("there is no '%s' connector for head", u.HeadConnector)
 	}
 
 	if err := u.FailsafeConfig.validate(); err != nil {
@@ -344,7 +462,7 @@ func (c *ApiConnectorConfig) validate() error {
 	}
 
 	if c.Url == "" {
-		return fmt.Errorf("url must be specified for connector %s", c.Type)
+		return fmt.Errorf("url must be specified for connector '%s'", c.Type)
 	}
 
 	return nil
@@ -354,7 +472,7 @@ func (t ApiConnectorType) validate() error {
 	switch t {
 	case Grpc, JsonRpc, Rest, Ws:
 	default:
-		return fmt.Errorf("invalid connector type - %s", t)
+		return fmt.Errorf("invalid connector type - '%s'", t)
 	}
 	return nil
 }

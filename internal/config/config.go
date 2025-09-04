@@ -25,6 +25,68 @@ type AppConfig struct {
 	ServerConfig   *ServerConfig   `yaml:"server"`
 	UpstreamConfig *UpstreamConfig `yaml:"upstream-config"`
 	CacheConfig    *CacheConfig    `yaml:"cache"`
+	AuthConfig     *AuthConfig     `yaml:"auth"`
+}
+
+type AuthConfig struct {
+	Enabled               bool                   `yaml:"enabled"`
+	RequestStrategyConfig *RequestStrategyConfig `yaml:"request-strategy"`
+	KeyConfigs            []*KeyConfig           `yaml:"key-management"`
+}
+
+type KeyConfig struct {
+	Id             string          `yaml:"id"`
+	Type           KeyType         `yaml:"type"`
+	LocalKeyConfig *LocalKeyConfig `yaml:"local"`
+}
+
+type KeyType string
+
+const (
+	Local KeyType = "local"
+)
+
+type RequestStrategyConfig struct {
+	Type                       RequestStrategyType         `yaml:"type"`
+	TokenRequestStrategyConfig *TokenRequestStrategyConfig `yaml:"token"`
+	JwtRequestStrategyConfig   *JwtRequestStrategyConfig   `yaml:"jwt"`
+}
+
+type RequestStrategyType string
+
+const (
+	Token RequestStrategyType = "token"
+	Jwt   RequestStrategyType = "jwt"
+)
+
+type TokenRequestStrategyConfig struct {
+	Value string `yaml:"value"`
+}
+
+type JwtRequestStrategyConfig struct {
+	PublicKey          string `yaml:"public-key"`
+	AllowedIssuer      string `yaml:"allowed-issuer"`
+	ExpirationRequired bool   `yaml:"expiration-required"`
+}
+
+type AuthMethods struct {
+	Allowed   []string `yaml:"allowed"`
+	Forbidden []string `yaml:"forbidden"`
+}
+
+type AuthContracts struct {
+	Allowed []string `yaml:"allowed"`
+}
+
+type KeySettingsConfig struct {
+	AllowedIps    []string       `yaml:"allowed-ips"`
+	Methods       *AuthMethods   `yaml:"methods"`
+	AuthContracts *AuthContracts `yaml:"contracts"`
+}
+
+type LocalKeyConfig struct {
+	Key               string             `yaml:"key"`
+	KeySettingsConfig *KeySettingsConfig `yaml:"settings"`
 }
 
 type ServerConfig struct {

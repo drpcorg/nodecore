@@ -30,6 +30,36 @@ func TestReadFullConfig(t *testing.T) {
 				Password: "pyro-password",
 			},
 		},
+		AuthConfig: &config.AuthConfig{
+			Enabled: true,
+			RequestStrategyConfig: &config.RequestStrategyConfig{
+				Type: config.Jwt,
+				JwtRequestStrategyConfig: &config.JwtRequestStrategyConfig{
+					PublicKey:          "/path/to/key",
+					AllowedIssuer:      "my-super",
+					ExpirationRequired: true,
+				},
+			},
+			KeyConfigs: []*config.KeyConfig{
+				{
+					Id:   "other-key",
+					Type: config.Local,
+					LocalKeyConfig: &config.LocalKeyConfig{
+						Key: "asadasdjabdhjabshjd",
+						KeySettingsConfig: &config.KeySettingsConfig{
+							AllowedIps: []string{"192.0.0.1", "127.0.0.1"},
+							Methods: &config.AuthMethods{
+								Allowed:   []string{"eth_test"},
+								Forbidden: []string{"eth_syncing"},
+							},
+							AuthContracts: &config.AuthContracts{
+								Allowed: []string{"0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"},
+							},
+						},
+					},
+				},
+			},
+		},
 		CacheConfig: &config.CacheConfig{
 			CacheConnectors: []*config.CacheConnectorConfig{
 				{
@@ -153,49 +183,49 @@ func TestNoUpstreamIdThenError(t *testing.T) {
 func TestDuplicateIdsThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/duplicate-ids.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream validation, cause: upstream with id another already exists")
+	assert.ErrorContains(t, err, "error during upstream validation, cause: upstream with id 'another' already exists")
 }
 
 func TestNoSupportedUpstreamChainThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/not-supported-up-chain.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream eth-upstream validation, cause: not supported chain wrong")
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: not supported chain 'wrong'")
 }
 
 func TestInvalidHeadConnectorThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-head-connector.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream eth-upstream validation, cause: invalid head connector")
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: invalid head connector")
 }
 
 func TestNoConnectorsThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-connectors.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream eth-upstream validation, cause: there must be at least one upstream connector")
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: there must be at least one upstream connector")
 }
 
 func TestWrongHeadConnectorError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/wrong-head-connector-type.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "there is no json-rpc connector for head")
+	assert.ErrorContains(t, err, "there is no 'json-rpc' connector for head")
 }
 
 func TestDuplicateConnectorsThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/duplicate-connectors.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream eth-upstream validation, cause: there can be only one connector of type json-rpc")
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: there can be only one connector of type 'json-rpc'")
 }
 
 func TestInvalidConnectorTypeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-connector-type.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream eth-upstream validation, cause: invalid connector type - wrong-type")
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: invalid connector type - 'wrong-type'")
 }
 
 func TestNoConnectorUrlThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/no-url.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during upstream eth-upstream validation, cause: url must be specified for connector rest")
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: url must be specified for connector 'rest'")
 }
 
 func TestSetDefaultPollInterval(t *testing.T) {
@@ -362,19 +392,19 @@ func TestCacheConnectorNoIdThenError(t *testing.T) {
 func TestCacheConnectorWrongDriverThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-wrong-driver.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector test validation, cause: invalid cache driver - wrong-driver")
+	assert.ErrorContains(t, err, "error during cache connector 'test' validation, cause: invalid cache driver - 'wrong-driver'")
 }
 
 func TestCacheConnectorWrongMemoryMaxItemsThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-wrong-memory-max-items.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector test validation, cause: memory max items must be > 0")
+	assert.ErrorContains(t, err, "error during cache connector 'test' validation, cause: memory max items must be > 0")
 }
 
 func TestCacheConnectorDuplicateIdsThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-duplicate-connectors.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connectors validation, connector with id test already exists")
+	assert.ErrorContains(t, err, "error during cache connectors validation, connector with id 'test' already exists")
 }
 
 func TestCachePolicyNoIdThenError(t *testing.T) {
@@ -386,55 +416,55 @@ func TestCachePolicyNoIdThenError(t *testing.T) {
 func TestCachePolicyNoChainThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-empty-chain.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: empty chain setting")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: empty chain setting")
 }
 
 func TestCachePolicyNotSupportedChainThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-not-supported-chain.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: chain eth is not supported")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain 'eth' is not supported")
 }
 
 func TestCachePolicyWrongMaxSizeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-wrong-size.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: size must be in KB or MB")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: size must be in KB or MB")
 }
 
 func TestCachePolicyZeroMaxSizeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-zero-size.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: size must be > 0")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: size must be > 0")
 }
 
 func TestCachePolicyEmptyMethodThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-empty-method.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: empty method setting")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: empty method setting")
 }
 
 func TestCachePolicyEmptyConnectorThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-empty-policy-connector.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: empty connector")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: empty connector")
 }
 
 func TestCachePolicyWrongFinalizationThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-wrong-finalization.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: invalid finalization type - wrong-type")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: invalid finalization type - 'wrong-type'")
 }
 
 func TestCachePolicyWrongTtlThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-wrong-ttl.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: time: missing unit in duration \"10\"")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: time: missing unit in duration \"10\"")
 }
 
 func TestCachePolicyNotExistedConnectorThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-not-existed-connector.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy my_policy validation, cause: there is no such connector - strange-connector")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: there is no such connector - 'strange-connector'")
 }
 
 func TestIfNoCacheSettingsThenNil(t *testing.T) {
@@ -536,25 +566,25 @@ func TestScorePolicyConfigTypoInScriptThenError(t *testing.T) {
 func TestRetryConfigAttemptsLess1ThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-attempts-less-1.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the number of attempts can't be less than 1`)
+	assert.ErrorContains(t, err, `error during upstream 'eth-upstream' validation, cause: retry config validation error - the number of attempts can't be less than 1`)
 }
 
 func TestRetryConfigMaxDelaysIsZeroThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-max-delay-0.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry max delay can't be less than 0`)
+	assert.ErrorContains(t, err, `error during upstream 'eth-upstream' validation, cause: retry config validation error - the retry max delay can't be less than 0`)
 }
 
 func TestRetryConfigJitterIsZeroThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-jitter-0.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry jitter can't be 0`)
+	assert.ErrorContains(t, err, `error during upstream 'eth-upstream' validation, cause: retry config validation error - the retry jitter can't be 0`)
 }
 
 func TestRetryConfigDelayGreaterMaxDelayThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/retry-config-delay-greater-max-delay.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `error during upstream eth-upstream validation, cause: retry config validation error - the retry delay can't be greater than the retry max delay`)
+	assert.ErrorContains(t, err, `error during upstream 'eth-upstream' validation, cause: retry config validation error - the retry delay can't be greater than the retry max delay`)
 }
 
 func TestPyroConfigNoUrlThenError(t *testing.T) {
@@ -573,4 +603,70 @@ func TestPyroConfigNoPasswordThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-pyro-no-password.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, `pyroscope is enabled, password must be specified`)
+}
+
+func TestAuthInvalidRequestTypeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-invalid-request-type.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "invalid request strategy type - 'wrong-type'")
+}
+
+func TestAuthTokenNoSettingsThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-token-no-settings.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "specified 'token' request strategy type but there are no its settings")
+}
+
+func TestAuthTokenEmptyValueThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-token-empty-value.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'token' request strategy validation, cause: there is no secret value")
+}
+
+func TestAuthJwtNoSettingsThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-jwt-no-settings.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "specified 'jwt' request strategy type but there are no its settings")
+}
+
+func TestAuthJwtEmptyPublicKeyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-jwt-empty-public-key.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'jwt' request strategy validation, cause: there is no the public key path")
+}
+
+func TestAuthKeyNoIdThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-no-id.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during key config validation, cause: no key id under index 0")
+}
+
+func TestAuthKeyDuplicateIdsThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-duplicate-ids.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during key config validation, key with id 'key1' already exists")
+}
+
+func TestAuthKeyDuplicateLocalKeyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-duplicate-local-key.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during key config validation, local key 'secret-1' already exists")
+}
+
+func TestAuthKeyInvalidTypeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-invalid-type.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'key1' key config validation, cause: invalid settings strategy type - 'wrong'")
+}
+
+func TestAuthKeyLocalNoSettingsThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-local-no-settings.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'key1' key config validation, cause: specified 'local' key management rule type but there are no its settings")
+}
+
+func TestAuthKeyLocalEmptyKeyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-local-empty-key.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'key1' key config validation, cause: error during 'key1' key config validation, cause: 'key' field is empty")
 }

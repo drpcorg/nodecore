@@ -10,6 +10,7 @@ import (
 
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
+	"github.com/drpcorg/dsheltie/internal/auth"
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/rating"
@@ -20,6 +21,7 @@ import (
 	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/samber/lo"
 )
 
 type Request struct {
@@ -36,13 +38,20 @@ type ApplicationContext struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	cacheProcessor     caches.CacheProcessor
 	registry           *rating.RatingRegistry
+	authProcessor      auth.AuthProcessor
 }
 
-func NewApplicationContext(upstreamSupervisor upstreams.UpstreamSupervisor, cacheProcessor caches.CacheProcessor, registry *rating.RatingRegistry) *ApplicationContext {
+func NewApplicationContext(
+	upstreamSupervisor upstreams.UpstreamSupervisor,
+	cacheProcessor caches.CacheProcessor,
+	registry *rating.RatingRegistry,
+	authProcessor auth.AuthProcessor,
+) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
 		cacheProcessor:     cacheProcessor,
 		registry:           registry,
+		authProcessor:      authProcessor,
 	}
 }
 
@@ -74,35 +83,55 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpGroup := httpServer.Group("/queries/:chain")
 	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			if c.Request().Header.Get("Upgrade") == "websocket" {
-				handleWebsocket(c, appCtx)
+			reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
+			chain := c.Param("chain")
+			path := strings.Split(c.Request().URL.Path, chain)
+			isWs := c.Request().Header.Get("Upgrade") == "websocket"
+			reqType := lo.Ternary(
+				isWs || c.Request().Method == "POST" && len(path) == 2 && path[1] == "",
+				protocol.JsonRpc,
+				protocol.Rest,
+			)
+			authPayload := auth.NewHttpAuthPayload(c.Request())
+
+			err := appCtx.authProcessor.Authenticate(c.Request().Context(), authPayload)
+			if err != nil {
+				resp := protocol.NewTotalFailureFromErr("0", protocol.AuthError(err), reqType)
+				return writeResponse(
+					c.Response(),
+					protocol.ToHttpCode(resp),
+					resp.EncodeResponse([]byte("0")),
+				)
+			}
+
+			if isWs {
+				handleWebsocket(reqCtx, c, chain, authPayload, appCtx)
 				return nil
 			}
-			return handleHttp(c, appCtx)
+			return handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)
 		}
 	})
 
 	return httpServer
 }
 
-func handleHttp(reqCtx echo.Context, appCtx *ApplicationContext) error {
-	chain := reqCtx.Param("chain")
-	httpRequest := reqCtx.Request()
-	ctx := httpRequest.Context()
-	path := strings.Split(httpRequest.URL.Path, chain)
-
+func handleHttp(
+	ctx context.Context,
+	reqCtx echo.Context,
+	chain string,
+	reqType protocol.RequestType,
+	authPayload auth.AuthPayload,
+	appCtx *ApplicationContext,
+) error {
 	preRequest := &Request{
 		Chain: chain,
 	}
 	var requestHandler RequestHandler
 	var err error
-	var reqType protocol.RequestType
-	if httpRequest.Method == "POST" && len(path) == 2 && path[1] == "" {
-		requestHandler, err = NewJsonRpcHandler(preRequest, httpRequest.Body, false)
-		reqType = protocol.JsonRpc
+	if reqType == protocol.JsonRpc {
+		requestHandler, err = NewJsonRpcHandler(preRequest, reqCtx.Request().Body, false)
 	} else {
-		requestHandler, err = NewRestHandler(preRequest, "", httpRequest.Body)
-		reqType = protocol.Rest
+		requestHandler, err = NewRestHandler(preRequest, "", reqCtx.Request().Body)
 	}
 
 	if err != nil {
@@ -113,7 +142,7 @@ func handleHttp(reqCtx echo.Context, appCtx *ApplicationContext) error {
 			resp.EncodeResponse([]byte("0")),
 		)
 	}
-	responseWrappers := handleRequest(ctx, requestHandler, appCtx, nil)
+	responseWrappers := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
 
 	return handleResponse(ctx, requestHandler, reqCtx.Response(), responseWrappers)
 }
@@ -158,8 +187,21 @@ func writeResponse(httpResponse *echo.Response, code int, responseReader io.Read
 	return err
 }
 
-func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *ApplicationContext, subCtx *flow.SubCtx) chan *protocol.ResponseHolderWrapper {
-	request, err := requestHandler.RequestDecode(ctx)
+func handleRequest(
+	ctx context.Context,
+	requestHandler RequestHandler,
+	authPayload auth.AuthPayload,
+	appCtx *ApplicationContext,
+	subCtx *flow.SubCtx,
+) chan *protocol.ResponseHolderWrapper {
+	var request *Request
+
+	err := appCtx.authProcessor.PreKeyValidate(ctx, authPayload)
+	if err != nil {
+		return createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType())
+	}
+
+	request, err = requestHandler.RequestDecode(ctx)
 	if err != nil {
 		return createWrapperFromError(request, err, requestHandler.GetRequestType())
 	}
@@ -170,6 +212,13 @@ func handleRequest(ctx context.Context, requestHandler RequestHandler, appCtx *A
 
 	if appCtx.upstreamSupervisor.GetChainSupervisor(chain) == nil {
 		return createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType())
+	}
+
+	for _, requestHolder := range request.UpstreamRequests {
+		err = appCtx.authProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
+		if err != nil {
+			return createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType())
+		}
 	}
 
 	executionFlow := flow.NewBaseExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor, appCtx.registry, subCtx)

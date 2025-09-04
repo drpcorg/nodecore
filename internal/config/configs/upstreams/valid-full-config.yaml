@@ -6,6 +6,32 @@ server:
     username: pyro-username
     password: pyro-password
 
+auth:
+  enabled: true
+  request-strategy:
+    type: jwt
+    jwt:
+      public-key: /path/to/key
+      allowed-issuer: "my-super"
+      expiration-required: true
+  key-management:
+    - id: "other-key"
+      type: local
+      local:
+        key: "asadasdjabdhjabshjd"
+        settings:
+          allowed-ips:
+            - "192.0.0.1"
+            - "127.0.0.1"
+          methods:
+            allowed:
+              - "eth_test"
+            forbidden:
+              - "eth_syncing"
+          contracts:
+            allowed:
+              - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
+
 cache:
   connectors:
     - id: memory-connector
