@@ -38,6 +38,9 @@ func (s *ServerConfig) setDefaults() {
 }
 
 func (c *CacheConfig) setDefaults() {
+	if c.ReceiveTimeout == 0 {
+		c.ReceiveTimeout = 1 * time.Second
+	}
 	for _, connector := range c.CacheConnectors {
 		connector.setDefaults()
 	}

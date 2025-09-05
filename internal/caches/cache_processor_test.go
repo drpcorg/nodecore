@@ -18,7 +18,7 @@ import (
 
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {
 	cacheConfig := memoryCacheConfig(nil, nil)
-	cacheProcessor := NewBaseCacheProcessor(nil, cacheConfig, 1*time.Minute)
+	cacheProcessor := NewBaseCacheProcessor(nil, cacheConfig)
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
 
 	result, ok := cacheProcessor.Receive(context.Background(), chains.ALEPHZERO, request)
@@ -182,6 +182,7 @@ func createCacheProcessor(policies []*CachePolicy, timeout time.Duration) CacheP
 
 func memoryCacheConfig(connectors []*config.CacheConnectorConfig, policies []*config.CachePolicyConfig) *config.CacheConfig {
 	return &config.CacheConfig{
+		ReceiveTimeout:  1 * time.Second,
 		CacheConnectors: connectors,
 		CachePolicies:   policies,
 	}

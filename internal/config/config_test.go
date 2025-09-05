@@ -31,6 +31,7 @@ func TestReadFullConfig(t *testing.T) {
 			},
 		},
 		CacheConfig: &config.CacheConfig{
+			ReceiveTimeout: 1 * time.Second,
 			CacheConnectors: []*config.CacheConnectorConfig{
 				{
 					Id:     "memory-connector",
@@ -442,7 +443,7 @@ func TestIfNoCacheSettingsThenNil(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	assert.Equal(t, &config.CacheConfig{}, appConfig.CacheConfig)
+	assert.Equal(t, &config.CacheConfig{ReceiveTimeout: 1 * time.Second}, appConfig.CacheConfig)
 }
 
 func TestDefaultMemorySettings(t *testing.T) {

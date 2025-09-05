@@ -2,6 +2,7 @@ package caches
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,7 +41,6 @@ type BaseCacheProcessor struct {
 func NewBaseCacheProcessor(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheConfig *config.CacheConfig,
-	receiveTimeout time.Duration,
 ) *BaseCacheProcessor {
 	cacheConnectors := lo.FilterMap(cacheConfig.CacheConnectors, func(item *config.CacheConnectorConfig, index int) (CacheConnector, bool) {
 		switch item.Driver {
@@ -62,7 +62,7 @@ func NewBaseCacheProcessor(
 	})
 
 	return &BaseCacheProcessor{
-		receiveTimeout: receiveTimeout,
+		receiveTimeout: cacheConfig.ReceiveTimeout,
 		policies:       cachePolicies,
 	}
 }
@@ -84,25 +84,34 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 	}
 
 	resultSent := atomic.Bool{}
-	resultCount := atomic.Int32{}
 	resultChan := make(chan []byte)
 
 	ctx, cancel := context.WithTimeout(ctx, c.receiveTimeout)
 	defer cancel()
 
+	var wg sync.WaitGroup
+	wg.Add(len(c.policies))
+
 	for _, policy := range c.policies {
-		go func() {
-			result, ok := policy.Receive(ctx, chain, request)
-			isFinalResult := int(resultCount.Add(1)) == len(c.policies)
+		go func(p *CachePolicy) {
+			defer wg.Done()
+			result, ok := p.Receive(ctx, chain, request)
 
 			if ok && resultSent.CompareAndSwap(false, true) {
 				requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
 				resultChan <- result
-			} else if isFinalResult {
 				cancel()
 			}
-		}()
+		}(policy)
 	}
+
+	// If all policies have responded and none succeeded, cancel early to avoid waiting for the timeout.
+	go func() {
+		wg.Wait()
+		if !resultSent.Load() {
+			cancel()
+		}
+	}()
 
 	var result []byte
 
