@@ -193,6 +193,7 @@ type ApiConnectorConfig struct {
 }
 
 type CacheConfig struct {
+	ReceiveTimeout  time.Duration           `yaml:"receive-timeout"`
 	CacheConnectors []*CacheConnectorConfig `yaml:"connectors"`
 	CachePolicies   []*CachePolicyConfig    `yaml:"policies"`
 }
