@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/drpcorg/dsheltie/internal/auth"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
 	"github.com/gorilla/websocket"
@@ -32,10 +33,13 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func handleWebsocket(reqCtx echo.Context, appCtx *ApplicationContext) {
-	chain := reqCtx.Param("chain")
-	httpRequest := reqCtx.Request()
-	ctx := httpRequest.Context()
+func handleWebsocket(
+	ctx context.Context,
+	reqCtx echo.Context,
+	chain string,
+	authPayload auth.AuthPayload,
+	appCtx *ApplicationContext,
+) {
 	log := zerolog.Ctx(ctx)
 
 	subCtx := flow.NewSubCtx()
@@ -85,7 +89,7 @@ func handleWebsocket(reqCtx echo.Context, appCtx *ApplicationContext) {
 			break
 		}
 
-		responseWrappers := handleRequest(cancelCtx, requestHandler, appCtx, subCtx)
+		responseWrappers := handleRequest(cancelCtx, requestHandler, authPayload, appCtx, subCtx)
 
 		wg.Add(1)
 		go func() {

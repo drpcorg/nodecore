@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/drpcorg/dsheltie/internal/auth"
 	"github.com/drpcorg/dsheltie/internal/caches"
 	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/dimensions"
@@ -47,6 +48,11 @@ func main() {
 
 	mainCtx, mainCtxCancel := context.WithCancel(context.Background())
 
+	authProcessor, err := auth.NewAuthProcessor(appConfig.AuthConfig)
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to create the auth processor")
+	}
+
 	dimensionTracker := dimensions.NewDimensionTracker()
 
 	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker)
@@ -57,7 +63,12 @@ func main() {
 
 	cacheProcessor := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig)
 
-	appCtx := server.NewApplicationContext(upstreamSupervisor, cacheProcessor, ratingRegistry)
+	appCtx := server.NewApplicationContext(
+		upstreamSupervisor,
+		cacheProcessor,
+		ratingRegistry,
+		authProcessor,
+	)
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 

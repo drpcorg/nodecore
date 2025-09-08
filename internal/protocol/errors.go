@@ -10,6 +10,7 @@ const (
 	WrongChain
 	CtxErrorCode
 	ClientErrorCode         = 400
+	AuthErrorCode           = 403
 	RequestTimeout          = 408
 	InternalServerErrorCode = 500
 	NoSupportedMethod       = -32601
@@ -37,6 +38,13 @@ func ResponseErrorWithData(code int, message string, data interface{}) *Response
 		Message: message,
 		Code:    code,
 		Data:    data,
+	}
+}
+
+func AuthError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("auth error - %s", cause.Error()),
+		Code:    AuthErrorCode,
 	}
 }
 

@@ -11,6 +11,8 @@ func ToHttpCode(response ResponseHolder) int {
 		switch err.Code {
 		case ClientErrorCode, WrongChain, NoSupportedMethod:
 			code = http.StatusBadRequest
+		case AuthErrorCode:
+			code = http.StatusForbidden
 		case RequestTimeout:
 			code = http.StatusRequestTimeout
 		case InternalServerErrorCode, IncorrectResponseBody:
