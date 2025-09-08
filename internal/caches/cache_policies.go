@@ -249,12 +249,13 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 			chainFinalizedBlock, ok := chainsSupervisor.GetChainState().Blocks[protocol.FinalizedBlock]
 			if ok {
 				var maxBlock int64
-				if param.From == nil {
-					maxBlock = param.To.Int64()
-				} else if param.To == nil {
+				if param.From != nil && param.To != nil {
+					maxBlock = lo.Max([]int64{param.From.Int64(), param.To.Int64()})
+				} else if param.To != nil {
 					maxBlock = param.To.Int64()
 				} else {
-					maxBlock = lo.Max([]int64{param.From.Int64(), param.To.Int64()})
+					// to is nil, but from not, means to is latest, so its a block tag
+					return false
 				}
 				if uint64(maxBlock) > chainFinalizedBlock.Height {
 					return false
