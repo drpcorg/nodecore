@@ -130,6 +130,14 @@ type BlockNumberParam struct { // hex number or tag
 func (b *BlockNumberParam) param() {
 }
 
+type BlockRangeParam struct { // hex number or tag
+	From *rpc.BlockNumber
+	To   *rpc.BlockNumber
+}
+
+func (b *BlockRangeParam) param() {
+}
+
 type HashTagParam struct { // hash
 	Hash string
 }
@@ -162,6 +170,60 @@ func (m *Method) Modify(ctx context.Context, data any, newV any) []byte {
 	return modifiedData
 }
 
+func parseTag(ctx context.Context, name string, returnType ParserReturnType, paramAny any) MethodParam {
+	log := zerolog.Ctx(ctx)
+	switch param := paramAny.(type) {
+	case string:
+		if returnType == BlockNumberType && isHexNumberOrTag(param) {
+			var num rpc.BlockNumber
+			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &num)
+			if err != nil {
+				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
+				return nil
+			}
+			return &BlockNumberParam{BlockNumber: num}
+		} else if returnType == BlockRefType {
+			var blockNumberOrHash rpc.BlockNumberOrHash
+			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &blockNumberOrHash)
+			if err != nil {
+				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumberOrHash %s", name)
+				return nil
+			}
+			if blockNumberOrHash.BlockHash != nil {
+				return &HashTagParam{Hash: blockNumberOrHash.BlockHash.String()}
+			} else if blockNumberOrHash.BlockNumber != nil {
+				return &BlockNumberParam{BlockNumber: *blockNumberOrHash.BlockNumber}
+			}
+		} else if returnType == StringType {
+			return &StringParam{Value: param}
+		}
+		return nil
+	case map[string]any:
+		if returnType != BlockRangeType {
+			log.Warn().Msgf("wrong return type of tag-parser - %s, expected - %s", returnType, BlockRangeType)
+			return nil
+		}
+		var from *rpc.BlockNumber
+		var to *rpc.BlockNumber
+		if param["from"] != nil {
+			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param["from"])), &from)
+			if err != nil {
+				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
+				return nil
+			}
+		}
+		if param["to"] != nil {
+			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param["to"])), &to)
+			if err != nil {
+				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
+				return nil
+			}
+		}
+		return &BlockRangeParam{From: from, To: to}
+	}
+	return nil
+}
+
 func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 	if m.parser == nil {
 		return nil
@@ -175,28 +237,17 @@ func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 	}
 	switch param := methodParam.(type) {
 	case string:
-		if m.parser.returnType == BlockNumberType && isHexNumberOrTag(param) {
-			var num rpc.BlockNumber
-			err = sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &num)
-			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", m.Name)
-				return nil
+		return parseTag(ctx, m.Name, m.parser.returnType, param)
+	case map[string]any:
+		if m.parser.returnType != ObjectType {
+			return nil
+		}
+		for key, value := range param {
+			tp := ParserReturnType(key)
+			if tp.validate() != nil {
+				panic(fmt.Sprintf("wrong return type of tag-parser - %s", tp))
 			}
-			return &BlockNumberParam{BlockNumber: num}
-		} else if m.parser.returnType == BlockRefType {
-			var blockNumberOrHash rpc.BlockNumberOrHash
-			err = sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &blockNumberOrHash)
-			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumberOrHash %s", m.Name)
-				return nil
-			}
-			if blockNumberOrHash.BlockHash != nil {
-				return &HashTagParam{Hash: blockNumberOrHash.BlockHash.String()}
-			} else if blockNumberOrHash.BlockNumber != nil {
-				return &BlockNumberParam{BlockNumber: *blockNumberOrHash.BlockNumber}
-			}
-		} else if m.parser.returnType == StringType {
-			return &StringParam{Value: param}
+			return parseTag(ctx, m.Name, tp, value)
 		}
 	}
 

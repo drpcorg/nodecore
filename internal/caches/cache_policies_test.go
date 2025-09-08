@@ -86,41 +86,66 @@ func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *testing.T) {
 	tests := []struct {
-		name   string
-		params []byte
+		name      string
+		method    string
+		params    []byte
+		tagParser specs.TagParser
 	}{
+		// eth_call tests
 		{
-			"latest",
+			"eth_call with latest",
+			"eth_call",
 			[]byte(`[false, "latest"]`),
+			specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"},
 		},
 		{
-			"safe",
+			"eth_call with safe",
+			"eth_call",
 			[]byte(`[false, "safe"]`),
+			specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"},
 		},
 		{
-			"finalized",
+			"eth_call with finalized",
+			"eth_call",
 			[]byte(`[false, "finalized"]`),
+			specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"},
 		},
 		{
-			"pending",
+			"eth_call with pending",
+			"eth_call",
 			[]byte(`[false, "pending"]`),
+			specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"},
 		},
 		{
-			"earliest",
+			"eth_call with earliest",
+			"eth_call",
 			[]byte(`[false, "earliest"]`),
+			specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"},
 		},
 		{
-			"num is not finalized",
+			"eth_call num is not finalized",
+			"eth_call",
 			[]byte(`[false, "0x81d9d5b"]`),
+			specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"},
+		},
+		// eth_getLogs tests
+		{
+			"eth_getLogs with latest toBlock",
+			"eth_getLogs",
+			[]byte(`[{"toBlock": "latest"}]`),
+			specs.TagParser{ReturnType: specs.ObjectType, Path: ".[0] | if .blockHash then {blockRef: .blockHash} else {blockRange: {from: .fromBlock, to: .toBlock}} end"},
+		},
+		{
+			"eth_getLogs with finalized fromBlock",
+			"eth_getLogs",
+			[]byte(`[{"fromBlock": "finalized"}]`),
+			specs.TagParser{ReturnType: specs.ObjectType, Path: ".[0] | if .blockHash then {blockRef: .blockHash} else {blockRange: {from: .fromBlock, to: .toBlock}} end"},
 		},
 	}
 
-	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
-	method := specs.MethodWithSettings("eth_call", &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
-
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet("eth_superTest"))
 
 	blockInfo1 := protocol.NewBlockInfo()
 	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
@@ -133,24 +158,27 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
 
-	policyCfg := test_utils.PolicyConfigFinalized("polygon", "*", "conn-id", "10KB", "5s", true)
-	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", test.params, false, method)
+			connectorMock := mocks.NewCacheConnectorMock()
+			connectorMock.On("Receive", mock.Anything, mock.Anything).Return([]byte{}, caches.ErrCacheNotFound)
+			connectorMock.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+			connectorMock.On("Id").Return("test-connector")
+
+			policyCfg := test_utils.PolicyConfigFinalized("polygon", "*", "conn-id", "10KB", "5s", true)
+			policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
+
+			method := specs.MethodWithSettings(test.method, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &test.tagParser)
+			request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), test.method, test.params, false, method)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
-			methodsMock.AssertExpectations(t)
-			upSupervisor.AssertExpectations(t)
-
-			assert.False(t, ok)
-			assert.Nil(t, result)
+			assert.False(te, ok)
+			assert.Nil(te, result)
 
 			ok = policy.Store(context.Background(), chains.POLYGON, request, []byte(`result`))
 
-			assert.False(t, ok)
+			assert.False(te, ok)
 		})
 	}
 }

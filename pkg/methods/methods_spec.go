@@ -63,7 +63,9 @@ type ParserReturnType string
 const (
 	BlockNumberType ParserReturnType = "blockNumber" // hex number or tag (latest, earliest, etc)
 	BlockRefType    ParserReturnType = "blockRef"    // hash, hex number or tag (latest, earliest, etc)
+	ObjectType      ParserReturnType = "object"      // generic object
 	StringType      ParserReturnType = "string"      // string values
+	BlockRangeType  ParserReturnType = "blockRange"  // block range (from, to)
 )
 
 type TagParser struct {
@@ -428,7 +430,7 @@ func (p *TagParser) validate() error {
 
 func (p ParserReturnType) validate() error {
 	switch p {
-	case BlockRefType, BlockNumberType, StringType:
+	case BlockRefType, BlockNumberType, StringType, ObjectType, BlockRangeType:
 	default:
 		return fmt.Errorf("wrong return type of tag-parser - %s", p)
 	}

@@ -284,6 +284,10 @@
       "params": [],
       "settings": {
         "cacheable": false
+      },
+      "tag-parser": {
+        "type": "object",
+        "path": ".[0] | if .blockHash then {blockRef: .blockHash} else {blockRange: {from: .fromBlock, to: .toBlock}} end"
       }
     },
     {
