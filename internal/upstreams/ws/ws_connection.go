@@ -164,14 +164,22 @@ func (w *JsonRpcWsConnection) SendWsRequest(ctx context.Context, upstreamRequest
 	cancelFunc := utils.NewAtomic[context.CancelFunc]()
 	cancelFunc.Store(cancel)
 
+	method := utils.NewAtomic[string]()
+	method.Store(upstreamRequest.Method())
+	subType := utils.NewAtomic[string]()
+	subType.Store(getSubscription(&jsonBody, upstreamRequest))
+	subId := utils.NewAtomic[string]()
+	subId.Store("")
+
 	req := &reqOp{
 		responseChan:     make(chan *protocol.WsResponse, 50),
 		internalMessages: make(chan *protocol.WsResponse, 50),
 		completed:        atomic.Bool{},
 		ctx:              ctx,
 		cancel:           cancelFunc,
-		method:           upstreamRequest.Method(),
-		subType:          getSubscription(&jsonBody, upstreamRequest),
+		method:           method,
+		subType:          subType,
+		subId:            subId,
 	}
 
 	w.requests.Store(requestId, req)
@@ -239,8 +247,8 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 			if !w.connClosed.Load() {
 				w.unsubscribe(r)
 			}
-			if r.subId != "" {
-				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType).Dec()
+			if r.subId.Load() != "" {
+				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType.Load()).Dec()
 			}
 			return
 		case message, ok := <-r.internalMessages:
@@ -280,11 +288,11 @@ func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 		}
 
 		req.writeInternal(response)
-		if response.Error == nil && specs.IsSubscribeMethod(w.methodSpec, req.method) {
-			req.subId = protocol.ResultAsString(response.Message)
-			w.subs.Store(req.subId, req)
-			if req.subId != "" {
-				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType).Inc()
+		if response.Error == nil && specs.IsSubscribeMethod(w.methodSpec, req.method.Load()) {
+			req.subId.Store(protocol.ResultAsString(response.Message))
+			w.subs.Store(req.subId.Load(), req)
+			if req.subId.Load() != "" {
+				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType.Load()).Inc()
 			}
 		}
 	}
@@ -334,8 +342,8 @@ func (w *JsonRpcWsConnection) completeAll() {
 }
 
 func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
-	if op.subId != "" {
-		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method); ok {
+	if op.subId.Load() != "" {
+		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method.Load()); ok {
 			params := []interface{}{op.subId}
 			unsubReq, err := protocol.NewInternalUpstreamJsonRpcRequest(unsubMethod, params)
 			if err != nil {
@@ -372,9 +380,9 @@ type reqOp struct {
 	completed        atomic.Bool
 	ctx              context.Context
 	cancel           *utils.Atomic[context.CancelFunc]
-	method           string
-	subId            string
-	subType          string
+	method           *utils.Atomic[string]
+	subId            *utils.Atomic[string]
+	subType          *utils.Atomic[string]
 }
 
 func createConnectionRetryPolicy(url string) failsafe.Policy[bool] {
