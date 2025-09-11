@@ -34,6 +34,10 @@ var requestTimeToLastByte = prometheus.NewHistogram(
 	},
 )
 
+func init() {
+	prometheus.MustRegister(requestTimeToLastByte)
+}
+
 type Request struct {
 	Chain            string
 	UpstreamRequests []protocol.RequestHolder
