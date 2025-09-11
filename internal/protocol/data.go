@@ -72,8 +72,7 @@ func IsRetryable(response ResponseHolder) bool {
 
 func IsStream(method string) bool {
 	// TODO: implement logic to determine if a method is streaming or not
-	// return method == "eth_getLogs" || method == "getProgramAccounts" || method == "eth_getBlockByNumber"
-	return true
+	return method == "eth_getLogs" || method == "getProgramAccounts"
 }
 
 type ResponseErrorKind int
