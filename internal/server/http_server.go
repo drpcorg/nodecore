@@ -12,6 +12,7 @@ import (
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/dsheltie/internal/auth"
 	"github.com/drpcorg/dsheltie/internal/caches"
+	"github.com/drpcorg/dsheltie/internal/config"
 	"github.com/drpcorg/dsheltie/internal/protocol"
 	"github.com/drpcorg/dsheltie/internal/rating"
 	"github.com/drpcorg/dsheltie/internal/upstreams"
@@ -21,7 +22,16 @@ import (
 	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/lo"
+)
+
+var requestTimeToLastByte = prometheus.NewHistogram(
+	prometheus.HistogramOpts{
+		Namespace: config.AppName,
+		Subsystem: "http",
+		Name:      "time_to_last_byte",
+	},
 )
 
 type Request struct {
@@ -83,6 +93,7 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpGroup := httpServer.Group("/queries/:chain")
 	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			start := time.Now()
 			reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
 			chain := c.Param("chain")
 			path := strings.Split(c.Request().URL.Path, chain)
@@ -108,7 +119,9 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 				handleWebsocket(reqCtx, c, chain, authPayload, appCtx)
 				return nil
 			}
-			return handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)
+			err = handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)
+			requestTimeToLastByte.Observe(time.Since(start).Seconds())
+			return err
 		}
 	})
 
