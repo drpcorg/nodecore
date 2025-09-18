@@ -48,9 +48,14 @@ func NewUpstreamMethods(methodSpecName string, methodsConfig *config.MethodsConf
 			for methodName, method := range methodGroup {
 				availableMethods[methodName] = method
 			}
-		} else if _, ok := specMethods[specs.DefaultMethodGroup][enabled]; !ok {
-			// if there is no such method in the spec then add a default one
-			availableMethods[enabled] = specs.DefaultMethod(enabled)
+		} else {
+			method, ok := specMethods[specs.DefaultMethodGroup][enabled]
+			if ok {
+				availableMethods[enabled] = method
+			} else {
+				// if there is no such method in the chain spec then add it as a default one
+				availableMethods[enabled] = specs.DefaultMethod(enabled)
+			}
 		}
 	}
 

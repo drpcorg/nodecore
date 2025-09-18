@@ -111,7 +111,7 @@ func TestReadFullConfig(t *testing.T) {
 				{
 					Id:            "eth-upstream",
 					HeadConnector: config.Ws,
-					PollInterval:  2 * time.Minute,
+					PollInterval:  3 * time.Minute,
 					ChainName:     "ethereum",
 					Methods:       &config.MethodsConfig{},
 					Connectors: []*config.ApiConnectorConfig{

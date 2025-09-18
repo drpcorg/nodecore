@@ -8,7 +8,8 @@ import (
 )
 
 const (
-	defaultPort = 9090
+	defaultPort     = 9090
+	defaultInterval = 1 * time.Minute
 )
 
 func (a *AppConfig) setDefaults() {
@@ -164,12 +165,12 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 		}
 	}
 	if u.PollInterval == 0 {
-		u.PollInterval = 1 * time.Minute
-	}
-	if defaults != nil {
-		if defaults.PollInterval != 0 {
-			u.PollInterval = defaults.PollInterval
+		pollInterval := defaultInterval
+		if defaults != nil && defaults.PollInterval != 0 {
+			// set the chain default poll interval only if there is no explicit value on the upstream level
+			pollInterval = defaults.PollInterval
 		}
+		u.PollInterval = pollInterval
 	}
 }
 

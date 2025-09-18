@@ -5,7 +5,6 @@ upstream-config:
   upstreams:
     - id: eth-upstream
       chain: ethereum
-      poll-interval: 3m
       connectors:
         - type: json-rpc
           url: https://test.com
