@@ -72,11 +72,6 @@ func main() {
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)
 
-	metricsServer := echo.New()
-	metricsServer.HideBanner = true
-	metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
-	metricsServer.GET("/metrics", echoprometheus.NewHandler())
-
 	go func() {
 		if appConfig.ServerConfig.PprofPort != 0 {
 			pprofServer := http.Server{
@@ -109,6 +104,11 @@ func main() {
 
 	go func() {
 		if appConfig.ServerConfig.MetricsPort != 0 {
+			metricsServer := echo.New()
+			metricsServer.HideBanner = true
+			metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
+			metricsServer.GET("/metrics", echoprometheus.NewHandler())
+
 			if metricsServerErr := server.StartEcho(metricsServer, fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort), nil); metricsServerErr != nil {
 				log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
 			}

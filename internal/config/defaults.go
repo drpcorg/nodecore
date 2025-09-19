@@ -122,6 +122,9 @@ func (u *UpstreamConfig) setDefaults() {
 	if u.FailsafeConfig.RetryConfig != nil {
 		u.FailsafeConfig.RetryConfig.setDefaults()
 	}
+	if u.FailsafeConfig.HedgeConfig != nil {
+		u.FailsafeConfig.HedgeConfig.setDefaults()
+	}
 	if u.ScorePolicyConfig == nil {
 		u.ScorePolicyConfig = &ScorePolicyConfig{}
 	}
@@ -183,5 +186,14 @@ func (r *RetryConfig) setDefaults() {
 	}
 	if r.Delay == 0 {
 		r.Delay = 300 * time.Millisecond
+	}
+}
+
+func (h *HedgeConfig) setDefaults() {
+	if h.Delay == 0 {
+		h.Delay = 1 * time.Second
+	}
+	if h.Count == 0 {
+		h.Count = 2
 	}
 }

@@ -13,3 +13,11 @@ test:
 .PHONY: build
 build: generate-networks
 	go build -o $(PWD)/dsheltie cmd/dsheltie/main.go
+
+.PHONY: setup
+setup:
+	go mod tidy
+
+.PHONY: run
+run:
+	go run ./cmd/dsheltie/main.go
