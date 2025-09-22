@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/rs/zerolog"
 )
 

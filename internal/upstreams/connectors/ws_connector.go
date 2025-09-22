@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams/ws"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 )
 
 type WsConnector struct {

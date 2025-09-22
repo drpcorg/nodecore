@@ -8,11 +8,11 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	specific "github.com/drpcorg/dsheltie/internal/upstreams/chains_specific"
-	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
-	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 

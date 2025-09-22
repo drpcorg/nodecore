@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"

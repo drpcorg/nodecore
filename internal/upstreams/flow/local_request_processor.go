@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/pkg/chains"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
 type LocalRequestProcessor struct {

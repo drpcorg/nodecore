@@ -3,7 +3,7 @@ package protocol
 import (
 	"context"
 
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
 type UpstreamRestRequest struct {

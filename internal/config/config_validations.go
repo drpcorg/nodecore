@@ -8,7 +8,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/samber/lo"
 )
 

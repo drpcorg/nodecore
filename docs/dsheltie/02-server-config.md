@@ -1,6 +1,6 @@
 # Server config guide
 
-The `server` section controls how dSheltie runs as a service: listening ports, TLS configuration, and optional profiling/observability.
+The `server` section controls how nodecore runs as a service: listening ports, TLS configuration, and optional profiling/observability.
 
 ```yaml
 server:
@@ -20,7 +20,7 @@ server:
 
 ## Fields
 
-* `port` - The main HTTP port where dSheltie listens for incoming RPC requests. **_Default_**: `9090`
+* `port` - The main HTTP port where nodecore listens for incoming RPC requests. **_Default_**: `9090`
 * `metrics-port` - Port exposing Prometheus metrics (endpoint `GET /metrics`). By default, it's disabled, so it's necessary to specify the port explicitly to enable prom metrics
 * `pprof-port` - Port for Go [pprof](https://github.com/google/pprof) profiling endpoints. By default, profiling is disabled; to enable it, you must explicitly set this port
 * `pyroscope-config` - Optional integration with [Pyroscope](https://pyroscope.io/) for continuous profiling

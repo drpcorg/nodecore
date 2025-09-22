@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/internal/upstreams/methods"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
 )
 

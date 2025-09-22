@@ -1,12 +1,12 @@
-# Dsheltie
+# Nodecore
 
 ----
 
-## What is Dsheltie
+## What is Nodecore
 
-dSheltie is a fault-tolerant RPC load balancer designed to work with any blockchain API. It intelligently distributes requests across multiple providers or nodes, with a focus on optimizing performance metrics such as latency, throughput, and error rates.
+nodecore is a fault-tolerant RPC load balancer designed to work with any blockchain API. It intelligently distributes requests across multiple providers or nodes, with a focus on optimizing performance metrics such as latency, throughput, and error rates.
 
-> **⚠️ Project status**: dSheltie is still under active development. Expect frequent updates and improvements as the project evolves.
+> **⚠️ Project status**: nodecore is still under active development. Expect frequent updates and improvements as the project evolves.
 
 ## Key features
 
@@ -34,7 +34,7 @@ dSheltie is a fault-tolerant RPC load balancer designed to work with any blockch
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/drpcorg/dSheltie.git
+git clone https://github.com/drpcorg/nodecore.git
 ```
 
 2. **Install Go dependencies:**
@@ -43,15 +43,15 @@ git clone https://github.com/drpcorg/dSheltie.git
 make setup
 ```
 
-3. Create your own configuration file. Use ./dSheltie.yml as a template. Replace the example URLs with your own upstream providers.
+3. Create your own configuration file. Use ./nodecore.yml as a template. Replace the example URLs with your own upstream providers.
 
 4. Run with docker:
-    * Build the image `docker build -t dSheltie:latest .`
-    * Run the container with your local config `docker run -v ${/path/to/config}/dSheltie-local.yml:./dSheltie-local.yml dSheltie:latest`
+    * Build the image `docker build -t nodecore:latest .`
+    * Run the container with your local config `docker run -v ${/path/to/config}/nodecore-local.yml:./nodecore-local.yml nodecore:latest`
 
 5. Run locally:
    * Generate chain info based on the public repo https://github.com/drpcorg/public `make generate-networks`
-   * Start the service `make run`. **Note**: it will use the basic config file `./dSheltie.yml`. If you want to specify your own one, run the following command: `DSHELTIE_CONFIG_PATH=/path/to/your/config make run`
+   * Start the service `make run`. **Note**: it will use the basic config file `./nodecore.yml`. If you want to specify your own one, run the following command: `NODECORE_CONFIG_PATH=/path/to/your/config make run`
 
 6. Send you first request:
 ```bash
@@ -70,4 +70,4 @@ curl --location 'http://localhost:9090/queries/ethereum' \
 
 # Documentation
 
-For detailed documentation [see](docs/dsheltie)
+For detailed documentation [see](docs/nodecore)

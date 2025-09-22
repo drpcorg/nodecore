@@ -1,6 +1,6 @@
 # Cache config guide
 
-The `cache` section defines how dSheltie stores and serves cached responses in order to reduce redundant requests to upstream providers and improve response times.
+The `cache` section defines how nodecore stores and serves cached responses in order to reduce redundant requests to upstream providers and improve response times.
 
 ```yaml
 cache:
@@ -37,13 +37,13 @@ Together, connectors provide the storage layer and policies define the caching l
 
 ## Cache operations
 
-dSheltie performs two core cache operations: **Receive** and **Store**.
+nodecore performs two core cache operations: **Receive** and **Store**.
 
 1. **Receive** – executed on every incoming request before it is forwarded upstream. A request key is computed as a hash of the method name and request parameters (if no parameters are present, only the method name is used). The **Receive** operation is executed in parallel across all cache policies, and if any policy returns a cached result, it is immediately returned to the client while the other lookups are canceled. A request will only hit the cache if it passes the following rules:
    * Requests with streamed responses are not cached. For example, `eth_getLogs` and Solana’s `getProgramAccounts` are streamed by default and are excluded. **In the future, all responses will be streamed by default, and streaming + caching will work together**
    * If the method spec explicitly sets `"cacheable": false`, the request is not cached. Example: `eth_sendRawTransaction` is never cached
    * Requests with block tags in the body (`latest`, `earliest`, etc.) are not cached because their responses are non-deterministic
-   * If a policy has `finalization-type: finalized`, dSheltie checks whether the requested block number is less than or equal to the chain’s finalized block. If the request targets a block beyond the finalized height, it will not be cached
+   * If a policy has `finalization-type: finalized`, nodecore checks whether the requested block number is less than or equal to the chain’s finalized block. If the request targets a block beyond the finalized height, it will not be cached
    * If no policy matches the requested chain, the request is not cached
    * If no policy matches the requested method, the request is not cached
 2. **Store** – executed on every response after it is received from an upstream. The same request key (computed from the method name and request parameters as described above) is used to associate the response with future cache lookups. The store operation is applied to each matching policy, and the response will only be cached if it passes the following rules:
@@ -53,7 +53,7 @@ dSheltie performs two core cache operations: **Receive** and **Store**.
 
 ## Fields
 
-* `receive-timeout` - Defines the maximum time dSheltie waits for cache lookups during a **Receive** operation. If no cached result is returned within the configured timeout, the request continues to the upstream provider as usual. **_Default_**: `1s`
+* `receive-timeout` - Defines the maximum time nodecore waits for cache lookups during a **Receive** operation. If no cached result is returned within the configured timeout, the request continues to the upstream provider as usual. **_Default_**: `1s`
 
 ### connectors
 
@@ -72,7 +72,7 @@ The `connectors` section defines the cache storage backends. Each connector has 
 * `id` - Unique identifier for the connector. **_Required_**, **_Unique_**
 * `driver` - Defines the storage backend type. Currently supported: `memory`
 
-The `memory` type is the simplest cache storage. All the items are stored inside the running dSheltie process. The in-memory connector internally uses an LRU (Least Recently Used) cache algorithm. When the max-items limit is reached, the least recently used entries are evicted first.
+The `memory` type is the simplest cache storage. All the items are stored inside the running nodecore process. The in-memory connector internally uses an LRU (Least Recently Used) cache algorithm. When the max-items limit is reached, the least recently used entries are evicted first.
 
 * `memory.max-items` - Maximum number of items to store in the in-memory cache. **_Default_**: `10000`
 * `memory.expired-remove-interval` - Interval at which expired cache entries are cleaned up. **_Default_**: `30s` 

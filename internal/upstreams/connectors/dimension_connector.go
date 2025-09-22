@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/drpcorg/dsheltie/internal/dimensions"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/resilience"
-	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/resilience"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog"
 )

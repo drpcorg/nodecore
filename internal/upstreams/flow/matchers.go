@@ -3,7 +3,7 @@ package flow
 import (
 	"fmt"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/rs/zerolog/log"
 )
 

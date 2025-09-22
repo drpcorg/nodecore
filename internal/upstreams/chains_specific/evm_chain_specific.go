@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/dsheltie/internal/caches"
-	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/nodecore/internal/caches"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 

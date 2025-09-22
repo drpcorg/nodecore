@@ -3,8 +3,8 @@ package fork_choice_test
 import (
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	choice "github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/stretchr/testify/assert"
 )
 

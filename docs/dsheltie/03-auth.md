@@ -1,6 +1,6 @@
 # Auth config guide
 
-The `auth` section defines how clients authenticate with dSheltie and optionally enforces fine-grained access restrictions.
+The `auth` section defines how clients authenticate with nodecore and optionally enforces fine-grained access restrictions.
 
 ```yaml
 auth:
@@ -53,7 +53,7 @@ token:
 #  expiration-required: true
 ```
 
-The `request-strategy` section defines the primary way clients authenticate against dSheltie.
+The `request-strategy` section defines the primary way clients authenticate against nodecore.
 It acts as the first line of access control, applied to every request before it reaches any upstream.
 
 You can choose between two strategies:
@@ -68,7 +68,7 @@ if `type: token`, you mush provide:
 token:
   value: "my-token"
 ```
-* `token.value` - The static token string that clients must provide with their requests. Typically used for simple setups, testing, or environments where a single shared key is acceptable. Should be passed via the `X-Dsheltie-Token` header. **_Required_**
+* `token.value` - The static token string that clients must provide with their requests. Typically used for simple setups, testing, or environments where a single shared key is acceptable. Should be passed via the `X-Nodecore-Token` header. **_Required_**
 
 if `type: jwt`, you mush provide:
 ```yaml
@@ -105,7 +105,7 @@ key-management:
           - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
 ```
 
-The `key-management` section defines scoped access keys that provide fine-grained control over how clients interact with dSheltie.
+The `key-management` section defines scoped access keys that provide fine-grained control over how clients interact with nodecore.
 
 Each key can be tied to specific IP addresses, allowed or forbidden RPC methods, and contract whitelists.
 This is especially useful for multi-tenant environments or when you want to enforce stricter rules per application.
@@ -134,8 +134,8 @@ settings:
 
 The `local` key type is the simplest form of key management. It allows you to define access keys directly in the configuration file, without relying on an external service. This is useful for quick setups and internal environments.
 
-* `key` - The actual access key value. Any string. Should be passed via the `"X-Dsheltie-Key"` header. **_Required_**, **_Unique_**
-* `settings.allowed-ips` - Restricts key usage to the listed IP addresses. When validating requests, dSheltie determines the client IPs in the following order:
+* `key` - The actual access key value. Any string. Should be passed via the `"X-Nodecore-Key"` header. **_Required_**, **_Unique_**
+* `settings.allowed-ips` - Restricts key usage to the listed IP addresses. When validating requests, nodecore determines the client IPs in the following order:
   * It first checks the `X-Forwarded-For` header (commonly set by proxies or load balancers). If present, all comma-separated values are collected as candidate IPs
   * If the header is missing or empty, it falls back to the remote address of the TCP connection
   * If the remote address cannot be parsed, the request is assumed to come from `127.0.0.1`
@@ -143,4 +143,4 @@ The `local` key type is the simplest form of key management. It allows you to de
 * `settings.methods.forbidden` - A blacklist of RPC methods that cannot be called with this key
 * `settings.contracts.allowed` - Restricts interaction to a specific set of contract addresses for `eth_call` and `eth_getLogs` methods
 
-> **⚠️ Important**: If at least one key is defined in the `key-management` section, then every request must include a valid dSheltie key. If no key is provided, or the provided key does not match the configured rules, the request will be rejected.
+> **⚠️ Important**: If at least one key is defined in the `key-management` section, then every request must include a valid nodecore key. If no key is provided, or the provided key does not match the configured rules, the request will be rejected.

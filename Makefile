@@ -12,7 +12,7 @@ test:
 
 .PHONY: build
 build: generate-networks
-	go build -o $(PWD)/dsheltie cmd/dsheltie/main.go
+	go build -o $(PWD)/nodecore cmd/nodecore/main.go
 
 .PHONY: setup
 setup:
@@ -20,4 +20,4 @@ setup:
 
 .PHONY: run
 run:
-	go run ./cmd/dsheltie/main.go
+	go run ./cmd/nodecore/main.go

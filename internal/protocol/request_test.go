@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"

@@ -5,10 +5,10 @@ import (
 	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/rating"
-	"github.com/drpcorg/dsheltie/internal/upstreams"
-	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/rating"
+	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/samber/lo"
 )
 

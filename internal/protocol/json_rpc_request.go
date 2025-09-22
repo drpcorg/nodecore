@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog"
 )
 

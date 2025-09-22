@@ -5,8 +5,8 @@ import (
 	"maps"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/internal/config"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/config"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/samber/lo"
 )
 
