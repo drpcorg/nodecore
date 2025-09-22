@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 

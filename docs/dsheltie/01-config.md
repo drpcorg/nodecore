@@ -1,17 +1,17 @@
-# dSheltie Configuration guide
+# nodecore Configuration guide
 
-The configuration file is the entry point for all dSheltie settings. It is organized into several sections, each responsible for a specific part of the system:
+The configuration file is the entry point for all nodecore settings. It is organized into several sections, each responsible for a specific part of the system:
 
-* [Server](02-server-config.md) - configure the basic runtime settings of the dSheltie server
+* [Server](02-server-config.md) - configure the basic runtime settings of the nodecore server
 * [Auth](03-auth.md) - manage authentication settings and access limitations
 * [Cache](04-cache.md) - define cache storages and caching policies
 * [Upstream](05-upstream-config.md) - configure upstream blockchain providers and their settings
 
-By default, dSheltie looks for a configuration file named `./dSheltie.yml` in the current directory. You can override this path by setting the `DSHELTIE_CONFIG_PATH` environment variable. For example, `DSHELTIE_CONFIG_PATH=/path/to/your/config make run`.
+By default, nodecore looks for a configuration file named `./nodecore.yml` in the current directory. You can override this path by setting the `NODECORE_CONFIG_PATH` environment variable. For example, `NODECORE_CONFIG_PATH=/path/to/your/config make run`.
 
 ## Minimum working configuration
 
-To start dSheltie, you only need to define the `upstream-config` section with at least one upstream provider. All other settings will fall back to their default values.
+To start nodecore, you only need to define the `upstream-config` section with at least one upstream provider. All other settings will fall back to their default values.
 
 The example below defines two upstreams (Ethereum and Polygon), each using a standard JSON-RPC connector.
 
@@ -30,11 +30,11 @@ upstream-config:
           url: https://path-to-polygon-provider.com
 ```
 
-> **⚠️ Important note**: Currently, dSheltie supports Solana and Ethereum-compatible chains as defined in the [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml) file. Future releases will extend support to all chains listed in that file, along with additional protocols such as REST and gRPC.
+> **⚠️ Important note**: Currently, nodecore supports Solana and Ethereum-compatible chains as defined in the [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml) file. Future releases will extend support to all chains listed in that file, along with additional protocols such as REST and gRPC.
 
 ## Full configuration
 
-To configure all aspects of dSheltie, you can use the following example, which demonstrates every available section.
+To configure all aspects of nodecore, you can use the following example, which demonstrates every available section.
 
 ```yaml
 server:

@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	AppName           = "dSheltie"
-	DefaultConfigPath = "./dSheltie.yml"
-	ConfigPathVar     = "DSHELTIE_CONFIG_PATH"
+	AppName           = "nodecore"
+	DefaultConfigPath = "./nodecore.yml"
+	ConfigPathVar     = "NODECORE_CONFIG_PATH"
 )
 
 type AppConfig struct {

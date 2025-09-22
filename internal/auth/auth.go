@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
 const (
-	XDsheltieToken = "X-Dsheltie-Token"
-	XDsheltieKey   = "X-Dsheltie-Key"
+	XNodecoreToken = "X-Nodecore-Token"
+	XNodecoreKey   = "X-Nodecore-Key"
 )
 
 func NewAuthProcessor(authCfg *config.AuthConfig) (AuthProcessor, error) {
@@ -84,12 +84,12 @@ func (b *basicAuthProcessor) PostKeyValidate(ctx context.Context, payload AuthPa
 func (b *basicAuthProcessor) getKey(payload AuthPayload) (Key, error) {
 	keyStr := getPayloadKey(payload)
 	if keyStr == "" {
-		return nil, fmt.Errorf("%s must be provided", XDsheltieKey)
+		return nil, fmt.Errorf("%s must be provided", XNodecoreKey)
 	}
 
 	key, ok := b.keyResolver.GetKey(getPayloadKey(payload))
 	if !ok {
-		return nil, fmt.Errorf("specified %s not found", XDsheltieKey)
+		return nil, fmt.Errorf("specified %s not found", XNodecoreKey)
 	}
 	return key, nil
 }
@@ -98,7 +98,7 @@ func getPayloadKey(payload AuthPayload) string {
 	var keyStr string
 	switch p := payload.(type) {
 	case *HttpAuthPayload:
-		keyStr = p.httpRequest.Header.Get(XDsheltieKey)
+		keyStr = p.httpRequest.Header.Get(XNodecoreKey)
 	}
 	return keyStr
 }

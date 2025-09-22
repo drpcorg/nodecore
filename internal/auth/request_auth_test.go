@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/auth"
-	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/nodecore/internal/auth"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,7 +29,7 @@ func TestTokenRequestStrategy_Success(t *testing.T) {
 	strat := newTokenStrategyForTest(t, "super-secret")
 
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
-	req.Header.Set(auth.XDsheltieToken, "super-secret")
+	req.Header.Set(auth.XNodecoreToken, "super-secret")
 	payload := auth.NewHttpAuthPayload(req)
 
 	// Act
@@ -44,7 +44,7 @@ func TestTokenRequestStrategy_InvalidToken(t *testing.T) {
 	strat := newTokenStrategyForTest(t, "super-secret")
 
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
-	req.Header.Set(auth.XDsheltieToken, "wrong-secret")
+	req.Header.Set(auth.XNodecoreToken, "wrong-secret")
 	payload := auth.NewHttpAuthPayload(req)
 
 	// Act

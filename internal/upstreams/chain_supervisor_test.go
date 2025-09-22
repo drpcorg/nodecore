@@ -6,13 +6,13 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/internal/dimensions"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams"
-	"github.com/drpcorg/dsheltie/internal/upstreams/fork_choice"
-	"github.com/drpcorg/dsheltie/pkg/chains"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
-	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
+	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
 

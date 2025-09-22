@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/drpcorg/dsheltie/internal/auth"
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/internal/upstreams/flow"
+	"github.com/drpcorg/nodecore/internal/auth"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/prometheus/client_golang/prometheus"

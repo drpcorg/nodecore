@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/auth"
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/nodecore/internal/auth"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 )
 

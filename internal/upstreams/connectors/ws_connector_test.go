@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams/connectors"
-	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
 

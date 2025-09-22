@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,7 +12,7 @@ import (
 
 func TestNoConfigFileThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "open ./dSheltie.yml: no such file or directory")
+	assert.ErrorContains(t, err, "open ./nodecore.yml: no such file or directory")
 }
 
 func TestReadFullConfig(t *testing.T) {

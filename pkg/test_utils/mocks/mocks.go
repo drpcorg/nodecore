@@ -5,10 +5,10 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/internal/upstreams"
-	"github.com/drpcorg/dsheltie/pkg/chains"
-	specs "github.com/drpcorg/dsheltie/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )

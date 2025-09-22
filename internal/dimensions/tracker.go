@@ -3,9 +3,9 @@ package dimensions
 import (
 	"sync/atomic"
 
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/pkg/chains"
-	"github.com/drpcorg/dsheltie/pkg/utils"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

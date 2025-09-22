@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/internal/dimensions"
-	"github.com/drpcorg/dsheltie/internal/rating"
-	"github.com/drpcorg/dsheltie/pkg/chains"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
-	"github.com/drpcorg/dsheltie/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/rating"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
+	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
 

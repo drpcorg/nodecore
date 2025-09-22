@@ -3,8 +3,8 @@ package dimensions_test
 import (
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/dimensions"
-	"github.com/drpcorg/dsheltie/pkg/chains"
+	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
 )
 

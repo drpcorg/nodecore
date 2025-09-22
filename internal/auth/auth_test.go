@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/drpcorg/dsheltie/internal/auth"
-	"github.com/drpcorg/dsheltie/internal/config"
-	"github.com/drpcorg/dsheltie/internal/protocol"
-	"github.com/drpcorg/dsheltie/pkg/test_utils"
+	"github.com/drpcorg/nodecore/internal/auth"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -61,7 +61,7 @@ func TestBasicAuthProcessor_Authenticate_TokenSuccess(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", nil, nil, nil)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	err := processor.Authenticate(context.Background(), payload)
@@ -73,7 +73,7 @@ func TestBasicAuthProcessor_Authenticate_TokenInvalid(t *testing.T) {
 
 	// wrong token
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieToken: "bad-token",
+		auth.XNodecoreToken: "bad-token",
 	})
 
 	err := processor.Authenticate(context.Background(), payload)
@@ -87,8 +87,8 @@ func TestBasicAuthProcessor_PreKeyValidate_Success(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", []string{"10.0.0.1"}, nil, nil)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "secret-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "secret-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	// context with XFF = 10.0.0.1
@@ -101,11 +101,11 @@ func TestBasicAuthProcessor_PreKeyValidate_Success(t *testing.T) {
 func TestBasicAuthProcessor_PreKeyValidate_MissingHeader_Error(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", []string{"10.0.0.1"}, nil, nil)
 
-	// no X-Dsheltie-Key header provided
-	payload := newPayload(t, map[string]string{auth.XDsheltieToken: "tok-123"})
+	// no X-Nodecore-Key header provided
+	payload := newPayload(t, map[string]string{auth.XNodecoreToken: "tok-123"})
 
 	err := processor.PreKeyValidate(context.Background(), payload)
-	assert.ErrorContains(t, err, "X-Dsheltie-Key must be provided")
+	assert.ErrorContains(t, err, "X-Nodecore-Key must be provided")
 }
 
 func TestBasicAuthProcessor_PreKeyValidate_KeyNotFound_Error(t *testing.T) {
@@ -113,20 +113,20 @@ func TestBasicAuthProcessor_PreKeyValidate_KeyNotFound_Error(t *testing.T) {
 
 	// set a non-existing key value
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "unknown-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "unknown-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	err := processor.PreKeyValidate(context.Background(), payload)
-	assert.ErrorContains(t, err, "specified X-Dsheltie-Key not found")
+	assert.ErrorContains(t, err, "specified X-Nodecore-Key not found")
 }
 
 func TestBasicAuthProcessor_PreKeyValidate_IPNotAllowed_Error(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", []string{"192.168.0.10"}, nil, nil)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "secret-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "secret-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	// context IP does not match allowed list
@@ -144,8 +144,8 @@ func TestBasicAuthProcessor_PostKeyValidate_Success(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", []string{"127.0.0.1"}, methods, contracts)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "secret-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "secret-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	// Build a real RequestHolder for eth_call with 'to'
@@ -161,8 +161,8 @@ func TestBasicAuthProcessor_PostKeyValidate_MethodNotAllowed_Error(t *testing.T)
 	processor := newBasicProcessor(t, "tok-123", []string{"127.0.0.1"}, methods, contracts)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "secret-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "secret-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
@@ -177,8 +177,8 @@ func TestBasicAuthProcessor_PostKeyValidate_ContractNotAllowed_Error(t *testing.
 	processor := newBasicProcessor(t, "tok-123", []string{"127.0.0.1"}, methods, contracts)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "secret-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "secret-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
@@ -193,14 +193,14 @@ func TestBasicAuthProcessor_PostKeyValidate_MissingHeader_Error(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", []string{"127.0.0.1"}, methods, contracts)
 
 	payload := newPayload(t, map[string]string{
-		// no X-Dsheltie-Key
-		auth.XDsheltieToken: "tok-123",
+		// no X-Nodecore-Key
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
-	assert.ErrorContains(t, err, "X-Dsheltie-Key must be provided")
+	assert.ErrorContains(t, err, "X-Nodecore-Key must be provided")
 }
 
 func TestBasicAuthProcessor_PostKeyValidate_KeyNotFound_Error(t *testing.T) {
@@ -209,14 +209,14 @@ func TestBasicAuthProcessor_PostKeyValidate_KeyNotFound_Error(t *testing.T) {
 	processor := newBasicProcessor(t, "tok-123", []string{"127.0.0.1"}, methods, contracts)
 
 	payload := newPayload(t, map[string]string{
-		auth.XDsheltieKey:   "unknown-key",
-		auth.XDsheltieToken: "tok-123",
+		auth.XNodecoreKey:   "unknown-key",
+		auth.XNodecoreToken: "tok-123",
 	})
 
 	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
-	assert.ErrorContains(t, err, "specified X-Dsheltie-Key not found")
+	assert.ErrorContains(t, err, "specified X-Nodecore-Key not found")
 }
 
 // helper to create a real UpstreamJsonRpcRequest with realistic params

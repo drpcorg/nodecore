@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/labstack/echo/v4"
 )
 

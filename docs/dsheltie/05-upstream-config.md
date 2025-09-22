@@ -1,6 +1,6 @@
 # Upstream config guide
 
-This `upstream-config` section defines how dSheltie discovers, evaluates, and interacts with upstream blockchain providers.
+This `upstream-config` section defines how nodecore discovers, evaluates, and interacts with upstream blockchain providers.
 
 ```yaml
 upstream-config:
@@ -60,7 +60,7 @@ It brings together:
 3. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
 4. Upstreams (`upstreams`) - The actual provider entries.
 
-Together, these settings let you (1) register providers, (2) tune resiliency and polling, and (3) define how dSheltie scores and selects the best upstream at runtime.
+Together, these settings let you (1) register providers, (2) tune resiliency and polling, and (3) define how nodecore scores and selects the best upstream at runtime.
 
 ## failsafe-config
 
@@ -86,7 +86,7 @@ Execution scheme:
 3. First success wins. As soon as any in-flight attempt (original or hedge) returns a successful response, the executor returns it and cancels other in-flight attempts.
 4. Retry on retryable errors. If an attempt returns a retryable error, the execution flow applies the retry policy. Non-retryable errors end the flow immediately (returned to the client).
 
-dSheltie uses the [failsafe-go](https://failsafe-go.dev/) library for resiliency primitives. At the moment we rely on:
+nodecore uses the [failsafe-go](https://failsafe-go.dev/) library for resiliency primitives. At the moment we rely on:
 * Retry policy – provided by failsafe-go
 * Hedge policy – [custom implementation](../../internal/resilience/parallel_hedge.go) (instead of the default) for stricter latency semantics
 
@@ -96,7 +96,7 @@ The baseline hedging behavior has a few drawbacks for our use case:
 * If an immediate error arrives from the primary request, the default behavior may still wait for the hedge delay (or cascade hedges serially), slowing error paths.
 * Hedge requests may be issued sequentially, effectively waiting for each attempt instead of firing truly in parallel after the delay.
 
-To eliminate these issues, dSheltie implements a pure hedging strategy with clear timing and parallelism guarantees:
+To eliminate these issues, nodecore implements a pure hedging strategy with clear timing and parallelism guarantees:
 * Delay gate - A hedged request is sent only if `hedge.delay` has fully elapsed and the primary has not completed successfully. If we receive any response (success or error) before `hedge.delay` elapses, we return it immediately (no hedges launched)
 * Parallel launch - Once `hedge.delay` elapses with no success, we launch up to `hedge.max` parallel hedges immediately (not one-by-one)
 * First-success-wins - As soon as any in-flight attempt (primary or any hedge) returns success, we return that response and cancel all other in-flight attempts.
@@ -124,7 +124,7 @@ chain-defaults:
 The `chain-defaults` section defines per-chain baseline settings that apply to all upstreams of that chain unless explicitly overridden in the upstream configuration.
 
 `chain-defaults` fields:
-* `<chain>.poll-interval` - Defines how often dSheltie polls the upstreams for that chain to fetch new head/finality information
+* `<chain>.poll-interval` - Defines how often nodecore polls the upstreams for that chain to fetch new head/finality information
   * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** `poll-interval` value globally is `1m` (1 minute)
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
@@ -138,10 +138,10 @@ score-policy-config:
   #calculation-function-file-path: "path/to/func"
 ```
 
-The `score-policy-config` section defines how dSheltie evaluates and ranks upstreams. It provides a flexible rating subsystem that uses built-in or user-defined Typescript functions to compute scores based on multiple performance dimensions. The result of this calculation directly influences which upstream is selected by the execution flow.
+The `score-policy-config` section defines how nodecore evaluates and ranks upstreams. It provides a flexible rating subsystem that uses built-in or user-defined Typescript functions to compute scores based on multiple performance dimensions. The result of this calculation directly influences which upstream is selected by the execution flow.
 
 **How it works**:
-1. Metrics collection. or each chain and RPC method, dSheltie continuously tracks:
+1. Metrics collection. or each chain and RPC method, nodecore continuously tracks:
    * Latency percentiles: p90, p95, p99
    * Request statistics: total requests, total errors, error rate, successful retries
    * Blockchain state metrics: head lag (distance from the latest head), finalization lag (distance from the latest finalized block)
@@ -226,13 +226,13 @@ upstreams:
         jitter: 3s
 ```
 
-The `upstreams` section defines the actual blockchain providers that dSheltie will route requests to.
+The `upstreams` section defines the actual blockchain providers that nodecore will route requests to.
 Each upstream belongs to a specific chain, declares one or more connectors (HTTP/JSON-RPC, WebSocket, etc.) and have other specific settings.
 
 ### connectors
 
 Each upstream can expose multiple interfaces for communication. A blockchain network may support various protocols such as JSON-RPC, WebSocket, REST, or gRPC.
-dSheltie is designed to support all of these, so that depending on the request type, the most suitable connector can be used automatically.
+nodecore is designed to support all of these, so that depending on the request type, the most suitable connector can be used automatically.
 
 Currently supported:
 * `json-rpc`– standard HTTP-based JSON-RPC API
@@ -242,11 +242,11 @@ Planned support:
 * `rest` – REST endpoints for chains that expose REST APIs (e.g., Cosmos chains, beacon chains, etc.)
 * `grpc` – gRPC endpoints for chains/protocols where it is available
 
-By defining multiple connectors under one upstream, you give dSheltie the flexibility to select the right transport for each request.
+By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each request.
 
-In addition, every upstream must track its head (latest block / finalization state). For this, dSheltie needs to know which connector should be used:
+In addition, every upstream must track its head (latest block / finalization state). For this, nodecore needs to know which connector should be used:
 * You can explicitly specify this via `head-connector`
-* If not specified and multiple connectors are defined, dSheltie chooses based on the following priority:
+* If not specified and multiple connectors are defined, nodecore chooses based on the following priority:
   * `json-rpc`
   * `rest`
   * `grpc`
@@ -265,7 +265,7 @@ This ensures that the most stable/compatible connector is used for head tracking
   * `headers` - optional key/value map of extra headers to send with requests
 * `head-connector` - Specifies which connector is used to fetch chain head/finality values
   * Example: `head-connector: websocket`
-  * If not set, dSheltie picks a default depending on connector types
+  * If not set, nodecore picks a default depending on connector types
 * `poll-interval` - Overrides the `chain-defaults.poll-interval` for this specific upstream. **_Default_**: `1m` (1 minute)
 * `methods` - Allows per-upstream method overrides:
   * `enable` – list of methods to explicitly allow

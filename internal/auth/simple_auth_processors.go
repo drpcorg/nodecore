@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/drpcorg/dsheltie/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
 type noopAuthProcessor struct {

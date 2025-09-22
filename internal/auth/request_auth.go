@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/drpcorg/dsheltie/internal/config"
+	"github.com/drpcorg/nodecore/internal/config"
 )
 
 func NewAuthRequestStrategy(authCfg *config.AuthConfig) (AuthRequestStrategy, error) {
@@ -53,7 +53,7 @@ func newTokenRequestStrategy(tokenAuthCfg *config.TokenRequestStrategyConfig) *t
 func (t *tokenRequestStrategy) AuthenticateRequest(_ context.Context, payload AuthPayload) error {
 	switch p := payload.(type) {
 	case *HttpAuthPayload:
-		requestTokenValue := p.httpRequest.Header.Get(XDsheltieToken)
+		requestTokenValue := p.httpRequest.Header.Get(XNodecoreToken)
 		if requestTokenValue != t.token {
 			return errors.New("invalid secret token")
 		}

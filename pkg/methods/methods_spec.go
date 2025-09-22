@@ -20,7 +20,7 @@ var specsFS embed.FS
 
 const (
 	DefaultMethodGroup = "default"
-	SpecPathVar        = "DSHELTIE_SPECS_PATH"
+	SpecPathVar        = "NODECORE_SPECS_PATH"
 )
 
 type MethodSpec struct {
