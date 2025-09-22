@@ -31,6 +31,7 @@ var requestTimeToLastByte = prometheus.NewHistogram(
 		Namespace: config.AppName,
 		Subsystem: "http",
 		Name:      "time_to_last_byte",
+		Help:      "The histogram of HTTP request duration until the last byte is sent",
 	},
 )
 

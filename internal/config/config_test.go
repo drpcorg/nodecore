@@ -29,6 +29,12 @@ func TestReadFullConfig(t *testing.T) {
 				Username: "pyro-username",
 				Password: "pyro-password",
 			},
+			TlsConfig: &config.TlsConfig{
+				Enabled:     true,
+				Certificate: "/path/cert",
+				Key:         "/path/key",
+				Ca:          "/path/ca",
+			},
 		},
 		AuthConfig: &config.AuthConfig{
 			Enabled: true,
@@ -316,6 +322,7 @@ func TestServerConfig(t *testing.T) {
 		MetricsPort:     9093,
 		PprofPort:       6061,
 		PyroscopeConfig: &config.PyroscopeConfig{},
+		TlsConfig:       &config.TlsConfig{},
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
@@ -670,4 +677,16 @@ func TestAuthKeyLocalEmptyKeyThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-local-empty-key.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during 'key1' key config validation, cause: error during 'key1' key config validation, cause: 'key' field is empty")
+}
+
+func TestTlsEnabledNoCertificateThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-tls-enabled-no-cert.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "tls config validation error - the tls certificate can't be empty")
+}
+
+func TestTlsEnabledNoKeyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-tls-enabled-no-key.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "tls config validation error - the tls certificate key can't be empty")
 }

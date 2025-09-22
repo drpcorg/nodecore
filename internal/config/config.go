@@ -120,6 +120,7 @@ type TlsConfig struct {
 	Enabled     bool   `yaml:"enabled"`
 	Certificate string `yaml:"certificate"`
 	Key         string `yaml:"key"`
+	Ca          string `yaml:"ca"`
 }
 
 type UpstreamConfig struct {

@@ -1,0 +1,8 @@
+server:
+  port: 9095
+  pprof-port: 6061
+  metrics-port: 9093
+  tls:
+    enabled: true
+    certificate: /some/path/cert
+    # key is intentionally missing to trigger validation error

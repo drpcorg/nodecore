@@ -22,6 +22,7 @@ var requestTotalMetric = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "request",
 		Name:      "requests_total",
+		Help:      "Total number of RPC requests sent across all upstreams",
 	},
 	[]string{"chain", "method"},
 )
@@ -31,6 +32,7 @@ var requestErrorsMetric = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "request",
 		Name:      "errors_total",
+		Help:      "The total number of RPC request errors returned by all upstreams",
 	},
 	[]string{"chain", "method"},
 )

@@ -394,10 +394,26 @@ func (s *ServerConfig) validate() error {
 		return fmt.Errorf("pprof port %d is already in use", s.PprofPort)
 	}
 
+	if err := s.TlsConfig.validate(); err != nil {
+		return fmt.Errorf("tls config validation error - %s", err.Error())
+	}
+
 	if err := s.PyroscopeConfig.validate(); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (t *TlsConfig) validate() error {
+	if t.Enabled {
+		if t.Certificate == "" {
+			return errors.New("the tls certificate can't be empty")
+		}
+		if t.Key == "" {
+			return errors.New("the tls certificate key can't be empty")
+		}
+	}
 	return nil
 }
 

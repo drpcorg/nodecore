@@ -26,6 +26,7 @@ var jsonWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: config.AppName,
 	Subsystem: "request",
 	Name:      "json_ws_connections",
+	Help:      "The current number of active JSON-RPC subscriptions",
 }, []string{"chain", "upstream", "subscription"})
 
 func init() {

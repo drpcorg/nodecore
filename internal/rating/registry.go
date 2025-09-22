@@ -22,6 +22,7 @@ var rating = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "rating",
+		Help:      "The current rating score of an upstream for a specific chain and method",
 	},
 	[]string{"chain", "method", "upstream"},
 )

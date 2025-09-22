@@ -21,6 +21,7 @@ var wsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: config.AppName,
 	Subsystem: "request",
 	Name:      "ws_connections",
+	Help:      "The total number of active websocket connections",
 }, []string{"chain"})
 
 func init() {

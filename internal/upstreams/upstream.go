@@ -25,6 +25,7 @@ var blocksMetric = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "blocks",
+		Help:      "The current block height of a specific block type",
 	},
 	[]string{"upstream", "blockType", "chain"},
 )
@@ -34,6 +35,7 @@ var headsMetric = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "heads",
+		Help:      "The current head height",
 	},
 	[]string{"chain", "upstream"},
 )
