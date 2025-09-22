@@ -23,6 +23,7 @@ var hedgeMetric = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "request",
 		Name:      "hedge_hit",
+		Help:      "The total number of hedged RPC requests executed on an upstream",
 	},
 	[]string{"chain", "method", "upstream"},
 )

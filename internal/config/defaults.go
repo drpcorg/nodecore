@@ -68,6 +68,9 @@ func (s *ServerConfig) setDefaults() {
 	if s.PyroscopeConfig == nil {
 		s.PyroscopeConfig = &PyroscopeConfig{}
 	}
+	if s.TlsConfig == nil {
+		s.TlsConfig = &TlsConfig{}
+	}
 }
 
 func (c *CacheConfig) setDefaults() {

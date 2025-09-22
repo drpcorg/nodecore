@@ -20,6 +20,7 @@ var requestCache = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "request",
 		Name:      "cache_hit",
+		Help:      "The total number of RPC requests served from cache",
 	},
 	[]string{"chain", "method"},
 )

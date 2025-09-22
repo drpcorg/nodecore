@@ -36,6 +36,7 @@ var requestTotalMetric = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "requests_total",
+		Help:      "The total number of RPC requests sent to an upstream",
 	},
 	[]string{"chain", "method", "upstream"},
 )
@@ -45,6 +46,7 @@ var successfulRetriesMetric = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "successful_retries_total",
+		Help:      "The total number of RPC requests that succeeded after being retried",
 	},
 	[]string{"chain", "method", "upstream"},
 )
@@ -54,6 +56,7 @@ var errorTotalMetric = prometheus.NewCounterVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "errors_total",
+		Help:      "The total number of RPC request errors returned by an upstream",
 	},
 	[]string{"chain", "method", "upstream"},
 )
@@ -64,6 +67,7 @@ var requestDurationMetric = prometheus.NewHistogramVec(
 		Subsystem: "upstream",
 		Name:      "request_duration",
 		Buckets:   DefBuckets,
+		Help:      "The duration of RPC requests to upstreams",
 	},
 	[]string{"chain", "method", "upstream"},
 )
@@ -73,6 +77,7 @@ var headLagMetric = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "head_lag",
+		Help:      "The block lag of an upstream compared to the current head",
 	},
 	[]string{"chain", "upstream"},
 )
@@ -82,6 +87,7 @@ var finalizationLagMetric = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "finalization_lag",
+		Help:      "The block lag of an upstream compared to the current finalization",
 	},
 	[]string{"chain", "upstream"},
 )

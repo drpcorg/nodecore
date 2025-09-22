@@ -5,6 +5,11 @@ server:
     url: url
     username: pyro-username
     password: pyro-password
+  tls:
+    enabled: true
+    certificate: "/path/cert"
+    key: "/path/key"
+    ca: "/path/ca"
 
 auth:
   enabled: true
