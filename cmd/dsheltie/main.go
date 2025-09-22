@@ -109,7 +109,7 @@ func main() {
 
 	go func() {
 		if appConfig.ServerConfig.MetricsPort != 0 {
-			if metricsServerErr := server.StartEcho(metricsServer, fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort), appConfig.ServerConfig.TlsConfig); metricsServerErr != nil {
+			if metricsServerErr := server.StartEcho(metricsServer, fmt.Sprintf(":%d", appConfig.ServerConfig.MetricsPort), nil); metricsServerErr != nil {
 				log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
 			}
 		} else {
