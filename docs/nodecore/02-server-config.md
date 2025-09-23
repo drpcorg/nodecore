@@ -24,6 +24,11 @@ server:
 * `metrics-port` - Port exposing Prometheus metrics (endpoint `GET /metrics`). By default, it's disabled, so it's necessary to specify the port explicitly to enable prom metrics
 * `pprof-port` - Port for Go [pprof](https://github.com/google/pprof) profiling endpoints. By default, profiling is disabled; to enable it, you must explicitly set this port
 * `pyroscope-config` - Optional integration with [Pyroscope](https://pyroscope.io/) for continuous profiling
-  * `enabled` - enable/disable Pyroscope integration. **_Default_**: `false`
+  * `enabled` - Enable/disable Pyroscope integration. **_Default_**: `false`
   * `url`: URL of the Pyroscope server. **_Required_** if `enabled: true`
   * `username`, `password`: authentication credentials. **_Required_** if `enabled: true`
+* `tls` - TLS configuration for serving requests securely
+  * `enabled` - whether TLS is enabled. **_Default_**: `false`
+  * `certificate` - Path to the TLS certificate file. **_Required_**
+  * `key` - Path to the TLS private key file. **_Required_**
+  * `ca` - Path to a Certificate Authority (CA) certificate file to validate client certificates
