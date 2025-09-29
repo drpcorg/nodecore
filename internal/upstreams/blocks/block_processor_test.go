@@ -47,6 +47,21 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, expected, event)
 	assert.True(t, processor.DisabledBlocks().IsEmpty())
+
+	processor.UpdateBlock(protocol.NewBlockDataWithHeight(79195275), protocol.FinalizedBlock)
+
+	event, ok = <-sub.Events
+
+	expected = blocks.BlockEvent{
+		BlockData: &protocol.BlockData{
+			Height: uint64(79195275),
+		},
+		BlockType: protocol.FinalizedBlock,
+	}
+
+	assert.True(t, ok)
+	assert.Equal(t, expected, event)
+	assert.True(t, processor.DisabledBlocks().IsEmpty())
 }
 
 func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {

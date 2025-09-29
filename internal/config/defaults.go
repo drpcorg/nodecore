@@ -133,6 +133,9 @@ func (u *UpstreamConfig) setDefaults() {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
 		upstream.setDefaults(chainDefaults)
 	}
+	if u.IntegrityConfig == nil {
+		u.IntegrityConfig = &IntegrityConfig{}
+	}
 }
 
 func (s *ScorePolicyConfig) setDefaults() {

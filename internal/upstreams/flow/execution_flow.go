@@ -54,6 +54,7 @@ type BaseExecutionFlow struct {
 	cacheProcessor     caches.CacheProcessor
 	subCtx             *SubCtx
 	registry           *rating.RatingRegistry
+	appConfig          *config.AppConfig
 }
 
 func NewBaseExecutionFlow(
@@ -61,6 +62,7 @@ func NewBaseExecutionFlow(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheProcessor caches.CacheProcessor,
 	registry *rating.RatingRegistry,
+	appConfig *config.AppConfig,
 	subCtx *SubCtx,
 ) *BaseExecutionFlow {
 	return &BaseExecutionFlow{
@@ -70,6 +72,7 @@ func NewBaseExecutionFlow(
 		responseChan:       make(chan *protocol.ResponseHolderWrapper),
 		subCtx:             subCtx,
 		registry:           registry,
+		appConfig:          appConfig,
 	}
 }
 
@@ -123,6 +126,12 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
 		} else if isStickyRequest(request.SpecMethod()) {
 			requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
+		} else if shouldEnforceIntegrity(request.SpecMethod(), e.appConfig.UpstreamConfig.IntegrityConfig) {
+			requestProcessor = NewIntegrityRequestProcessor(
+				e.chain,
+				e.upstreamSupervisor,
+				NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor),
+			)
 		} else {
 			requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
 		}
@@ -157,6 +166,10 @@ func isLocalRequest(chain chains.Chain, method string) bool {
 
 func isStickyRequest(specMethod *specs.Method) bool {
 	return specs.IsStickyCreateMethod(specMethod) || specs.IsStickySendMethod(specMethod)
+}
+
+func shouldEnforceIntegrity(specMethod *specs.Method, integrityConfig *config.IntegrityConfig) bool {
+	return integrityConfig.Enabled && specMethod != nil && specMethod.ShouldEnforceIntegrity()
 }
 
 type SubCtx struct {

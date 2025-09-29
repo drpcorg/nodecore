@@ -92,6 +92,7 @@ func TestReadFullConfig(t *testing.T) {
 			},
 		},
 		UpstreamConfig: &config.UpstreamConfig{
+			IntegrityConfig: &config.IntegrityConfig{},
 			ScorePolicyConfig: &config.ScorePolicyConfig{
 				CalculationInterval:     10 * time.Second,
 				CalculationFunctionName: config.DefaultLatencyPolicyFuncName,

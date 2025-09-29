@@ -46,7 +46,7 @@ func TestStickySendNoNothingToParseThenRequestAsIs(t *testing.T) {
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", result, protocol.JsonRpc)
 	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 
-	upSupervisor.On("GetExecutor").Return(createExecutor())
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("SendRequest", mock.Anything, request).Return(responseHolder)
@@ -80,7 +80,7 @@ func TestStickySendModifyRequest(t *testing.T) {
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", result, protocol.JsonRpc)
 	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 
-	upSupervisor.On("GetExecutor").Return(createExecutor())
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("SendRequest", mock.Anything, request).Return(responseHolder)
@@ -129,7 +129,7 @@ func TestStickyRequestError(t *testing.T) {
 			err := errors.New("error")
 			processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 
-			upSupervisor.On("GetExecutor").Return(createExecutor())
+			upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 			strategy.On("SelectUpstream", request).Return("", err)
 
 			response := processor.ProcessRequest(context.Background(), strategy, request)
@@ -159,7 +159,7 @@ func TestCreateStickyModifyResponse(t *testing.T) {
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", result, protocol.JsonRpc)
 	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 
-	upSupervisor.On("GetExecutor").Return(createExecutor())
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("SendRequest", mock.Anything, request).Return(responseHolder)

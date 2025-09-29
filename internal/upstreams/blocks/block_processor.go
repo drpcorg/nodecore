@@ -30,6 +30,7 @@ var ethErrorsToDisable = []string{
 type BlockProcessor interface {
 	Start()
 	Subscribe(name string) *utils.Subscription[BlockEvent]
+	UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType)
 	DisabledBlocks() mapset.Set[protocol.BlockType]
 }
 
@@ -45,6 +46,8 @@ type EthLikeBlockProcessor struct {
 	subManager       *utils.SubscriptionManager[BlockEvent]
 	ctx              context.Context
 	disableDetection mapset.Set[protocol.BlockType]
+	manualBlockChan  chan BlockEvent
+	blocks           map[protocol.BlockType]*protocol.BlockData
 }
 
 func NewEthLikeBlockProcessor(
@@ -59,8 +62,14 @@ func NewEthLikeBlockProcessor(
 		connector:        connector,
 		chainSpecific:    chainSpecific,
 		disableDetection: mapset.NewSet[protocol.BlockType](),
+		manualBlockChan:  make(chan BlockEvent, 100),
 		subManager:       utils.NewSubscriptionManager[BlockEvent](fmt.Sprintf("%s_block_processor", upConfig.Id)),
+		blocks:           make(map[protocol.BlockType]*protocol.BlockData),
 	}
+}
+
+func (b *EthLikeBlockProcessor) UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType) {
+	b.manualBlockChan <- BlockEvent{BlockData: blockData, BlockType: blockType}
 }
 
 func (b *EthLikeBlockProcessor) Subscribe(name string) *utils.Subscription[BlockEvent] {
@@ -72,12 +81,18 @@ func (b *EthLikeBlockProcessor) DisabledBlocks() mapset.Set[protocol.BlockType] 
 }
 
 func (b *EthLikeBlockProcessor) Start() {
+	b.poll(protocol.FinalizedBlock)
 	for {
-		b.poll(protocol.FinalizedBlock)
 		select {
 		case <-b.ctx.Done():
 			return
+		case event := <-b.manualBlockChan:
+			currentBlock, ok := b.blocks[event.BlockType]
+			if !ok || event.BlockData.Height > currentBlock.Height {
+				b.subManager.Publish(event)
+			}
 		case <-time.After(b.upConfig.PollInterval):
+			b.poll(protocol.FinalizedBlock)
 		}
 	}
 }
@@ -100,6 +115,7 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 			}
 			log.Warn().Err(err).Msgf("couldn't detect finalized block of upstream %s", b.upConfig.Id)
 		} else {
+			b.blocks[blockType] = block.BlockData
 			b.subManager.Publish(BlockEvent{BlockData: block.BlockData, BlockType: blockType})
 		}
 	}

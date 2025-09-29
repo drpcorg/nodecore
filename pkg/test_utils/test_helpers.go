@@ -10,6 +10,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
@@ -19,6 +20,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -141,6 +143,10 @@ func PublishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, statu
 	methodsMock.On("HasMethod", "test").Return(false)
 	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock, caps, "index"))
 	time.Sleep(10 * time.Millisecond)
+}
+
+func CreateExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
+	return resilience.CreateFlowExecutor()
 }
 
 func createEvent(

@@ -42,9 +42,10 @@ type MethodData struct {
 }
 
 type MethodSettings struct {
-	Cacheable    *bool         `json:"cacheable"`
-	Sticky       *Sticky       `json:"sticky"`
-	Subscription *Subscription `json:"subscription"`
+	Cacheable        *bool         `json:"cacheable"`
+	EnforceIntegrity bool          `json:"enforce-integrity"`
+	Sticky           *Sticky       `json:"sticky"`
+	Subscription     *Subscription `json:"subscription"`
 }
 
 type Sticky struct {

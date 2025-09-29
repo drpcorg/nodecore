@@ -45,15 +45,33 @@ type ChainSupervisor struct {
 }
 
 type ChainSupervisorState struct {
-	Status  protocol.AvailabilityStatus
-	Head    uint64
-	Methods methods.Methods
-	Blocks  map[protocol.BlockType]*protocol.BlockData
+	Status   protocol.AvailabilityStatus
+	HeadData ChainHeadData
+	Methods  methods.Methods
+	Blocks   map[protocol.BlockType]*protocol.BlockData
+}
+
+type ChainHeadData struct {
+	Head       uint64
+	UpstreamId string
+}
+
+func NewChainHeadData(head uint64, upstreamId string) ChainHeadData {
+	return ChainHeadData{
+		Head:       head,
+		UpstreamId: upstreamId,
+	}
 }
 
 func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker *dimensions.DimensionTracker) *ChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
-	state.Store(ChainSupervisorState{Status: protocol.Available, Blocks: make(map[protocol.BlockType]*protocol.BlockData)})
+	state.Store(
+		ChainSupervisorState{
+			Status:   protocol.Available,
+			Blocks:   make(map[protocol.BlockType]*protocol.BlockData),
+			HeadData: NewChainHeadData(0, ""),
+		},
+	)
 
 	return &ChainSupervisor{
 		ctx:            ctx,
@@ -105,6 +123,24 @@ func (c *ChainSupervisor) GetUpstreamState(upstreamId string) *protocol.Upstream
 	return nil
 }
 
+func (c *ChainSupervisor) GetSortedUpstreamIds(
+	filterFunc func(id string, state *protocol.UpstreamState) bool,
+	sortFunc func(entry1, entry2 utils.Pair[string, *protocol.UpstreamState]) int,
+) []string {
+	entries := make([]utils.Pair[string, *protocol.UpstreamState], 0)
+	c.upstreamStates.Range(func(upId string, state *protocol.UpstreamState) bool {
+		if filterFunc(upId, state) {
+			entries = append(entries, utils.NewPair(upId, state))
+		}
+		return true
+	})
+	slices.SortFunc(entries, sortFunc)
+
+	return lo.Map(entries, func(item utils.Pair[string, *protocol.UpstreamState], index int) string {
+		return item.F
+	})
+}
+
 func (c *ChainSupervisor) GetUpstreamIds() []string {
 	ids := make([]string, 0)
 	c.upstreamStates.Range(func(upId string, _ *protocol.UpstreamState) bool {
@@ -132,8 +168,9 @@ func (c *ChainSupervisor) processEvents() {
 
 				if event.State.HeadData != nil {
 					updated, headHeight := c.fc.Choose(event)
+					fmt.Println(event.State.HeadData.Height, "height")
 					if updated {
-						state.Head = headHeight
+						state.HeadData = NewChainHeadData(headHeight, event.Id)
 					}
 				}
 				state.Status = c.processUpstreamStatuses()
@@ -153,7 +190,7 @@ func (c *ChainSupervisor) calculateLags() {
 		state := c.state.Load()
 
 		c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
-			headLag := state.Head - val.HeadData.Height
+			headLag := state.HeadData.Head - val.HeadData.Height
 			finalizationBlock, ok := state.Blocks[protocol.FinalizedBlock]
 			finalizationLag := uint64(0)
 			if ok {
@@ -216,6 +253,9 @@ func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.Upst
 			}
 		}
 	}
+	if block, ok := blocks[protocol.FinalizedBlock]; ok {
+		fmt.Println(block.Height)
+	}
 
 	return blocks
 }
@@ -234,8 +274,8 @@ func (c *ChainSupervisor) monitor() {
 	state := c.state.Load()
 
 	var height string
-	if state.Head > 0 {
-		height = fmt.Sprintf("%d", state.Head)
+	if state.HeadData.Head > 0 {
+		height = fmt.Sprintf("%d", state.HeadData.Head)
 	} else {
 		height = "?"
 	}

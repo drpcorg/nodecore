@@ -26,6 +26,7 @@ type HeadProcessor struct {
 	lastUpdate           *utils.Atomic[time.Time]
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
+	manualHeadChan       chan *protocol.Block
 }
 
 func NewHeadProcessor(
@@ -52,6 +53,7 @@ func NewHeadProcessor(
 	return &HeadProcessor{
 		upstreamId:           upConfig.Id,
 		head:                 head,
+		manualHeadChan:       make(chan *protocol.Block, 100),
 		ctx:                  ctx,
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
@@ -86,9 +88,20 @@ func (h *HeadProcessor) Start() {
 				h.lastUpdate.Store(time.Now())
 				h.subManager.Publish(HeadEvent{HeadData: block.BlockData})
 			}
+		case manualBlock := <-h.manualHeadChan:
+			if manualBlock.BlockData.Height > h.head.GetCurrentBlock().BlockData.Height {
+				log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.BlockData.Height)
+				h.lastUpdate.Store(time.Now())
+				h.head.UpdateHead(*manualBlock)
+				h.subManager.Publish(HeadEvent{HeadData: manualBlock.BlockData})
+			}
 		}
 		timeout.Reset(h.headNoUpdatesTimeout)
 	}
+}
+
+func (h *HeadProcessor) UpdateHead(height, slot uint64) {
+	h.manualHeadChan <- protocol.NewBlock(height, slot, "")
 }
 
 func createHead(ctx context.Context, id string, pollInterval time.Duration, apiConnector connectors.ApiConnector, specific specific.ChainSpecific) Head {
@@ -109,6 +122,7 @@ type Head interface {
 	HeadsChan() chan *protocol.Block
 	OnNoHeadUpdates()
 	GetCurrentBlock() *protocol.Block
+	UpdateHead(newHead protocol.Block)
 }
 
 type RpcHead struct {
@@ -120,6 +134,10 @@ type RpcHead struct {
 	upstreamId     string
 	pollInProgress atomic.Bool
 	headsChan      chan *protocol.Block
+}
+
+func (r *RpcHead) UpdateHead(newHead protocol.Block) {
+	r.block.Store(newHead)
 }
 
 var _ Head = (*RpcHead)(nil)
@@ -188,6 +206,10 @@ type SubscriptionHead struct {
 	upstreamId    string
 	headsChan     chan *protocol.Block
 	cancelFunc    *utils.Atomic[context.CancelFunc]
+}
+
+func (w *SubscriptionHead) UpdateHead(newHead protocol.Block) {
+	w.block.Store(newHead)
 }
 
 var _ Head = (*SubscriptionHead)(nil)

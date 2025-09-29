@@ -44,15 +44,6 @@ func init() {
 	prometheus.MustRegister(blocksMetric, headsMetric)
 }
 
-func (u *Upstream) createEvent() protocol.UpstreamEvent {
-	state := u.upstreamState.Load()
-	return protocol.UpstreamEvent{
-		Id:    u.Id,
-		Chain: u.Chain,
-		State: &state,
-	}
-}
-
 type Upstream struct {
 	Id               string
 	Chain            chains.Chain
@@ -166,6 +157,14 @@ func (u *Upstream) GetUpstreamState() protocol.UpstreamState {
 	return u.upstreamState.Load()
 }
 
+func (u *Upstream) UpdateHead(height, slot uint64) {
+	u.headProcessor.UpdateHead(height, slot)
+}
+
+func (u *Upstream) UpdateBlock(block *protocol.BlockData, blockType protocol.BlockType) {
+	u.blockProcessor.UpdateBlock(block, blockType)
+}
+
 func (u *Upstream) GetConnector(connectorType protocol.ApiConnectorType) connectors.ApiConnector {
 	connector, _ := lo.Find(u.apiConnectors, func(item connectors.ApiConnector) bool {
 		return item.GetType() == connectorType
@@ -203,6 +202,15 @@ func (u *Upstream) processStateEvents() {
 
 			u.subManager.Publish(upstreamEvent)
 		}
+	}
+}
+
+func (u *Upstream) createEvent() protocol.UpstreamEvent {
+	state := u.upstreamState.Load()
+	return protocol.UpstreamEvent{
+		Id:    u.Id,
+		Chain: u.Chain,
+		State: &state,
 	}
 }
 
