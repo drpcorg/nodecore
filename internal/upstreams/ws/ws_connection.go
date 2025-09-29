@@ -356,9 +356,9 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 				} else {
 					err = w.writeMessage(body)
 					if err != nil {
-						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, op.subId)
+						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, op.subId.Load())
 					} else {
-						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId, w.upId)
+						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId.Load(), w.upId)
 					}
 				}
 			}

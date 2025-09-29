@@ -95,8 +95,14 @@ func handleWebsocket(
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if cancelCtx.Err() == nil {
-				for respWrapper := range responseWrappers {
+			for {
+				select {
+				case <-cancelCtx.Done():
+					return
+				case response, ok := <-responseWrappers:
+					if !ok {
+						return
+					}
 					writeEvent := func() {
 						wsLock.Lock()
 						defer wsLock.Unlock()
@@ -104,7 +110,7 @@ func handleWebsocket(
 						if err != nil {
 							log.Error().Err(err).Msg("couldn't get writer to send a response")
 						} else {
-							resp := requestHandler.ResponseEncode(respWrapper.Response)
+							resp := requestHandler.ResponseEncode(response.Response)
 							if _, err = io.Copy(writer, resp.ResponseReader); err != nil {
 								log.Error().Err(err).Msg("couldn't copy message")
 							}
