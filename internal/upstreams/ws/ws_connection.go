@@ -36,7 +36,7 @@ var jsonRpcWsOperations = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 }, []string{"chain", "upstream"})
 
 func init() {
-	prometheus.MustRegister(jsonRpcWsConnectionsMetric)
+	prometheus.MustRegister(jsonRpcWsConnectionsMetric, jsonRpcWsOperations)
 }
 
 const (
