@@ -305,8 +305,6 @@ func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 		} else if response.Error != nil {
 			req.cancel.Load()()
 		}
-	} else {
-		log.Warn().Msgf("couldn't find request for response with id %s, message - %s", response.Id, string(response.Event))
 	}
 }
 
@@ -317,8 +315,6 @@ func (w *JsonRpcWsConnection) onSubscriptionMessage(response *protocol.WsRespons
 			return
 		}
 		req.writeInternal(response)
-	} else {
-		log.Warn().Msgf("couldn't find ws sub for subId %s, message - %s", response.SubId, string(response.Event))
 	}
 }
 
