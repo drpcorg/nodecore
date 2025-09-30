@@ -256,10 +256,6 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 			if !w.connClosed.Load() {
 				w.unsubscribe(r)
 			}
-			if r.subId.Load() != "" {
-				w.subs.Delete(r.subId.Load())
-				jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType.Load()).Dec()
-			}
 			return
 		case message, ok := <-r.internalMessages:
 			if ok {
@@ -306,7 +302,11 @@ func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 			if req.subId.Load() != "" {
 				jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType.Load()).Inc()
 			}
+		} else if response.Error != nil {
+			req.cancel.Load()()
 		}
+	} else {
+		log.Warn().Msgf("couldn't find request for response with id %s, message - %s", response.Id, string(response.Event))
 	}
 }
 
@@ -317,6 +317,8 @@ func (w *JsonRpcWsConnection) onSubscriptionMessage(response *protocol.WsRespons
 			return
 		}
 		req.writeInternal(response)
+	} else {
+		log.Warn().Msgf("couldn't find ws sub for subId %s, message - %s", response.SubId, string(response.Event))
 	}
 }
 
@@ -376,6 +378,8 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 				}
 			}
 		}
+		w.subs.Delete(subId)
+		jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, op.subType.Load()).Dec()
 	}
 }
 
