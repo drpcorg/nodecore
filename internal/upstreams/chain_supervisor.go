@@ -125,19 +125,19 @@ func (c *ChainSupervisor) GetUpstreamState(upstreamId string) *protocol.Upstream
 
 func (c *ChainSupervisor) GetSortedUpstreamIds(
 	filterFunc func(id string, state *protocol.UpstreamState) bool,
-	sortFunc func(entry1, entry2 utils.Pair[string, *protocol.UpstreamState]) int,
+	sortFunc func(entry1, entry2 lo.Tuple2[string, *protocol.UpstreamState]) int,
 ) []string {
-	entries := make([]utils.Pair[string, *protocol.UpstreamState], 0)
+	entries := make([]lo.Tuple2[string, *protocol.UpstreamState], 0)
 	c.upstreamStates.Range(func(upId string, state *protocol.UpstreamState) bool {
 		if filterFunc(upId, state) {
-			entries = append(entries, utils.NewPair(upId, state))
+			entries = append(entries, lo.T2(upId, state))
 		}
 		return true
 	})
 	slices.SortFunc(entries, sortFunc)
 
-	return lo.Map(entries, func(item utils.Pair[string, *protocol.UpstreamState], index int) string {
-		return item.F
+	return lo.Map(entries, func(item lo.Tuple2[string, *protocol.UpstreamState], index int) string {
+		return item.A
 	})
 }
 

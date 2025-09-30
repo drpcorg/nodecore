@@ -4,6 +4,8 @@ This `upstream-config` section defines how nodecore discovers, evaluates, and in
 
 ```yaml
 upstream-config:
+  integrity:
+    enabled: true
   failsafe-config:
     retry:
       attempts: 10
@@ -59,8 +61,28 @@ It brings together:
 2. Chain defaults (`chain-defaults`) - Per-chain operational defaults, such as poll-interval used for chain-specific activities (e.g., head/finality polling).
 3. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
 4. Upstreams (`upstreams`) - The actual provider entries.
+5. Integrity (`integrity`) ensures that methods like eth_blockNumber and eth_getBlockByNumber never return stale data. When enabled, NodeCore guarantees non-decreasing block numbers by validating responses against the current head and retrying with the highest-synced upstream if needed.
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, and (3) define how nodecore scores and selects the best upstream at runtime.
+
+## integrity
+
+```yaml
+integrity:
+  enabled: true
+```
+
+By default, NodeCore polls upstreams periodically and does not maintain real-time tracking of chain heads. This can lead to situations where certain methods, such as `eth_blockNumber` or `eth_getBlockByNumber`, return stale values. The integrity feature ensures that these methods always return values that are consistent with or ahead of the currently known head.
+
+When `integrity.enabled`: `true`, NodeCore enforces the following guarantees:
+
+1. Non-decreasing results. Returned block numbers are always greater than or equal to the previously observed head or finalized block. NodeCore will never return an older block.
+
+2. Validation and fallback. When a response from an upstream is less than the current head or finalized block, NodeCore automatically retries the request against the upstream with the highest known head (upstreams are pre-sorted by block height).
+
+3. Manual head updates. When a response is greater than the currently tracked head or finalized block, NodeCore updates its internal head/finalized state immediately to reflect the newer value.
+
+This mechanism provides stronger consistency guarantees without requiring full real-time head tracking across all upstreams.
 
 ## failsafe-config
 

@@ -46,7 +46,7 @@ type EthLikeBlockProcessor struct {
 	subManager       *utils.SubscriptionManager[BlockEvent]
 	ctx              context.Context
 	disableDetection mapset.Set[protocol.BlockType]
-	manualBlockChan  chan BlockEvent
+	manualBlockChan  chan *BlockEvent
 	blocks           map[protocol.BlockType]*protocol.BlockData
 }
 
@@ -62,14 +62,14 @@ func NewEthLikeBlockProcessor(
 		connector:        connector,
 		chainSpecific:    chainSpecific,
 		disableDetection: mapset.NewSet[protocol.BlockType](),
-		manualBlockChan:  make(chan BlockEvent, 100),
+		manualBlockChan:  make(chan *BlockEvent, 100),
 		subManager:       utils.NewSubscriptionManager[BlockEvent](fmt.Sprintf("%s_block_processor", upConfig.Id)),
 		blocks:           make(map[protocol.BlockType]*protocol.BlockData),
 	}
 }
 
 func (b *EthLikeBlockProcessor) UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType) {
-	b.manualBlockChan <- BlockEvent{BlockData: blockData, BlockType: blockType}
+	b.manualBlockChan <- &BlockEvent{BlockData: blockData, BlockType: blockType}
 }
 
 func (b *EthLikeBlockProcessor) Subscribe(name string) *utils.Subscription[BlockEvent] {
@@ -89,7 +89,7 @@ func (b *EthLikeBlockProcessor) Start() {
 		case event := <-b.manualBlockChan:
 			currentBlock, ok := b.blocks[event.BlockType]
 			if !ok || event.BlockData.Height > currentBlock.Height {
-				b.subManager.Publish(event)
+				b.subManager.Publish(*event)
 			}
 		case <-time.After(b.upConfig.PollInterval):
 			b.poll(protocol.FinalizedBlock)

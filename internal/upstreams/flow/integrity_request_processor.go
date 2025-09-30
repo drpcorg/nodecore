@@ -8,7 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
-	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/samber/lo"
 )
 
 type IntegrityRequestProcessor struct {
@@ -17,16 +17,16 @@ type IntegrityRequestProcessor struct {
 	chain              chains.Chain
 }
 
-var sortHeadHeightFunc = func(entry1 utils.Pair[string, *protocol.UpstreamState], entry2 utils.Pair[string, *protocol.UpstreamState]) int {
-	return cmp.Compare(entry2.S.HeadData.Height, entry1.S.HeadData.Height)
+var sortHeadHeightFunc = func(entry1 lo.Tuple2[string, *protocol.UpstreamState], entry2 lo.Tuple2[string, *protocol.UpstreamState]) int {
+	return cmp.Compare(entry2.B.HeadData.Height, entry1.B.HeadData.Height)
 }
 
 var filterHeadFunc = func(currentHead uint64, state *protocol.UpstreamState) bool {
 	return state.HeadData != nil && state.HeadData.Height > currentHead
 }
 
-var sortFinalizationHeightFunc = func(entry1 utils.Pair[string, *protocol.UpstreamState], entry2 utils.Pair[string, *protocol.UpstreamState]) int {
-	return cmp.Compare(entry2.S.BlockInfo.GetBlock(protocol.FinalizedBlock).Height, entry1.S.BlockInfo.GetBlock(protocol.FinalizedBlock).Height)
+var sortFinalizationHeightFunc = func(entry1 lo.Tuple2[string, *protocol.UpstreamState], entry2 lo.Tuple2[string, *protocol.UpstreamState]) int {
+	return cmp.Compare(entry2.B.BlockInfo.GetBlock(protocol.FinalizedBlock).Height, entry1.B.BlockInfo.GetBlock(protocol.FinalizedBlock).Height)
 }
 
 var filterFinalizationFunc = func(currentFinalization uint64, state *protocol.UpstreamState) bool {
