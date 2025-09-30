@@ -256,6 +256,10 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 			if !w.connClosed.Load() {
 				w.unsubscribe(r)
 			}
+			if r.subId.Load() != "" {
+				w.subs.Delete(r.subId.Load())
+				jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType.Load()).Dec()
+			}
 			return
 		case message, ok := <-r.internalMessages:
 			if ok {
@@ -280,7 +284,7 @@ func (w *JsonRpcWsConnection) processMessages() {
 		case protocol.Ws:
 			w.onSubscriptionMessage(wsResponse)
 		default:
-			log.Warn().Msgf("unknown ws response format - %s, all ws operations should be stopped", string(wsResponse.Message))
+			log.Warn().Msgf("unknown ws response format - %s, all ws operations of upstream %s should be stopped", string(wsResponse.Message), w.upId)
 			w.reconnect()
 			return
 		}
@@ -374,8 +378,6 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 				}
 			}
 		}
-		w.subs.Delete(subId)
-		jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, op.subType.Load()).Dec()
 	}
 }
 
