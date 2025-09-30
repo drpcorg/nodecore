@@ -286,7 +286,7 @@ func (w *JsonRpcWsConnection) processMessages() {
 		default:
 			log.Warn().Msgf("unknown ws response format - %s, all ws operations should be stopped", string(wsResponse.Message))
 			w.reconnect()
-			break
+			return
 		}
 	}
 }
