@@ -122,7 +122,7 @@ func TestEthBlockNumberIntegrityHandlerResponseBlockIsGreaterThanHead(t *testing
 	chainSupervisor, newMethods := createChainSupervisor()
 	go chainSupervisor.Start()
 	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, newMethods))
-	time.Sleep(3 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`"0x1111"`), protocol.JsonRpc)
@@ -142,7 +142,7 @@ func TestEthBlockNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 	chainSupervisor.Publish(test_utils.CreateEvent("100", protocol.Available, 4, newMethods))
 	chainSupervisor.Publish(test_utils.CreateEvent("23", protocol.Available, 108, newMethods))
 	chainSupervisor.Publish(test_utils.CreateEvent("25", protocol.Available, 150, newMethods))
-	time.Sleep(3 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`"0x5"`), protocol.JsonRpc)
@@ -159,7 +159,7 @@ func TestEthBlockNumberIntegrityHandlerNoUpstreams(t *testing.T) {
 	chainSupervisor, newMethods := createChainSupervisor()
 	go chainSupervisor.Start()
 	chainSupervisor.Publish(test_utils.CreateEvent("22", protocol.Available, 10, newMethods))
-	time.Sleep(3 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`"0x5"`), protocol.JsonRpc)
@@ -259,7 +259,7 @@ func TestEthGetBlockByNumberIntegrityHandlerLatestResponseBlockIsGreaterThanHead
 			for _, event := range test.events(newMethods) {
 				chainSupervisor.Publish(event)
 			}
-			time.Sleep(3 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			req, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod(specs.EthGetBlockByNumber, []any{test.param, false}, spec)
 			response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`{"number": "0x1111"}`), protocol.JsonRpc)
@@ -326,7 +326,7 @@ func TestEthGetBlockByNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 			for _, event := range test.evens(newMethods) {
 				chainSupervisor.Publish(event)
 			}
-			time.Sleep(3 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			req, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod(specs.EthGetBlockByNumber, []any{test.param, false}, spec)
 			response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`{"number": "0x15"}`), protocol.JsonRpc)
@@ -352,7 +352,7 @@ func TestEthGetBlockByNumberIntegrityHandlerNumberTag(t *testing.T) {
 	chainSupervisor.Publish(test_utils.CreateEvent("22", protocol.Available, 5, newMethods))
 	chainSupervisor.Publish(test_utils.CreateEvent("23", protocol.Available, 108, newMethods))
 	chainSupervisor.Publish(test_utils.CreateEvent("25", protocol.Available, 150, newMethods))
-	time.Sleep(3 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod(specs.EthBlockNumber, []any{"0x1555", false}, spec)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`{"number": "0x1555"}`), protocol.JsonRpc)

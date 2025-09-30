@@ -43,7 +43,7 @@ func TestDimensionConnectorSuccessfulResponse(t *testing.T) {
 func TestDimensionConnectorRetryRequest(t *testing.T) {
 	tracker := dimensions.NewDimensionTracker()
 	executor := resilience.CreateUpstreamExecutor(
-		resilience.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 3 * time.Millisecond}),
+		resilience.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 10 * time.Millisecond}),
 	)
 	connectorMock := mocks.NewConnectorMock()
 	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)

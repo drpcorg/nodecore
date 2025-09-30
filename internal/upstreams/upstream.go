@@ -219,34 +219,31 @@ func (u *Upstream) publishUpstreamStateEvent(event protocol.AbstractUpstreamStat
 }
 
 func (u *Upstream) processHeads() {
-	sub := u.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", u.Id))
-	defer sub.Unsubscribe()
-
-	for {
-		select {
-		case <-u.ctx.Done():
-			return
-		case e, ok := <-sub.Events:
-			if ok {
-				u.publishUpstreamStateEvent(&protocol.HeadUpstreamStateEvent{HeadData: e.HeadData})
-				headsMetric.WithLabelValues(u.Chain.String(), u.Id).Set(float64(e.HeadData.Height))
-			}
-		}
+	var blockChan chan blocks.BlockEvent
+	if u.blockProcessor != nil {
+		sub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.Id))
+		defer sub.Unsubscribe()
+		blockChan = sub.Events
+	} else {
+		blockChan = make(chan blocks.BlockEvent)
 	}
-}
 
-func (u *Upstream) processBlocks() {
-	sub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.Id))
-	defer sub.Unsubscribe()
+	headSub := u.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", u.Id))
+	defer headSub.Unsubscribe()
 
 	for {
 		select {
 		case <-u.ctx.Done():
 			return
-		case e, ok := <-sub.Events:
+		case head, ok := <-headSub.Events:
 			if ok {
-				u.publishUpstreamStateEvent(&protocol.BlockUpstreamStateEvent{BlockData: e.BlockData, BlockType: e.BlockType})
-				blocksMetric.WithLabelValues(u.Id, e.BlockType.String(), u.Chain.String()).Set(float64(e.BlockData.Height))
+				u.publishUpstreamStateEvent(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
+				headsMetric.WithLabelValues(u.Chain.String(), u.Id).Set(float64(head.HeadData.Height))
+			}
+		case block, ok := <-blockChan:
+			if ok {
+				u.publishUpstreamStateEvent(&protocol.BlockUpstreamStateEvent{BlockData: block.BlockData, BlockType: block.BlockType})
+				blocksMetric.WithLabelValues(u.Id, block.BlockType.String(), u.Chain.String()).Set(float64(block.BlockData.Height))
 			}
 		}
 	}
@@ -255,9 +252,6 @@ func (u *Upstream) processBlocks() {
 func (u *Upstream) handleSubscriptions() {
 	go u.processStateEvents()
 	go u.processHeads()
-	if u.blockProcessor != nil {
-		go u.processBlocks()
-	}
 }
 
 func createConnector(ctx context.Context, upId string, configuredChain chains.ConfiguredChain, connectorConfig *config.ApiConnectorConfig) connectors.ApiConnector {

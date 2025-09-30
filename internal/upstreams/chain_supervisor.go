@@ -243,6 +243,7 @@ func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.Upst
 			upBlocks := upState.BlockInfo.GetBlocks()
 
 			for blockType, blockData := range upBlocks {
+				fmt.Println(blockType, blockData.Height)
 				currentBlockData, ok := blocks[blockType]
 				if !ok {
 					blocks[blockType] = blockData
