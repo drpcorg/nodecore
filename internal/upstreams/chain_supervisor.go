@@ -168,7 +168,6 @@ func (c *ChainSupervisor) processEvents() {
 
 				if event.State.HeadData != nil {
 					updated, headHeight := c.fc.Choose(event)
-					fmt.Println(event.State.HeadData.Height, "height")
 					if updated {
 						state.HeadData = NewChainHeadData(headHeight, event.Id)
 					}
@@ -252,9 +251,6 @@ func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.Upst
 				}
 			}
 		}
-	}
-	if block, ok := blocks[protocol.FinalizedBlock]; ok {
-		fmt.Println(block.Height)
 	}
 
 	return blocks
