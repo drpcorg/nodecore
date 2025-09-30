@@ -32,7 +32,7 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 	go chainSupervisor.Start()
 
 	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -62,7 +62,7 @@ func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 	go chainSupervisor.Start()
 
 	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -153,7 +153,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 	go chainSupervisor.Start()
 
 	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methodsMock, blockInfo1))
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -348,7 +348,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	go chainSupervisor.Start()
 
 	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methodsMock, blockInfo1))
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
