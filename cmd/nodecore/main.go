@@ -68,6 +68,7 @@ func main() {
 		cacheProcessor,
 		ratingRegistry,
 		authProcessor,
+		appConfig,
 	)
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)

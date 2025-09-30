@@ -66,6 +66,8 @@ auth:
               - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
 
 upstream-config:
+  integrity:
+    enabled: true
   failsafe-config:
     retry:
       attempts: 10

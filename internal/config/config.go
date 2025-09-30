@@ -128,6 +128,11 @@ type UpstreamConfig struct {
 	ChainDefaults     map[string]*ChainDefaults `yaml:"chain-defaults"`
 	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config"`
 	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
+	IntegrityConfig   *IntegrityConfig          `yaml:"integrity"`
+}
+
+type IntegrityConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 type ScorePolicyConfig struct {

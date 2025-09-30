@@ -9,13 +9,11 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -214,7 +212,7 @@ func TestUnaryRequestProcessorCantGetUpstreamThenError(t *testing.T) {
 	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
-	upSupervisor.On("GetExecutor").Return(createExecutor())
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("", err)
 
 	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
@@ -248,7 +246,7 @@ func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
-	upSupervisor.On("GetExecutor").Return(createExecutor())
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 
@@ -285,7 +283,7 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	cacheProcessor.On("Store", ctx, chain, request, result).Return()
-	upSupervisor.On("GetExecutor").Return(createExecutor())
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("SendRequest", ctx, request).Return(responseHolder)
@@ -309,13 +307,22 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 	assert.Equal(t, result, unaryRespWrapper.Response.ResponseResult())
 }
 
-func createExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
-	return resilience.CreateFlowExecutor()
-}
-
 func upConfig() *config.Upstream {
 	return &config.Upstream{
 		Id:           "id",
 		PollInterval: 10 * time.Millisecond,
 	}
+}
+
+type RequestProcessorMock struct {
+	mock.Mock
+}
+
+func (r *RequestProcessorMock) ProcessRequest(ctx context.Context, upstreamStrategy flow.UpstreamStrategy, request protocol.RequestHolder) flow.ProcessedResponse {
+	args := r.Called(ctx, upstreamStrategy, request)
+	return args.Get(0).(flow.ProcessedResponse)
+}
+
+func NewRequestProcessorMock() *RequestProcessorMock {
+	return &RequestProcessorMock{}
 }

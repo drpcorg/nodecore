@@ -25,19 +25,19 @@ func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 
 	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
 	time.Sleep(3 * time.Millisecond)
-	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().Head)
+	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().HeadData.Head)
 
 	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Available, 95, methodsMock))
 	time.Sleep(3 * time.Millisecond)
-	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().Head)
+	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().HeadData.Head)
 
 	chainSupervisor.Publish(test_utils.CreateEvent("id3", protocol.Unavailable, 500, methodsMock))
 	time.Sleep(3 * time.Millisecond)
-	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().Head)
+	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().HeadData.Head)
 
 	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 1000, methodsMock))
 	time.Sleep(3 * time.Millisecond)
-	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().Head)
+	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().HeadData.Head)
 }
 
 func TestChainSupervisorTrackLags(t *testing.T) {

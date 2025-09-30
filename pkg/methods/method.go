@@ -16,13 +16,14 @@ import (
 const newValue = "$newValue"
 
 type Method struct {
-	enabled      bool
-	cacheable    bool
-	parser       *jqParser
-	modifyParser *modifyJqParser
-	Subscription *Subscription
-	Sticky       *Sticky
-	Name         string
+	enabled          bool
+	cacheable        bool
+	enforceIntegrity bool
+	parser           *jqParser
+	modifyParser     *modifyJqParser
+	Subscription     *Subscription
+	Sticky           *Sticky
+	Name             string
 }
 
 type jqParser struct {
@@ -61,6 +62,10 @@ func (m *Method) IsCacheable() bool {
 	return m.cacheable
 }
 
+func (m *Method) ShouldEnforceIntegrity() bool {
+	return m.enforceIntegrity
+}
+
 func (m *Method) Enabled() bool {
 	return m.enabled
 }
@@ -82,6 +87,7 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	var sticky *Sticky
 	var modifyParser *modifyJqParser
 	cacheable := true
+	enforceIntegrity := false
 	if methodData.Settings != nil {
 		if methodData.Settings.Cacheable != nil {
 			cacheable = *methodData.Settings.Cacheable
@@ -89,6 +95,7 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 		if methodData.Settings.Subscription != nil {
 			sub = methodData.Settings.Subscription
 		}
+		enforceIntegrity = methodData.Settings.EnforceIntegrity
 		if methodData.Settings.Sticky != nil {
 			sticky = methodData.Settings.Sticky
 			if methodData.Settings.Sticky.SendSticky && methodData.TagParser != nil {
@@ -109,13 +116,14 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	}
 
 	return &Method{
-		enabled:      lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
-		cacheable:    cacheable,
-		Name:         methodData.Name,
-		parser:       parser,
-		modifyParser: modifyParser,
-		Sticky:       sticky,
-		Subscription: sub,
+		enabled:          lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
+		cacheable:        cacheable,
+		enforceIntegrity: enforceIntegrity,
+		Name:             methodData.Name,
+		parser:           parser,
+		modifyParser:     modifyParser,
+		Sticky:           sticky,
+		Subscription:     sub,
 	}, nil
 }
 

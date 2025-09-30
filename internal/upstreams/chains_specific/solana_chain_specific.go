@@ -57,7 +57,7 @@ func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Blo
 		return nil, fmt.Errorf("couldn't parse the solana block, reason - %s", err.Error())
 	}
 
-	return protocol.NewBlock(solanaBlock.Height, 0, solanaBlock.Hash, blockBytes), nil
+	return protocol.NewBlock(solanaBlock.Height, 0, solanaBlock.Hash), nil
 }
 
 func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
@@ -71,7 +71,6 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 		solanaSubBlock.Value.Block.Height,
 		solanaSubBlock.Context.Slot,
 		solanaSubBlock.Value.Block.Hash,
-		blockBytes,
 	), nil
 }
 

@@ -18,6 +18,36 @@ type UpstreamStrategy interface {
 	SelectUpstream(request protocol.RequestHolder) (string, error)
 }
 
+type SpecificOrderUpstreamStrategy struct {
+	upstreamIds       []string
+	chainSupervisor   *upstreams.ChainSupervisor
+	selectedUpstreams mapset.Set[string]
+	mu                sync.Mutex
+}
+
+func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
+	if len(s.upstreamIds) == 0 {
+		return "", protocol.NoAvailableUpstreamsError()
+	}
+
+	selectedUpstream, currentReason := filterUpstreams(&s.mu, request, s.upstreamIds, s.chainSupervisor, s.selectedUpstreams, nil)
+	if selectedUpstream != "" {
+		return selectedUpstream, nil
+	}
+
+	return "", selectionError(currentReason)
+}
+
+func NewSpecificOrderUpstreamStrategy(upstreamIds []string, chainSupervisor *upstreams.ChainSupervisor) *SpecificOrderUpstreamStrategy {
+	return &SpecificOrderUpstreamStrategy{
+		upstreamIds:       upstreamIds,
+		chainSupervisor:   chainSupervisor,
+		selectedUpstreams: mapset.NewThreadUnsafeSet[string](),
+	}
+}
+
+var _ UpstreamStrategy = (*SpecificOrderUpstreamStrategy)(nil)
+
 type RatingStrategy struct {
 	chainSupervisor    *upstreams.ChainSupervisor
 	selectedUpstreams  mapset.Set[string]

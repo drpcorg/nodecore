@@ -54,6 +54,7 @@ type ApplicationContext struct {
 	cacheProcessor     caches.CacheProcessor
 	registry           *rating.RatingRegistry
 	authProcessor      auth.AuthProcessor
+	appConfig          *config.AppConfig
 }
 
 func NewApplicationContext(
@@ -61,12 +62,14 @@ func NewApplicationContext(
 	cacheProcessor caches.CacheProcessor,
 	registry *rating.RatingRegistry,
 	authProcessor auth.AuthProcessor,
+	appConfig *config.AppConfig,
 ) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
 		cacheProcessor:     cacheProcessor,
 		registry:           registry,
 		authProcessor:      authProcessor,
+		appConfig:          appConfig,
 	}
 }
 
@@ -239,7 +242,14 @@ func handleRequest(
 		}
 	}
 
-	executionFlow := flow.NewBaseExecutionFlow(chain, appCtx.upstreamSupervisor, appCtx.cacheProcessor, appCtx.registry, subCtx)
+	executionFlow := flow.NewBaseExecutionFlow(
+		chain,
+		appCtx.upstreamSupervisor,
+		appCtx.cacheProcessor,
+		appCtx.registry,
+		appCtx.appConfig,
+		subCtx,
+	)
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 

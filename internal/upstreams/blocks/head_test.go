@@ -49,6 +49,27 @@ func TestRpcHead(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+
+	headProcessor.UpdateHead(79195275, 0)
+
+	event, ok = <-sub.Events
+	expected = &protocol.BlockData{
+		Height: uint64(79195275),
+	}
+
+	assert.True(t, ok)
+	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+
+	headProcessor.UpdateHead(5555, 0)
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		sub.Unsubscribe()
+	}()
+
+	_, ok = <-sub.Events
+
+	assert.False(t, ok)
 }
 
 func TestWsHead(t *testing.T) {
@@ -92,4 +113,25 @@ func TestWsHead(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+
+	headProcessor.UpdateHead(79195275, 0)
+
+	event, ok = <-sub.Events
+	expected = &protocol.BlockData{
+		Height: uint64(79195275),
+	}
+
+	assert.True(t, ok)
+	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+
+	headProcessor.UpdateHead(5555, 0)
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		sub.Unsubscribe()
+	}()
+
+	_, ok = <-sub.Events
+
+	assert.False(t, ok)
 }

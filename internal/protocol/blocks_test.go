@@ -8,10 +8,9 @@ import (
 )
 
 func TestBlockCreation(t *testing.T) {
-	block := protocol.NewBlock(uint64(15), uint64(55), "hash", []byte("raw"))
+	block := protocol.NewBlock(uint64(15), uint64(55), "hash")
 	expectedBlock := protocol.Block{
 		BlockData: &protocol.BlockData{Height: uint64(15), Slot: uint64(55), Hash: "hash"},
-		RawBlock:  []byte("raw"),
 	}
 
 	assert.Equal(t, &expectedBlock, block)
