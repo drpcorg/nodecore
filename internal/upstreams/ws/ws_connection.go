@@ -284,7 +284,7 @@ func (w *JsonRpcWsConnection) processMessages() {
 		case protocol.Ws:
 			w.onSubscriptionMessage(wsResponse)
 		default:
-			log.Warn().Msgf("unknown ws response format - %s, all ws operations should be stopped", string(wsResponse.Message))
+			log.Warn().Msgf("unknown ws response format - %s, all ws operations of upstream %s should be stopped", string(wsResponse.Message), w.upId)
 			w.reconnect()
 			return
 		}
