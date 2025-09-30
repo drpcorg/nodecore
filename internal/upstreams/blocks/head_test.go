@@ -63,7 +63,7 @@ func TestRpcHead(t *testing.T) {
 
 	headProcessor.UpdateHead(5555, 0)
 	go func() {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 		sub.Unsubscribe()
 	}()
 
@@ -127,7 +127,7 @@ func TestWsHead(t *testing.T) {
 
 	headProcessor.UpdateHead(5555, 0)
 	go func() {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 		sub.Unsubscribe()
 	}()
 
