@@ -221,9 +221,9 @@ func (u *Upstream) publishUpstreamStateEvent(event protocol.AbstractUpstreamStat
 func (u *Upstream) processHeads() {
 	var blockChan chan blocks.BlockEvent
 	if u.blockProcessor != nil {
-		sub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.Id))
-		defer sub.Unsubscribe()
-		blockChan = sub.Events
+		blockSub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.Id))
+		defer blockSub.Unsubscribe()
+		blockChan = blockSub.Events
 	} else {
 		blockChan = make(chan blocks.BlockEvent)
 	}
