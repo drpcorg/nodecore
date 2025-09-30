@@ -256,6 +256,10 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 			if !w.connClosed.Load() {
 				w.unsubscribe(r)
 			}
+			if r.subId.Load() != "" {
+				w.subs.Delete(r.subId.Load())
+				jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType.Load()).Dec()
+			}
 			return
 		case message, ok := <-r.internalMessages:
 			if ok {
@@ -374,8 +378,6 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 				}
 			}
 		}
-		w.subs.Delete(subId)
-		jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, op.subType.Load()).Dec()
 	}
 }
 
