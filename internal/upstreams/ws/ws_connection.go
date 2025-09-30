@@ -22,15 +22,21 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var jsonWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+var jsonRpcWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: config.AppName,
 	Subsystem: "request",
 	Name:      "json_ws_connections",
 	Help:      "The current number of active JSON-RPC subscriptions",
 }, []string{"chain", "upstream", "subscription"})
 
+var jsonRpcWsOperations = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: config.AppName,
+	Subsystem: "request",
+	Name:      "json_ws_operations",
+}, []string{"chain", "upstream"})
+
 func init() {
-	prometheus.MustRegister(jsonWsConnectionsMetric)
+	prometheus.MustRegister(jsonRpcWsConnectionsMetric)
 }
 
 const (
@@ -241,6 +247,8 @@ func (r *reqOp) writeInternal(message *protocol.WsResponse) {
 }
 
 func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
+	jsonRpcWsOperations.WithLabelValues(w.chain.String(), w.upId).Inc()
+	defer jsonRpcWsOperations.WithLabelValues(w.chain.String(), w.upId).Dec()
 	for {
 		select {
 		case <-r.ctx.Done():
@@ -249,7 +257,8 @@ func (w *JsonRpcWsConnection) startProcess(r *reqOp) {
 				w.unsubscribe(r)
 			}
 			if r.subId.Load() != "" {
-				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType.Load()).Dec()
+				w.subs.Delete(r.subId.Load())
+				jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, r.subType.Load()).Dec()
 			}
 			return
 		case message, ok := <-r.internalMessages:
@@ -275,7 +284,9 @@ func (w *JsonRpcWsConnection) processMessages() {
 		case protocol.Ws:
 			w.onSubscriptionMessage(wsResponse)
 		default:
-			log.Warn().Msgf("unknown ws response format - %s", string(wsResponse.Message))
+			log.Warn().Msgf("unknown ws response format - %s, all ws operations should be stopped", string(wsResponse.Message))
+			w.reconnect()
+			break
 		}
 	}
 }
@@ -293,7 +304,7 @@ func (w *JsonRpcWsConnection) onRpcMessage(response *protocol.WsResponse) {
 			req.subId.Store(protocol.ResultAsString(response.Message))
 			w.subs.Store(req.subId.Load(), req)
 			if req.subId.Load() != "" {
-				jsonWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType.Load()).Inc()
+				jsonRpcWsConnectionsMetric.WithLabelValues(w.chain.String(), w.upId, req.subType.Load()).Inc()
 			}
 		}
 	}
@@ -333,6 +344,7 @@ func (w *JsonRpcWsConnection) completeAll() {
 	}
 	w.requests.Range(func(key string, val *reqOp) bool {
 		w.requests.Delete(key)
+		val.cancel.Load()()
 		return true
 	})
 	w.subs.Range(func(key string, val *reqOp) bool {
@@ -343,22 +355,23 @@ func (w *JsonRpcWsConnection) completeAll() {
 }
 
 func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
-	if op.subId.Load() != "" {
+	subId := op.subId.Load()
+	if subId != "" {
 		if unsubMethod, ok := specs.GetUnsubscribeMethod(w.methodSpec, op.method.Load()); ok {
-			params := []interface{}{op.subId}
+			params := []interface{}{subId}
 			unsubReq, err := protocol.NewInternalUpstreamJsonRpcRequest(unsubMethod, params)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, op.subId)
+				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, subId)
 			} else {
 				body, err := unsubReq.Body()
 				if err != nil {
-					log.Warn().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, op.subId)
+					log.Warn().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, subId)
 				} else {
 					err = w.writeMessage(body)
 					if err != nil {
-						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, op.subId.Load())
+						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, subId)
 					} else {
-						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", op.subId.Load(), w.upId)
+						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", subId, w.upId)
 					}
 				}
 			}
