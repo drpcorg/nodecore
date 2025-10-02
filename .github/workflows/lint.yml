@@ -2,13 +2,20 @@ name: Lint
 
 on:
   workflow_dispatch: null
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        type: string
+        default: "1.24.1"
   pull_request: null
   push:
     branches:
       - main
 
 env:
-  GO_VERSION: "1.24.1"
+  GO_VERSION: ${{ inputs.go-version || '1.24.1' }}
 
 jobs:
   lint:

@@ -11,50 +11,23 @@ env:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - name: Setup Go project
-        uses: ./.github/actions/setup-go-project
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-key-suffix: "release-test"
-
-      - name: Run tests
-        run: make test
+    uses: ./.github/workflows/test.yml
+    with:
+      go-version: "1.24.1"
 
   lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
+    uses: ./.github/workflows/lint.yml
+    with:
+      go-version: "1.24.1"
 
-      - name: Setup Go project
-        uses: ./.github/actions/setup-go-project
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-key-suffix: "release-lint"
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.1
-          args: --timeout=10m
-          skip-cache: false
-          skip-pkg-cache: false
-          skip-build-cache: false
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      go-version: "1.24.1"
 
   build-and-push:
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, lint, build]
     permissions:
       contents: read
       packages: write
