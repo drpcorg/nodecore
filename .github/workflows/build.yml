@@ -33,9 +33,13 @@ jobs:
       - name: Build
         run: make build
 
+      - name: Get short SHA
+        id: short_sha
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nodecore-${{ matrix.os }}-${{ matrix.go-version }}-${{ github.sha:0:7 }}
+          name: nodecore-${{ matrix.os }}-${{ matrix.go-version }}-${{ steps.short_sha.outputs.sha }}
           path: nodecore
           retention-days: 7
