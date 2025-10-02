@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Build artifacts
+nodecore
+*.exe
+
+# Development files
+.vscode/
+.idea/
+
+# Test files
+*_test.go
+testdata/
+
+# CI/CD
+.github/
+Makefile
+
+# Temporary files
+*.tmp
+*.log
+.DS_Store
+
+# Go build cache
+.cache/
