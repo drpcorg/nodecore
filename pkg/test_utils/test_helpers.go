@@ -113,9 +113,22 @@ func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervis
 	return methodsMock, upSupervisor
 }
 
-func TestUpstream(ctx context.Context, connector connectors.ApiConnector, upConfig *config.Upstream) *upstreams.Upstream {
+func TestEvmUpstream(
+	ctx context.Context,
+	connector connectors.ApiConnector,
+	upConfig *config.Upstream,
+	blockProcessor blocks.BlockProcessor,
+	upstreamMethods methods.Methods,
+) *upstreams.Upstream {
+	index := "00012"
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.UpstreamState{Status: protocol.Available})
+	upState.Store(
+		protocol.DefaultUpstreamState(
+			upstreamMethods,
+			mapset.NewThreadUnsafeSet[protocol.Cap](),
+			"00012",
+		),
+	)
 
 	return upstreams.NewUpstreamWithParams(
 		context.Background(),
@@ -123,8 +136,10 @@ func TestUpstream(ctx context.Context, connector connectors.ApiConnector, upConf
 		chains.ETHEREUM,
 		[]connectors.ApiConnector{connector},
 		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
+		blockProcessor,
 		upState,
-		"00012",
+		index,
+		upConfig.Methods,
 	)
 }
 

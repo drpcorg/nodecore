@@ -3,6 +3,8 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
@@ -17,6 +19,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
@@ -57,6 +60,7 @@ type Upstream struct {
 	stateChan        chan protocol.AbstractUpstreamStateEvent
 	chainSpecific    specific.ChainSpecific
 	upstreamIndexHex string
+	methodsConfig    *config.MethodsConfig
 }
 
 func (u *Upstream) Start() {
@@ -121,6 +125,7 @@ func NewUpstream(
 		stateChan:        make(chan protocol.AbstractUpstreamStateEvent, 100),
 		chainSpecific:    chainSpecific,
 		upstreamIndexHex: upstreamIndexHex,
+		methodsConfig:    config.Methods,
 	}, nil
 }
 
@@ -130,8 +135,10 @@ func NewUpstreamWithParams(
 	chain chains.Chain,
 	apiConnectors []connectors.ApiConnector,
 	headProcessor *blocks.HeadProcessor,
+	blockProcessor blocks.BlockProcessor,
 	state *utils.Atomic[protocol.UpstreamState],
 	upstreamIndexHex string,
+	methodsConfig *config.MethodsConfig,
 ) *Upstream {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -143,9 +150,11 @@ func NewUpstreamWithParams(
 		upstreamState:    state,
 		apiConnectors:    apiConnectors,
 		headProcessor:    headProcessor,
+		blockProcessor:   blockProcessor,
 		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
 		stateChan:        make(chan protocol.AbstractUpstreamStateEvent, 100),
 		upstreamIndexHex: upstreamIndexHex,
+		methodsConfig:    methodsConfig,
 	}
 }
 
@@ -165,6 +174,10 @@ func (u *Upstream) UpdateBlock(block *protocol.BlockData, blockType protocol.Blo
 	u.blockProcessor.UpdateBlock(block, blockType)
 }
 
+func (u *Upstream) BanMethod(method string) {
+	u.publishUpstreamStateEvent(&protocol.BanMethodUpstreamStateEvent{Method: method})
+}
+
 func (u *Upstream) GetConnector(connectorType protocol.ApiConnectorType) connectors.ApiConnector {
 	connector, _ := lo.Find(u.apiConnectors, func(item connectors.ApiConnector) bool {
 		return item.GetType() == connectorType
@@ -178,6 +191,7 @@ func (u *Upstream) GetHashIndex() string {
 
 // update upstream state through one pipeline
 func (u *Upstream) processStateEvents() {
+	bannedMethods := mapset.NewThreadUnsafeSet[string]()
 	for {
 		select {
 		case <-u.ctx.Done():
@@ -193,6 +207,23 @@ func (u *Upstream) processStateEvents() {
 				state.HeadData = stateEvent.HeadData
 			case *protocol.BlockUpstreamStateEvent:
 				state.BlockInfo.AddBlock(stateEvent.BlockData, stateEvent.BlockType)
+			case *protocol.BanMethodUpstreamStateEvent:
+				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.methodsConfig.EnableMethods, stateEvent.Method) {
+					continue
+				}
+				time.AfterFunc(u.methodsConfig.BanDuration, func() {
+					u.publishUpstreamStateEvent(&protocol.UnbanMethodUpstreamStateEvent{Method: stateEvent.Method})
+				})
+				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.Id)
+				bannedMethods.Add(stateEvent.Method)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+			case *protocol.UnbanMethodUpstreamStateEvent:
+				if !bannedMethods.ContainsOne(stateEvent.Method) {
+					continue
+				}
+				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.Id)
+				bannedMethods.Remove(stateEvent.Method)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
 			default:
 				panic(fmt.Sprintf("unknown event type %T", event))
 			}
@@ -203,6 +234,15 @@ func (u *Upstream) processStateEvents() {
 			u.subManager.Publish(upstreamEvent)
 		}
 	}
+}
+
+func (u *Upstream) newUpstreamMethods(bannedMethods mapset.Set[string]) methods.Methods {
+	newConfig := &config.MethodsConfig{
+		EnableMethods:  u.methodsConfig.EnableMethods,
+		DisableMethods: lo.Union(bannedMethods.ToSlice(), u.methodsConfig.DisableMethods),
+	}
+	newMethods, _ := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(u.Chain), newConfig)
+	return newMethods
 }
 
 func (u *Upstream) createEvent() protocol.UpstreamEvent {

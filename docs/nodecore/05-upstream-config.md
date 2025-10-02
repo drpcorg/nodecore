@@ -44,6 +44,7 @@ upstream-config:
       head-connector: websocket
       poll-interval: 5s
       methods:
+        ban-duration: 10m
         enable:
           - "my_method"
         disable:
@@ -236,6 +237,7 @@ upstreams:
     head-connector: websocket
     poll-interval: 5s
     methods:
+      ban-duration: 10m
       enable:
         - "my_method"
       disable:
@@ -289,7 +291,8 @@ This ensures that the most stable/compatible connector is used for head tracking
   * Example: `head-connector: websocket`
   * If not set, nodecore picks a default depending on connector types
 * `poll-interval` - Overrides the `chain-defaults.poll-interval` for this specific upstream. **_Default_**: `1m` (1 minute)
-* `methods` - Allows per-upstream method overrides:
+* `methods` - Allows per-upstream method overrides. A method cannot be listed in both `enable` and `disable`:
   * `enable` – list of methods to explicitly allow
   * `disable` – list of methods to disable for this upstream
+  * `ban-duration` - specifies how long a method should remain banned for a given upstream after encountering an error that indicates the method does not exist or is unavailable. During this period, NodeCore will not send requests for that method to the affected upstream. **_Default_**: `5m` (5 minutes)
 * `failsafe-config` - failsafe-config that is applied on the upstream level. Only the `retry` policy can be specified

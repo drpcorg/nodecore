@@ -41,9 +41,14 @@ func init() {
 	prometheus.MustRegister(requestTotalMetric, requestErrorsMetric)
 }
 
+type ResponseReceivedHook interface {
+	OnResponseReceived(ctx context.Context, request protocol.RequestHolder, respWrapper *protocol.ResponseHolderWrapper)
+}
+
 type ExecutionFlow interface {
 	Execute(ctx context.Context, requests []protocol.RequestHolder)
 	GetResponses() chan *protocol.ResponseHolderWrapper
+	AddHooks(hooks ...any)
 }
 
 type BaseExecutionFlow struct {
@@ -55,6 +60,10 @@ type BaseExecutionFlow struct {
 	subCtx             *SubCtx
 	registry           *rating.RatingRegistry
 	appConfig          *config.AppConfig
+
+	hooks struct {
+		receivedHooks []ResponseReceivedHook
+	}
 }
 
 func NewBaseExecutionFlow(
@@ -89,6 +98,14 @@ func (e *BaseExecutionFlow) Execute(ctx context.Context, requests []protocol.Req
 	}
 
 	e.wg.Wait()
+}
+
+func (e *BaseExecutionFlow) AddHooks(hooks ...any) {
+	for _, hook := range hooks {
+		if receiveHook, ok := hook.(ResponseReceivedHook); ok {
+			e.hooks.receivedHooks = append(e.hooks.receivedHooks, receiveHook)
+		}
+	}
 }
 
 func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol.RequestHolder) UpstreamStrategy {
@@ -143,6 +160,7 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			if protocol.IsRetryable(resp.ResponseWrapper.Response) {
 				requestErrorsMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 			}
+			e.responseReceive(ctx, request, resp.ResponseWrapper)
 			e.sendResponse(ctx, resp.ResponseWrapper, request)
 		case *SubscriptionResponse:
 			for wrapper := range resp.ResponseWrappers {
@@ -157,6 +175,12 @@ func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.
 	case <-ctx.Done():
 		zerolog.Ctx(ctx).Trace().Msgf("request %s has been cancelled, dropping the response", request.Method())
 	case e.responseChan <- wrapper:
+	}
+}
+
+func (e *BaseExecutionFlow) responseReceive(ctx context.Context, request protocol.RequestHolder, responseWrapper *protocol.ResponseHolderWrapper) {
+	for _, hook := range e.hooks.receivedHooks {
+		hook.OnResponseReceived(ctx, request, responseWrapper)
 	}
 }
 

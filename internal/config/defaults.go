@@ -152,6 +152,7 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 	if u.Methods == nil {
 		u.Methods = &MethodsConfig{}
 	}
+	u.Methods.setDefaults()
 	if u.FailsafeConfig == nil {
 		u.FailsafeConfig = &FailsafeConfig{}
 	}
@@ -180,6 +181,12 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 			pollInterval = defaults.PollInterval
 		}
 		u.PollInterval = pollInterval
+	}
+}
+
+func (m *MethodsConfig) setDefaults() {
+	if m.BanDuration == 0 {
+		m.BanDuration = 5 * time.Minute
 	}
 }
 

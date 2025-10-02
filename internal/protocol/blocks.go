@@ -18,6 +18,10 @@ func NewBlockDataWithHeight(height uint64) *BlockData {
 	return &BlockData{Height: height}
 }
 
+func NewBlockData(height, slot uint64, hash string) *BlockData {
+	return &BlockData{Height: height, Slot: slot, Hash: hash}
+}
+
 func NewBlock(height, slot uint64, hash string) *Block {
 	return &Block{
 		BlockData: &BlockData{

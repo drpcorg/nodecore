@@ -250,6 +250,10 @@ func handleRequest(
 		appCtx.appConfig,
 		subCtx,
 	)
+	executionFlow.AddHooks(
+		flow.NewMethodBanHook(appCtx.upstreamSupervisor),
+	)
+
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 
