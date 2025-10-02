@@ -13,6 +13,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
       - name: Setup Go project
         uses: ./.github/actions/setup-go-project
         with:
@@ -25,6 +31,12 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
       - name: Setup Go project
         uses: ./.github/actions/setup-go-project
         with:
