@@ -28,7 +28,7 @@ COPY --from=builder /app/nodecore .
 COPY nodecore-default.yml nodecore.yml
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodecore && \а
+RUN addgroup -g 1001 -S nodecore && \
     adduser -S nodecore -u 1001 -G nodecore
 
 USER nodecore
