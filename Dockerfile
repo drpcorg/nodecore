@@ -11,4 +11,5 @@ RUN GOOS=linux make build
 FROM debian:bullseye
 COPY --from=base /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=base /go/src/github.com/drpcorg/nodecore/nodecore /nodecore
+COPY ./nodecore-default.yml /nodecore.yml
 CMD [ "/nodecore" ]
