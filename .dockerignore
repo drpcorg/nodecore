@@ -22,7 +22,6 @@ testdata/
 
 # CI/CD
 .github/
-Makefile
 
 # Temporary files
 *.tmp

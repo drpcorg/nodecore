@@ -13,9 +13,10 @@ RUN go mod download
 COPY pkg/ ./pkg/
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+COPY Makefile ./
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o nodecore ./cmd/nodecore
+RUN make build
 
 # Final stage
 FROM alpine:3.18
@@ -27,7 +28,7 @@ COPY --from=builder /app/nodecore .
 COPY nodecore-default.yml nodecore.yml
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodecore && \
+RUN addgroup -g 1001 -S nodecore && \а
     adduser -S nodecore -u 1001 -G nodecore
 
 USER nodecore
