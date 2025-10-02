@@ -1,0 +1,108 @@
+name: "Setup Go Project"
+description: "Complete Go project setup with optimized caching and dependency management"
+inputs:
+  go-version:
+    description: "Go version to use"
+    required: false
+    default: "1.24.1"
+  cache-key-suffix:
+    description: "Additional suffix for cache key"
+    required: false
+    default: ""
+  skip-generate-networks:
+    description: "Skip network generation step"
+    required: false
+    default: "false"
+  skip-download-deps:
+    description: "Skip downloading dependencies (use for cache restore only)"
+    required: false
+    default: "false"
+  checkout-repo:
+    description: "Whether to checkout repository"
+    required: false
+    default: "true"
+  fetch-depth:
+    description: "Checkout fetch depth"
+    required: false
+    default: "1"
+outputs:
+  cache-hit:
+    description: "Whether cache was hit"
+    value: ${{ steps.cache.outputs.cache-hit }}
+  go-cache-key:
+    description: "Generated cache key"
+    value: ${{ steps.cache-keys.outputs.go-cache-key }}
+  go-version:
+    description: "Actual Go version used"
+    value: ${{ steps.setup-go.outputs.go-version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      if: inputs.checkout-repo == 'true'
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Set up Go
+      id: setup-go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: true
+        cache-dependency-path: |
+          go.sum
+          go.mod
+
+    - name: Generate cache keys
+      id: cache-keys
+      shell: bash
+      run: |
+        CACHE_KEY="${{ runner.os }}-go-${{ inputs.go-version }}-${{ hashFiles('**/go.sum') }}"
+        if [ -n "${{ inputs.cache-key-suffix }}" ]; then
+          CACHE_KEY="${CACHE_KEY}-${{ inputs.cache-key-suffix }}"
+        fi
+        echo "go-cache-key=${CACHE_KEY}" >> $GITHUB_OUTPUT
+        echo "Generated cache key: ${CACHE_KEY}"
+
+    - name: Cache Go modules and build cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ steps.cache-keys.outputs.go-cache-key }}
+        restore-keys: |
+          ${{ runner.os }}-go-${{ inputs.go-version }}-
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      if: inputs.skip-download-deps != 'true' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        echo "Cache miss, downloading dependencies..."
+        go mod download
+
+    - name: Verify dependencies
+      if: inputs.skip-download-deps != 'true'
+      shell: bash
+      run: |
+        echo "Verifying Go modules..."
+        go mod verify
+
+    - name: Generate networks
+      if: inputs.skip-generate-networks != 'true'
+      shell: bash
+      run: |
+        echo "Generating networks..."
+        make generate-networks
+
+    - name: Print Go environment info
+      shell: bash
+      run: |
+        echo "Go version: $(go version)"
+        echo "Go env GOCACHE: $(go env GOCACHE)"
+        echo "Go env GOMODCACHE: $(go env GOMODCACHE)"

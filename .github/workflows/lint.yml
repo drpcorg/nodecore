@@ -7,20 +7,24 @@ on:
     branches:
       - main
 
+env:
+  GO_VERSION: "1.24.1"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Setup Go project
+        uses: ./.github/actions/setup-go-project
         with:
-          submodules: recursive
+          go-version: ${{ env.GO_VERSION }}
+          cache-key-suffix: "lint"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '^1.24.0'
-
-      - run: make generate-networks
-
-      - uses: golangci/golangci-lint-action@v8
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
         with:
           version: v2.1
+          args: --timeout=10m
+          skip-cache: false
+          skip-pkg-cache: false
+          skip-build-cache: false

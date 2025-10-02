@@ -7,19 +7,21 @@ on:
     branches:
       - main
 
+env:
+  GO_VERSION: "1.24.1"
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: ["1.24.1", "1.23.x"]
     steps:
-      - uses: actions/checkout@v3
+      - name: Setup Go project
+        uses: ./.github/actions/setup-go-project
         with:
-          submodules: recursive
+          go-version: ${{ matrix.go-version }}
+          cache-key-suffix: "test"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '^1.24.0'
-
-      - run: make generate-networks
-
-      - name: Test
+      - name: Run tests
         run: make test
