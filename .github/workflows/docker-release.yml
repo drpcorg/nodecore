@@ -1,6 +1,13 @@
 name: Build and Push Docker Image on Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker tag to use (e.g., v1.0.0, latest, dev)"
+        required: false
+        default: "manual"
+        type: string
   release:
     types: [published]
 
@@ -58,7 +65,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest
+            type=raw,value=latest,enable={{github.event_name == 'release'}}
+            type=raw,value=${{ inputs.tag }},enable={{github.event_name == 'workflow_dispatch'}}
 
       - name: Debug metadata
         run: |

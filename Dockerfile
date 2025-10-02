@@ -13,10 +13,9 @@ RUN go mod download
 COPY pkg/ ./pkg/
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-COPY Makefile ./
 
 # Build the application
-RUN GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o nodecore ./cmd/nodecore
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o nodecore ./cmd/nodecore
 
 # Final stage
 FROM alpine:3.18
