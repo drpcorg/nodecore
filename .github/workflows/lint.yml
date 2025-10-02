@@ -32,5 +32,3 @@ jobs:
           version: v2.1
           args: --timeout=10m
           skip-cache: false
-          skip-pkg-cache: false
-          skip-build-cache: false
