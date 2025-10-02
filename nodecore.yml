@@ -106,6 +106,7 @@ upstream-config:
       head-connector: websocket
       poll-interval: 5s
       methods:
+        ban-duration: 10m
         enable:
           - "my_method"
         disable:

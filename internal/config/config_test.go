@@ -120,7 +120,9 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: config.Ws,
 					PollInterval:  3 * time.Minute,
 					ChainName:     "ethereum",
-					Methods:       &config.MethodsConfig{},
+					Methods: &config.MethodsConfig{
+						BanDuration: 5 * time.Minute,
+					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
 							Type: config.JsonRpc,
@@ -148,7 +150,9 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: config.Rest,
 					PollInterval:  1 * time.Minute,
 					ChainName:     "polygon",
-					Methods:       &config.MethodsConfig{},
+					Methods: &config.MethodsConfig{
+						BanDuration: 5 * time.Minute,
+					},
 					FailsafeConfig: &config.FailsafeConfig{
 						RetryConfig: &config.RetryConfig{
 							Attempts: 7,
@@ -242,8 +246,10 @@ func TestSetDefaultPollInterval(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:             "eth-upstream",
-		Methods:        &config.MethodsConfig{},
+		Id: "eth-upstream",
+		Methods: &config.MethodsConfig{
+			BanDuration: 5 * time.Minute,
+		},
 		HeadConnector:  config.JsonRpc,
 		PollInterval:   1 * time.Minute,
 		ChainName:      "ethereum",
@@ -265,11 +271,13 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:             "eth-upstream",
-		HeadConnector:  config.JsonRpc,
-		PollInterval:   1 * time.Minute,
-		ChainName:      "ethereum",
-		Methods:        &config.MethodsConfig{},
+		Id:            "eth-upstream",
+		HeadConnector: config.JsonRpc,
+		PollInterval:  1 * time.Minute,
+		ChainName:     "ethereum",
+		Methods: &config.MethodsConfig{
+			BanDuration: 5 * time.Minute,
+		},
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
@@ -292,11 +300,13 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.Upstream{
-		Id:             "eth-upstream",
-		HeadConnector:  config.Rest,
-		PollInterval:   1 * time.Minute,
-		ChainName:      "ethereum",
-		Methods:        &config.MethodsConfig{},
+		Id:            "eth-upstream",
+		HeadConnector: config.Rest,
+		PollInterval:  1 * time.Minute,
+		ChainName:     "ethereum",
+		Methods: &config.MethodsConfig{
+			BanDuration: 5 * time.Minute,
+		},
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
@@ -371,8 +381,10 @@ func TestSetChainsDefault(t *testing.T) {
 			},
 			Upstreams: []*config.Upstream{
 				{
-					Id:             "eth-upstream",
-					Methods:        &config.MethodsConfig{},
+					Id: "eth-upstream",
+					Methods: &config.MethodsConfig{
+						BanDuration: 5 * time.Minute,
+					},
 					HeadConnector:  config.JsonRpc,
 					PollInterval:   10 * time.Minute,
 					ChainName:      "ethereum",
@@ -690,4 +702,16 @@ func TestTlsEnabledNoKeyThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/server-config-tls-enabled-no-key.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "tls config validation error - the tls certificate key can't be empty")
+}
+
+func TestMethodsBanDurationNegativeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/methods-ban-negative.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: the method ban duration can't be less than 0")
+}
+
+func TestMethodsEnableDisableOverlapThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/methods-enable-disable-overlap.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: the method 'eth_getBlockByNumber' must not be enabled and disabled at the same time")
 }

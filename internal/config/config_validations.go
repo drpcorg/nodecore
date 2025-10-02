@@ -465,6 +465,30 @@ func (u *Upstream) validate() error {
 		return err
 	}
 
+	if err := u.Methods.validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m *MethodsConfig) validate() error {
+	if m.BanDuration <= 0 {
+		return errors.New("the method ban duration can't be less than 0")
+	}
+
+	enabled := mapset.NewThreadUnsafeSet[string]()
+
+	for _, enabledMethod := range m.EnableMethods {
+		enabled.Add(enabledMethod)
+	}
+
+	for _, disabledMethod := range m.DisableMethods {
+		if enabled.Contains(disabledMethod) {
+			return fmt.Errorf("the method '%s' must not be enabled and disabled at the same time", disabledMethod)
+		}
+	}
+
 	return nil
 }
 

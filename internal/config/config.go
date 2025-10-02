@@ -234,8 +234,9 @@ type Upstream struct {
 }
 
 type MethodsConfig struct {
-	EnableMethods  []string `yaml:"enable"`
-	DisableMethods []string `yaml:"disable"`
+	BanDuration    time.Duration `yaml:"ban-duration"`
+	EnableMethods  []string      `yaml:"enable"`
+	DisableMethods []string      `yaml:"disable"`
 }
 
 type ApiConnectorType string

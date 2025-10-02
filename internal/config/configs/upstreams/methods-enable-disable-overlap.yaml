@@ -1,0 +1,13 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      methods:
+        ban-duration: 1m
+        enable:
+          - eth_getBlockByNumber
+        disable:
+          - eth_getBlockByNumber
+      connectors:
+        - type: json-rpc
+          url: https://test.com

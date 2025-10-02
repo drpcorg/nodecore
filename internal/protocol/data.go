@@ -274,3 +274,15 @@ type BlockUpstreamStateEvent struct {
 
 func (f *BlockUpstreamStateEvent) event() {
 }
+
+type BanMethodUpstreamStateEvent struct {
+	Method string
+}
+
+func (f *BanMethodUpstreamStateEvent) event() {}
+
+type UnbanMethodUpstreamStateEvent struct {
+	Method string
+}
+
+func (f *UnbanMethodUpstreamStateEvent) event() {}
