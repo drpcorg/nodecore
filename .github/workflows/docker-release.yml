@@ -32,6 +32,49 @@ jobs:
     with:
       go-version: "1.24.1"
 
+  upload-release-assets:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs: [build]
+    permissions:
+      contents: write
+    steps:
+      - name: Get short SHA
+        id: short_sha
+        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Download Ubuntu artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nodecore-ubuntu-latest-1.24.1-${{ steps.short_sha.outputs.sha }}
+          path: ./artifacts/ubuntu
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nodecore-macos-latest-1.24.1-${{ steps.short_sha.outputs.sha }}
+          path: ./artifacts/macos
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          # Rename and move artifacts
+          cp ./artifacts/ubuntu/nodecore ./release-assets/nodecore-linux-amd64
+          cp ./artifacts/macos/nodecore ./release-assets/nodecore-darwin-amd64
+
+          # Make them executable
+          chmod +x ./release-assets/*
+
+          # List what we have
+          ls -la ./release-assets/
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ./release-assets/nodecore-linux-amd64
+            ./release-assets/nodecore-darwin-amd64
+
   build-and-push:
     runs-on: ubuntu-latest
     needs: [test, lint, build]
