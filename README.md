@@ -31,6 +31,10 @@ nodecore is a fault-tolerant RPC load balancer designed to work with any blockch
 
 ## Quick start
 
+Use `docker run -p 9090:9090 drpcorg/nodecore -v /path/to/config:/nodecore.yml`.
+
+## Build from source
+
 1. **Clone the repository:**
 
 ```bash
