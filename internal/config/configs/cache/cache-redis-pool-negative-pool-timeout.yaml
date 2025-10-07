@@ -1,0 +1,19 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: redis
+      id: redis8
+      redis:
+        address: localhost:6379
+        pool:
+          pool-timeout: -1s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

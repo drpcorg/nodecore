@@ -1,0 +1,18 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: postgres
+      id: pg5
+      postgres:
+        url: postgres://user:pass@localhost:5432/db
+        expired-remove-interval: -1s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

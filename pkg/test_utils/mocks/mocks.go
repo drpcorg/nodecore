@@ -119,6 +119,11 @@ func (c *CacheConnectorMock) Receive(ctx context.Context, key string) ([]byte, e
 	return args.Get(0).([]byte), args.Error(1)
 }
 
+func (c *CacheConnectorMock) Initialize() error {
+	args := c.Called()
+	return args.Error(0)
+}
+
 type DelayedConnector struct {
 	sleep time.Duration
 	CacheConnectorMock

@@ -1,0 +1,20 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: postgres
+      id: pg2
+      postgres:
+        url: postgres://user1:pass1@localhost:5432/db
+        query-timeout: 2s
+        cache-table: cache_custom
+        expired-remove-interval: 1m
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

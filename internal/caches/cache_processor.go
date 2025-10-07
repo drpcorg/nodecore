@@ -2,6 +2,7 @@ package caches
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -42,15 +43,34 @@ type BaseCacheProcessor struct {
 func NewBaseCacheProcessor(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheConfig *config.CacheConfig,
-) *BaseCacheProcessor {
-	cacheConnectors := lo.FilterMap(cacheConfig.CacheConnectors, func(item *config.CacheConnectorConfig, index int) (CacheConnector, bool) {
-		switch item.Driver {
+) (*BaseCacheProcessor, error) {
+	cacheConnectors := make([]CacheConnector, 0)
+
+	for _, connectorCfg := range cacheConfig.CacheConnectors {
+		var connector CacheConnector
+		var err error
+		switch connectorCfg.Driver {
 		case config.Memory:
-			return NewInMemoryConnector(item.Id, item.Memory), true
+			connector, err = NewInMemoryConnector(connectorCfg.Id, connectorCfg.Memory)
+		case config.Redis:
+			connector, err = NewRedisConnector(connectorCfg.Id, connectorCfg.Redis)
+		case config.Postgres:
+			connector, err = NewPostgresConnector(connectorCfg.Id, connectorCfg.Postgres)
 		default:
-			return nil, false
+			return nil, fmt.Errorf("unknown connector driver '%s'", connectorCfg.Driver)
 		}
-	})
+		if err != nil {
+			return nil, err
+		}
+		cacheConnectors = append(cacheConnectors, connector)
+	}
+
+	for _, connector := range cacheConnectors {
+		if err := connector.Initialize(); err != nil {
+			return nil, err
+		}
+	}
+
 	cachePolicies := lo.FilterMap(cacheConfig.CachePolicies, func(item *config.CachePolicyConfig, index int) (*CachePolicy, bool) {
 		connector, ok := lo.Find(cacheConnectors, func(conn CacheConnector) bool {
 			return item.Connector == conn.Id()
@@ -65,7 +85,7 @@ func NewBaseCacheProcessor(
 	return &BaseCacheProcessor{
 		receiveTimeout: cacheConfig.ReceiveTimeout,
 		policies:       cachePolicies,
-	}
+	}, nil
 }
 
 func (c *BaseCacheProcessor) Store(
@@ -99,6 +119,7 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 			result, ok := p.Receive(ctx, chain, request)
 
 			if ok && resultSent.CompareAndSwap(false, true) {
+				fmt.Println(p.id)
 				requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
 				resultChan <- result
 				cancel()

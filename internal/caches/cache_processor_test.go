@@ -18,7 +18,9 @@ import (
 
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {
 	cacheConfig := memoryCacheConfig(nil, nil)
-	cacheProcessor := NewBaseCacheProcessor(nil, cacheConfig)
+	cacheProcessor, err := NewBaseCacheProcessor(nil, cacheConfig)
+	assert.NoError(t, err)
+
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
 
 	result, ok := cacheProcessor.Receive(context.Background(), chains.ALEPHZERO, request)

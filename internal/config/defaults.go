@@ -1,6 +1,7 @@
 package config
 
 import (
+	"runtime"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -112,6 +113,69 @@ func (c *CacheConnectorConfig) setDefaults() {
 		if c.Memory.ExpiredRemoveInterval == 0 {
 			c.Memory.ExpiredRemoveInterval = 30 * time.Second
 		}
+	case Redis:
+		if c.Redis == nil {
+			c.Redis = &RedisCacheConnectorConfig{}
+		}
+		c.Redis.setDefaults()
+	case Postgres:
+		if c.Postgres == nil {
+			c.Postgres = &PostgresCacheConnectorConfig{}
+		}
+		c.Postgres.setDefaults()
+	}
+}
+
+func (p *PostgresCacheConnectorConfig) setDefaults() {
+	if p.ExpiredRemoveInterval == 0 {
+		p.ExpiredRemoveInterval = 30 * time.Second
+	}
+	if p.QueryTimeout == nil {
+		p.QueryTimeout = lo.ToPtr(300 * time.Millisecond)
+	}
+	if p.CacheTable == "" {
+		p.CacheTable = "cache_rpc"
+	}
+}
+
+func (r *RedisCacheConnectorConfig) setDefaults() {
+	if r.DB == nil {
+		r.DB = lo.ToPtr(0)
+	}
+	if r.Timeouts == nil {
+		r.Timeouts = &RedisCacheConnectorTimeoutsConfig{}
+	}
+	r.Timeouts.setDefaults()
+	if r.Pool == nil {
+		r.Pool = &RedisCacheConnectorPoolConfig{}
+	}
+	r.Pool.setDefaults(r.Timeouts)
+}
+
+func (p *RedisCacheConnectorPoolConfig) setDefaults(timeouts *RedisCacheConnectorTimeoutsConfig) {
+	if p.Size == 0 {
+		p.Size = 10 * runtime.GOMAXPROCS(0)
+	}
+	if p.PoolTimeout == nil {
+		p.PoolTimeout = lo.ToPtr((*timeouts.ReadTimeout) + (1 * time.Second))
+	}
+	if p.ConnMaxIdleTime == nil {
+		p.ConnMaxIdleTime = lo.ToPtr(30 * time.Minute)
+	}
+	if p.ConnMaxLifeTime == nil {
+		p.ConnMaxLifeTime = lo.ToPtr(time.Duration(0))
+	}
+}
+
+func (r *RedisCacheConnectorTimeoutsConfig) setDefaults() {
+	if r.ConnectTimeout == nil {
+		r.ConnectTimeout = lo.ToPtr(500 * time.Millisecond)
+	}
+	if r.ReadTimeout == nil {
+		r.ReadTimeout = lo.ToPtr(200 * time.Millisecond)
+	}
+	if r.WriteTimeout == nil {
+		r.WriteTimeout = lo.ToPtr(200 * time.Millisecond)
 	}
 }
 
