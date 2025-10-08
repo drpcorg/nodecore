@@ -142,6 +142,8 @@ func TestUpstreamBlockEvent(t *testing.T) {
 	upstream.UpdateBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
 	checkFunc(protocol.NewBlockData(1000, 0, ""))
 
+	time.Sleep(15 * time.Millisecond)
+
 	connector.AssertExpectations(t)
 }
 

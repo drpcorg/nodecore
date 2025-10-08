@@ -81,8 +81,8 @@ func (b *EthLikeBlockProcessor) DisabledBlocks() mapset.Set[protocol.BlockType] 
 }
 
 func (b *EthLikeBlockProcessor) Start() {
-	b.poll(protocol.FinalizedBlock)
 	for {
+		b.poll(protocol.FinalizedBlock)
 		select {
 		case <-b.ctx.Done():
 			return
@@ -92,7 +92,6 @@ func (b *EthLikeBlockProcessor) Start() {
 				b.subManager.Publish(*event)
 			}
 		case <-time.After(b.upConfig.PollInterval):
-			b.poll(protocol.FinalizedBlock)
 		}
 	}
 }
