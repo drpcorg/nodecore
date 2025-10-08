@@ -11,6 +11,33 @@ cache:
       memory:
         max-items: 5000
         expired-remove-interval: 10s
+    - id: redis-connector
+      driver: redis
+      redis:
+        full-url: "redis://localhost:6379/0"
+        address: "localhost:6379"
+        username: username
+        password: password
+        db: 2
+        timeouts:
+          connect-timeout: 1s
+          read-timeout: 2s
+          write-timeout: 3s
+        pool:
+          size: 35
+          pool-timeout: 5s
+          min-idle-conns: 10
+          max-idle-conns: 50
+          max-active-conns: 45
+          conn-max-idle-time: 60s
+          conn-max-life-time: 60m
+    - id: postgresql-connector
+      driver: "postgres"
+      postgres:
+        url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+        query-timeout: 5s
+        cache-table: "cache"
+        expired-remove-interval: 10s        
   policies:
     - chain: "*"
       id: memory-policy-1
@@ -64,18 +91,85 @@ connectors:
   memory:
     max-items: 5000
     expired-remove-interval: 10s
+- id: redis-connector
+  driver: redis
+  redis:
+    full-url: "redis://localhost:6379/0"
+    address: "localhost:6379"
+    username: username
+    password: password
+    db: 2
+    timeouts:
+      connect-timeout: 1s
+      read-timeout: 2s
+      write-timeout: 3s
+    pool:
+      size: 35
+      pool-timeout: 5s
+      min-idle-conns: 10
+      max-idle-conns: 50
+      max-active-conns: 45
+      conn-max-idle-time: 60s
+      conn-max-life-time: 60m
+- id: postgresql-connector
+  driver: "postgres"
+  postgres:
+    url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    query-timeout: 5s
+    cache-table: "cache"
+    expired-remove-interval: 10s
 ```
 
 The `connectors` section defines the cache storage backends. Each connector has an id (referenced by cache policies), a driver type that specifies how and where cached responses are stored and its settings.
 
 `connector` fields:
 * `id` - Unique identifier for the connector. **_Required_**, **_Unique_**
-* `driver` - Defines the storage backend type. Currently supported: `memory`
+* `driver` - Defines the storage backend type. Currently supported: `memory`, `redis`, `postgres`
 
 The `memory` type is the simplest cache storage. All the items are stored inside the running nodecore process. The in-memory connector internally uses an LRU (Least Recently Used) cache algorithm. When the max-items limit is reached, the least recently used entries are evicted first.
 
-* `memory.max-items` - Maximum number of items to store in the in-memory cache. **_Default_**: `10000`
-* `memory.expired-remove-interval` - Interval at which expired cache entries are cleaned up. **_Default_**: `30s` 
+#### Fields
+
+* `max-items` - Maximum number of items to store in the in-memory cache. **_Default_**: `10000`
+* `expired-remove-interval` - Interval at which expired cache entries are cleaned up. **_Default_**: `30s` 
+
+The `redis` connector provides a cache implementation backed by a Redis server. Currently, only a single Redis instance is supported.
+
+All connection parameters can be specified using the `full-url` field.
+The URL follows the Go Redis library format: `redis://<user>:<password>@<host>:<port>/<db>?<query-params>`. Examples:
+
+* redis://localhost:6379/0
+* redis://:mypassword@127.0.0.1:6379/2
+* redis://user:pass@redis.example.com:6379/1?read_timeout=2s&write_timeout=3s
+
+Any parameters defined explicitly under `redis`: (e.g. `timeouts`, `pool`) will override the corresponding values in full-url.
+
+#### Fields
+
+* `full-url` - Full connection URL in Go Redis format — `redis://<user>:<password>@<host>:<port>/<db>?<query-params>`
+* `address` - Host and port of the Redis instance. Either `full-url` or `address` must be specified
+* `username` - Optional username for Redis authentication
+* `password` - Password for Redis authentication
+* `db` - `Database index`
+* `timeouts.connect-timeout` - Maximum duration for establishing a connection to the Redis server. **_Default_**: `500ms`
+* `timeouts.read-timeout` - Timeout for reading a response from Redis. **_Default_**: `200ms`
+* `timeouts.write-timeout` - Timeout for writing data to Redis. **_Default_**: `200ms`
+* `pool.size` - Total number of connections that can be maintained in the pool. **_Default_**: `10 × runtime.GOMAXPROCS(0)`
+* `pool.pool-timeout` - Maximum wait time for acquiring a connection from the pool when all connections are busy. **_Default_**: `timeouts.read-timeout` + `1s`
+* `pool.min-idle-conns` - Minimum number of idle connections maintained by the pool. **_Default_**: `0`
+* `pool.max-idle-conns` - Maximum number of idle connections maintained by the pool. **_Default_**: `0`
+* `pool.max-active-conns` - Maximum number of connections allocated by the pool at a given time
+* `pool.conn-max-idle-time` - Maximum time a connection can remain idle. **_Default_**: `30m`
+* `pool.conn-max-life-time` - Maximum time a connection may be reused. 
+
+The `postgres` connector provides a persistent cache implementation backed by a PostgreSQL database.
+
+#### Fields
+
+* `url` - Full PostgreSQL connection string in standard DSN format: `postgres://<user>:<password>@<host>:<port>/<dbname>?<query-params>`. All parameters supported by the underlying Go PostgreSQL library can be included
+* `query-timeout` - Maximum duration for executing SQL queries. **_Default_**: `300ms`
+* `cache-table` - Name of the table used to store cache entries. Created automatically if it does not exist. **_Default_**: `cache_rpc`
+* `expired-remove-interval` - Interval at which expired cache entries are cleaned up. **_Default_**: `30s`
 
 ### policies
 
