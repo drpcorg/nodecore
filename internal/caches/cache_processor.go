@@ -119,7 +119,6 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 			result, ok := p.Receive(ctx, chain, request)
 
 			if ok && resultSent.CompareAndSwap(false, true) {
-				fmt.Println(p.id)
 				requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
 				resultChan <- result
 				cancel()
