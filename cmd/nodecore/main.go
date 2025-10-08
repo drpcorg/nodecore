@@ -56,7 +56,6 @@ func main() {
 	dimensionTracker := dimensions.NewDimensionTracker()
 
 	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker)
-
 	go upstreamSupervisor.StartUpstreams()
 
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
