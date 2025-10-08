@@ -59,6 +59,33 @@ cache:
       memory:
         max-items: 5000
         expired-remove-interval: 10s
+    - id: redis-connector
+      driver: redis
+      redis:
+        full-url: "redis://localhost:6379/0"
+        address: "localhost:6379"
+        username: username
+        password: password
+        db: 2
+        timeouts:
+          connect-timeout: 1s
+          read-timeout: 2s
+          write-timeout: 3s
+        pool:
+          size: 35
+          pool-timeout: 5s
+          min-idle-conns: 10
+          max-idle-conns: 50
+          max-active-conns: 45
+          conn-max-idle-time: 60s
+          conn-max-life-time: 60m
+    - id: postgresql-connector
+      driver: "postgres"
+      postgres:
+        url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+        query-timeout: 5s
+        cache-table: "cache"
+        expired-remove-interval: 10s        
   policies:
     - chain: "*"
       id: memory-policy-1

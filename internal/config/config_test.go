@@ -78,6 +78,41 @@ func TestReadFullConfig(t *testing.T) {
 						ExpiredRemoveInterval: 10 * time.Second,
 					},
 				},
+				{
+					Id:     "redis-connector",
+					Driver: config.Redis,
+					Redis: &config.RedisCacheConnectorConfig{
+						FullUrl:  "redis://localhost:6379/0",
+						Address:  "localhost:6379",
+						Username: "username",
+						Password: "password",
+						DB:       lo.ToPtr(2),
+						Timeouts: &config.RedisCacheConnectorTimeoutsConfig{
+							ConnectTimeout: lo.ToPtr(1 * time.Second),
+							ReadTimeout:    lo.ToPtr(2 * time.Second),
+							WriteTimeout:   lo.ToPtr(3 * time.Second),
+						},
+						Pool: &config.RedisCacheConnectorPoolConfig{
+							Size:            35,
+							PoolTimeout:     lo.ToPtr(5 * time.Second),
+							MinIdleConns:    10,
+							MaxIdleConns:    50,
+							MaxActiveConns:  45,
+							ConnMaxIdleTime: lo.ToPtr(60 * time.Second),
+							ConnMaxLifeTime: lo.ToPtr(60 * time.Minute),
+						},
+					},
+				},
+				{
+					Id:     "postgresql-connector",
+					Driver: config.Postgres,
+					Postgres: &config.PostgresCacheConnectorConfig{
+						Url:                   "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
+						QueryTimeout:          lo.ToPtr(5 * time.Second),
+						CacheTable:            "cache",
+						ExpiredRemoveInterval: 10 * time.Second,
+					},
+				},
 			},
 			CachePolicies: []*config.CachePolicyConfig{
 				{
