@@ -270,15 +270,24 @@ type CacheConfig struct {
 type CacheConnectorDriver string
 
 const (
-	Memory CacheConnectorDriver = "memory"
-	Redis  CacheConnectorDriver = "redis"
+	Memory   CacheConnectorDriver = "memory"
+	Redis    CacheConnectorDriver = "redis"
+	Postgres CacheConnectorDriver = "postgres"
 )
 
 type CacheConnectorConfig struct {
-	Id     string                      `yaml:"id"`
-	Driver CacheConnectorDriver        `yaml:"driver"`
-	Redis  *RedisCacheConnectorConfig  `yaml:"redis"`
-	Memory *MemoryCacheConnectorConfig `yaml:"memory"`
+	Id       string                        `yaml:"id"`
+	Driver   CacheConnectorDriver          `yaml:"driver"`
+	Redis    *RedisCacheConnectorConfig    `yaml:"redis"`
+	Memory   *MemoryCacheConnectorConfig   `yaml:"memory"`
+	Postgres *PostgresCacheConnectorConfig `yaml:"postgres"`
+}
+
+type PostgresCacheConnectorConfig struct {
+	Url                   string         `yaml:"url"`
+	QueryTimeout          *time.Duration `yaml:"query-timeout"`
+	CacheTable            string         `yaml:"cache-table"`
+	ExpiredRemoveInterval time.Duration  `yaml:"expired-remove-interval"`
 }
 
 type MemoryCacheConnectorConfig struct {
@@ -287,13 +296,29 @@ type MemoryCacheConnectorConfig struct {
 }
 
 type RedisCacheConnectorConfig struct {
-	Address        string        `yaml:"address"`
-	Password       string        `yaml:"password"`
-	DB             int           `yaml:"db"`
-	PoolSize       int           `yaml:"pool-size"`
-	ConnectTimeout time.Duration `yaml:"connect-timeout"`
-	ReadTimeout    time.Duration `yaml:"read-timeout"`
-	WriteTimeout   time.Duration `yaml:"write-timeout"`
+	FullUrl  string                             `yaml:"full-url"`
+	Address  string                             `yaml:"address"`
+	Username string                             `yaml:"username"`
+	Password string                             `yaml:"password"`
+	DB       *int                               `yaml:"db"`
+	Timeouts *RedisCacheConnectorTimeoutsConfig `yaml:"timeouts"`
+	Pool     *RedisCacheConnectorPoolConfig     `yaml:"pool"`
+}
+
+type RedisCacheConnectorTimeoutsConfig struct {
+	ConnectTimeout *time.Duration `yaml:"connect-timeout"`
+	ReadTimeout    *time.Duration `yaml:"read-timeout"`
+	WriteTimeout   *time.Duration `yaml:"write-timeout"`
+}
+
+type RedisCacheConnectorPoolConfig struct {
+	Size            int            `yaml:"size"`
+	PoolTimeout     *time.Duration `yaml:"pool-timeout"`
+	MinIdleConns    int            `yaml:"min-idle-conns"`
+	MaxIdleConns    int            `yaml:"max-idle-conns"`
+	MaxActiveConns  int            `yaml:"max-active-conns"`
+	ConnMaxIdleTime *time.Duration `yaml:"conn-max-idle-time"`
+	ConnMaxLifeTime *time.Duration `yaml:"conn-max-life-time"`
 }
 
 type FinalizationType string

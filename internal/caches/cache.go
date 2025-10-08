@@ -3,6 +3,7 @@ package caches
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -17,6 +18,7 @@ type CacheConnector interface {
 	Id() string
 	Store(ctx context.Context, key string, object string, ttl time.Duration) error
 	Receive(ctx context.Context, key string) ([]byte, error)
+	Initialize() error
 }
 
 type cacheItem struct {
@@ -30,11 +32,16 @@ type InMemoryConnector struct {
 	expiredRemoveInterval time.Duration
 }
 
-func NewInMemoryConnector(id string, config *config.MemoryCacheConnectorConfig) *InMemoryConnector {
+func (i *InMemoryConnector) Initialize() error {
+	go i.removeExpired()
+	return nil
+}
+
+func NewInMemoryConnector(id string, config *config.MemoryCacheConnectorConfig) (*InMemoryConnector, error) {
 	cache, err := lru.New[string, cacheItem](config.MaxItems)
 	if err != nil {
 		log.Warn().Err(err).Msgf("couldn't create a memory cache connector with id %s", id)
-		return nil
+		return nil, fmt.Errorf("couldn't create a memory cache connector with id %s, reason - %s", id, err.Error())
 	}
 
 	connector := &InMemoryConnector{
@@ -43,9 +50,7 @@ func NewInMemoryConnector(id string, config *config.MemoryCacheConnectorConfig) 
 		expiredRemoveInterval: config.ExpiredRemoveInterval,
 	}
 
-	go connector.removeExpired()
-
-	return connector
+	return connector, nil
 }
 
 func (i *InMemoryConnector) Id() string {

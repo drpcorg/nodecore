@@ -1,0 +1,32 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: redis
+      id: redis2
+      redis:
+        full-url: redis://user:pass@localhost:6380/2
+        username: user
+        password: pass
+        db: 2
+        timeouts:
+          connect-timeout: 1s
+          read-timeout: 2s
+          write-timeout: 3s
+        pool:
+          size: 64
+          pool-timeout: 5s
+          min-idle-conns: 4
+          max-idle-conns: 8
+          max-active-conns: 128
+          conn-max-idle-time: 10m
+          conn-max-life-time: 1h
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

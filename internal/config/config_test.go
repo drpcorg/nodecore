@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -714,4 +715,168 @@ func TestMethodsEnableDisableOverlapThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/methods-enable-disable-overlap.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: the method 'eth_getBlockByNumber' must not be enabled and disabled at the same time")
+}
+
+func TestRedisDefaults(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-valid-defaults.yaml")
+	appCfg, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	redisCfg := appCfg.CacheConfig.CacheConnectors[0].Redis
+	expected := &config.RedisCacheConnectorConfig{
+		Address:  "localhost:6379",
+		DB:       lo.ToPtr(0),
+		Timeouts: &config.RedisCacheConnectorTimeoutsConfig{ConnectTimeout: lo.ToPtr(500 * time.Millisecond), ReadTimeout: lo.ToPtr(200 * time.Millisecond), WriteTimeout: lo.ToPtr(200 * time.Millisecond)},
+		Pool: &config.RedisCacheConnectorPoolConfig{
+			Size:            10 * runtime.GOMAXPROCS(0),
+			PoolTimeout:     lo.ToPtr(200*time.Millisecond + 1*time.Second),
+			MinIdleConns:    0,
+			MaxIdleConns:    0,
+			MaxActiveConns:  0,
+			ConnMaxIdleTime: lo.ToPtr(30 * time.Minute),
+			ConnMaxLifeTime: lo.ToPtr(time.Duration(0)),
+		},
+	}
+
+	assert.Equal(t, expected, redisCfg)
+}
+
+func TestRedisFullCustom(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-full-custom.yaml")
+	appCfg, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	redisCfg := appCfg.CacheConfig.CacheConnectors[0].Redis
+	expected := &config.RedisCacheConnectorConfig{
+		FullUrl:  "redis://user:pass@localhost:6380/2",
+		Username: "user",
+		Password: "pass",
+		DB:       lo.ToPtr(2),
+		Timeouts: &config.RedisCacheConnectorTimeoutsConfig{
+			ConnectTimeout: lo.ToPtr(1 * time.Second),
+			ReadTimeout:    lo.ToPtr(2 * time.Second),
+			WriteTimeout:   lo.ToPtr(3 * time.Second),
+		},
+		Pool: &config.RedisCacheConnectorPoolConfig{
+			Size:            64,
+			PoolTimeout:     lo.ToPtr(5 * time.Second),
+			MinIdleConns:    4,
+			MaxIdleConns:    8,
+			MaxActiveConns:  128,
+			ConnMaxIdleTime: lo.ToPtr(10 * time.Minute),
+			ConnMaxLifeTime: lo.ToPtr(1 * time.Hour),
+		},
+	}
+
+	assert.Equal(t, expected, redisCfg)
+}
+
+func TestRedisMissingAddressThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-missing-address.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis3' validation, cause: either 'address' or 'full_url' must be specified")
+}
+
+func TestRedisNegativeReadTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-negative-read-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis4' validation, cause: read timeout cannot be negative")
+}
+
+func TestRedisNegativeWriteTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-negative-write-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis5' validation, cause: write timeout cannot be negative")
+}
+
+func TestRedisNegativeConnectTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-negative-connect-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis6' validation, cause: connect timeout cannot be negative")
+}
+
+func TestRedisPoolNegativeSizeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-size.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis7' validation, cause: pool size cannot be negative")
+}
+
+func TestRedisPoolNegativePoolTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-pool-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis8' validation, cause: pool timeout cannot be negative")
+}
+
+func TestRedisPoolMinGreaterMaxIdleThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-min-greater-max.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis9' validation, cause: pool min idle connections cannot be greater than pool max idle connections")
+}
+
+func TestRedisPoolNegativeMaxActiveThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-max-active.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis10' validation, cause: pool max connections cannot be negative")
+}
+
+func TestRedisPoolNegativeConnLifeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-conn-life.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis11' validation, cause: pool conn max life time cannot be negative")
+}
+
+func TestRedisPoolNegativeConnIdleThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-conn-idle.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'redis12' validation, cause: pool conn max idle time cannot be negative")
+}
+
+func TestPostgresDefaults(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-valid-defaults.yaml")
+	appCfg, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	pg := appCfg.CacheConfig.CacheConnectors[0].Postgres
+	expected := &config.PostgresCacheConnectorConfig{
+		Url:                   "postgres://user:pass@localhost:5432/db",
+		ExpiredRemoveInterval: 30 * time.Second,
+		QueryTimeout:          lo.ToPtr(300 * time.Millisecond),
+		CacheTable:            "cache_rpc",
+	}
+
+	assert.Equal(t, expected, pg)
+}
+
+func TestPostgresFullCustom(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-full-custom.yaml")
+	appCfg, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	pg := appCfg.CacheConfig.CacheConnectors[0].Postgres
+	expected := &config.PostgresCacheConnectorConfig{
+		Url:                   "postgres://user1:pass1@localhost:5432/db",
+		ExpiredRemoveInterval: 1 * time.Minute,
+		QueryTimeout:          lo.ToPtr(2 * time.Second),
+		CacheTable:            "cache_custom",
+	}
+
+	assert.Equal(t, expected, pg)
+}
+
+func TestPostgresMissingUrlThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-missing-url.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'pg3' validation, cause: 'url' must be specified")
+}
+
+func TestPostgresNegativeQueryTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-negative-query-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'pg4' validation, cause: query-timeout must be greater than or equal to 0")
+}
+
+func TestPostgresNonpositiveExpiredIntervalThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-nonpositive-expired-interval.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache connector 'pg5' validation, cause: expired remove interval must be > 0")
 }

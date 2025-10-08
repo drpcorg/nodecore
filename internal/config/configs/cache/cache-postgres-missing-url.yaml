@@ -1,0 +1,17 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: postgres
+      id: pg3
+      postgres:
+        cache-table: cache_rpc
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

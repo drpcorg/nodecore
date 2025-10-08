@@ -1,0 +1,18 @@
+server:
+  port: 9095
+
+cache:
+  connectors:
+    - driver: postgres
+      id: pg4
+      postgres:
+        url: postgres://user:pass@localhost:5432/db
+        query-timeout: -1s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -13,7 +13,11 @@ import (
 )
 
 func TestInMemoryCacheNotFoundThenError(t *testing.T) {
-	inMemory := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 1 * time.Minute})
+	inMemory, err := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 1 * time.Minute})
+	assert.NoError(t, err)
+
+	err = inMemory.Initialize()
+	assert.NoError(t, err)
 
 	object, err := inMemory.Receive(context.Background(), "key")
 
@@ -22,7 +26,12 @@ func TestInMemoryCacheNotFoundThenError(t *testing.T) {
 }
 
 func TestInMemoryMaxItems(t *testing.T) {
-	inMemory := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 3, ExpiredRemoveInterval: 1 * time.Minute})
+	inMemory, err := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 3, ExpiredRemoveInterval: 1 * time.Minute})
+	assert.NoError(t, err)
+
+	err = inMemory.Initialize()
+	assert.NoError(t, err)
+
 	key1 := "key1"
 	key2 := "key2"
 	key3 := "key3"
@@ -38,7 +47,7 @@ func TestInMemoryMaxItems(t *testing.T) {
 		assert.True(t, bytes.Equal([]byte(storedObject), object))
 	}
 
-	err := inMemory.Store(context.Background(), key4, storedObject, 0)
+	err = inMemory.Store(context.Background(), key4, storedObject, 0)
 	assert.Nil(t, err)
 	object, err := inMemory.Receive(context.Background(), key4)
 	assert.Nil(t, err)
@@ -56,17 +65,26 @@ func TestInMemoryMaxItems(t *testing.T) {
 }
 
 func TestInMemoryCacheId(t *testing.T) {
-	inMemory := caches.NewInMemoryConnector("cacheId", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 1 * time.Minute})
+	inMemory, err := caches.NewInMemoryConnector("cacheId", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 1 * time.Minute})
 
+	assert.NoError(t, err)
 	assert.Equal(t, "cacheId", inMemory.Id())
+
+	err = inMemory.Initialize()
+	assert.NoError(t, err)
 }
 
 func TestInMemoryCacheStoreThenReceiveWithoutTtl(t *testing.T) {
-	inMemory := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 10 * time.Millisecond})
+	inMemory, err := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 10 * time.Millisecond})
+	assert.NoError(t, err)
+
+	err = inMemory.Initialize()
+	assert.NoError(t, err)
+
 	key := "key"
 	storedObject := "object"
 
-	err := inMemory.Store(context.Background(), key, storedObject, 0)
+	err = inMemory.Store(context.Background(), key, storedObject, 0)
 	assert.Nil(t, err)
 
 	object, err := inMemory.Receive(context.Background(), "key")
@@ -81,11 +99,16 @@ func TestInMemoryCacheStoreThenReceiveWithoutTtl(t *testing.T) {
 }
 
 func TestInMemoryCacheStoreThenReceiveWithTtl(t *testing.T) {
-	inMemory := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 10 * time.Millisecond})
+	inMemory, err := caches.NewInMemoryConnector("id", &config.MemoryCacheConnectorConfig{MaxItems: 1000, ExpiredRemoveInterval: 10 * time.Millisecond})
+	assert.NoError(t, err)
+
+	err = inMemory.Initialize()
+	assert.NoError(t, err)
+
 	key := "key"
 	storedObject := "object"
 
-	err := inMemory.Store(context.Background(), key, storedObject, 10*time.Millisecond)
+	err = inMemory.Store(context.Background(), key, storedObject, 10*time.Millisecond)
 	assert.Nil(t, err)
 
 	object, err := inMemory.Receive(context.Background(), "key")

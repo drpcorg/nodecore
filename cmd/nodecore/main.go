@@ -61,7 +61,10 @@ func main() {
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
 	go ratingRegistry.Start()
 
-	cacheProcessor := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig)
+	cacheProcessor, err := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig)
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to create the cache processor")
+	}
 
 	appCtx := server.NewApplicationContext(
 		upstreamSupervisor,
