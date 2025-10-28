@@ -9,27 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var DefBuckets = []float64{
-	.005,
-	.01,
-	.025,
-	.05,
-	.1,
-	.25,
-	.5,
-	1,
-	2,
-	3,
-	4,
-	5,
-	6,
-	7,
-	8,
-	15,
-	25,
-	50,
-	100,
-}
+var DefBuckets = []float64{.01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 25, 50}
 
 var requestTotalMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
