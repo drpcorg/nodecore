@@ -13,6 +13,7 @@ const (
 	AuthErrorCode           = 403
 	RequestTimeout          = 408
 	InternalServerErrorCode = 500
+	RateLimitExceeded       = 429
 	NoSupportedMethod       = -32601
 	IncorrectResponseBody   = -32001
 )
@@ -108,6 +109,13 @@ func NotSupportedMethodError(method string) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("the method %s does not exist/is not available", method),
 		Code:    NoSupportedMethod,
+	}
+}
+
+func RateLimitError() *ResponseError {
+	return &ResponseError{
+		Message: "rate limit exceeded",
+		Code:    RateLimitExceeded,
 	}
 }
 

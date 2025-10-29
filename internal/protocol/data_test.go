@@ -98,7 +98,7 @@ func TestGetResponseType(t *testing.T) {
 
 func TestDefaultUpstreamState(t *testing.T) {
 	caps := mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap)
-	defaultUpState := protocol.DefaultUpstreamState(mocks.NewMethodsMock(), caps, "55")
+	defaultUpState := protocol.DefaultUpstreamState(mocks.NewMethodsMock(), caps, "55", nil)
 
 	expectedState := protocol.UpstreamState{
 		Status:          protocol.Unavailable,

@@ -10,8 +10,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
-	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
@@ -78,21 +79,21 @@ func (u *Upstream) Stop() {
 
 func NewUpstream(
 	ctx context.Context,
-	config *config.Upstream,
+	conf *config.Upstream,
 	tracker *dimensions.DimensionTracker,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	upstreamIndex int,
 ) (*Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	configuredChain := chains.GetChain(config.ChainName)
+	configuredChain := chains.GetChain(conf.ChainName)
 	apiConnectors := make([]connectors.ApiConnector, 0)
 	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
 
 	var headConnector connectors.ApiConnector
-	for _, connectorConfig := range config.Connectors {
-		apiConnector := createConnector(ctx, config.Id, configuredChain, connectorConfig)
-		apiConnector = connectors.NewDimensionTrackerConnector(configuredChain.Chain, config.Id, apiConnector, tracker, executor)
-		if connectorConfig.Type == config.HeadConnector {
+	for _, connectorConfig := range conf.Connectors {
+		apiConnector := createConnector(ctx, conf.Id, configuredChain, connectorConfig)
+		apiConnector = connectors.NewDimensionTrackerConnector(configuredChain.Chain, conf.Id, apiConnector, tracker, executor)
+		if connectorConfig.Type == conf.HeadConnector {
 			headConnector = apiConnector
 		}
 		if apiConnector.GetType() == protocol.WsConnector {
@@ -102,7 +103,7 @@ func NewUpstream(
 	}
 	chainSpecific := getChainSpecific(configuredChain.Type)
 
-	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, config.Methods)
+	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -110,22 +111,29 @@ func NewUpstream(
 	upstreamIndexHex := fmt.Sprintf("%05x", upstreamIndex)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex))
+	var rt *ratelimiter.RateLimitBudget
+	if conf.RateLimit != nil {
+		rt = ratelimiter.NewRateLimitBudget(&config.RateLimitBudget{
+			Name:   "inplace",
+			Config: conf.RateLimit,
+		}, ratelimiter.NewRateLimitMemoryEngine())
+	}
+	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt))
 
 	return &Upstream{
-		Id:               config.Id,
+		Id:               conf.Id,
 		Chain:            configuredChain.Chain,
 		apiConnectors:    apiConnectors,
 		ctx:              ctx,
 		cancelFunc:       cancel,
 		upstreamState:    upState,
-		headProcessor:    blocks.NewHeadProcessor(ctx, config, headConnector, chainSpecific),
-		blockProcessor:   createBlockProcessor(ctx, config, headConnector, chainSpecific, configuredChain.Type),
-		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", config.Id)),
+		headProcessor:    blocks.NewHeadProcessor(ctx, conf, headConnector, chainSpecific),
+		blockProcessor:   createBlockProcessor(ctx, conf, headConnector, chainSpecific, configuredChain.Type),
+		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
 		stateChan:        make(chan protocol.AbstractUpstreamStateEvent, 100),
 		chainSpecific:    chainSpecific,
 		upstreamIndexHex: upstreamIndexHex,
-		methodsConfig:    config.Methods,
+		methodsConfig:    conf.Methods,
 	}, nil
 }
 

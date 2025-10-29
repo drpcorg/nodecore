@@ -9,6 +9,7 @@ import (
 	"math"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/errors_config"
@@ -205,22 +206,24 @@ const (
 )
 
 type UpstreamState struct {
-	Status          AvailabilityStatus
-	HeadData        *BlockData
-	UpstreamMethods methods.Methods
-	BlockInfo       *BlockInfo
-	Caps            mapset.Set[Cap]
-	UpstreamIndex   string
+	Status            AvailabilityStatus
+	HeadData          *BlockData
+	UpstreamMethods   methods.Methods
+	BlockInfo         *BlockInfo
+	Caps              mapset.Set[Cap]
+	UpstreamIndex     string
+	RateLimiterBudget *ratelimiter.RateLimitBudget
 }
 
-func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string) UpstreamState {
+func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string, rt *ratelimiter.RateLimitBudget) UpstreamState {
 	return UpstreamState{
-		Status:          Unavailable,
-		UpstreamMethods: upstreamMethods,
-		BlockInfo:       NewBlockInfo(),
-		Caps:            caps,
-		HeadData:        &BlockData{},
-		UpstreamIndex:   upstreamIndex,
+		Status:            Unavailable,
+		UpstreamMethods:   upstreamMethods,
+		BlockInfo:         NewBlockInfo(),
+		Caps:              caps,
+		HeadData:          &BlockData{},
+		UpstreamIndex:     upstreamIndex,
+		RateLimiterBudget: rt,
 	}
 }
 

@@ -12,6 +12,7 @@ type MatchResponseType int
 const (
 	MethodType MatchResponseType = iota
 	AvailabilityType
+	RateLimiterType
 	UpstreamIndexType
 	SuccessType
 )
@@ -19,6 +20,17 @@ const (
 type MatchResponse interface {
 	Cause() string
 	Type() MatchResponseType
+}
+
+type RateLimiterResponse struct {
+}
+
+func (r RateLimiterResponse) Type() MatchResponseType {
+	return RateLimiterType
+}
+
+func (r RateLimiterResponse) Cause() string {
+	return "too many requests"
 }
 
 type UpstreamIndexResponse struct {

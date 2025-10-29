@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -351,6 +352,29 @@ func validatePolicyChain(chain string) error {
 	return nil
 }
 
+var methodRegex = regexp.MustCompile("^[a-zA-Z0-9_]+$")
+
+func (r *RateLimiterConfig) validate() error {
+	for _, rule := range r.Rules {
+		if rule.Method == "" && rule.Pattern == "" {
+			return errors.New("the method or pattern must be specified")
+		}
+		if rule.Method != "" && rule.Pattern != "" {
+			return errors.New("the method and pattern can't be specified at the same time")
+		}
+		if rule.Method != "" && !methodRegex.MatchString(rule.Method) {
+			return errors.New("the method must be a valid method name, you can't use regex, otherwise use pattern: 'pattern' instead of method")
+		}
+		if rule.Period <= 0 {
+			return errors.New("the period must be greater than 0")
+		}
+		if rule.Requests < 1 {
+			return errors.New("the requests must be greater than 0")
+		}
+	}
+	return nil
+}
+
 func (u *UpstreamConfig) validate() error {
 	if err := u.ScorePolicyConfig.validate(); err != nil {
 		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
@@ -519,6 +543,12 @@ func (u *Upstream) validate() error {
 
 	if len(u.Connectors) == 0 {
 		return fmt.Errorf("there must be at least one upstream connector")
+	}
+
+	if u.RateLimit != nil {
+		if err := u.RateLimit.validate(); err != nil {
+			return fmt.Errorf("error during rate limit validation, cause: %s", err.Error())
+		}
 	}
 
 	connectorTypeSet := mapset.NewThreadUnsafeSet[ApiConnectorType]()

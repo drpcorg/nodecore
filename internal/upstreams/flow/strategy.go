@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
+
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -140,7 +141,7 @@ func filterUpstreams(
 		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
 		matched := multiMatcher.Match(upstreamIds[i], upstreamState)
 
-		upstreamMatched, newReason := processMatchedResponse(mu, matched, currentReason, selectedUpstreams, upstreamIds[i])
+		upstreamMatched, newReason := processMatchedResponse(mu, matched, currentReason, selectedUpstreams, upstreamIds[i], upstreamState, request)
 		if upstreamMatched {
 			return upstreamIds[i], nil
 		} else if newReason != nil {
@@ -156,11 +157,22 @@ func processMatchedResponse(
 	currentReason MatchResponse,
 	selectedUpstreams mapset.Set[string],
 	upstreamId string,
+	state *protocol.UpstreamState,
+	request protocol.RequestHolder,
 ) (bool, MatchResponse) {
 	mu.Lock()
 	defer mu.Unlock()
 	if !selectedUpstreams.ContainsOne(upstreamId) {
 		if matched.Type() == SuccessType {
+			if state.RateLimiterBudget != nil {
+				allow, err := state.RateLimiterBudget.Allow(request.Method())
+				if err != nil {
+					return false, RateLimiterResponse{}
+				}
+				if !allow {
+					return false, RateLimiterResponse{}
+				}
+			}
 			selectedUpstreams.Add(upstreamId)
 			return true, nil
 		} else {
@@ -176,6 +188,8 @@ func selectionError(matchResponse MatchResponse) error {
 	switch m := matchResponse.(type) {
 	case MethodResponse:
 		return protocol.NotSupportedMethodError(m.method)
+	case RateLimiterResponse:
+		return protocol.RateLimitError()
 	default:
 		return protocol.NoAvailableUpstreamsError()
 	}
