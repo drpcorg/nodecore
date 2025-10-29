@@ -665,12 +665,8 @@ func (r *RateLimitBudget) validate() error {
 		return errors.New("rate limit budget name cannot be empty")
 	}
 
-	if r.Config == nil {
-		return fmt.Errorf("rate limit budget '%s' must have a config", r.Name)
-	}
-
-	if err := r.Config.validate(); err != nil {
-		return fmt.Errorf("rate limit budget '%s' config validation error: %s", r.Name, err.Error())
+	if err := r.validate(); err != nil {
+		return fmt.Errorf("rate limit budget '%s' validation error: %s", r.Name, err.Error())
 	}
 
 	return nil
