@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/server"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	_ "github.com/drpcorg/nodecore/pkg/chains"
 	_ "github.com/drpcorg/nodecore/pkg/errors_config"
@@ -61,10 +62,15 @@ func main() {
 	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker, rateLimitBudgetRegistry)
 	go upstreamSupervisor.StartUpstreams()
 
+	storageRegistry, err := storages.NewStorageRegistry(appConfig.AppStorages)
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to create the storage registry")
+	}
+
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
 	go ratingRegistry.Start()
 
-	cacheProcessor, err := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig)
+	cacheProcessor, err := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, storageRegistry)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the cache processor")
 	}
@@ -75,6 +81,7 @@ func main() {
 		ratingRegistry,
 		authProcessor,
 		appConfig,
+		storageRegistry,
 	)
 
 	httpServer := server.NewHttpServer(mainCtx, appCtx)

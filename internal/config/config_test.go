@@ -1,7 +1,6 @@
 package config_test
 
 import (
-	"runtime"
 	"testing"
 	"time"
 
@@ -22,6 +21,38 @@ func TestReadFullConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := &config.AppConfig{
+		AppStorages: []config.AppStorageConfig{
+			{
+				Name: "redis-storage-1",
+				Redis: &config.RedisStorageConfig{
+					FullUrl:  "redis://localhost:6379/0",
+					Address:  "localhost:6379",
+					Username: "username",
+					Password: "password",
+					DB:       lo.ToPtr(2),
+					Timeouts: &config.RedisStorageTimeoutsConfig{
+						ConnectTimeout: lo.ToPtr(1 * time.Second),
+						ReadTimeout:    lo.ToPtr(2 * time.Second),
+						WriteTimeout:   lo.ToPtr(3 * time.Second),
+					},
+					Pool: &config.RedisStoragePoolConfig{
+						Size:            35,
+						PoolTimeout:     lo.ToPtr(5 * time.Second),
+						MinIdleConns:    10,
+						MaxIdleConns:    50,
+						MaxActiveConns:  45,
+						ConnMaxIdleTime: lo.ToPtr(60 * time.Second),
+						ConnMaxLifeTime: lo.ToPtr(60 * time.Minute),
+					},
+				},
+			},
+			{
+				Name: "postgres-storage-1",
+				Postgres: &config.PostgresStorageConfig{
+					Url: "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
+				},
+			},
+		},
 		ServerConfig: &config.ServerConfig{
 			Port: 9095,
 			PyroscopeConfig: &config.PyroscopeConfig{
@@ -82,32 +113,14 @@ func TestReadFullConfig(t *testing.T) {
 					Id:     "redis-connector",
 					Driver: config.Redis,
 					Redis: &config.RedisCacheConnectorConfig{
-						FullUrl:  "redis://localhost:6379/0",
-						Address:  "localhost:6379",
-						Username: "username",
-						Password: "password",
-						DB:       lo.ToPtr(2),
-						Timeouts: &config.RedisCacheConnectorTimeoutsConfig{
-							ConnectTimeout: lo.ToPtr(1 * time.Second),
-							ReadTimeout:    lo.ToPtr(2 * time.Second),
-							WriteTimeout:   lo.ToPtr(3 * time.Second),
-						},
-						Pool: &config.RedisCacheConnectorPoolConfig{
-							Size:            35,
-							PoolTimeout:     lo.ToPtr(5 * time.Second),
-							MinIdleConns:    10,
-							MaxIdleConns:    50,
-							MaxActiveConns:  45,
-							ConnMaxIdleTime: lo.ToPtr(60 * time.Second),
-							ConnMaxLifeTime: lo.ToPtr(60 * time.Minute),
-						},
+						StorageName: "redis-storage-1",
 					},
 				},
 				{
 					Id:     "postgresql-connector",
 					Driver: config.Postgres,
 					Postgres: &config.PostgresCacheConnectorConfig{
-						Url:                   "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable",
+						StorageName:           "postgres-storage-1",
 						QueryTimeout:          lo.ToPtr(5 * time.Second),
 						CacheTable:            "cache",
 						ExpiredRemoveInterval: 10 * time.Second,
@@ -780,18 +793,7 @@ func TestRedisDefaults(t *testing.T) {
 
 	redisCfg := appCfg.CacheConfig.CacheConnectors[0].Redis
 	expected := &config.RedisCacheConnectorConfig{
-		Address:  "localhost:6379",
-		DB:       lo.ToPtr(0),
-		Timeouts: &config.RedisCacheConnectorTimeoutsConfig{ConnectTimeout: lo.ToPtr(500 * time.Millisecond), ReadTimeout: lo.ToPtr(200 * time.Millisecond), WriteTimeout: lo.ToPtr(200 * time.Millisecond)},
-		Pool: &config.RedisCacheConnectorPoolConfig{
-			Size:            10 * runtime.GOMAXPROCS(0),
-			PoolTimeout:     lo.ToPtr(200*time.Millisecond + 1*time.Second),
-			MinIdleConns:    0,
-			MaxIdleConns:    0,
-			MaxActiveConns:  0,
-			ConnMaxIdleTime: lo.ToPtr(30 * time.Minute),
-			ConnMaxLifeTime: lo.ToPtr(time.Duration(0)),
-		},
+		StorageName: "redis-storage-defaults",
 	}
 
 	assert.Equal(t, expected, redisCfg)
@@ -804,24 +806,7 @@ func TestRedisFullCustom(t *testing.T) {
 
 	redisCfg := appCfg.CacheConfig.CacheConnectors[0].Redis
 	expected := &config.RedisCacheConnectorConfig{
-		FullUrl:  "redis://user:pass@localhost:6380/2",
-		Username: "user",
-		Password: "pass",
-		DB:       lo.ToPtr(2),
-		Timeouts: &config.RedisCacheConnectorTimeoutsConfig{
-			ConnectTimeout: lo.ToPtr(1 * time.Second),
-			ReadTimeout:    lo.ToPtr(2 * time.Second),
-			WriteTimeout:   lo.ToPtr(3 * time.Second),
-		},
-		Pool: &config.RedisCacheConnectorPoolConfig{
-			Size:            64,
-			PoolTimeout:     lo.ToPtr(5 * time.Second),
-			MinIdleConns:    4,
-			MaxIdleConns:    8,
-			MaxActiveConns:  128,
-			ConnMaxIdleTime: lo.ToPtr(10 * time.Minute),
-			ConnMaxLifeTime: lo.ToPtr(1 * time.Hour),
-		},
+		StorageName: "redis-storage-custom",
 	}
 
 	assert.Equal(t, expected, redisCfg)
@@ -830,61 +815,61 @@ func TestRedisFullCustom(t *testing.T) {
 func TestRedisMissingAddressThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-missing-address.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis3' validation, cause: either 'address' or 'full_url' must be specified")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: either 'address' or 'full_url' must be specified")
 }
 
 func TestRedisNegativeReadTimeoutThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-negative-read-timeout.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis4' validation, cause: read timeout cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: read timeout cannot be negative")
 }
 
 func TestRedisNegativeWriteTimeoutThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-negative-write-timeout.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis5' validation, cause: write timeout cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: write timeout cannot be negative")
 }
 
 func TestRedisNegativeConnectTimeoutThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-negative-connect-timeout.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis6' validation, cause: connect timeout cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: connect timeout cannot be negative")
 }
 
 func TestRedisPoolNegativeSizeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-size.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis7' validation, cause: pool size cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: pool size cannot be negative")
 }
 
 func TestRedisPoolNegativePoolTimeoutThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-pool-timeout.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis8' validation, cause: pool timeout cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: pool timeout cannot be negative")
 }
 
 func TestRedisPoolMinGreaterMaxIdleThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-min-greater-max.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis9' validation, cause: pool min idle connections cannot be greater than pool max idle connections")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: pool min idle connections cannot be greater than pool max idle connections")
 }
 
 func TestRedisPoolNegativeMaxActiveThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-max-active.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis10' validation, cause: pool max connections cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: pool max connections cannot be negative")
 }
 
 func TestRedisPoolNegativeConnLifeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-conn-life.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis11' validation, cause: pool conn max life time cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: pool conn max life time cannot be negative")
 }
 
 func TestRedisPoolNegativeConnIdleThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-pool-negative-conn-idle.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'redis12' validation, cause: pool conn max idle time cannot be negative")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: pool conn max idle time cannot be negative")
 }
 
 func TestPostgresDefaults(t *testing.T) {
@@ -894,7 +879,7 @@ func TestPostgresDefaults(t *testing.T) {
 
 	pg := appCfg.CacheConfig.CacheConnectors[0].Postgres
 	expected := &config.PostgresCacheConnectorConfig{
-		Url:                   "postgres://user:pass@localhost:5432/db",
+		StorageName:           "postgres-storage-defaults",
 		ExpiredRemoveInterval: 30 * time.Second,
 		QueryTimeout:          lo.ToPtr(300 * time.Millisecond),
 		CacheTable:            "cache_rpc",
@@ -910,7 +895,7 @@ func TestPostgresFullCustom(t *testing.T) {
 
 	pg := appCfg.CacheConfig.CacheConnectors[0].Postgres
 	expected := &config.PostgresCacheConnectorConfig{
-		Url:                   "postgres://user1:pass1@localhost:5432/db",
+		StorageName:           "postgres-storage-custom",
 		ExpiredRemoveInterval: 1 * time.Minute,
 		QueryTimeout:          lo.ToPtr(2 * time.Second),
 		CacheTable:            "cache_custom",
@@ -922,7 +907,7 @@ func TestPostgresFullCustom(t *testing.T) {
 func TestPostgresMissingUrlThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-missing-url.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache connector 'pg3' validation, cause: 'url' must be specified")
+	assert.ErrorContains(t, err, "postgres storage name 'nonexistent-storage' not found")
 }
 
 func TestPostgresNegativeQueryTimeoutThenError(t *testing.T) {

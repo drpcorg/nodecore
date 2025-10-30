@@ -27,6 +27,43 @@ type AppConfig struct {
 	CacheConfig      *CacheConfig            `yaml:"cache"`
 	AuthConfig       *AuthConfig             `yaml:"auth"`
 	RateLimitBudgets []RateLimitBudgetConfig `yaml:"rate-limit-budgets"`
+	AppStorages      []AppStorageConfig      `yaml:"app-storages"`
+}
+
+type AppStorageConfig struct {
+	Name     string                 `yaml:"name"`
+	Redis    *RedisStorageConfig    `yaml:"redis"`
+	Postgres *PostgresStorageConfig `yaml:"postgres"`
+}
+
+type RedisStorageConfig struct {
+	FullUrl  string                      `yaml:"full-url"`
+	Address  string                      `yaml:"address"`
+	Username string                      `yaml:"username"`
+	Password string                      `yaml:"password"`
+	DB       *int                        `yaml:"db"`
+	Timeouts *RedisStorageTimeoutsConfig `yaml:"timeouts"`
+	Pool     *RedisStoragePoolConfig     `yaml:"pool"`
+}
+
+type RedisStorageTimeoutsConfig struct {
+	ConnectTimeout *time.Duration `yaml:"connect-timeout"`
+	ReadTimeout    *time.Duration `yaml:"read-timeout"`
+	WriteTimeout   *time.Duration `yaml:"write-timeout"`
+}
+
+type RedisStoragePoolConfig struct {
+	Size            int            `yaml:"size"`
+	PoolTimeout     *time.Duration `yaml:"pool-timeout"`
+	MinIdleConns    int            `yaml:"min-idle-conns"`
+	MaxIdleConns    int            `yaml:"max-idle-conns"`
+	MaxActiveConns  int            `yaml:"max-active-conns"`
+	ConnMaxIdleTime *time.Duration `yaml:"conn-max-idle-time"`
+	ConnMaxLifeTime *time.Duration `yaml:"conn-max-life-time"`
+}
+
+type PostgresStorageConfig struct {
+	Url string `yaml:"url"`
 }
 
 type RateLimitEngine struct {
@@ -313,7 +350,7 @@ type CacheConnectorConfig struct {
 }
 
 type PostgresCacheConnectorConfig struct {
-	Url                   string         `yaml:"url"`
+	StorageName           string         `yaml:"storage-name"`
 	QueryTimeout          *time.Duration `yaml:"query-timeout"`
 	CacheTable            string         `yaml:"cache-table"`
 	ExpiredRemoveInterval time.Duration  `yaml:"expired-remove-interval"`
@@ -325,29 +362,7 @@ type MemoryCacheConnectorConfig struct {
 }
 
 type RedisCacheConnectorConfig struct {
-	FullUrl  string                             `yaml:"full-url"`
-	Address  string                             `yaml:"address"`
-	Username string                             `yaml:"username"`
-	Password string                             `yaml:"password"`
-	DB       *int                               `yaml:"db"`
-	Timeouts *RedisCacheConnectorTimeoutsConfig `yaml:"timeouts"`
-	Pool     *RedisCacheConnectorPoolConfig     `yaml:"pool"`
-}
-
-type RedisCacheConnectorTimeoutsConfig struct {
-	ConnectTimeout *time.Duration `yaml:"connect-timeout"`
-	ReadTimeout    *time.Duration `yaml:"read-timeout"`
-	WriteTimeout   *time.Duration `yaml:"write-timeout"`
-}
-
-type RedisCacheConnectorPoolConfig struct {
-	Size            int            `yaml:"size"`
-	PoolTimeout     *time.Duration `yaml:"pool-timeout"`
-	MinIdleConns    int            `yaml:"min-idle-conns"`
-	MaxIdleConns    int            `yaml:"max-idle-conns"`
-	MaxActiveConns  int            `yaml:"max-active-conns"`
-	ConnMaxIdleTime *time.Duration `yaml:"conn-max-idle-time"`
-	ConnMaxLifeTime *time.Duration `yaml:"conn-max-life-time"`
+	StorageName string `yaml:"storage-name"`
 }
 
 type FinalizationType string

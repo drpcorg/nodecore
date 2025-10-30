@@ -14,6 +14,12 @@ const (
 )
 
 func (a *AppConfig) setDefaults() {
+	if a.AppStorages == nil {
+		a.AppStorages = []AppStorageConfig{}
+	}
+	for _, storage := range a.AppStorages {
+		storage.setDefaults()
+	}
 	if a.UpstreamConfig == nil {
 		a.UpstreamConfig = &UpstreamConfig{}
 	}
@@ -38,6 +44,12 @@ func (a *AuthConfig) setDefaults() {
 		for _, key := range a.KeyConfigs {
 			key.setDefaults()
 		}
+	}
+}
+
+func (a *AppStorageConfig) setDefaults() {
+	if a.Redis != nil {
+		a.Redis.setDefaults()
 	}
 }
 
@@ -117,7 +129,6 @@ func (c *CacheConnectorConfig) setDefaults() {
 		if c.Redis == nil {
 			c.Redis = &RedisCacheConnectorConfig{}
 		}
-		c.Redis.setDefaults()
 	case Postgres:
 		if c.Postgres == nil {
 			c.Postgres = &PostgresCacheConnectorConfig{}
@@ -138,21 +149,21 @@ func (p *PostgresCacheConnectorConfig) setDefaults() {
 	}
 }
 
-func (r *RedisCacheConnectorConfig) setDefaults() {
+func (r *RedisStorageConfig) setDefaults() {
 	if r.DB == nil {
 		r.DB = lo.ToPtr(0)
 	}
 	if r.Timeouts == nil {
-		r.Timeouts = &RedisCacheConnectorTimeoutsConfig{}
+		r.Timeouts = &RedisStorageTimeoutsConfig{}
 	}
 	r.Timeouts.setDefaults()
 	if r.Pool == nil {
-		r.Pool = &RedisCacheConnectorPoolConfig{}
+		r.Pool = &RedisStoragePoolConfig{}
 	}
 	r.Pool.setDefaults(r.Timeouts)
 }
 
-func (p *RedisCacheConnectorPoolConfig) setDefaults(timeouts *RedisCacheConnectorTimeoutsConfig) {
+func (p *RedisStoragePoolConfig) setDefaults(timeouts *RedisStorageTimeoutsConfig) {
 	if p.Size == 0 {
 		p.Size = 10 * runtime.GOMAXPROCS(0)
 	}
@@ -167,7 +178,7 @@ func (p *RedisCacheConnectorPoolConfig) setDefaults(timeouts *RedisCacheConnecto
 	}
 }
 
-func (r *RedisCacheConnectorTimeoutsConfig) setDefaults() {
+func (r *RedisStorageTimeoutsConfig) setDefaults() {
 	if r.ConnectTimeout == nil {
 		r.ConnectTimeout = lo.ToPtr(500 * time.Millisecond)
 	}

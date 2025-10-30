@@ -11,6 +11,30 @@ server:
     key: "/path/key"
     ca: "/path/ca"
 
+app-storages:
+  - name: redis-storage-1
+    redis:
+      full-url: "redis://localhost:6379/0"
+      address: "localhost:6379"
+      username: username
+      password: password
+      db: 2
+      timeouts:
+        connect-timeout: 1s
+        read-timeout: 2s
+        write-timeout: 3s
+      pool:
+        size: 35
+        pool-timeout: 5s
+        min-idle-conns: 10
+        max-idle-conns: 50
+        max-active-conns: 45
+        conn-max-idle-time: 60s
+        conn-max-life-time: 60m
+  - name: postgres-storage-1
+    postgres:
+      url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+
 auth:
   enabled: true
   request-strategy:
@@ -47,27 +71,11 @@ cache:
     - id: redis-connector
       driver: redis
       redis:
-        full-url: "redis://localhost:6379/0"
-        address: "localhost:6379"
-        username: username
-        password: password
-        db: 2
-        timeouts:
-          connect-timeout: 1s
-          read-timeout: 2s
-          write-timeout: 3s
-        pool:
-          size: 35
-          pool-timeout: 5s
-          min-idle-conns: 10
-          max-idle-conns: 50
-          max-active-conns: 45
-          conn-max-idle-time: 60s
-          conn-max-life-time: 60m
+        storage-name: redis-storage-1
     - id: postgresql-connector
       driver: "postgres"
       postgres:
-        url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+        storage-name: postgres-storage-1
         query-timeout: 5s
         cache-table: "cache"
         expired-remove-interval: 10s

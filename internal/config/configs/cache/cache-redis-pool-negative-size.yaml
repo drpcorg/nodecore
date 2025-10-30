@@ -1,14 +1,19 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-negative-size
+    redis:
+      address: localhost:6379
+      pool:
+        size: -1
+
 cache:
   connectors:
     - driver: redis
       id: redis7
       redis:
-        address: localhost:6379
-        pool:
-          size: -1
+        storage-name: redis-storage-negative-size
 
 upstream-config:
   upstreams:

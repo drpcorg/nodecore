@@ -14,8 +14,16 @@ import (
 )
 
 func (a *AppConfig) validate() error {
+	storageNames := make(map[string]string)
+	for i, storageConfig := range a.AppStorages {
+		storageType, err := storageConfig.validate()
+		if err != nil {
+			return fmt.Errorf("error during app storage config validation at index %d, cause: %s", i, err.Error())
+		}
+		storageNames[storageConfig.Name] = storageType
+	}
 	if a.CacheConfig != nil {
-		if err := a.CacheConfig.validate(); err != nil {
+		if err := a.CacheConfig.validate(storageNames); err != nil {
 			return err
 		}
 	}
@@ -51,6 +59,26 @@ func (a *AppConfig) validate() error {
 	}
 
 	return nil
+}
+
+func (a *AppStorageConfig) validate() (string, error) {
+	if a.Name == "" {
+		return "", errors.New("app storage name cannot be empty")
+	}
+	if a.Redis != nil {
+		if err := a.Redis.validate(); err != nil {
+			return "", fmt.Errorf("error during redis storage config validation, cause: %s", err.Error())
+		}
+		return "redis", nil
+	}
+	if a.Postgres != nil {
+		// Postgres validation is minimal - just check URL exists
+		if a.Postgres.Url == "" {
+			return "", errors.New("postgres url cannot be empty")
+		}
+		return "postgres", nil
+	}
+	return "", errors.New("storage must have either redis or postgres configuration")
 }
 
 func (a *AuthConfig) validate() error {
@@ -166,7 +194,7 @@ func (r RequestStrategyType) validate() error {
 	return nil
 }
 
-func (c *CacheConfig) validate() error {
+func (c *CacheConfig) validate(storageNames map[string]string) error {
 	connectors := mapset.NewThreadUnsafeSet[string]()
 	for i, connector := range c.CacheConnectors {
 		if connector.Id == "" {
@@ -175,7 +203,7 @@ func (c *CacheConfig) validate() error {
 		if connectors.ContainsOne(connector.Id) {
 			return fmt.Errorf("error during cache connectors validation, connector with id '%s' already exists", connector.Id)
 		}
-		if err := connector.validate(); err != nil {
+		if err := connector.validate(storageNames); err != nil {
 			return fmt.Errorf("error during cache connector '%s' validation, cause: %s", connector.Id, err.Error())
 		}
 		connectors.Add(connector.Id)
@@ -196,7 +224,7 @@ func (c *CacheConfig) validate() error {
 	return nil
 }
 
-func (c *CacheConnectorConfig) validate() error {
+func (c *CacheConnectorConfig) validate(storageNames map[string]string) error {
 	if err := c.Driver.validate(); err != nil {
 		return err
 	}
@@ -206,12 +234,16 @@ func (c *CacheConnectorConfig) validate() error {
 		}
 	}
 	if c.Redis != nil {
-		if err := c.Redis.validate(); err != nil {
-			return err
+		storage, ok := storageNames[c.Redis.StorageName]
+		if !ok {
+			return fmt.Errorf("redis storage name '%s' not found", c.Redis.StorageName)
+		}
+		if storage != "redis" {
+			return fmt.Errorf("redis storage name '%s' is not a redis storage", c.Redis.StorageName)
 		}
 	}
 	if c.Postgres != nil {
-		if err := c.Postgres.validate(); err != nil {
+		if err := c.Postgres.validate(storageNames); err != nil {
 			return err
 		}
 	}
@@ -219,10 +251,15 @@ func (c *CacheConnectorConfig) validate() error {
 	return nil
 }
 
-func (p *PostgresCacheConnectorConfig) validate() error {
-	if p.Url == "" {
-		return errors.New("'url' must be specified")
+func (p *PostgresCacheConnectorConfig) validate(storageNames map[string]string) error {
+	storage, ok := storageNames[p.StorageName]
+	if !ok {
+		return fmt.Errorf("postgres storage name '%s' not found", p.StorageName)
 	}
+	if storage != "postgres" {
+		return fmt.Errorf("postgres storage name '%s' is not a postgres storage", p.StorageName)
+	}
+
 	if p.QueryTimeout != nil && *p.QueryTimeout < 0 {
 		return errors.New("query-timeout must be greater than or equal to 0")
 	}
@@ -233,7 +270,7 @@ func (p *PostgresCacheConnectorConfig) validate() error {
 	return nil
 }
 
-func (r *RedisCacheConnectorConfig) validate() error {
+func (r *RedisStorageConfig) validate() error {
 	if r.FullUrl == "" && r.Address == "" {
 		return errors.New("either 'address' or 'full_url' must be specified")
 	}

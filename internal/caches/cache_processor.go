@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,6 +44,7 @@ type BaseCacheProcessor struct {
 func NewBaseCacheProcessor(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheConfig *config.CacheConfig,
+	storageRegistry *storages.StorageRegistry,
 ) (*BaseCacheProcessor, error) {
 	cacheConnectors := make([]CacheConnector, 0)
 
@@ -53,9 +55,9 @@ func NewBaseCacheProcessor(
 		case config.Memory:
 			connector, err = NewInMemoryConnector(connectorCfg.Id, connectorCfg.Memory)
 		case config.Redis:
-			connector, err = NewRedisConnector(connectorCfg.Id, connectorCfg.Redis)
+			connector, err = NewRedisConnector(connectorCfg.Id, connectorCfg.Redis, storageRegistry)
 		case config.Postgres:
-			connector, err = NewPostgresConnector(connectorCfg.Id, connectorCfg.Postgres)
+			connector, err = NewPostgresConnector(connectorCfg.Id, connectorCfg.Postgres, storageRegistry)
 		default:
 			return nil, fmt.Errorf("unknown connector driver '%s'", connectorCfg.Driver)
 		}

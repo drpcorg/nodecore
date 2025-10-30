@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/pkg/test_utils/e2e"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,7 @@ var (
 )
 
 var fullUrl string
+var storageRegistry *storages.StorageRegistry
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -41,6 +43,15 @@ func TestMain(m *testing.M) {
 	mapped, _ := postgresContainer.MappedPort(ctx, "5432/tcp")
 	fullUrl = fmt.Sprintf("postgres://%s:%s@%s:%s/%s", dbUser, dbPass, host, mapped.Port(), dbName)
 
+	storageRegistry, _ = storages.NewStorageRegistry([]config.AppStorageConfig{
+		{
+			Name: "test-postgres",
+			Postgres: &config.PostgresStorageConfig{
+				Url: fullUrl,
+			},
+		},
+	})
+
 	code := m.Run()
 	os.Exit(code)
 }
@@ -49,10 +60,12 @@ func TestPostgresConnectorInitialize(t *testing.T) {
 	connector, err := caches.NewPostgresConnector(
 		"id",
 		&config.PostgresCacheConnectorConfig{
-			Url:          fullUrl,
-			QueryTimeout: lo.ToPtr(1 * time.Second),
-			CacheTable:   "cache",
+			StorageName:           "test-postgres",
+			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			CacheTable:            "cache",
+			ExpiredRemoveInterval: 1 * time.Hour,
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 
@@ -63,10 +76,12 @@ func TestPostgresConnectorNoItemThenErrCacheNotFound(t *testing.T) {
 	connector, err := caches.NewPostgresConnector(
 		"id",
 		&config.PostgresCacheConnectorConfig{
-			Url:          fullUrl,
-			QueryTimeout: lo.ToPtr(1 * time.Second),
-			CacheTable:   "cache",
+			StorageName:           "test-postgres",
+			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			CacheTable:            "cache",
+			ExpiredRemoveInterval: 1 * time.Hour,
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 
@@ -77,10 +92,12 @@ func TestPostgresConnectorStoreThenReceive(t *testing.T) {
 	connector, err := caches.NewPostgresConnector(
 		"id",
 		&config.PostgresCacheConnectorConfig{
-			Url:          fullUrl,
-			QueryTimeout: lo.ToPtr(1 * time.Second),
-			CacheTable:   "cache",
+			StorageName:           "test-postgres",
+			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			CacheTable:            "cache",
+			ExpiredRemoveInterval: 1 * time.Hour,
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 
@@ -91,10 +108,12 @@ func TestPostgresConnectorStoreAndRemoveExpired(t *testing.T) {
 	connector, err := caches.NewPostgresConnector(
 		"id",
 		&config.PostgresCacheConnectorConfig{
-			Url:          fullUrl,
-			QueryTimeout: lo.ToPtr(1 * time.Second),
-			CacheTable:   "cache",
+			StorageName:           "test-postgres",
+			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			CacheTable:            "cache",
+			ExpiredRemoveInterval: 1 * time.Hour,
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 

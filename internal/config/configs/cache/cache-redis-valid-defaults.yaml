@@ -1,12 +1,17 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-defaults
+    redis:
+      address: localhost:6379
+
 cache:
   connectors:
     - driver: redis
       id: redis1
       redis:
-        address: localhost:6379
+        storage-name: redis-storage-defaults
 
 upstream-config:
   upstreams:
