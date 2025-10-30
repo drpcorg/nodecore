@@ -22,10 +22,20 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig   *ServerConfig   `yaml:"server"`
-	UpstreamConfig *UpstreamConfig `yaml:"upstream-config"`
-	CacheConfig    *CacheConfig    `yaml:"cache"`
-	AuthConfig     *AuthConfig     `yaml:"auth"`
+	ServerConfig     *ServerConfig           `yaml:"server"`
+	UpstreamConfig   *UpstreamConfig         `yaml:"upstream-config"`
+	CacheConfig      *CacheConfig            `yaml:"cache"`
+	AuthConfig       *AuthConfig             `yaml:"auth"`
+	RateLimitBudgets []RateLimitBudgetConfig `yaml:"rate-limit-budgets"`
+}
+
+type RateLimitEngine struct {
+	Type string `yaml:"type"`
+}
+
+type RateLimitBudgetConfig struct {
+	DefaultEngine string `yaml:"default-engine"`
+	Budgets       []RateLimitBudget
 }
 
 type AuthConfig struct {
@@ -236,6 +246,7 @@ type RateLimiterConfig struct {
 
 type RateLimitBudget struct {
 	Name   string             `yaml:"name"`
+	Engine string             `yaml:"engine"`
 	Config *RateLimiterConfig `yaml:"config"`
 }
 

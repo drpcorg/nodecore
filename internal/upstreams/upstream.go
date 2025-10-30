@@ -20,6 +20,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -83,6 +84,7 @@ func NewUpstream(
 	tracker *dimensions.DimensionTracker,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	upstreamIndex int,
+	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 ) (*Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
@@ -117,6 +119,12 @@ func NewUpstream(
 			Name:   "inplace",
 			Config: conf.RateLimit,
 		}, ratelimiter.NewRateLimitMemoryEngine())
+	} else if conf.RateLimitBudget != "" {
+		rateLimitBudget, ok := rateLimitBudgetRegistry.Get(conf.RateLimitBudget)
+		if !ok {
+			zerolog.Ctx(ctx).Panic().Msgf("rate limit budget %s not found", conf.RateLimitBudget)
+		}
+		rt = rateLimitBudget
 	}
 	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt))
 

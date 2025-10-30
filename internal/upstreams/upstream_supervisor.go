@@ -7,6 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -24,28 +25,30 @@ type UpstreamSupervisor interface {
 }
 
 type BaseUpstreamSupervisor struct {
-	ctx                    context.Context
-	chainSupervisors       *utils.CMap[chains.Chain, ChainSupervisor]
-	upstreams              *utils.CMap[string, Upstream]
-	eventsChan             chan protocol.UpstreamEvent
-	upstreamsConfig        *config.UpstreamConfig
-	executor               failsafe.Executor[*protocol.ResponseHolderWrapper]
-	tracker                *dimensions.DimensionTracker
-	upstreamIndices        *utils.CMap[string, int]
-	upstreamIndicesCounter int
+	ctx                     context.Context
+	chainSupervisors        *utils.CMap[chains.Chain, ChainSupervisor]
+	upstreams               *utils.CMap[string, Upstream]
+	eventsChan              chan protocol.UpstreamEvent
+	upstreamsConfig         *config.UpstreamConfig
+	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
+	tracker                 *dimensions.DimensionTracker
+	upstreamIndices         *utils.CMap[string, int]
+	upstreamIndicesCounter  int
+	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
 }
 
-func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker) UpstreamSupervisor {
+func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker, rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
-		ctx:                    ctx,
-		upstreams:              utils.NewCMap[string, Upstream](),
-		chainSupervisors:       utils.NewCMap[chains.Chain, ChainSupervisor](),
-		eventsChan:             make(chan protocol.UpstreamEvent, 100),
-		upstreamsConfig:        upstreamsConfig,
-		tracker:                tracker,
-		executor:               createFlowExecutor(upstreamsConfig.FailsafeConfig),
-		upstreamIndices:        utils.NewCMap[string, int](),
-		upstreamIndicesCounter: 1,
+		ctx:                     ctx,
+		upstreams:               utils.NewCMap[string, Upstream](),
+		chainSupervisors:        utils.NewCMap[chains.Chain, ChainSupervisor](),
+		eventsChan:              make(chan protocol.UpstreamEvent, 100),
+		upstreamsConfig:         upstreamsConfig,
+		tracker:                 tracker,
+		executor:                createFlowExecutor(upstreamsConfig.FailsafeConfig),
+		upstreamIndices:         utils.NewCMap[string, int](),
+		upstreamIndicesCounter:  1,
+		rateLimitBudgetRegistry: rateLimitBudgetRegistry,
 	}
 }
 
@@ -91,7 +94,7 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, currentIndex)
+			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, currentIndex, u.rateLimitBudgetRegistry)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return

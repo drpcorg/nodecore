@@ -27,9 +27,23 @@ func (a *AppConfig) validate() error {
 	if err := a.ServerConfig.validate(); err != nil {
 		return err
 	}
-	if err := a.UpstreamConfig.validate(); err != nil {
+
+	rateLimitBudgetNames := mapset.NewThreadUnsafeSet[string]()
+	if len(a.RateLimitBudgets) > 0 {
+		for i, budgetConfig := range a.RateLimitBudgets {
+			if err := budgetConfig.validate(); err != nil {
+				return fmt.Errorf("error during rate limit budget config validation at index %d, cause: %s", i, err.Error())
+			}
+			for _, budget := range budgetConfig.Budgets {
+				rateLimitBudgetNames.Add(budget.Name)
+			}
+		}
+	}
+
+	if err := a.UpstreamConfig.validate(rateLimitBudgetNames); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -375,7 +389,7 @@ func (r *RateLimiterConfig) validate() error {
 	return nil
 }
 
-func (u *UpstreamConfig) validate() error {
+func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string]) error {
 	if err := u.ScorePolicyConfig.validate(); err != nil {
 		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
 	}
@@ -407,6 +421,10 @@ func (u *UpstreamConfig) validate() error {
 		}
 		if err := upstream.validate(); err != nil {
 			return fmt.Errorf("error during upstream '%s' validation, cause: %s", upstream.Id, err.Error())
+		}
+		// Validate rate limit budget reference
+		if upstream.RateLimitBudget != "" && !rateLimitBudgetNames.Contains(upstream.RateLimitBudget) {
+			return fmt.Errorf("upstream '%s' references non-existent rate limit budget '%s'", upstream.Id, upstream.RateLimitBudget)
 		}
 		idSet.Add(upstream.Id)
 	}
@@ -623,5 +641,45 @@ func (t ApiConnectorType) validate() error {
 	default:
 		return fmt.Errorf("invalid connector type - '%s'", t)
 	}
+	return nil
+}
+
+func (r *RateLimitBudgetConfig) validate() error {
+	budgetNames := mapset.NewThreadUnsafeSet[string]()
+	engines := mapset.NewThreadUnsafeSet[string]()
+	engines.Add(r.DefaultEngine)
+
+	for i, budget := range r.Budgets {
+		if budget.Name == "" {
+			return fmt.Errorf("rate limit budget name cannot be empty at index %d", i)
+		}
+		if budgetNames.Contains(budget.Name) {
+			return fmt.Errorf("duplicate rate limit budget name '%s'", budget.Name)
+		}
+		if err := budget.validate(); err != nil {
+			return fmt.Errorf("error during rate limit budget '%s' validation, cause: %s", budget.Name, err.Error())
+		}
+		budgetNames.Add(budget.Name)
+		if budget.Engine != "" {
+			engines.Add(budget.Engine)
+		}
+	}
+
+	return nil
+}
+
+func (r *RateLimitBudget) validate() error {
+	if r.Name == "" {
+		return errors.New("rate limit budget name cannot be empty")
+	}
+
+	if r.Config == nil {
+		return fmt.Errorf("rate limit budget '%s' must have a config", r.Name)
+	}
+
+	if err := r.Config.validate(); err != nil {
+		return fmt.Errorf("rate limit budget '%s' config validation error: %s", r.Name, err.Error())
+	}
+
 	return nil
 }

@@ -948,3 +948,22 @@ func TestRateLimitNoNegativesThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: error during rate limit validation, cause: the requests must be greater than 0")
 }
+
+func TestValidRateLimitBudgets(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/valid-rate-limit-budgets.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Len(t, appConfig.RateLimitBudgets, 1)
+	assert.Equal(t, "memory", appConfig.RateLimitBudgets[0].DefaultEngine)
+	assert.Len(t, appConfig.RateLimitBudgets[0].Budgets, 2)
+	assert.Equal(t, "standard-budget", appConfig.RateLimitBudgets[0].Budgets[0].Name)
+	assert.Equal(t, "premium-budget", appConfig.RateLimitBudgets[0].Budgets[1].Name)
+	assert.Equal(t, "standard-budget", appConfig.UpstreamConfig.Upstreams[0].RateLimitBudget)
+}
+
+func TestRateLimitBudgetNonexistentReferenceThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-budget-nonexistent-reference.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "upstream 'eth-upstream' references non-existent rate limit budget 'nonexistent-budget'")
+}
