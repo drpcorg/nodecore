@@ -35,9 +35,12 @@ func (a *AppConfig) validate() error {
 				return fmt.Errorf("error during rate limit budget config validation at index %d, cause: %s", i, err.Error())
 			}
 			for _, budget := range budgetConfig.Budgets {
+<<<<<<< HEAD
 				if rateLimitBudgetNames.Contains(budget.Name) {
 					return fmt.Errorf("error during rate limit budget config validation, cause: duplicate rate limit budget name '%s'", budget.Name)
 				}
+=======
+>>>>>>> e0f10bd (add rate limit shared budgets)
 				rateLimitBudgetNames.Add(budget.Name)
 			}
 		}
