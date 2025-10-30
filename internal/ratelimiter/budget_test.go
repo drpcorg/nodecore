@@ -166,8 +166,8 @@ func TestRateLimitBudget_Allow_SeparateLimitsPerMethod(t *testing.T) {
 	budget := NewRateLimitBudget(cfg, NewRateLimitMemoryEngine())
 
 	// Exhaust eth_blockNumber limit
-	budget.Allow("eth_blockNumber")
-	budget.Allow("eth_blockNumber")
+	_, _ = budget.Allow("eth_blockNumber")
+	_, _ = budget.Allow("eth_blockNumber")
 
 	allowed, err := budget.Allow("eth_blockNumber")
 	require.NoError(t, err)
