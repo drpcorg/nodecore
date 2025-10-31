@@ -344,7 +344,6 @@ func (u *Upstream) processBlocks(ctx context.Context) {
 			}
 		case block, ok := <-blockChan:
 			if ok {
-				fmt.Println(block.BlockData.Height)
 				u.publishUpstreamStateEvent(&protocol.BlockUpstreamStateEvent{BlockData: block.BlockData, BlockType: block.BlockType})
 				blocksMetric.WithLabelValues(u.Id, block.BlockType.String(), u.Chain.String()).Set(float64(block.BlockData.Height))
 			}
