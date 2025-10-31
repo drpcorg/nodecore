@@ -132,7 +132,7 @@ func NewUpstream(
 	}
 	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt))
 
-	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", config.Id), ctx)
+	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
 	processorsLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_processors_upstream", conf.Id), ctx)
 	return &Upstream{
 		Id:               conf.Id,
@@ -146,9 +146,9 @@ func NewUpstream(
 		upstreamIndexHex: upstreamIndexHex,
 		upConfig:         conf,
 
-		headProcessor:               blocks.NewHeadProcessor(ctx, config, headConnector, chainSpecific),
-		blockProcessor:              createBlockProcessor(ctx, config, headConnector, chainSpecific, configuredChain.Type),
-		settingsValidationProcessor: createSettingValidationProcessor(config.Id, headConnector, configuredChain, chainSpecific, config.Options),
+		headProcessor:               blocks.NewHeadProcessor(ctx, conf, headConnector, chainSpecific),
+		blockProcessor:              createBlockProcessor(ctx, conf, headConnector, chainSpecific, configuredChain.Type),
+		settingsValidationProcessor: createSettingValidationProcessor(conf.Id, headConnector, configuredChain, chainSpecific, conf.Options),
 	}, nil
 }
 
