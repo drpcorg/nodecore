@@ -54,19 +54,24 @@ func main() {
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the auth processor")
 	}
-
-	dimensionTracker := dimensions.NewDimensionTracker()
-
-	rateLimitBudgetRegistry := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimitBudgets)
-
-	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker, rateLimitBudgetRegistry)
-	go upstreamSupervisor.StartUpstreams()
-
 	storageRegistry, err := storages.NewStorageRegistry(appConfig.AppStorages)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the storage registry")
 	}
 
+	dimensionTracker := dimensions.NewDimensionTracker()
+	rateLimitEngineRegistry, err := ratelimiter.NewRateLimitEngineRegistry(storageRegistry, appConfig.RateLimitBudgets.Engines)
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to create the rate limit engine registry")
+	}
+
+	rateLimitBudgetRegistry, err := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimitBudgets.Budgets, rateLimitEngineRegistry)
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to create the rate limit budget registry")
+	}
+
+	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker, rateLimitBudgetRegistry)
+	go upstreamSupervisor.StartUpstreams()
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
 	go ratingRegistry.Start()
 

@@ -1,0 +1,40 @@
+server:
+  port: 9095
+
+app-storages:
+  - name: redis-storage-1
+    type: redis
+    redis:
+      address: localhost:6379
+  - name: redis-storage-2
+    type: redis
+    redis:
+      address: localhost:6380
+
+rate-limit-budgets:
+  engines:
+    - name: redis
+      type: redis
+      redis:
+        storage-name: redis-storage-1
+    - name: redis
+      type: redis
+      redis:
+        storage-name: redis-storage-2
+  budgets:
+    - default-engine: redis
+      budgets:
+        - name: test-budget
+          config:
+            rules:
+              - method: eth_call
+                requests: 100
+                period: 1s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

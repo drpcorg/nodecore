@@ -3,11 +3,12 @@ server:
 
 rate-limit-budgets:
   budgets:
-    - budgets:
-        - name: standard-budget
+    - default-engine: nonexistent-engine
+      budgets:
+        - name: test-budget
           config:
             rules:
-              - method: eth_getBlockByNumber
+              - method: eth_call
                 requests: 100
                 period: 1s
 
@@ -15,7 +16,6 @@ upstream-config:
   upstreams:
     - id: eth-upstream
       chain: ethereum
-      rate-limit-budget: nonexistent-budget
       connectors:
         - type: json-rpc
           url: https://test.com

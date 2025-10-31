@@ -22,12 +22,21 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig     *ServerConfig           `yaml:"server"`
-	UpstreamConfig   *UpstreamConfig         `yaml:"upstream-config"`
-	CacheConfig      *CacheConfig            `yaml:"cache"`
-	AuthConfig       *AuthConfig             `yaml:"auth"`
-	RateLimitBudgets []RateLimitBudgetConfig `yaml:"rate-limit-budgets"`
-	AppStorages      []AppStorageConfig      `yaml:"app-storages"`
+	ServerConfig     *ServerConfig          `yaml:"server"`
+	UpstreamConfig   *UpstreamConfig        `yaml:"upstream-config"`
+	CacheConfig      *CacheConfig           `yaml:"cache"`
+	AuthConfig       *AuthConfig            `yaml:"auth"`
+	RateLimitBudgets RateLimitBudgetsConfig `yaml:"rate-limit-budgets"`
+	AppStorages      []AppStorageConfig     `yaml:"app-storages"`
+}
+
+type RateLimitBudgetsConfig struct {
+	Engines []RateLimitEngine
+	Budgets []RateLimitBudgetConfig
+}
+
+type RateLimitBudgesConfig struct {
+	Engines []RateLimitEngine
 }
 
 type AppStorageConfig struct {
@@ -66,8 +75,14 @@ type PostgresStorageConfig struct {
 	Url string `yaml:"url"`
 }
 
+type RedisRateLimitEngineConfig struct {
+	StorageName string `yaml:"storage-name"`
+}
+
 type RateLimitEngine struct {
-	Type string `yaml:"type"`
+	Name  string                      `yaml:"name"`
+	Type  string                      `yaml:"type"`
+	Redis *RedisRateLimitEngineConfig `yaml:"redis"`
 }
 
 type RateLimitBudgetConfig struct {

@@ -1,10 +1,22 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage
+    type: redis
+    redis:
+      address: localhost:6379
+
 rate-limit-budgets:
+  engines:
+    - name: redis
+      type: redis
+      redis:
+        storage-name: redis-storage
   budgets:
-    - budgets:
-        - name: standard-budget
+    - default-engine: redis
+      budgets:
+        - name: redis-budget
           config:
             rules:
               - method: eth_getBlockByNumber
@@ -15,7 +27,7 @@ upstream-config:
   upstreams:
     - id: eth-upstream
       chain: ethereum
-      rate-limit-budget: nonexistent-budget
+      rate-limit-budget: redis-budget
       connectors:
         - type: json-rpc
           url: https://test.com

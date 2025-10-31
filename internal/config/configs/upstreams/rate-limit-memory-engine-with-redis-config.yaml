@@ -1,27 +1,32 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage
+    type: redis
+    redis:
+      address: localhost:6379
+
 rate-limit-budgets:
+  engines:
+    - name: memory
+      type: memory
+      redis:
+        storage-name: redis-storage
   budgets:
-    - budgets:
-        - name: standard-budget
-          config:
-            rules:
-              - method: eth_getBlockByNumber
-                requests: 100
-                period: 1s
-        - name: premium-budget
+    - default-engine: memory
+      budgets:
+        - name: test-budget
           config:
             rules:
               - method: eth_call
-                requests: 500
+                requests: 100
                 period: 1s
 
 upstream-config:
   upstreams:
     - id: eth-upstream
       chain: ethereum
-      rate-limit-budget: standard-budget
       connectors:
         - type: json-rpc
           url: https://test.com
