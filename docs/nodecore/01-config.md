@@ -7,6 +7,7 @@ The configuration file is the entry point for all nodecore settings. It is organ
 - [Cache](04-cache.md) - define cache storages and caching policies
 - [Upstream](05-upstream-config.md) - configure upstream blockchain providers and their settings
 - [Rate Limiting](06-rate-limiting.md) - control request throughput to upstream providers
+- [App Storages](07-app-storages.md) - shared Redis/Postgres storage configurations for cache and rate limiting
 
 By default, nodecore looks for a configuration file named `./nodecore.yml` in the current directory. You can override this path by setting the `NODECORE_CONFIG_PATH` environment variable. For example, `NODECORE_CONFIG_PATH=/path/to/your/config make run`.
 
@@ -52,6 +53,30 @@ server:
     username: pyro-username
     password: pyro-password
 
+app-storages:
+  - name: redis-storage
+    redis:
+      full-url: "redis://localhost:6379/0"
+      address: "localhost:6379"
+      username: username
+      password: password
+      db: 2
+      timeouts:
+        connect-timeout: 1s
+        read-timeout: 2s
+        write-timeout: 3s
+      pool:
+        size: 35
+        pool-timeout: 5s
+        min-idle-conns: 10
+        max-idle-conns: 50
+        max-active-conns: 45
+        conn-max-idle-time: 60s
+        conn-max-life-time: 60m
+  - name: postgres-storage
+    postgres:
+      url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+
 cache:
   receive-timeout: 500ms
   connectors:
@@ -63,30 +88,14 @@ cache:
     - id: redis-connector
       driver: redis
       redis:
-        full-url: "redis://localhost:6379/0"
-        address: "localhost:6379"
-        username: username
-        password: password
-        db: 2
-        timeouts:
-          connect-timeout: 1s
-          read-timeout: 2s
-          write-timeout: 3s
-        pool:
-          size: 35
-          pool-timeout: 5s
-          min-idle-conns: 10
-          max-idle-conns: 50
-          max-active-conns: 45
-          conn-max-idle-time: 60s
-          conn-max-life-time: 60m
+        storage-name: redis-storage
     - id: postgresql-connector
       driver: "postgres"
       postgres:
-        url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+        storage-name: postgres-storage
         query-timeout: 5s
         cache-table: "cache"
-        expired-remove-interval: 10s        
+        expired-remove-interval: 10s
   policies:
     - chain: "*"
       id: memory-policy-1
@@ -109,11 +118,11 @@ auth:
     type: token
     token:
       value: "my-token"
-#    type: jwt
-#    jwt:
-#      public-key: /path/to/key
-#      allowed-issuer: "my-iss"
-#      expiration-required: true
+  #    type: jwt
+  #    jwt:
+  #      public-key: /path/to/key
+  #      allowed-issuer: "my-iss"
+  #      expiration-required: true
   key-management:
     - id: "my-first-key"
       type: local
@@ -133,17 +142,25 @@ auth:
               - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
 
 rate-limit-budgets:
-  - default-engine: memory
-    budgets:
-      - name: standard-budget
-        config:
-          rules:
-            - method: eth_getBlockByNumber
-              requests: 100
-              period: 1s
-            - pattern: trace_.*
-              requests: 5
-              period: 2m
+  engines:
+    - name: memory
+      type: memory
+    - name: redis
+      type: redis
+      redis:
+        storage-name: redis-storage
+  budgets:
+    - default-engine: memory
+      budgets:
+        - name: standard-budget
+          config:
+            rules:
+              - method: eth_getBlockByNumber
+                requests: 100
+                period: 1s
+              - pattern: trace_.*
+                requests: 5
+                period: 2m
 
 upstream-config:
   failsafe-config:
