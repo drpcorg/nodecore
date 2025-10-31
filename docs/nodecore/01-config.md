@@ -2,10 +2,11 @@
 
 The configuration file is the entry point for all nodecore settings. It is organized into several sections, each responsible for a specific part of the system:
 
-* [Server](02-server-config.md) - configure the basic runtime settings of the nodecore server
-* [Auth](03-auth.md) - manage authentication settings and access limitations
-* [Cache](04-cache.md) - define cache storages and caching policies
-* [Upstream](05-upstream-config.md) - configure upstream blockchain providers and their settings
+- [Server](02-server-config.md) - configure the basic runtime settings of the nodecore server
+- [Auth](03-auth.md) - manage authentication settings and access limitations
+- [Cache](04-cache.md) - define cache storages and caching policies
+- [Upstream](05-upstream-config.md) - configure upstream blockchain providers and their settings
+- [Rate Limiting](06-rate-limiting.md) - control request throughput to upstream providers
 
 By default, nodecore looks for a configuration file named `./nodecore.yml` in the current directory. You can override this path by setting the `NODECORE_CONFIG_PATH` environment variable. For example, `NODECORE_CONFIG_PATH=/path/to/your/config make run`.
 
@@ -124,12 +125,25 @@ auth:
             - "127.0.0.1"
           methods:
             allowed:
-              - 'eth_getBlockByNumber'
+              - "eth_getBlockByNumber"
             forbidden:
               - "eth_syncing"
           contracts:
             allowed:
               - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
+
+rate-limit-budgets:
+  - default-engine: memory
+    budgets:
+      - name: standard-budget
+        config:
+          rules:
+            - method: eth_getBlockByNumber
+              requests: 100
+              period: 1s
+            - pattern: trace_.*
+              requests: 5
+              period: 2m
 
 upstream-config:
   failsafe-config:
@@ -153,6 +167,7 @@ upstream-config:
   upstreams:
     - id: my-super-upstream
       chain: ethereum
+      rate-limit-budget: standard-budget
       connectors:
         - type: json-rpc
           url: https://path-to-eth-provider.com
@@ -174,6 +189,11 @@ upstream-config:
           - "my_method"
         disable:
           - "eth_getBlockByNumber"
+      rate-limit:
+        rules:
+          - method: eth_call
+            requests: 200
+            period: 1s
       failsafe-config:
         retry:
           attempts: 10

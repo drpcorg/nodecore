@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/server"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -55,7 +56,9 @@ func main() {
 
 	dimensionTracker := dimensions.NewDimensionTracker()
 
-	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker)
+	rateLimitBudgetRegistry := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimitBudgets)
+
+	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker, rateLimitBudgetRegistry)
 	go upstreamSupervisor.StartUpstreams()
 
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)

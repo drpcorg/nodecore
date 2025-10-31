@@ -99,6 +99,17 @@ upstream-config:
       chain: ethereum
       head-connector: websocket
       poll-interval: 3m
+      rate-limit:
+        rules:
+          - method: eth_getBlockByNumber
+            requests: 100
+            period: 1s
+          - pattern: eth_getBlockByNumber|eth_getBlockByHash
+            requests: 50
+            period: 1s
+          - pattern: trace_.*
+            requests: 5
+            period: 2m
       failsafe-config:
         retry:
           attempts: 5
@@ -114,6 +125,8 @@ upstream-config:
           url: wss://test.com
     - id: another
       chain: polygon
+      rate-limit:
+        auto: true
       failsafe-config:
         retry:
           attempts: 7

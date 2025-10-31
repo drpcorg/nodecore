@@ -156,6 +156,25 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: config.Ws,
 					PollInterval:  3 * time.Minute,
 					ChainName:     "ethereum",
+					RateLimit: &config.RateLimiterConfig{
+						Rules: []config.RateLimitRule{
+							{
+								Method:   "eth_getBlockByNumber",
+								Requests: 100,
+								Period:   time.Second,
+							},
+							{
+								Pattern:  "eth_getBlockByNumber|eth_getBlockByHash",
+								Requests: 50,
+								Period:   time.Second,
+							},
+							{
+								Pattern:  "trace_.*",
+								Requests: 5,
+								Period:   2 * time.Minute,
+							},
+						},
+					},
 					Methods: &config.MethodsConfig{
 						BanDuration: 5 * time.Minute,
 					},
@@ -189,6 +208,8 @@ func TestReadFullConfig(t *testing.T) {
 					Methods: &config.MethodsConfig{
 						BanDuration: 5 * time.Minute,
 					},
+
+					RateLimit: &config.RateLimiterConfig{Rules: nil},
 					FailsafeConfig: &config.FailsafeConfig{
 						RetryConfig: &config.RetryConfig{
 							Attempts: 7,
@@ -914,4 +935,35 @@ func TestPostgresNonpositiveExpiredIntervalThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-postgres-nonpositive-expired-interval.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during cache connector 'pg5' validation, cause: expired remove interval must be > 0")
+}
+
+func TestRateLimitShouldntHavePatternMethodEmptyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/ratelimit-shouldnt-have-patternt-method-empty.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: error during rate limit validation, cause: the method or pattern must be specified")
+}
+
+func TestRateLimitNoNegativesThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/ratelimit-no-negatives.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: error during rate limit validation, cause: the requests must be greater than 0")
+}
+
+func TestValidRateLimitBudgets(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/valid-rate-limit-budgets.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Len(t, appConfig.RateLimitBudgets, 1)
+	assert.Equal(t, "memory", appConfig.RateLimitBudgets[0].DefaultEngine)
+	assert.Len(t, appConfig.RateLimitBudgets[0].Budgets, 2)
+	assert.Equal(t, "standard-budget", appConfig.RateLimitBudgets[0].Budgets[0].Name)
+	assert.Equal(t, "premium-budget", appConfig.RateLimitBudgets[0].Budgets[1].Name)
+	assert.Equal(t, "standard-budget", appConfig.UpstreamConfig.Upstreams[0].RateLimitBudget)
+}
+
+func TestRateLimitBudgetNonexistentReferenceThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-budget-nonexistent-reference.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "upstream 'eth-upstream' references non-existent rate limit budget 'nonexistent-budget'")
 }

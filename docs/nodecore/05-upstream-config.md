@@ -27,6 +27,7 @@ upstream-config:
   upstreams:
     - id: my-super-upstream
       chain: ethereum
+      rate-limit-budget: standard-budget
       connectors:
         - type: json-rpc
           url: https://path-to-eth-provider.com
@@ -49,6 +50,14 @@ upstream-config:
           - "my_method"
         disable:
           - "eth_getBlockByNumber"
+      rate-limit:
+        rules:
+          - method: eth_getBlockByNumber
+            requests: 100
+            period: 1s
+          - pattern: trace_.*
+            requests: 5
+            period: 2m
       failsafe-config:
         retry:
           attempts: 10
@@ -58,13 +67,14 @@ upstream-config:
 ```
 
 It brings together:
+
 1. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter) and hedging (duplicate a slow request after a delay, with a cap on parallel hedges).
 2. Chain defaults (`chain-defaults`) - Per-chain operational defaults, such as poll-interval used for chain-specific activities (e.g., head/finality polling).
 3. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
 4. Upstreams (`upstreams`) - The actual provider entries.
 5. Integrity (`integrity`) ensures that methods like eth_blockNumber and eth_getBlockByNumber never return stale data. When enabled, NodeCore guarantees non-decreasing block numbers by validating responses against the current head and retrying with the highest-synced upstream if needed.
 
-Together, these settings let you (1) register providers, (2) tune resiliency and polling, and (3) define how nodecore scores and selects the best upstream at runtime.
+Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, and (4) apply rate limiting to control request throughput.
 
 ## integrity
 
@@ -259,40 +269,46 @@ Each upstream can expose multiple interfaces for communication. A blockchain net
 nodecore is designed to support all of these, so that depending on the request type, the most suitable connector can be used automatically.
 
 Currently supported:
-* `json-rpc`– standard HTTP-based JSON-RPC API
-* `websocket` – WebSocket-based JSON-RPC API, required for subscriptions and certain streaming requests
+
+- `json-rpc`– standard HTTP-based JSON-RPC API
+- `websocket` – WebSocket-based JSON-RPC API, required for subscriptions and certain streaming requests
 
 Planned support:
-* `rest` – REST endpoints for chains that expose REST APIs (e.g., Cosmos chains, beacon chains, etc.)
-* `grpc` – gRPC endpoints for chains/protocols where it is available
+
+- `rest` – REST endpoints for chains that expose REST APIs (e.g., Cosmos chains, beacon chains, etc.)
+- `grpc` – gRPC endpoints for chains/protocols where it is available
 
 By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each request.
 
 In addition, every upstream must track its head (latest block / finalization state). For this, nodecore needs to know which connector should be used:
-* You can explicitly specify this via `head-connector`
-* If not specified and multiple connectors are defined, nodecore chooses based on the following priority:
-  * `json-rpc`
-  * `rest`
-  * `grpc`
-  * `websocket`
+
+- You can explicitly specify this via `head-connector`
+- If not specified and multiple connectors are defined, nodecore chooses based on the following priority:
+  - `json-rpc`
+  - `rest`
+  - `grpc`
+  - `websocket`
 
 This ensures that the most stable/compatible connector is used for head tracking by default, but you can override the behavior when needed.
 
 ## Fields
 
 `upstreams` fields:
-* `id` - Unique identifier of the upstream. **_Required_**, **_Unique_**
-* `chain` - The chain this upstream serves, (e.g. `ethereum`, `polygon`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
-* `connectors` - Defines the access endpoints for this upstream. **_Required_**. Each connector has:
-  * `type` - supported values: `json-rpc`, `websocket`. **_Required_**
-  * `url` - full endpoint URL. **_Required_**
-  * `headers` - optional key/value map of extra headers to send with requests
-* `head-connector` - Specifies which connector is used to fetch chain head/finality values
-  * Example: `head-connector: websocket`
-  * If not set, nodecore picks a default depending on connector types
-* `poll-interval` - Overrides the `chain-defaults.poll-interval` for this specific upstream. **_Default_**: `1m` (1 minute)
-* `methods` - Allows per-upstream method overrides. A method cannot be listed in both `enable` and `disable`:
-  * `enable` – list of methods to explicitly allow
-  * `disable` – list of methods to disable for this upstream
-  * `ban-duration` - specifies how long a method should remain banned for a given upstream after encountering an error that indicates the method does not exist or is unavailable. During this period, NodeCore will not send requests for that method to the affected upstream. **_Default_**: `5m` (5 minutes)
-* `failsafe-config` - failsafe-config that is applied on the upstream level. Only the `retry` policy can be specified
+
+- `id` - Unique identifier of the upstream. **_Required_**, **_Unique_**
+- `chain` - The chain this upstream serves, (e.g. `ethereum`, `polygon`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
+- `connectors` - Defines the access endpoints for this upstream. **_Required_**. Each connector has:
+  - `type` - supported values: `json-rpc`, `websocket`. **_Required_**
+  - `url` - full endpoint URL. **_Required_**
+  - `headers` - optional key/value map of extra headers to send with requests
+- `head-connector` - Specifies which connector is used to fetch chain head/finality values
+  - Example: `head-connector: websocket`
+  - If not set, nodecore picks a default depending on connector types
+- `poll-interval` - Overrides the `chain-defaults.poll-interval` for this specific upstream. **_Default_**: `1m` (1 minute)
+- `methods` - Allows per-upstream method overrides. A method cannot be listed in both `enable` and `disable`:
+  - `enable` – list of methods to explicitly allow
+  - `disable` – list of methods to disable for this upstream
+  - `ban-duration` - specifies how long a method should remain banned for a given upstream after encountering an error that indicates the method does not exist or is unavailable. During this period, NodeCore will not send requests for that method to the affected upstream. **_Default_**: `5m` (5 minutes)
+- `rate-limit-budget` - Reference to a shared rate limit budget defined in the top-level `rate-limit-budgets` section. See [Rate Limiting](06-rate-limiting.md) for details
+- `rate-limit` - Inline rate limiting configuration specific to this upstream. Cannot be used together with `rate-limit-budget`. See [Rate Limiting](06-rate-limiting.md) for details
+- `failsafe-config` - failsafe-config that is applied on the upstream level. Only the `retry` policy can be specified

@@ -22,10 +22,20 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig   *ServerConfig   `yaml:"server"`
-	UpstreamConfig *UpstreamConfig `yaml:"upstream-config"`
-	CacheConfig    *CacheConfig    `yaml:"cache"`
-	AuthConfig     *AuthConfig     `yaml:"auth"`
+	ServerConfig     *ServerConfig           `yaml:"server"`
+	UpstreamConfig   *UpstreamConfig         `yaml:"upstream-config"`
+	CacheConfig      *CacheConfig            `yaml:"cache"`
+	AuthConfig       *AuthConfig             `yaml:"auth"`
+	RateLimitBudgets []RateLimitBudgetConfig `yaml:"rate-limit-budgets"`
+}
+
+type RateLimitEngine struct {
+	Type string `yaml:"type"`
+}
+
+type RateLimitBudgetConfig struct {
+	DefaultEngine string `yaml:"default-engine"`
+	Budgets       []RateLimitBudget
 }
 
 type AuthConfig struct {
@@ -223,14 +233,33 @@ type ChainDefaults struct {
 	PollInterval time.Duration `yaml:"poll-interval"`
 }
 
+type RateLimitRule struct {
+	Method   string        `yaml:"method"`
+	Pattern  string        `yaml:"pattern"`
+	Requests int           `yaml:"requests"`
+	Period   time.Duration `yaml:"period"`
+}
+
+type RateLimiterConfig struct {
+	Rules []RateLimitRule `yaml:"rules"`
+}
+
+type RateLimitBudget struct {
+	Name   string             `yaml:"name"`
+	Engine string             `yaml:"engine"`
+	Config *RateLimiterConfig `yaml:"config"`
+}
+
 type Upstream struct {
-	Id             string                `yaml:"id"`
-	ChainName      string                `yaml:"chain"`
-	Connectors     []*ApiConnectorConfig `yaml:"connectors"`
-	HeadConnector  ApiConnectorType      `yaml:"head-connector"`
-	PollInterval   time.Duration         `yaml:"poll-interval"`
-	Methods        *MethodsConfig        `yaml:"methods"`
-	FailsafeConfig *FailsafeConfig       `yaml:"failsafe-config"`
+	Id              string                `yaml:"id"`
+	ChainName       string                `yaml:"chain"`
+	Connectors      []*ApiConnectorConfig `yaml:"connectors"`
+	HeadConnector   ApiConnectorType      `yaml:"head-connector"`
+	PollInterval    time.Duration         `yaml:"poll-interval"`
+	Methods         *MethodsConfig        `yaml:"methods"`
+	FailsafeConfig  *FailsafeConfig       `yaml:"failsafe-config"`
+	RateLimitBudget string                `yaml:"rate-limit-budget"`
+	RateLimit       *RateLimiterConfig    `yaml:"rate-limit"`
 }
 
 type MethodsConfig struct {

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +27,26 @@ func (a *AppConfig) validate() error {
 	if err := a.ServerConfig.validate(); err != nil {
 		return err
 	}
-	if err := a.UpstreamConfig.validate(); err != nil {
+
+	rateLimitBudgetNames := mapset.NewThreadUnsafeSet[string]()
+	if len(a.RateLimitBudgets) > 0 {
+		for i, budgetConfig := range a.RateLimitBudgets {
+			if err := budgetConfig.validate(); err != nil {
+				return fmt.Errorf("error during rate limit budget config validation at index %d, cause: %s", i, err.Error())
+			}
+			for _, budget := range budgetConfig.Budgets {
+				if rateLimitBudgetNames.Contains(budget.Name) {
+					return fmt.Errorf("error during rate limit budget config validation, cause: duplicate rate limit budget name '%s'", budget.Name)
+				}
+				rateLimitBudgetNames.Add(budget.Name)
+			}
+		}
+	}
+
+	if err := a.UpstreamConfig.validate(rateLimitBudgetNames); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -351,7 +369,30 @@ func validatePolicyChain(chain string) error {
 	return nil
 }
 
-func (u *UpstreamConfig) validate() error {
+var methodRegex = regexp.MustCompile("^[a-zA-Z0-9_]+$")
+
+func (r *RateLimiterConfig) validate() error {
+	for _, rule := range r.Rules {
+		if rule.Method == "" && rule.Pattern == "" {
+			return errors.New("the method or pattern must be specified")
+		}
+		if rule.Method != "" && rule.Pattern != "" {
+			return errors.New("the method and pattern can't be specified at the same time")
+		}
+		if rule.Method != "" && !methodRegex.MatchString(rule.Method) {
+			return errors.New("the method must be a valid method name, you can't use regex, otherwise use pattern: 'pattern' instead of method")
+		}
+		if rule.Period <= 0 {
+			return errors.New("the period must be greater than 0")
+		}
+		if rule.Requests < 1 {
+			return errors.New("the requests must be greater than 0")
+		}
+	}
+	return nil
+}
+
+func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string]) error {
 	if err := u.ScorePolicyConfig.validate(); err != nil {
 		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
 	}
@@ -383,6 +424,10 @@ func (u *UpstreamConfig) validate() error {
 		}
 		if err := upstream.validate(); err != nil {
 			return fmt.Errorf("error during upstream '%s' validation, cause: %s", upstream.Id, err.Error())
+		}
+		// Validate rate limit budget reference
+		if upstream.RateLimitBudget != "" && !rateLimitBudgetNames.Contains(upstream.RateLimitBudget) {
+			return fmt.Errorf("upstream '%s' references non-existent rate limit budget '%s'", upstream.Id, upstream.RateLimitBudget)
 		}
 		idSet.Add(upstream.Id)
 	}
@@ -521,6 +566,12 @@ func (u *Upstream) validate() error {
 		return fmt.Errorf("there must be at least one upstream connector")
 	}
 
+	if u.RateLimit != nil {
+		if err := u.RateLimit.validate(); err != nil {
+			return fmt.Errorf("error during rate limit validation, cause: %s", err.Error())
+		}
+	}
+
 	connectorTypeSet := mapset.NewThreadUnsafeSet[ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.Type) {
@@ -593,5 +644,34 @@ func (t ApiConnectorType) validate() error {
 	default:
 		return fmt.Errorf("invalid connector type - '%s'", t)
 	}
+	return nil
+}
+
+func (r *RateLimitBudgetConfig) validate() error {
+
+	for i, budget := range r.Budgets {
+		if budget.Name == "" {
+			return fmt.Errorf("rate limit budget name cannot be empty at index %d", i)
+		}
+		if err := budget.validate(); err != nil {
+			return fmt.Errorf("error during rate limit budget '%s' validation, cause: %s", budget.Name, err.Error())
+		}
+	}
+	return nil
+}
+
+func (r *RateLimitBudget) validate() error {
+	if r.Name == "" {
+		return errors.New("rate limit budget name cannot be empty")
+	}
+
+	if r.Config == nil {
+		return fmt.Errorf("rate limit budget '%s' must have a config", r.Name)
+	}
+
+	if err := r.Config.validate(); err != nil {
+		return fmt.Errorf("rate limit budget '%s' config validation error: %s", r.Name, err.Error())
+	}
+
 	return nil
 }
