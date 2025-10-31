@@ -274,7 +274,8 @@ type TimeoutConfig struct {
 }
 
 type ChainDefaults struct {
-	PollInterval time.Duration `yaml:"poll-interval"`
+	PollInterval time.Duration    `yaml:"poll-interval"`
+	Options      *UpstreamOptions `yaml:"options"`
 }
 
 type RateLimitRule struct {
@@ -295,15 +296,24 @@ type RateLimitBudget struct {
 }
 
 type Upstream struct {
-	Id              string                `yaml:"id"`
-	ChainName       string                `yaml:"chain"`
-	Connectors      []*ApiConnectorConfig `yaml:"connectors"`
-	HeadConnector   ApiConnectorType      `yaml:"head-connector"`
-	PollInterval    time.Duration         `yaml:"poll-interval"`
-	Methods         *MethodsConfig        `yaml:"methods"`
-	FailsafeConfig  *FailsafeConfig       `yaml:"failsafe-config"`
+	Id             string                `yaml:"id"`
+	ChainName      string                `yaml:"chain"`
+	Connectors     []*ApiConnectorConfig `yaml:"connectors"`
+	HeadConnector  ApiConnectorType      `yaml:"head-connector"`
+	PollInterval   time.Duration         `yaml:"poll-interval"`
+	Methods        *MethodsConfig        `yaml:"methods"`
+	FailsafeConfig *FailsafeConfig       `yaml:"failsafe-config"`
+	Options        *UpstreamOptions      `yaml:"options"`
 	RateLimitBudget string                `yaml:"rate-limit-budget"`
 	RateLimit       *RateLimiterConfig    `yaml:"rate-limit"`
+}
+
+type UpstreamOptions struct {
+	InternalTimeout           time.Duration `yaml:"internal-timeout"`
+	ValidationInterval        time.Duration `yaml:"validation-interval"`
+	DisableValidation         bool          `yaml:"disable-validation"`
+	DisableSettingsValidation bool          `yaml:"disable-settings-validation"`
+	DisableChainValidation    bool          `yaml:"disable-chain-validation"`
 }
 
 type MethodsConfig struct {

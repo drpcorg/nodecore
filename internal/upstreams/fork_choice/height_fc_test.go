@@ -8,9 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func createEvent(id string, status protocol.AvailabilityStatus, height uint64) protocol.UpstreamEvent {
-	return protocol.UpstreamEvent{
-		Id: id,
+func getStateEventType(status protocol.AvailabilityStatus, height uint64) *protocol.StateUpstreamEvent {
+	return &protocol.StateUpstreamEvent{
 		State: &protocol.UpstreamState{
 			Status: status,
 			HeadData: &protocol.BlockData{
@@ -23,23 +22,23 @@ func createEvent(id string, status protocol.AvailabilityStatus, height uint64) p
 func TestChoiceHeights(t *testing.T) {
 	fc := choice.NewHeightForkChoice()
 
-	updated, height := fc.Choose(createEvent("id1", protocol.Available, 100))
+	updated, height := fc.Choose("id1", getStateEventType(protocol.Available, 100))
 	assert.True(t, updated)
 	assert.Equal(t, uint64(100), height)
 
-	updated, height = fc.Choose(createEvent("id2", protocol.Available, 50))
+	updated, height = fc.Choose("id2", getStateEventType(protocol.Available, 50))
 	assert.False(t, updated)
 	assert.Equal(t, uint64(100), height)
 
-	updated, height = fc.Choose(createEvent("id1", protocol.Available, 200))
+	updated, height = fc.Choose("id1", getStateEventType(protocol.Available, 200))
 	assert.True(t, updated)
 	assert.Equal(t, uint64(200), height)
 
-	updated, height = fc.Choose(createEvent("id1", protocol.Unavailable, 500))
+	updated, height = fc.Choose("id1", getStateEventType(protocol.Unavailable, 500))
 	assert.True(t, updated)
 	assert.Equal(t, uint64(50), height)
 
-	updated, height = fc.Choose(createEvent("id2", protocol.Unavailable, 1000))
+	updated, height = fc.Choose("id2", getStateEventType(protocol.Unavailable, 1000))
 	assert.True(t, updated)
 	assert.Equal(t, uint64(0), height)
 }

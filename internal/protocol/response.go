@@ -20,6 +20,10 @@ type SubscriptionEventResponse struct {
 	message []byte
 }
 
+func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
+	return "", nil
+}
+
 func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionEventResponse {
 	return &SubscriptionEventResponse{message: message, id: id}
 }
@@ -58,10 +62,19 @@ func (s *SubscriptionEventResponse) Id() string {
 	return s.id
 }
 
+var _ ResponseHolder = (*SubscriptionEventResponse)(nil)
+
 type WsJsonRpcResponse struct {
 	id     string
 	result []byte
 	error  *ResponseError
+}
+
+func (w *WsJsonRpcResponse) ResponseResultString() (string, error) {
+	if len(w.result) > 0 && w.result[0] == '"' && w.result[len(w.result)-1] == '"' {
+		return string(w.result[1 : len(w.result)-1]), nil
+	}
+	return "", errors.New("result is not a string")
 }
 
 func NewWsJsonRpcResponse(id string, result []byte, error *ResponseError) *WsJsonRpcResponse {
@@ -100,12 +113,21 @@ func (w *WsJsonRpcResponse) Id() string {
 	return w.id
 }
 
+var _ ResponseHolder = (*WsJsonRpcResponse)(nil)
+
 type BaseUpstreamResponse struct {
 	id          string
 	result      []byte
 	error       *ResponseError
 	requestType RequestType
 	stream      io.Reader
+}
+
+func (h *BaseUpstreamResponse) ResponseResultString() (string, error) {
+	if len(h.result) > 0 && h.result[0] == '"' && h.result[len(h.result)-1] == '"' {
+		return string(h.result[1 : len(h.result)-1]), nil
+	}
+	return "", errors.New("result is not a string")
 }
 
 var _ ResponseHolder = (*BaseUpstreamResponse)(nil)
@@ -378,6 +400,10 @@ type ReplyError struct {
 	ErrorKind     ResponseErrorKind
 	responseError *ResponseError
 	responseType  RequestType
+}
+
+func (r *ReplyError) ResponseResultString() (string, error) {
+	return "", nil
 }
 
 func NewPartialFailure(request RequestHolder, responseError *ResponseError) *ReplyError {

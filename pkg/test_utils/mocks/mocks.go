@@ -7,6 +7,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
@@ -249,4 +250,16 @@ func (w *WsConnectionMock) SendWsRequest(ctx context.Context, upstreamRequest pr
 
 func NewWsConnectionMock() *WsConnectionMock {
 	return &WsConnectionMock{}
+}
+
+type SettingsValidatorMock struct {
+	mock.Mock
+}
+
+func NewSettingsValidatorMock() *SettingsValidatorMock {
+	return &SettingsValidatorMock{}
+}
+
+func (s *SettingsValidatorMock) Validate() validations.ValidationSettingResult {
+	return s.Called().Get(0).(validations.ValidationSettingResult)
 }

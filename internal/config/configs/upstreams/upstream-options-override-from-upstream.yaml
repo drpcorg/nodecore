@@ -1,0 +1,15 @@
+upstream-config:
+  chain-defaults:
+    ethereum:
+      options:
+        internal-timeout: 15s
+        validation-interval: 1m
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+      options:
+        internal-timeout: 2s
+        validation-interval: 45s

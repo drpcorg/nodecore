@@ -2,6 +2,7 @@ package upstreams_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
@@ -40,9 +42,10 @@ func TestUpstreamHeadEvent(t *testing.T) {
 	upConfig := &config.Upstream{
 		Id:           "id",
 		PollInterval: 50 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
 
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, mocks.NewMethodsMock())
+	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, nil, mocks.NewMethodsMock())
 	go upstream.Start()
 
 	sub := upstream.Subscribe("name")
@@ -63,7 +66,9 @@ func TestUpstreamHeadEvent(t *testing.T) {
 		expected := protocol.UpstreamEvent{
 			Id:    "id",
 			Chain: chains.ETHEREUM,
-			State: &state,
+			EventType: &protocol.StateUpstreamEvent{
+				State: &state,
+			},
 		}
 
 		assert.True(t, ok)
@@ -101,11 +106,12 @@ func TestUpstreamBlockEvent(t *testing.T) {
 	upConfig := &config.Upstream{
 		Id:           "id",
 		PollInterval: 50 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
 
 	blockProcessor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, &specific.EvmChainSpecificObject{})
 
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, blockProcessor, mocks.NewMethodsMock())
+	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, blockProcessor, nil, mocks.NewMethodsMock())
 	go upstream.Start()
 
 	sub := upstream.Subscribe("name")
@@ -128,13 +134,18 @@ func TestUpstreamBlockEvent(t *testing.T) {
 		expected := protocol.UpstreamEvent{
 			Id:    "id",
 			Chain: chains.ETHEREUM,
-			State: &state,
+			EventType: &protocol.StateUpstreamEvent{
+				State: &state,
+			},
 		}
 
 		assert.True(t, ok)
 		assert.EqualExportedValues(t, expected, event)
 		assert.EqualExportedValues(t, state, upstream.GetUpstreamState())
-		assert.Equal(t, expected.State.BlockInfo.GetBlocks(), event.State.BlockInfo.GetBlocks())
+
+		eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
+		assert.True(t, ok)
+		assert.Equal(t, state.BlockInfo.GetBlocks(), eventType.State.BlockInfo.GetBlocks())
 		assert.Equal(t, state.BlockInfo.GetBlocks(), upstream.GetUpstreamState().BlockInfo.GetBlocks())
 	}
 
@@ -165,12 +176,13 @@ func TestUpstreamMethodEvents(t *testing.T) {
 		Methods: &config.MethodsConfig{
 			BanDuration: 20 * time.Millisecond,
 		},
+		Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
 
 	upstreamMethods, err := methods.NewUpstreamMethods("eth", &config.MethodsConfig{})
 	assert.NoError(t, err)
 
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, upstreamMethods)
+	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, nil, upstreamMethods)
 	go upstream.Start()
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -211,12 +223,13 @@ func TestUpstreamMethodEventsPreserveMethodFromConfig(t *testing.T) {
 			EnableMethods:  []string{"test", "test2", "test3"},
 			DisableMethods: []string{"test4", "test5"},
 		},
+		Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
 
 	upstreamMethods, err := methods.NewUpstreamMethods("eth", &config.MethodsConfig{})
 	assert.NoError(t, err)
 
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, upstreamMethods)
+	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, nil, upstreamMethods)
 	go upstream.Start()
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -263,12 +276,106 @@ func checkMethods(
 	expected := protocol.UpstreamEvent{
 		Id:    "id",
 		Chain: chains.ETHEREUM,
-		State: &state,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &state,
+		},
 	}
 
 	assert.True(t, ok)
 	assert.EqualExportedValues(t, expected, event)
 	assert.EqualExportedValues(t, state, upstream.GetUpstreamState())
-	assert.True(t, expected.State.UpstreamMethods.GetSupportedMethods().Equal(event.State.UpstreamMethods.GetSupportedMethods()))
+
+	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	assert.True(t, ok)
+	assert.True(t, state.UpstreamMethods.GetSupportedMethods().Equal(eventType.State.UpstreamMethods.GetSupportedMethods()))
 	assert.True(t, state.UpstreamMethods.GetSupportedMethods().Equal(upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()))
+}
+
+func TestUpstreamFatalErrorOnStart(t *testing.T) {
+	upConfig := &config.Upstream{
+		Id:           "id",
+		PollInterval: 50 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
+	}
+	connector := mocks.NewConnectorMock()
+	validator := mocks.NewSettingsValidatorMock()
+	validator.On("Validate").Return(validations.FatalSettingError)
+
+	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.SettingsValidator{validator})
+
+	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
+	upstream.Start()
+
+	assert.False(t, upstream.Running())
+	assert.False(t, upstream.ProcessorsRunning())
+}
+
+func TestUpstreamSettingErrorPartialStart(t *testing.T) {
+	upConfig := &config.Upstream{
+		Id:           "id",
+		PollInterval: 50 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second, ValidationInterval: 30 * time.Second},
+	}
+	connector := mocks.NewConnectorMock()
+	validator := mocks.NewSettingsValidatorMock()
+	validator.On("Validate").Return(validations.SettingsError)
+
+	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.SettingsValidator{validator})
+
+	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
+	upstream.Start()
+
+	assert.True(t, upstream.Running())
+	assert.False(t, upstream.ProcessorsRunning())
+}
+
+func TestUpstreamValidationEvents(t *testing.T) {
+	upConfig := &config.Upstream{
+		Id:           "id",
+		PollInterval: 50 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second, ValidationInterval: 10 * time.Millisecond},
+	}
+
+	connector := mocks.NewConnectorMock()
+	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
+	connector.On("SendRequest", mock.Anything, requestLatest).
+		Return(protocol.NewTotalFailureFromErr("id", errors.New("err"), protocol.JsonRpc))
+
+	validator := mocks.NewSettingsValidatorMock()
+	validator.On("Validate").Return(validations.SettingsError).Once()
+	validator.On("Validate").Return(validations.Valid).Once()
+	validator.On("Validate").Return(validations.Valid).Once()
+	validator.On("Validate").Return(validations.FatalSettingError).Once()
+
+	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.SettingsValidator{validator})
+
+	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
+	upstream.Start()
+
+	assert.True(t, upstream.Running())
+	assert.False(t, upstream.ProcessorsRunning())
+
+	sub := upstream.Subscribe("name")
+
+	event, ok := <-sub.Events
+	assert.True(t, ok)
+
+	_, ok = event.EventType.(*protocol.ValidUpstreamEvent)
+	assert.True(t, ok)
+	upstream.Resume()
+	assert.True(t, upstream.Running())
+	assert.True(t, upstream.ProcessorsRunning())
+
+	event, ok = <-sub.Events
+	assert.True(t, ok)
+
+	_, ok = event.EventType.(*protocol.RemoveUpstreamEvent)
+	assert.True(t, ok)
+	upstream.PartialStop()
+	assert.True(t, upstream.Running())
+	assert.False(t, upstream.ProcessorsRunning())
+
+	upstream.Stop()
+	assert.False(t, upstream.Running())
+	assert.False(t, upstream.ProcessorsRunning())
 }

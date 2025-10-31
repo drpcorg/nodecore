@@ -212,6 +212,10 @@ func TestReadFullConfig(t *testing.T) {
 							Jitter:   lo.ToPtr(6 * time.Second),
 						},
 					},
+					Options: &config.UpstreamOptions{
+						InternalTimeout:    5 * time.Second,
+						ValidationInterval: 30 * time.Second,
+					},
 				},
 				{
 					Id:            "another",
@@ -241,6 +245,10 @@ func TestReadFullConfig(t *testing.T) {
 								"key": "value",
 							},
 						},
+					},
+					Options: &config.UpstreamOptions{
+						InternalTimeout:    5 * time.Second,
+						ValidationInterval: 30 * time.Second,
 					},
 				},
 			},
@@ -330,6 +338,10 @@ func TestSetDefaultPollInterval(t *testing.T) {
 				Url:  "https://test.com",
 			},
 		},
+		Options: &config.UpstreamOptions{
+			InternalTimeout:    5 * time.Second,
+			ValidationInterval: 30 * time.Second,
+		},
 	}
 
 	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
@@ -359,6 +371,10 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 				Url:  "https://test.com",
 			},
 		},
+		Options: &config.UpstreamOptions{
+			InternalTimeout:    5 * time.Second,
+			ValidationInterval: 30 * time.Second,
+		},
 	}
 
 	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
@@ -387,6 +403,10 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 				Type: config.Rest,
 				Url:  "https://test.com",
 			},
+		},
+		Options: &config.UpstreamOptions{
+			InternalTimeout:    5 * time.Second,
+			ValidationInterval: 30 * time.Second,
 		},
 	}
 
@@ -464,6 +484,13 @@ func TestSetChainsDefault(t *testing.T) {
 							Type: config.JsonRpc,
 							Url:  "https://test.com",
 						},
+					},
+					Options: &config.UpstreamOptions{
+						InternalTimeout:           5 * time.Second,
+						ValidationInterval:        30 * time.Second,
+						DisableValidation:         false,
+						DisableSettingsValidation: false,
+						DisableChainValidation:    false,
 					},
 				},
 			},
@@ -991,4 +1018,55 @@ func TestOnionEndpointWithTorProxyThenSuccess(t *testing.T) {
 	assert.Equal(t, 1, len(appConfig.UpstreamConfig.Upstreams))
 	assert.Equal(t, "eth-upstream", appConfig.UpstreamConfig.Upstreams[0].Id)
 	assert.Equal(t, 2, len(appConfig.UpstreamConfig.Upstreams[0].Connectors))
+}
+
+func TestUpstreamOptionsInvalidInternalTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-invalid-internal-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: internal timeout can't be less than 0")
+}
+
+func TestUpstreamOptionsInvalidValidationIntervalThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-invalid-validation-interval.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: validation interval can't be less than 0")
+}
+
+func TestUpstreamOptionsDefaultsFromChain(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-defaults-from-chain.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	assert.Equal(t, 15*time.Second, reqUp.Options.InternalTimeout)
+	assert.Equal(t, 1*time.Minute, reqUp.Options.ValidationInterval)
+	assert.False(t, reqUp.Options.DisableValidation)
+	assert.False(t, reqUp.Options.DisableSettingsValidation)
+	assert.False(t, reqUp.Options.DisableChainValidation)
+}
+
+func TestUpstreamOptionsOverrideFromUpstream(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-override-from-upstream.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	assert.Equal(t, 2*time.Second, reqUp.Options.InternalTimeout)
+	assert.Equal(t, 45*time.Second, reqUp.Options.ValidationInterval)
+}
+
+func TestUpstreamOptionsDisableFlagsRead(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-disable-flags.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	assert.Equal(t, 5*time.Second, reqUp.Options.InternalTimeout)
+	assert.Equal(t, 30*time.Second, reqUp.Options.ValidationInterval)
+	assert.True(t, reqUp.Options.DisableValidation)
+	assert.True(t, reqUp.Options.DisableSettingsValidation)
+	assert.True(t, reqUp.Options.DisableChainValidation)
 }

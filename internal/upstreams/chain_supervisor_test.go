@@ -166,3 +166,21 @@ func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	assert.Equal(t, uint64(500), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
 }
+
+func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methods))
+	time.Sleep(10 * time.Millisecond)
+
+	assert.True(t, chainSupervisor.GetUpstreamState("id") != nil)
+
+	chainSupervisor.Publish(test_utils.CreateRemoveEvent("id"))
+	time.Sleep(10 * time.Millisecond)
+
+	assert.Nil(t, chainSupervisor.GetUpstreamState("id"))
+}

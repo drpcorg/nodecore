@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -77,6 +78,13 @@ func CreateEvent(id string, status protocol.AvailabilityStatus, height uint64, m
 	return CreateEventWithBlockData(id, status, height, methods, nil)
 }
 
+func CreateRemoveEvent(id string) protocol.UpstreamEvent {
+	return protocol.UpstreamEvent{
+		Id:        id,
+		EventType: &protocol.RemoveUpstreamEvent{},
+	}
+}
+
 func CreateEventWithBlockData(
 	id string,
 	status protocol.AvailabilityStatus,
@@ -86,13 +94,15 @@ func CreateEventWithBlockData(
 ) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
 		Id: id,
-		State: &protocol.UpstreamState{
-			Status: status,
-			HeadData: &protocol.BlockData{
-				Height: height,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &protocol.UpstreamState{
+				Status: status,
+				HeadData: &protocol.BlockData{
+					Height: height,
+				},
+				UpstreamMethods: methods,
+				BlockInfo:       blockInfo,
 			},
-			UpstreamMethods: methods,
-			BlockInfo:       blockInfo,
 		},
 	}
 }
@@ -118,6 +128,7 @@ func TestEvmUpstream(
 	connector connectors.ApiConnector,
 	upConfig *config.Upstream,
 	blockProcessor blocks.BlockProcessor,
+	settingValidationProcessor *validations.SettingsValidationProcessor,
 	upstreamMethods methods.Methods,
 ) *upstreams.Upstream {
 	index := "00012"
@@ -138,9 +149,10 @@ func TestEvmUpstream(
 		[]connectors.ApiConnector{connector},
 		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
 		blockProcessor,
+		settingValidationProcessor,
 		upState,
 		index,
-		upConfig.Methods,
+		upConfig,
 	)
 }
 
@@ -175,14 +187,16 @@ func createEvent(
 ) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
 		Id: id,
-		State: &protocol.UpstreamState{
-			Status: status,
-			HeadData: &protocol.BlockData{
-				Height: height,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &protocol.UpstreamState{
+				Status: status,
+				HeadData: &protocol.BlockData{
+					Height: height,
+				},
+				UpstreamMethods: methods,
+				Caps:            caps,
+				UpstreamIndex:   upstreamIndex,
 			},
-			UpstreamMethods: methods,
-			Caps:            caps,
-			UpstreamIndex:   upstreamIndex,
 		},
 	}
 }

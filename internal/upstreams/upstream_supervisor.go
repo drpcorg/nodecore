@@ -158,6 +158,19 @@ func (u *BaseUpstreamSupervisor) processEvents() {
 					chainSupervisor.Start()
 				}
 
+				switch event.EventType.(type) {
+				case *protocol.RemoveUpstreamEvent:
+					upstream := u.GetUpstream(event.Id)
+					if upstream != nil {
+						upstream.PartialStop()
+					}
+				case *protocol.ValidUpstreamEvent:
+					upstream := u.GetUpstream(event.Id)
+					if upstream != nil {
+						upstream.Resume()
+					}
+				}
+
 				chainSupervisor.Publish(event)
 			}
 		}

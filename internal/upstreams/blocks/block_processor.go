@@ -28,7 +28,7 @@ var ethErrorsToDisable = []string{
 }
 
 type BlockProcessor interface {
-	Start()
+	utils.Lifecycle
 	Subscribe(name string) *utils.Subscription[BlockEvent]
 	UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType)
 	DisabledBlocks() mapset.Set[protocol.BlockType]
@@ -44,10 +44,20 @@ type EthLikeBlockProcessor struct {
 	connector        connectors.ApiConnector
 	chainSpecific    specific.ChainSpecific
 	subManager       *utils.SubscriptionManager[BlockEvent]
-	ctx              context.Context
 	disableDetection mapset.Set[protocol.BlockType]
 	manualBlockChan  chan *BlockEvent
 	blocks           map[protocol.BlockType]*protocol.BlockData
+	lifecycle        *utils.BaseLifecycle
+	internalTimeout  time.Duration
+}
+
+func (b *EthLikeBlockProcessor) Running() bool {
+	return b.lifecycle.Running()
+}
+
+func (b *EthLikeBlockProcessor) Stop() {
+	log.Info().Msgf("stopping block processor of upstream '%s'", b.upConfig.Id)
+	b.lifecycle.Stop()
 }
 
 func NewEthLikeBlockProcessor(
@@ -56,15 +66,17 @@ func NewEthLikeBlockProcessor(
 	connector connectors.ApiConnector,
 	chainSpecific specific.ChainSpecific,
 ) *EthLikeBlockProcessor {
+	name := fmt.Sprintf("%s_block_processor", upConfig.Id)
 	return &EthLikeBlockProcessor{
-		ctx:              ctx,
 		upConfig:         upConfig,
 		connector:        connector,
 		chainSpecific:    chainSpecific,
 		disableDetection: mapset.NewSet[protocol.BlockType](),
 		manualBlockChan:  make(chan *BlockEvent, 100),
-		subManager:       utils.NewSubscriptionManager[BlockEvent](fmt.Sprintf("%s_block_processor", upConfig.Id)),
+		subManager:       utils.NewSubscriptionManager[BlockEvent](name),
 		blocks:           make(map[protocol.BlockType]*protocol.BlockData),
+		lifecycle:        utils.NewBaseLifecycle(name, ctx),
+		internalTimeout:  upConfig.Options.InternalTimeout,
 	}
 }
 
@@ -81,25 +93,27 @@ func (b *EthLikeBlockProcessor) DisabledBlocks() mapset.Set[protocol.BlockType] 
 }
 
 func (b *EthLikeBlockProcessor) Start() {
-	b.poll(protocol.FinalizedBlock)
-	for {
-		select {
-		case <-b.ctx.Done():
-			return
-		case event := <-b.manualBlockChan:
-			currentBlock, ok := b.blocks[event.BlockType]
-			if !ok || event.BlockData.Height > currentBlock.Height {
-				b.subManager.Publish(*event)
+	b.lifecycle.Start(func(ctx context.Context) error {
+		b.poll(protocol.FinalizedBlock)
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case event := <-b.manualBlockChan:
+				currentBlock, ok := b.blocks[event.BlockType]
+				if !ok || event.BlockData.Height > currentBlock.Height {
+					b.subManager.Publish(*event)
+				}
+			case <-time.After(b.upConfig.PollInterval):
+				b.poll(protocol.FinalizedBlock)
 			}
-		case <-time.After(b.upConfig.PollInterval):
-			b.poll(protocol.FinalizedBlock)
 		}
-	}
+	})
 }
 
 func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 	if !b.disableDetection.Contains(blockType) {
-		ctx, cancel := context.WithTimeout(b.ctx, 5*time.Second)
+		ctx, cancel := context.WithTimeout(b.lifecycle.GetParentContext(), b.internalTimeout)
 		defer cancel()
 
 		block, err := b.chainSpecific.GetFinalizedBlock(ctx, b.connector)

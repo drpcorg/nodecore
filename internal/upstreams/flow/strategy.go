@@ -139,6 +139,9 @@ func filterUpstreams(
 
 	for i := 0; i < len(upstreamIds); i++ {
 		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
+		if upstreamState == nil {
+			continue
+		}
 		matched := multiMatcher.Match(upstreamIds[i], upstreamState)
 
 		upstreamMatched, newReason := processMatchedResponse(mu, matched, currentReason, selectedUpstreams, upstreamIds[i], upstreamState, request)
