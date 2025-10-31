@@ -35,6 +35,9 @@ func (a *AppConfig) validate() error {
 				return fmt.Errorf("error during rate limit budget config validation at index %d, cause: %s", i, err.Error())
 			}
 			for _, budget := range budgetConfig.Budgets {
+				if rateLimitBudgetNames.Contains(budget.Name) {
+					return fmt.Errorf("error during rate limit budget config validation, cause: duplicate rate limit budget name '%s'", budget.Name)
+				}
 				rateLimitBudgetNames.Add(budget.Name)
 			}
 		}
@@ -645,26 +648,15 @@ func (t ApiConnectorType) validate() error {
 }
 
 func (r *RateLimitBudgetConfig) validate() error {
-	budgetNames := mapset.NewThreadUnsafeSet[string]()
-	engines := mapset.NewThreadUnsafeSet[string]()
-	engines.Add(r.DefaultEngine)
 
 	for i, budget := range r.Budgets {
 		if budget.Name == "" {
 			return fmt.Errorf("rate limit budget name cannot be empty at index %d", i)
 		}
-		if budgetNames.Contains(budget.Name) {
-			return fmt.Errorf("duplicate rate limit budget name '%s'", budget.Name)
-		}
 		if err := budget.validate(); err != nil {
 			return fmt.Errorf("error during rate limit budget '%s' validation, cause: %s", budget.Name, err.Error())
 		}
-		budgetNames.Add(budget.Name)
-		if budget.Engine != "" {
-			engines.Add(budget.Engine)
-		}
 	}
-
 	return nil
 }
 

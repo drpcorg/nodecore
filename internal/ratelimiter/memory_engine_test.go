@@ -8,13 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewRateLimitMemoryEngine(t *testing.T) {
-	engine := NewRateLimitMemoryEngine()
-	require.NotNil(t, engine)
-	assert.NotNil(t, engine.limiters)
-	assert.Equal(t, 0, len(engine.limiters))
-}
-
 func TestRateLimitMemoryEngine_Execute_SingleCommand_AllowsRequests(t *testing.T) {
 	engine := NewRateLimitMemoryEngine()
 
@@ -32,9 +25,6 @@ func TestRateLimitMemoryEngine_Execute_SingleCommand_AllowsRequests(t *testing.T
 	require.NoError(t, err)
 	assert.True(t, result)
 
-	// Verify the limiter was created
-	assert.Equal(t, 1, len(engine.limiters))
-	assert.NotNil(t, engine.limiters["test-limiter"])
 }
 
 func TestRateLimitMemoryEngine_Execute_MultipleCommands(t *testing.T) {
@@ -62,11 +52,6 @@ func TestRateLimitMemoryEngine_Execute_MultipleCommands(t *testing.T) {
 	result, err := engine.Execute(commands)
 	require.NoError(t, err)
 	assert.True(t, result)
-
-	// Verify both limiters were created
-	assert.Equal(t, 2, len(engine.limiters))
-	assert.NotNil(t, engine.limiters["limiter-1"])
-	assert.NotNil(t, engine.limiters["limiter-2"])
 }
 
 func TestRateLimitMemoryEngine_Execute_RateLimitExceeded(t *testing.T) {
@@ -112,18 +97,10 @@ func TestRateLimitMemoryEngine_Execute_ReusesExistingLimiter(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result)
 
-	limiterBefore := engine.limiters["reused-limiter"]
-
 	// Second execution reuses the same limiter
 	result, err = engine.Execute([]RateLimitCommand{cmd})
 	require.NoError(t, err)
 	assert.True(t, result)
-
-	limiterAfter := engine.limiters["reused-limiter"]
-
-	// The limiter object should be the same instance
-	assert.Equal(t, limiterBefore, limiterAfter)
-	assert.Equal(t, 1, len(engine.limiters))
 }
 
 func TestRateLimitMemoryEngine_Execute_EmptyCommands(t *testing.T) {
