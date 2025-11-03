@@ -278,6 +278,27 @@ func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults) {
 		}
 		o.ValidationInterval = interval
 	}
+	if o.DisableValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableValidation != nil {
+			value = *defaults.Options.DisableValidation
+		}
+		o.DisableValidation = &value
+	}
+	if o.DisableChainValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableChainValidation != nil {
+			value = *defaults.Options.DisableChainValidation
+		}
+		o.DisableChainValidation = &value
+	}
+	if o.DisableSettingsValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableSettingsValidation != nil {
+			value = *defaults.Options.DisableSettingsValidation
+		}
+		o.DisableSettingsValidation = &value
+	}
 }
 
 func (m *MethodsConfig) setDefaults() {

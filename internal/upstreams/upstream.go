@@ -186,7 +186,7 @@ func NewUpstreamWithParams(
 
 func (u *Upstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
-		if u.settingsValidationProcessor != nil && !u.upConfig.Options.DisableValidation && !u.upConfig.Options.DisableSettingsValidation {
+		if u.settingsValidationProcessor != nil && !*u.upConfig.Options.DisableValidation && !*u.upConfig.Options.DisableSettingsValidation {
 			result := u.settingsValidationProcessor.ValidateUpstreamSettings()
 			switch result {
 			case validations.FatalSettingError:
@@ -277,7 +277,7 @@ func (u *Upstream) start(ctx context.Context) {
 }
 
 func (u *Upstream) validateUpstreamSettings(ctx context.Context, currentValidationState validations.ValidationSettingResult) {
-	if !u.upConfig.Options.DisableValidation && !u.upConfig.Options.DisableSettingsValidation {
+	if !*u.upConfig.Options.DisableValidation && !*u.upConfig.Options.DisableSettingsValidation {
 		for {
 			select {
 			case <-ctx.Done():

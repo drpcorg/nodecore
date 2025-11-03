@@ -19,6 +19,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -295,7 +296,12 @@ func TestUpstreamFatalErrorOnStart(t *testing.T) {
 	upConfig := &config.Upstream{
 		Id:           "id",
 		PollInterval: 50 * time.Millisecond,
-		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
+		Options: &config.UpstreamOptions{
+			InternalTimeout:           5 * time.Second,
+			DisableValidation:         lo.ToPtr(false),
+			DisableSettingsValidation: lo.ToPtr(false),
+			DisableChainValidation:    lo.ToPtr(false),
+		},
 	}
 	connector := mocks.NewConnectorMock()
 	validator := mocks.NewSettingsValidatorMock()
@@ -314,7 +320,13 @@ func TestUpstreamSettingErrorPartialStart(t *testing.T) {
 	upConfig := &config.Upstream{
 		Id:           "id",
 		PollInterval: 50 * time.Millisecond,
-		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second, ValidationInterval: 30 * time.Second},
+		Options: &config.UpstreamOptions{
+			InternalTimeout:           5 * time.Second,
+			ValidationInterval:        30 * time.Second,
+			DisableValidation:         lo.ToPtr(false),
+			DisableSettingsValidation: lo.ToPtr(false),
+			DisableChainValidation:    lo.ToPtr(false),
+		},
 	}
 	connector := mocks.NewConnectorMock()
 	validator := mocks.NewSettingsValidatorMock()
@@ -333,7 +345,13 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	upConfig := &config.Upstream{
 		Id:           "id",
 		PollInterval: 50 * time.Millisecond,
-		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second, ValidationInterval: 10 * time.Millisecond},
+		Options: &config.UpstreamOptions{
+			InternalTimeout:           5 * time.Second,
+			ValidationInterval:        10 * time.Millisecond,
+			DisableValidation:         lo.ToPtr(false),
+			DisableSettingsValidation: lo.ToPtr(false),
+			DisableChainValidation:    lo.ToPtr(false),
+		},
 	}
 
 	connector := mocks.NewConnectorMock()

@@ -39,7 +39,7 @@ func (e *EvmChainSpecificObject) SettingsValidators(
 ) []validations.SettingsValidator {
 	settingsValidators := make([]validations.SettingsValidator, 0)
 
-	if !options.DisableChainValidation {
+	if !*options.DisableChainValidation {
 		settingsValidators = append(settingsValidators, validations.NewChainValidator(upstreamId, connector, chain, options))
 	}
 

@@ -213,8 +213,11 @@ func TestReadFullConfig(t *testing.T) {
 						},
 					},
 					Options: &config.UpstreamOptions{
-						InternalTimeout:    5 * time.Second,
-						ValidationInterval: 30 * time.Second,
+						InternalTimeout:           5 * time.Second,
+						ValidationInterval:        30 * time.Second,
+						DisableValidation:         lo.ToPtr(false),
+						DisableSettingsValidation: lo.ToPtr(false),
+						DisableChainValidation:    lo.ToPtr(false),
 					},
 				},
 				{
@@ -247,8 +250,11 @@ func TestReadFullConfig(t *testing.T) {
 						},
 					},
 					Options: &config.UpstreamOptions{
-						InternalTimeout:    5 * time.Second,
-						ValidationInterval: 30 * time.Second,
+						InternalTimeout:           5 * time.Second,
+						ValidationInterval:        30 * time.Second,
+						DisableValidation:         lo.ToPtr(false),
+						DisableSettingsValidation: lo.ToPtr(false),
+						DisableChainValidation:    lo.ToPtr(false),
 					},
 				},
 			},
@@ -339,8 +345,11 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			},
 		},
 		Options: &config.UpstreamOptions{
-			InternalTimeout:    5 * time.Second,
-			ValidationInterval: 30 * time.Second,
+			InternalTimeout:           5 * time.Second,
+			ValidationInterval:        30 * time.Second,
+			DisableValidation:         lo.ToPtr(false),
+			DisableSettingsValidation: lo.ToPtr(false),
+			DisableChainValidation:    lo.ToPtr(false),
 		},
 	}
 
@@ -372,8 +381,11 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			},
 		},
 		Options: &config.UpstreamOptions{
-			InternalTimeout:    5 * time.Second,
-			ValidationInterval: 30 * time.Second,
+			InternalTimeout:           5 * time.Second,
+			ValidationInterval:        30 * time.Second,
+			DisableValidation:         lo.ToPtr(false),
+			DisableSettingsValidation: lo.ToPtr(false),
+			DisableChainValidation:    lo.ToPtr(false),
 		},
 	}
 
@@ -405,8 +417,11 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			},
 		},
 		Options: &config.UpstreamOptions{
-			InternalTimeout:    5 * time.Second,
-			ValidationInterval: 30 * time.Second,
+			InternalTimeout:           5 * time.Second,
+			ValidationInterval:        30 * time.Second,
+			DisableValidation:         lo.ToPtr(false),
+			DisableSettingsValidation: lo.ToPtr(false),
+			DisableChainValidation:    lo.ToPtr(false),
 		},
 	}
 
@@ -488,9 +503,9 @@ func TestSetChainsDefault(t *testing.T) {
 					Options: &config.UpstreamOptions{
 						InternalTimeout:           5 * time.Second,
 						ValidationInterval:        30 * time.Second,
-						DisableValidation:         false,
-						DisableSettingsValidation: false,
-						DisableChainValidation:    false,
+						DisableValidation:         lo.ToPtr(false),
+						DisableSettingsValidation: lo.ToPtr(false),
+						DisableChainValidation:    lo.ToPtr(false),
 					},
 				},
 			},
@@ -1041,9 +1056,9 @@ func TestUpstreamOptionsDefaultsFromChain(t *testing.T) {
 	require.NotNil(t, reqUp.Options)
 	assert.Equal(t, 15*time.Second, reqUp.Options.InternalTimeout)
 	assert.Equal(t, 1*time.Minute, reqUp.Options.ValidationInterval)
-	assert.False(t, reqUp.Options.DisableValidation)
-	assert.False(t, reqUp.Options.DisableSettingsValidation)
-	assert.False(t, reqUp.Options.DisableChainValidation)
+	assert.False(t, *reqUp.Options.DisableValidation)
+	assert.False(t, *reqUp.Options.DisableSettingsValidation)
+	assert.False(t, *reqUp.Options.DisableChainValidation)
 }
 
 func TestUpstreamOptionsOverrideFromUpstream(t *testing.T) {
@@ -1066,7 +1081,7 @@ func TestUpstreamOptionsDisableFlagsRead(t *testing.T) {
 	require.NotNil(t, reqUp.Options)
 	assert.Equal(t, 5*time.Second, reqUp.Options.InternalTimeout)
 	assert.Equal(t, 30*time.Second, reqUp.Options.ValidationInterval)
-	assert.True(t, reqUp.Options.DisableValidation)
-	assert.True(t, reqUp.Options.DisableSettingsValidation)
-	assert.True(t, reqUp.Options.DisableChainValidation)
+	assert.True(t, *reqUp.Options.DisableValidation)
+	assert.True(t, *reqUp.Options.DisableSettingsValidation)
+	assert.True(t, *reqUp.Options.DisableChainValidation)
 }
