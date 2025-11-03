@@ -4,34 +4,53 @@ import (
 	"fmt"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/storages"
 )
 
 type RateLimitBudgetRegistry struct {
 	rateLimitBudgets map[string]*RateLimitBudget
 }
 
-func NewRateLimitBudgetRegistry(cfg []config.RateLimitBudgetConfig, engineRegistry *RateLimitEngineRegistry) (*RateLimitBudgetRegistry, error) {
+func storageToEngine(name string, storage storages.Storage) (RateLimitEngine, error) {
+	switch tstore := storage.(type) {
+	case *storages.RedisStorage:
+		return NewRateLimitRedisEngine(name, tstore.Redis), nil
+	default:
+		return nil, fmt.Errorf("unsupported storage type %T", storage)
+	}
+}
+
+func NewRateLimitBudgetRegistry(cfg []config.RateLimitBudgetsConfig, storageRegistry *storages.StorageRegistry) (*RateLimitBudgetRegistry, error) {
 	var defaultEngine RateLimitEngine = NewRateLimitMemoryEngine()
 	rateLimitBudgets := make(map[string]*RateLimitBudget)
 	for _, budgetConfig := range cfg {
-		if budgetConfig.DefaultEngine == "" {
+		if budgetConfig.DefaultStorage == "" {
 			defaultEngine = NewRateLimitMemoryEngine()
 		} else {
-			budgetEngine, ok := engineRegistry.Get(budgetConfig.DefaultEngine)
+			storage, ok := storageRegistry.Get(budgetConfig.DefaultStorage)
 			if !ok {
-				return nil, fmt.Errorf("default engine %s not found", budgetConfig.DefaultEngine)
+				return nil, fmt.Errorf("default storage %s not found", budgetConfig.DefaultStorage)
 			}
-			defaultEngine = budgetEngine
+			engine, err := storageToEngine(budgetConfig.DefaultStorage, storage)
+			if err != nil {
+				return nil, fmt.Errorf("couldn't create a rate limit engine for storage %s, reason - %s", budgetConfig.DefaultStorage, err.Error())
+			}
+			defaultEngine = engine
 		}
 
 		for _, budget := range budgetConfig.Budgets {
 			budgetEngine := defaultEngine
-			if budget.Engine != "" {
+			if budget.Storage != "" {
 				var ok bool
-				budgetEngine, ok = engineRegistry.Get(budget.Engine)
+				storage, ok := storageRegistry.Get(budget.Storage)
 				if !ok {
-					return nil, fmt.Errorf("engine %s not found", budget.Engine)
+					return nil, fmt.Errorf("storage %s not found", budget.Storage)
 				}
+				engine, err := storageToEngine(budget.Storage, storage)
+				if err != nil {
+					return nil, fmt.Errorf("couldn't create a rate limit engine for storage %s, reason - %s", budget.Storage, err.Error())
+				}
+				budgetEngine = engine
 			}
 			rateLimitBudget := NewRateLimitBudget(&budget, budgetEngine)
 			rateLimitBudgets[budget.Name] = rateLimitBudget

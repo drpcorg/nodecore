@@ -60,12 +60,8 @@ func main() {
 	}
 
 	dimensionTracker := dimensions.NewDimensionTracker()
-	rateLimitEngineRegistry, err := ratelimiter.NewRateLimitEngineRegistry(storageRegistry, appConfig.RateLimitBudgets.Engines)
-	if err != nil {
-		log.Panic().Err(err).Msg("unable to create the rate limit engine registry")
-	}
 
-	rateLimitBudgetRegistry, err := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimitBudgets.Budgets, rateLimitEngineRegistry)
+	rateLimitBudgetRegistry, err := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimit, storageRegistry)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the rate limit budget registry")
 	}

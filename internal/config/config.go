@@ -22,21 +22,12 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig     *ServerConfig          `yaml:"server"`
-	UpstreamConfig   *UpstreamConfig        `yaml:"upstream-config"`
-	CacheConfig      *CacheConfig           `yaml:"cache"`
-	AuthConfig       *AuthConfig            `yaml:"auth"`
-	RateLimitBudgets RateLimitBudgetsConfig `yaml:"rate-limit-budgets"`
-	AppStorages      []AppStorageConfig     `yaml:"app-storages"`
-}
-
-type RateLimitBudgetsConfig struct {
-	Engines []RateLimitEngine
-	Budgets []RateLimitBudgetConfig
-}
-
-type RateLimitBudgesConfig struct {
-	Engines []RateLimitEngine
+	ServerConfig   *ServerConfig            `yaml:"server"`
+	UpstreamConfig *UpstreamConfig          `yaml:"upstream-config"`
+	CacheConfig    *CacheConfig             `yaml:"cache"`
+	AuthConfig     *AuthConfig              `yaml:"auth"`
+	RateLimit      []RateLimitBudgetsConfig `yaml:"rate-limit"`
+	AppStorages    []AppStorageConfig       `yaml:"app-storages"`
 }
 
 type AppStorageConfig struct {
@@ -85,9 +76,9 @@ type RateLimitEngine struct {
 	Redis *RedisRateLimitEngineConfig `yaml:"redis"`
 }
 
-type RateLimitBudgetConfig struct {
-	DefaultEngine string `yaml:"default-engine"`
-	Budgets       []RateLimitBudget
+type RateLimitBudgetsConfig struct {
+	DefaultStorage string            `yaml:"default-engine"`
+	Budgets        []RateLimitBudget `yaml:"budgets"`
 }
 
 type AuthConfig struct {
@@ -297,9 +288,9 @@ type RateLimiterConfig struct {
 }
 
 type RateLimitBudget struct {
-	Name   string             `yaml:"name"`
-	Engine string             `yaml:"engine"`
-	Config *RateLimiterConfig `yaml:"config"`
+	Name    string             `yaml:"name"`
+	Storage string             `yaml:"storage"`
+	Config  *RateLimiterConfig `yaml:"config"`
 }
 
 type Upstream struct {

@@ -1,21 +1,20 @@
 server:
   port: 9095
 
-rate-limit-budgets:
-  budgets:
-    - budgets:
-        - name: standard-budget
-          config:
-            rules:
-              - method: eth_getBlockByNumber
-                requests: 100
-                period: 1s
-        - name: premium-budget
-          config:
-            rules:
-              - method: eth_call
-                requests: 500
-                period: 1s
+rate-limit:
+  - budgets:
+      - name: standard-budget
+        config:
+          rules:
+            - method: eth_getBlockByNumber
+              requests: 100
+              period: 1s
+      - name: premium-budget
+        config:
+          rules:
+            - method: eth_call
+              requests: 500
+              period: 1s
 
 upstream-config:
   upstreams:

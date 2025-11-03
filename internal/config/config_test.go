@@ -946,52 +946,10 @@ func TestValidRateLimitRedisEngine(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestRateLimitDuplicateEngineNamesThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-duplicate-engine-names.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "duplicate rate limit engine name 'redis'")
-}
-
-func TestRateLimitEngineNonexistentStorageThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-engine-nonexistent-storage.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "redis engine references non-existent storage 'nonexistent-storage'")
-}
-
-func TestRateLimitEngineWrongStorageTypeThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-engine-wrong-storage-type.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "redis engine storage 'postgres-storage' is not a redis storage")
-}
-
-func TestRateLimitBudgetNonexistentEngineThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-budget-nonexistent-engine.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "references non-existent default engine 'nonexistent-engine'")
-}
-
 func TestRateLimitDuplicateBudgetNamesThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-duplicate-budget-names.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "duplicate budget name 'duplicate-budget'")
-}
-
-func TestRateLimitMemoryEngineWithRedisConfigThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-memory-engine-with-redis-config.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "memory engine cannot have redis configuration")
-}
-
-func TestRateLimitRedisEngineMissingConfigThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-redis-engine-missing-config.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "redis engine must have redis configuration")
-}
-
-func TestRateLimitInvalidEngineTypeThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-invalid-engine-type.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "invalid rate limit engine type 'invalid-type'")
 }
 
 func TestRateLimitBudgetEngineOverride(t *testing.T) {
@@ -1000,20 +958,14 @@ func TestRateLimitBudgetEngineOverride(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestRateLimitBudgetInvalidEngineOverrideThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-budget-invalid-engine-override.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "references non-existent engine 'nonexistent-engine'")
-}
-
-func TestRateLimitEngineEmptyNameThenError(t *testing.T) {
-	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-engine-empty-name.yaml")
-	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "rate limit engine name cannot be empty")
-}
-
 func TestRateLimitBudgetNonexistentReferenceThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-budget-nonexistent-reference.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "upstream 'eth-upstream' references non-existent rate limit budget 'nonexistent-budget'")
+}
+
+func TestDuplicateStorageNamesThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/duplicate-storage-names.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "duplicate storage name 'redis-storage'")
 }

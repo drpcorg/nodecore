@@ -20,6 +20,10 @@ func (a *AppConfig) validate() error {
 		if err != nil {
 			return fmt.Errorf("error during app storage config validation at index %d, cause: %s", i, err.Error())
 		}
+		// Check for duplicate storage names
+		if _, exists := storageNames[storageConfig.Name]; exists {
+			return fmt.Errorf("duplicate storage name '%s' at index %d", storageConfig.Name, i)
+		}
 		storageNames[storageConfig.Name] = storageType
 	}
 	if a.CacheConfig != nil {
@@ -36,24 +40,10 @@ func (a *AppConfig) validate() error {
 		return err
 	}
 
-	engineNames := mapset.NewThreadUnsafeSet[string]()
-	for _, engine := range a.RateLimitBudgets.Engines {
-		if err := engine.validate(storageNames); err != nil {
-			return fmt.Errorf("error during rate limit engine validation, cause: %s", err.Error())
-		}
-		if engineNames.Contains(engine.Name) {
-			return fmt.Errorf("duplicate rate limit engine name '%s'", engine.Name)
-		}
-		engineNames.Add(engine.Name)
-	}
-
 	rateLimitBudgetNames := mapset.NewThreadUnsafeSet[string]()
-	if len(a.RateLimitBudgets.Budgets) > 0 {
-		for i, budgetConfig := range a.RateLimitBudgets.Budgets {
-			if budgetConfig.DefaultEngine != "" && !engineNames.Contains(budgetConfig.DefaultEngine) {
-				return fmt.Errorf("budget config at index %d references non-existent default engine '%s'", i, budgetConfig.DefaultEngine)
-			}
-			if err := budgetConfig.validate(rateLimitBudgetNames, engineNames); err != nil {
+	if len(a.RateLimit) > 0 {
+		for i, budgetConfig := range a.RateLimit {
+			if err := budgetConfig.validate(rateLimitBudgetNames, storageNames); err != nil {
 				return fmt.Errorf("error during rate limit budget config validation at index %d, cause: %s", i, err.Error())
 			}
 		}
@@ -692,8 +682,7 @@ func (t ApiConnectorType) validate() error {
 	return nil
 }
 
-func (r *RateLimitBudgetConfig) validate(budgetNames mapset.Set[string], availableEngines mapset.Set[string]) error {
-
+func (r *RateLimitBudgetsConfig) validate(budgetNames mapset.Set[string], storageNames map[string]string) error {
 	for i, budget := range r.Budgets {
 		if budget.Name == "" {
 			return fmt.Errorf("rate limit budget name cannot be empty at index %d", i)
@@ -701,7 +690,7 @@ func (r *RateLimitBudgetConfig) validate(budgetNames mapset.Set[string], availab
 		if budgetNames.Contains(budget.Name) {
 			return fmt.Errorf("duplicate budget name '%s'", budget.Name)
 		}
-		if err := budget.validate(availableEngines); err != nil {
+		if err := budget.validate(storageNames); err != nil {
 			return fmt.Errorf("error during rate limit budget '%s' validation, cause: %s", budget.Name, err.Error())
 		}
 		budgetNames.Add(budget.Name)
@@ -709,7 +698,7 @@ func (r *RateLimitBudgetConfig) validate(budgetNames mapset.Set[string], availab
 	return nil
 }
 
-func (r *RateLimitBudget) validate(availableEngines mapset.Set[string]) error {
+func (r *RateLimitBudget) validate(storageNames map[string]string) error {
 	if r.Name == "" {
 		return errors.New("rate limit budget name cannot be empty")
 	}
@@ -720,93 +709,15 @@ func (r *RateLimitBudget) validate(availableEngines mapset.Set[string]) error {
 		}
 	}
 
-	if r.Engine != "" && !availableEngines.Contains(r.Engine) {
-		return fmt.Errorf("rate limit budget '%s' references non-existent engine '%s'", r.Name, r.Engine)
-	}
-
-	return nil
-}
-
-func (r *RateLimitBudgetsConfig) validate(storageNames map[string]string) error {
-	// Validate engines
-	engineNames := mapset.NewThreadUnsafeSet[string]()
-
-	for i, engine := range r.Engines {
-		if err := engine.validate(storageNames); err != nil {
-			return fmt.Errorf("error during rate limit engine validation at index %d, cause: %s", i, err.Error())
+	// Validate storage reference if specified
+	if r.Storage != "" {
+		storage, ok := storageNames[r.Storage]
+		if !ok {
+			return fmt.Errorf("rate limit budget '%s' references non-existent storage '%s'", r.Name, r.Storage)
 		}
-
-		// Check for duplicate engine names
-		if engineNames.Contains(engine.Name) {
-			return fmt.Errorf("duplicate rate limit engine name '%s' found", engine.Name)
+		if storage != "redis" {
+			return fmt.Errorf("rate limit budget '%s' storage '%s' is not a redis storage (type: %s)", r.Name, r.Storage, storage)
 		}
-		engineNames.Add(engine.Name)
-	}
-
-	// Validate budget configs
-	budgetNames := mapset.NewThreadUnsafeSet[string]()
-	for i, budgetConfig := range r.Budgets {
-		if err := budgetConfig.validate(budgetNames, engineNames); err != nil {
-			return fmt.Errorf("error during rate limit budget config validation at index %d, cause: %s", i, err.Error())
-		}
-
-		// Check default engine exists
-		if budgetConfig.DefaultEngine != "" && !engineNames.Contains(budgetConfig.DefaultEngine) {
-			return fmt.Errorf("budget config at index %d references non-existent default engine '%s'", i, budgetConfig.DefaultEngine)
-		}
-
-		for _, budget := range budgetConfig.Budgets {
-			if budgetNames.Contains(budget.Name) {
-				return fmt.Errorf("duplicate budget name '%s' found across budget configs", budget.Name)
-			}
-			budgetNames.Add(budget.Name)
-		}
-	}
-
-	return nil
-}
-
-func (r *RateLimitEngine) validate(storageNames map[string]string) error {
-	if r.Name == "" {
-		return errors.New("rate limit engine name cannot be empty")
-	}
-
-	if r.Type == "" {
-		return errors.New("rate limit engine type cannot be empty")
-	}
-
-	// Validate engine type
-	switch r.Type {
-	case "memory":
-		// Memory engine needs no additional config
-		if r.Redis != nil {
-			return errors.New("memory engine cannot have redis configuration")
-		}
-	case "redis":
-		if r.Redis == nil {
-			return errors.New("redis engine must have redis configuration")
-		}
-		if err := r.Redis.validate(storageNames); err != nil {
-			return fmt.Errorf("error during redis engine config validation, cause: %s", err.Error())
-		}
-	default:
-		return fmt.Errorf("invalid rate limit engine type '%s', must be 'memory' or 'redis'", r.Type)
-	}
-
-	return nil
-}
-
-func (r *RedisRateLimitEngineConfig) validate(storageNames map[string]string) error {
-	if r.StorageName == "" {
-		return errors.New("redis engine storage name cannot be empty")
-	}
-
-	storage, ok := storageNames[r.StorageName]
-	if !ok {
-		return fmt.Errorf("redis engine references non-existent storage '%s'", r.StorageName)
-	}
-	if storage != "redis" {
-		return fmt.Errorf("redis engine storage '%s' is not a redis storage (type: %s)", r.StorageName, storage)
 	}
 
 	return nil

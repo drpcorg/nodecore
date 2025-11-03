@@ -1,0 +1,19 @@
+server:
+  port: 9095
+
+app-storages:
+  - name: redis-storage
+    redis:
+      address: localhost:6379
+  - name: redis-storage
+    redis:
+      address: localhost:6380
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+

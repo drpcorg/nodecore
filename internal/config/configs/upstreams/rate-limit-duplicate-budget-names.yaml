@@ -1,22 +1,21 @@
 server:
   port: 9095
 
-rate-limit-budgets:
-  budgets:
-    - budgets:
-        - name: duplicate-budget
-          config:
-            rules:
-              - method: eth_call
-                requests: 100
-                period: 1s
-    - budgets:
-        - name: duplicate-budget
-          config:
-            rules:
-              - method: eth_getBalance
-                requests: 200
-                period: 1s
+rate-limit:
+  - budgets:
+      - name: duplicate-budget
+        config:
+          rules:
+            - method: eth_call
+              requests: 100
+              period: 1s
+  - budgets:
+      - name: duplicate-budget
+        config:
+          rules:
+            - method: eth_getBalance
+              requests: 200
+              period: 1s
 
 upstream-config:
   upstreams:

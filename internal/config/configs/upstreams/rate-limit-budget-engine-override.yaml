@@ -3,34 +3,24 @@ server:
 
 app-storages:
   - name: redis-storage
-    type: redis
     redis:
       address: localhost:6379
 
-rate-limit-budgets:
-  engines:
-    - name: memory
-      type: memory
-    - name: redis
-      type: redis
-      redis:
-        storage-name: redis-storage
-  budgets:
-    - default-engine: memory
-      budgets:
-        - name: memory-budget
-          config:
-            rules:
-              - method: eth_call
-                requests: 100
-                period: 1s
-        - name: redis-budget
-          engine: redis
-          config:
-            rules:
-              - method: eth_getBalance
-                requests: 200
-                period: 1s
+rate-limit:
+  - budgets:
+      - name: memory-budget
+        config:
+          rules:
+            - method: eth_call
+              requests: 100
+              period: 1s
+      - name: redis-budget
+        storage: redis-storage
+        config:
+          rules:
+            - method: eth_getBalance
+              requests: 200
+              period: 1s
 
 upstream-config:
   upstreams:
