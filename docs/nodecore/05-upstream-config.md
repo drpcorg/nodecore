@@ -135,6 +135,7 @@ To eliminate these issues, nodecore implements a pure hedging strategy with clea
 * First-success-wins - As soon as any in-flight attempt (primary or any hedge) returns success, we return that response and cancel all other in-flight attempts.
 
 `failsafe-config` fields:
+
 1. The `retry` section:
    * `attempts` - Maximum number of request attempts, including the initial one. **_Default_**: `3`
    * `delay` - Base wait time before a retry. Used as the starting backoff. **_Defaults_**: `300ms`
@@ -309,6 +310,6 @@ This ensures that the most stable/compatible connector is used for head tracking
   - `enable` – list of methods to explicitly allow
   - `disable` – list of methods to disable for this upstream
   - `ban-duration` - specifies how long a method should remain banned for a given upstream after encountering an error that indicates the method does not exist or is unavailable. During this period, NodeCore will not send requests for that method to the affected upstream. **_Default_**: `5m` (5 minutes)
-- `rate-limit-budget` - Reference to a shared rate limit budget defined in the top-level `rate-limit-budgets` section. See [Rate Limiting](06-rate-limiting.md) for details
+- `rate-limit-budget` - Reference to a shared rate limit budget defined in the top-level `rate-limit` section. See [Rate Limiting](06-rate-limiting.md) for details
 - `rate-limit` - Inline rate limiting configuration specific to this upstream. Cannot be used together with `rate-limit-budget`. See [Rate Limiting](06-rate-limiting.md) for details
 - `failsafe-config` - failsafe-config that is applied on the upstream level. Only the `retry` policy can be specified

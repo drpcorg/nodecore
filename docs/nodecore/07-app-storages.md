@@ -1,6 +1,6 @@
 # App Storages
 
-The `app-storages` section defines shared storage configurations that can be used by multiple components (cache connectors, rate limiting engines, etc.). This allows you to define a Redis or Postgres connection once and reference it from multiple places.
+The `app-storages` section defines shared storage configurations that can be used by multiple components (cache connectors, rate limiting budgets, etc.). This allows you to define a Redis or Postgres connection once and reference it from multiple places.
 
 ## Configuration
 
@@ -87,12 +87,15 @@ cache:
       postgres:
         storage-name: shared-postgres
 
-rate-limit-budgets:
-  engines:
-    - name: redis-ratelimit
-      type: redis
-      redis:
-        storage-name: shared-redis
+rate-limit:
+  - default-storage: shared-redis
+    budgets:
+      - name: redis-budget
+        config:
+          rules:
+            - method: eth_call
+              requests: 100
+              period: 1s
 ```
 
 ## Usage
@@ -100,4 +103,4 @@ rate-limit-budgets:
 Storages defined in `app-storages` can be referenced by:
 
 - **Cache connectors** - Redis and Postgres cache backends (see [Cache](04-cache.md))
-- **Rate limit engines** - Redis-based rate limiting (see [Rate Limiting](06-rate-limiting.md))
+- **Rate limit budgets** - Redis-based rate limiting (see [Rate Limiting](06-rate-limiting.md))

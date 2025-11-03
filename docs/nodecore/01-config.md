@@ -141,26 +141,32 @@ auth:
             allowed:
               - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
 
-rate-limit-budgets:
-  engines:
-    - name: memory
-      type: memory
-    - name: redis
-      type: redis
-      redis:
-        storage-name: redis-storage
-  budgets:
-    - default-engine: memory
-      budgets:
-        - name: standard-budget
-          config:
-            rules:
-              - method: eth_getBlockByNumber
-                requests: 100
-                period: 1s
-              - pattern: trace_.*
-                requests: 5
-                period: 2m
+rate-limit:
+  - budgets:
+      - name: standard-budget
+        config:
+          rules:
+            - method: eth_getBlockByNumber
+              requests: 100
+              period: 1s
+            - pattern: trace_.*
+              requests: 5
+              period: 2m
+      - name: budger-override
+        config:
+          storage: redis-storage
+          rules:
+            - method: eth_blockNumber
+              request: 100
+              period: 1s
+  - default-storage: redis-storage
+    budgets:
+      - name: redis-budget
+        config:
+          rules:
+            - method: eth_call
+              requests: 200
+              period: 1s
 
 upstream-config:
   failsafe-config:
