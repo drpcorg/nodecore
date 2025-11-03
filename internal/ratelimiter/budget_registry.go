@@ -21,7 +21,7 @@ func storageToEngine(name string, storage storages.Storage) (RateLimitEngine, er
 }
 
 func NewRateLimitBudgetRegistry(cfg []config.RateLimitBudgetsConfig, storageRegistry *storages.StorageRegistry) (*RateLimitBudgetRegistry, error) {
-	var defaultEngine RateLimitEngine = NewRateLimitMemoryEngine()
+	var defaultEngine RateLimitEngine
 	rateLimitBudgets := make(map[string]*RateLimitBudget)
 	for _, budgetConfig := range cfg {
 		if budgetConfig.DefaultStorage == "" {
