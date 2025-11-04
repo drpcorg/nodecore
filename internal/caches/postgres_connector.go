@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
@@ -152,23 +153,19 @@ func (p *PostgresConnector) removeItems() error {
 	return nil
 }
 
-func NewPostgresConnector(id string, postgresCfg *config.PostgresCacheConnectorConfig) (*PostgresConnector, error) {
-	cfg, err := pgxpool.ParseConfig(postgresCfg.Url)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't read the postgres url %s of connector '%s': %w", postgresCfg.Url, id, err)
+func NewPostgresConnector(id string, postgresCfg *config.PostgresCacheConnectorConfig, storageRegistry *storages.StorageRegistry) (*PostgresConnector, error) {
+	storage, ok := storageRegistry.Get(postgresCfg.StorageName)
+	if !ok {
+		return nil, fmt.Errorf("postgres storage with name %s not found", postgresCfg.StorageName)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), *postgresCfg.QueryTimeout)
-	defer cancel()
-
-	pool, err := pgxpool.NewWithConfig(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't create a postgres pool: %w", err)
+	postgresStorage, ok := storage.(*storages.PostgresStorage)
+	if !ok {
+		return nil, fmt.Errorf("postgres storage with name %s is not a postgres storage", postgresCfg.StorageName)
 	}
 
 	return &PostgresConnector{
 		id:                    id,
-		pool:                  pool,
+		pool:                  postgresStorage.Postgres,
 		table:                 postgresCfg.CacheTable,
 		queryTimeout:          *postgresCfg.QueryTimeout,
 		expiredRemoveInterval: postgresCfg.ExpiredRemoveInterval,

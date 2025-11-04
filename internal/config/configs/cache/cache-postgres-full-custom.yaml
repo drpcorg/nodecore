@@ -1,12 +1,17 @@
 server:
   port: 9095
 
+app-storages:
+  - name: postgres-storage-custom
+    postgres:
+      url: postgres://user1:pass1@localhost:5432/db
+
 cache:
   connectors:
     - driver: postgres
       id: pg2
       postgres:
-        url: postgres://user1:pass1@localhost:5432/db
+        storage-name: postgres-storage-custom
         query-timeout: 2s
         cache-table: cache_custom
         expired-remove-interval: 1m

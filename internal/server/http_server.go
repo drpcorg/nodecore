@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -55,6 +56,7 @@ type ApplicationContext struct {
 	registry           *rating.RatingRegistry
 	authProcessor      auth.AuthProcessor
 	appConfig          *config.AppConfig
+	storageRegistry    *storages.StorageRegistry
 }
 
 func NewApplicationContext(
@@ -63,6 +65,7 @@ func NewApplicationContext(
 	registry *rating.RatingRegistry,
 	authProcessor auth.AuthProcessor,
 	appConfig *config.AppConfig,
+	storageRegistry *storages.StorageRegistry,
 ) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
@@ -70,6 +73,7 @@ func NewApplicationContext(
 		registry:           registry,
 		authProcessor:      authProcessor,
 		appConfig:          appConfig,
+		storageRegistry:    storageRegistry,
 	}
 }
 

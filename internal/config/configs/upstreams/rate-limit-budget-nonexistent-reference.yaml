@@ -1,9 +1,8 @@
 server:
   port: 9095
 
-rate-limit-budgets:
-  - default-engine: memory
-    budgets:
+rate-limit:
+  - budgets:
       - name: standard-budget
         config:
           rules:

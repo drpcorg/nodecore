@@ -1,14 +1,19 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-negative-conn-idle
+    redis:
+      address: localhost:6379
+      pool:
+        conn-max-idle-time: -1s
+
 cache:
   connectors:
     - driver: redis
       id: redis12
       redis:
-        address: localhost:6379
-        pool:
-          conn-max-idle-time: -1s
+        storage-name: redis-storage-negative-conn-idle
 
 upstream-config:
   upstreams:

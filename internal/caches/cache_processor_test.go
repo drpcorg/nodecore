@@ -8,6 +8,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
@@ -18,7 +19,8 @@ import (
 
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {
 	cacheConfig := memoryCacheConfig(nil, nil)
-	cacheProcessor, err := NewBaseCacheProcessor(nil, cacheConfig)
+	storageRegistry, _ := storages.NewStorageRegistry([]config.AppStorageConfig{})
+	cacheProcessor, err := NewBaseCacheProcessor(nil, cacheConfig, storageRegistry)
 	assert.NoError(t, err)
 
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)

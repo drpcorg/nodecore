@@ -24,7 +24,6 @@ func TestRateLimitMemoryEngine_Execute_SingleCommand_AllowsRequests(t *testing.T
 	result, err := engine.Execute([]RateLimitCommand{cmd})
 	require.NoError(t, err)
 	assert.True(t, result)
-
 }
 
 func TestRateLimitMemoryEngine_Execute_MultipleCommands(t *testing.T) {

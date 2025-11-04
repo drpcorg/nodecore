@@ -1,14 +1,19 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-negative-conn-life
+    redis:
+      address: localhost:6379
+      pool:
+        conn-max-life-time: -1s
+
 cache:
   connectors:
     - driver: redis
       id: redis11
       redis:
-        address: localhost:6379
-        pool:
-          conn-max-life-time: -1s
+        storage-name: redis-storage-negative-conn-life
 
 upstream-config:
   upstreams:
