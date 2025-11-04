@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  tor:
+    build:
+      context: .
+      dockerfile: Dockerfile.tor
+    container_name: nodecore-tor
+    restart: unless-stopped
+    volumes:
+      # Only mount the directory where Tor will store keys
+      - ./tor-data/nodecore:/var/lib/tor/hidden_service
+    networks:
+      - tor-network
+    ports:
+      # SOCKS5 proxy port (optional, for debugging)
+      - "9050:9050"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "9050"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nodecore:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nodecore-app
+    restart: unless-stopped
+    volumes:
+      # Mount your custom configuration
+      - ${NODECORE_CONFIG:-./nodecore.yml}:/app/nodecore.yml:ro
+    environment:
+      - NODECORE_CONFIG_PATH=/app/nodecore.yml
+    networks:
+      tor-network:
+        ipv4_address: 10.5.0.10
+    # Do not expose ports publicly - only accessible through Tor
+    expose:
+      - "9090"
+      - "9093"
+    depends_on:
+      - tor
+
+networks:
+  tor-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.5.0.0/16
+    # Note: Do not set 'internal: true' - Tor needs internet access
+
+volumes:
+  tor-data:
