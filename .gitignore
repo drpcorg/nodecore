@@ -1,3 +1,4 @@
 /.idea
 pkg/chains/chains_data.go
 test_*
+tor-data/

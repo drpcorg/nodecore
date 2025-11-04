@@ -1,0 +1,18 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache \
+    tor \
+    tini \
+    su-exec \
+    && mkdir -p /var/lib/tor/hidden_service \
+    && chown -R tor:tor /var/lib/tor
+
+COPY torrc/torrc.conf /etc/tor/torrc
+
+EXPOSE 9050
+
+VOLUME ["/var/lib/tor/hidden_service"]
+
+ENTRYPOINT ["/sbin/tini", "--"]
+
+CMD ["su-exec", "tor", "tor", "-f", "/etc/tor/torrc"]
