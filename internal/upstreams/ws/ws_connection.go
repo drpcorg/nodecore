@@ -106,13 +106,12 @@ func NewJsonRpcWsConnection(
 	}
 
 	dialer := &websocket.Dialer{
-		ReadBufferSize:    wsReadBuffer,
-		WriteBufferSize:   wsWriteBuffer,
-		WriteBufferPool:   wsBufferPool,
-		Proxy:             http.ProxyFromEnvironment,
-		NetDial:           socksDialer,
-		HandshakeTimeout:  45 * time.Second,
-		EnableCompression: false,
+		ReadBufferSize:   wsReadBuffer,
+		WriteBufferSize:  wsWriteBuffer,
+		WriteBufferPool:  wsBufferPool,
+		Proxy:            http.ProxyFromEnvironment,
+		NetDial:          socksDialer,
+		HandshakeTimeout: 45 * time.Second,
 	}
 	var header http.Header = map[string][]string{}
 	for key, val := range additionalHeaders {

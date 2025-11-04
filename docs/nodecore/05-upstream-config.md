@@ -115,35 +115,38 @@ Execution scheme:
 
 1. Pick an upstream.
 2. Send a request
-   * If `hedge.delay` elapses with no response, the execution flow may launch a hedge (speculative parallel request), up to `hedge.max` additional copies. Hedges can target other upstreams.
+   - If `hedge.delay` elapses with no response, the execution flow may launch a hedge (speculative parallel request), up to `hedge.max` additional copies. Hedges can target other upstreams.
 3. First success wins. As soon as any in-flight attempt (original or hedge) returns a successful response, the executor returns it and cancels other in-flight attempts.
 4. Retry on retryable errors. If an attempt returns a retryable error, the execution flow applies the retry policy. Non-retryable errors end the flow immediately (returned to the client).
 
 nodecore uses the [failsafe-go](https://failsafe-go.dev/) library for resiliency primitives. At the moment we rely on:
-* Retry policy – provided by failsafe-go
-* Hedge policy – [custom implementation](../../internal/resilience/parallel_hedge.go) (instead of the default) for stricter latency semantics
+
+- Retry policy – provided by failsafe-go
+- Hedge policy – [custom implementation](../../internal/resilience/parallel_hedge.go) (instead of the default) for stricter latency semantics
 
 **Why a custom hedge policy?**
 
 The baseline hedging behavior has a few drawbacks for our use case:
-* If an immediate error arrives from the primary request, the default behavior may still wait for the hedge delay (or cascade hedges serially), slowing error paths.
-* Hedge requests may be issued sequentially, effectively waiting for each attempt instead of firing truly in parallel after the delay.
+
+- If an immediate error arrives from the primary request, the default behavior may still wait for the hedge delay (or cascade hedges serially), slowing error paths.
+- Hedge requests may be issued sequentially, effectively waiting for each attempt instead of firing truly in parallel after the delay.
 
 To eliminate these issues, nodecore implements a pure hedging strategy with clear timing and parallelism guarantees:
-* Delay gate - A hedged request is sent only if `hedge.delay` has fully elapsed and the primary has not completed successfully. If we receive any response (success or error) before `hedge.delay` elapses, we return it immediately (no hedges launched)
-* Parallel launch - Once `hedge.delay` elapses with no success, we launch up to `hedge.max` parallel hedges immediately (not one-by-one)
-* First-success-wins - As soon as any in-flight attempt (primary or any hedge) returns success, we return that response and cancel all other in-flight attempts.
+
+- Delay gate - A hedged request is sent only if `hedge.delay` has fully elapsed and the primary has not completed successfully. If we receive any response (success or error) before `hedge.delay` elapses, we return it immediately (no hedges launched)
+- Parallel launch - Once `hedge.delay` elapses with no success, we launch up to `hedge.max` parallel hedges immediately (not one-by-one)
+- First-success-wins - As soon as any in-flight attempt (primary or any hedge) returns success, we return that response and cancel all other in-flight attempts.
 
 `failsafe-config` fields:
 
 1. The `retry` section:
-   * `attempts` - Maximum number of request attempts, including the initial one. **_Default_**: `3`
-   * `delay` - Base wait time before a retry. Used as the starting backoff. **_Defaults_**: `300ms`
-   * `max-delay` - Upper bound for retry backoff. The effective delay will never exceed this value
-   * `jitter` - Adds randomization to each backoff
+   - `attempts` - Maximum number of request attempts, including the initial one. **_Default_**: `3`
+   - `delay` - Base wait time before a retry. Used as the starting backoff. **_Defaults_**: `300ms`
+   - `max-delay` - Upper bound for retry backoff. The effective delay will never exceed this value
+   - `jitter` - Adds randomization to each backoff
 2. The `hedge` section:
-   * `delay` - How long to wait after sending the initial request before launching hedged requests. Can't be less than 50ms. **_Default_**: `1s`
-   * max - Maximum number of additional parallel hedged requests to launch once the delay has elapsed. **_Default_**: `2`
+   - `delay` - How long to wait after sending the initial request before launching hedged requests. Can't be less than 50ms. **_Default_**: `1s`
+   - max - Maximum number of additional parallel hedged requests to launch once the delay has elapsed. **_Default_**: `2`
 
 ## chain-defaults
 
@@ -158,8 +161,9 @@ chain-defaults:
 The `chain-defaults` section defines per-chain baseline settings that apply to all upstreams of that chain unless explicitly overridden in the upstream configuration.
 
 `chain-defaults` fields:
-* `<chain>.poll-interval` - Defines how often nodecore polls the upstreams for that chain to fetch new head/finality information
-  * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** `poll-interval` value globally is `1m` (1 minute)
+
+- `<chain>.poll-interval` - Defines how often nodecore polls the upstreams for that chain to fetch new head/finality information
+  - Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** `poll-interval` value globally is `1m` (1 minute)
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
@@ -175,21 +179,26 @@ score-policy-config:
 The `score-policy-config` section defines how nodecore evaluates and ranks upstreams. It provides a flexible rating subsystem that uses built-in or user-defined Typescript functions to compute scores based on multiple performance dimensions. The result of this calculation directly influences which upstream is selected by the execution flow.
 
 **How it works**:
+
 1. Metrics collection. or each chain and RPC method, nodecore continuously tracks:
-   * Latency percentiles: p90, p95, p99
-   * Request statistics: total requests, total errors, error rate, successful retries
-   * Blockchain state metrics: head lag (distance from the latest head), finalization lag (distance from the latest finalized block)
+   - Latency percentiles: p90, p95, p99
+   - Request statistics: total requests, total errors, error rate, successful retries
+   - Blockchain state metrics: head lag (distance from the latest head), finalization lag (distance from the latest finalized block)
 2. Rating subsystem. At each `calculation-interval`, the rating subsystem invokes a scoring function that calculates the upstreams' rating based on these metrics.
-    * By default, a built-in function (e.g. defaultLatencyErrorRatePolicyFunc) is used. [All default functions](../../internal/config/default_ts_funcs.go)
-    * Optionally, you can provide a custom TypeScript function that defines your own rating logic
+   - By default, a built-in function (e.g. defaultLatencyErrorRatePolicyFunc) is used. [All default functions](../../internal/config/default_ts_funcs.go)
+   - Optionally, you can provide a custom TypeScript function that defines your own rating logic
 3. Execution flow - the execution flow itself does not evaluate upstreams; it simply picks the best one according to the latest rating.
 
 **Writing a custom scoring function with the following rules**:
+
 1. Function signature
+
 ```typescript
-function sortUpstreams(upstreamData: UpstreamData[]): SortResponse
+function sortUpstreams(upstreamData: UpstreamData[]): SortResponse;
 ```
+
 2. `UpstreamData` object
+
 ```typescript
 {
   id: string,
@@ -207,7 +216,9 @@ function sortUpstreams(upstreamData: UpstreamData[]): SortResponse
   }
 }
 ```
+
 3. `SortResponse`
+
 ```typescript
 {
   sortedUpstreams: string[],  // list of upstream IDs sorted from best → worst
@@ -219,9 +230,10 @@ function sortUpstreams(upstreamData: UpstreamData[]): SortResponse
 ```
 
 `score-policy-config` fields:
-* `calculation-interval` - How often the scoring subsystem recalculates upstream scores. **_Defaults_**: `10s`
-* `calculation-function-name` - The name of a built-in scoring function to use. Possible functions - `defaultLatencyPolicyFunc`, `defaultLatencyErrorRatePolicyFunc`. **_Default_**: `DefaultLatencyPolicyFuncName`
-* `calculation-function-file-path` - Path to a custom TypeScript file implementing your own scoring function
+
+- `calculation-interval` - How often the scoring subsystem recalculates upstream scores. **_Defaults_**: `10s`
+- `calculation-function-name` - The name of a built-in scoring function to use. Possible functions - `defaultLatencyPolicyFunc`, `defaultLatencyErrorRatePolicyFunc`. **_Default_**: `DefaultLatencyPolicyFuncName`
+- `calculation-function-file-path` - Path to a custom TypeScript file implementing your own scoring function
 
 > **⚠️ Note**: Both `calculation-function-name` and `calculation-function-file-path` can't be set at the same time.
 
@@ -291,6 +303,34 @@ In addition, every upstream must track its head (latest block / finalization sta
   - `websocket`
 
 This ensures that the most stable/compatible connector is used for head tracking by default, but you can override the behavior when needed.
+
+### Tor .onion upstreams
+
+NodeCore supports connecting to upstreams hosted as Tor hidden services (`.onion` addresses) for both `json-rpc` and `websocket` connectors. This provides enhanced privacy and censorship resistance.
+
+**Configuration requirements:**
+
+1. Set `server.tor-url` in your config to point to a SOCKS5 proxy (usually a local Tor instance):
+
+```yaml
+server:
+  tor-url: localhost:9050
+```
+
+2. Use `.onion` addresses in connector URLs:
+
+```yaml
+upstreams:
+  - id: tor-upstream
+    chain: ethereum
+    connectors:
+      - type: json-rpc
+        url: http://examplehidden.onion
+      - type: websocket
+        url: ws://examplehidden.onion
+```
+
+When NodeCore detects a `.onion` hostname, it automatically routes the connection through the configured Tor proxy using SOCKS5. If `tor-url` is not set and a `.onion` upstream is configured, NodeCore will fail to start with an error.
 
 ## Fields
 
