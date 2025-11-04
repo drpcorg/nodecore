@@ -1,11 +1,16 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-no-address
+    redis: {}
+
 cache:
   connectors:
     - driver: redis
       id: redis3
-      redis: {}
+      redis:
+        storage-name: redis-storage-no-address
 
 upstream-config:
   upstreams:

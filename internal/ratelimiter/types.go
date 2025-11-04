@@ -14,6 +14,13 @@ type FixedRateLimiterType struct {
 	period   time.Duration
 }
 
+func NewFixedRateLimiterType(requests int, period time.Duration) *FixedRateLimiterType {
+	return &FixedRateLimiterType{
+		requests: requests,
+		period:   period,
+	}
+}
+
 func (r *FixedRateLimiterType) tp() bool {
 	return true
 }

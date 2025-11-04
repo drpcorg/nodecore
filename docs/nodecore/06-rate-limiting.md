@@ -14,9 +14,8 @@ Reusable configurations for multiple upstreams.
 ### Configuration
 
 ```yaml
-rate-limit-budgets:
-  - default-engine: memory
-    budgets:
+rate-limit:
+  - budgets:
       - name: standard-budget
         config:
           rules:
@@ -39,12 +38,56 @@ rate-limit-budgets:
 
 ### Budget Configuration Fields
 
-- `default-engine` - The rate limiting engine to use. Currently only `memory` is supported. **Required**
-- `budgets` - Array of budget definitions. Each budget contains:
-  - `name` - Unique identifier for the budget. **Required**, **Unique**
-  - `engine` - Override the default engine for this specific budget (optional)
-  - `config` - Rate limiting rules configuration. **Required**
-    - `rules` - Array of rate limit rules (see Rules section below)
+- `rate-limit` - Array of budget group definitions. Each group contains:
+  - `default-storage` - The Redis storage name to use for budgets in this group (optional, defaults to in-memory rate limiting)
+  - `budgets` - Array of budget definitions. Each budget contains:
+    - `name` - Unique identifier for the budget. **Required**, **Unique**
+    - `storage` - Override the default storage for this specific budget (optional). Must reference a Redis storage from `app-storages`
+    - `config` - Rate limiting rules configuration. **Required**
+      - `rules` - Array of rate limit rules (see Rules section below)
+
+## Rate Limit Storage
+
+Rate limiting state can be stored either in-memory (default) or in Redis for distributed rate limiting across multiple nodecore instances.
+
+### Memory (Default)
+
+In-memory rate limiting. State is stored in the nodecore process and is not shared across instances. This is the default when no storage is specified.
+
+```yaml
+rate-limit:
+  - budgets:
+      - name: standard-budget
+        # No storage specified = in-memory
+        config:
+          rules:
+            - method: eth_call
+              requests: 100
+              period: 1s
+```
+
+### Redis Storage
+
+Redis-based rate limiting. State is stored in Redis and can be shared across multiple nodecore instances. Requires a Redis storage to be configured in `app-storages`.
+
+```yaml
+app-storages:
+  - name: redis-storage
+    redis:
+      address: localhost:6379
+
+rate-limit:
+  - default-storage: redis-storage
+    budgets:
+      - name: redis-budget
+        config:
+          rules:
+            - method: eth_getBalance
+              requests: 200
+              period: 1s
+```
+
+For complete Redis storage configuration options, see [App Storages](07-app-storages.md).
 
 ### Usage
 
@@ -95,12 +138,37 @@ upstream-config:
 
 ## Rate Limit Rules
 
+Rate limit rules define the throttling behavior for specific methods or method patterns.
+
 ### Rule Fields
 
 - `method` - Exact method name to match (e.g., `eth_getBlockByNumber`). **Either `method` or `pattern` must be specified**
 - `pattern` - Regular expression pattern to match method names (e.g., `trace_.*` or `eth_getBlock.*`). **Either `method` or `pattern` must be specified**
 - `requests` - Maximum number of requests allowed. **Required**, must be greater than 0
 - `period` - Time window for the rate limit (e.g., `1s`, `1m`, `5m`). **Required**, must be greater than 0
+
+### Multiple Rules and Overlapping Patterns
+
+**Important**: Multiple rules can match the same method, and **all matching rules will be evaluated**. A request will only proceed if it passes all applicable rate limits.
+
+For example, if you configure:
+
+```yaml
+rules:
+  - pattern: eth_.*
+    requests: 1000
+    period: 1s
+  - method: eth_getBlockByNumber
+    requests: 100
+    period: 1s
+```
+
+A request to `eth_getBlockByNumber` will be checked against **both** rules:
+
+1. The general `eth_.*` pattern limit (1000 req/s)
+2. The specific `eth_getBlockByNumber` limit (100 req/s)
+
+The request will be rate limited if **any** of the matching rules is exceeded.
 
 ### Examples
 
@@ -135,11 +203,12 @@ rules:
 
 ## Examples
 
+### Memory (In-Process) Example
+
 ```yaml
-# Shared budgets
-rate-limit-budgets:
-  - default-engine: memory
-    budgets:
+# Shared budgets with in-memory storage
+rate-limit:
+  - budgets:
       - name: standard
         config:
           rules:
@@ -173,10 +242,85 @@ upstream-config:
           url: https://provider2.com
 ```
 
+### Redis Storage Example
+
+```yaml
+app-storages:
+  - name: redis-storage
+    redis:
+      address: localhost:6379
+
+rate-limit:
+  - default-storage: redis-storage
+    budgets:
+      - name: redis-budget
+        config:
+          rules:
+            - method: eth_getBalance
+              requests: 200
+              period: 1s
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      rate-limit-budget: redis-budget
+      connectors:
+        - type: json-rpc
+          url: https://provider.com
+```
+
+### Mixed Storage Example
+
+```yaml
+app-storages:
+  - name: redis-storage
+    redis:
+      address: localhost:6379
+
+rate-limit:
+  - budgets:
+      - name: memory-budget
+        # No storage specified = in-memory
+        config:
+          rules:
+            - method: eth_call
+              requests: 100
+              period: 1s
+      - name: redis-budget
+        storage: redis-storage
+        config:
+          rules:
+            - method: eth_getBalance
+              requests: 200
+              period: 1s
+
+upstream-config:
+  upstreams:
+    - id: eth-1
+      chain: ethereum
+      rate-limit-budget: memory-budget
+      connectors:
+        - type: json-rpc
+          url: https://provider1.com
+    - id: eth-2
+      chain: ethereum
+      rate-limit-budget: redis-budget
+      connectors:
+        - type: json-rpc
+          url: https://provider2.com
+```
+
+For complete Redis storage configuration options (timeouts, pool settings, etc.), see [App Storages](07-app-storages.md).
+
 ## Validation
 
-- Budget names must be unique and non-empty
-- Referenced budgets must exist
+- Storage names in `app-storages` must be unique and non-empty
+- Budget names must be unique and non-empty across all budget groups
+- Referenced budgets in upstreams must exist
+- Budget `storage` field must reference an existing Redis storage from `app-storages` (if specified)
+- Budget `default-storage` must reference an existing Redis storage from `app-storages` (if specified)
+- Storage referenced by budgets must be of type `redis`
 - Rules must specify either `method` or `pattern`, not both
 - `method` must be alphanumeric with underscores only (no regex)
 - `pattern` must be valid regex

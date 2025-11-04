@@ -6,6 +6,7 @@ cache:
     - driver: postgres
       id: pg3
       postgres:
+        storage-name: nonexistent-storage
         cache-table: cache_rpc
 
 upstream-config:

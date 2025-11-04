@@ -1,14 +1,19 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-negative-read
+    redis:
+      address: localhost:6379
+      timeouts:
+        read-timeout: -1s
+
 cache:
   connectors:
     - driver: redis
       id: redis4
       redis:
-        address: localhost:6379
-        timeouts:
-          read-timeout: -1s
+        storage-name: redis-storage-negative-read
 
 upstream-config:
   upstreams:

@@ -1,14 +1,19 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-negative-max-active
+    redis:
+      address: localhost:6379
+      pool:
+        max-active-conns: -1
+
 cache:
   connectors:
     - driver: redis
       id: redis10
       redis:
-        address: localhost:6379
-        pool:
-          max-active-conns: -1
+        storage-name: redis-storage-negative-max-active
 
 upstream-config:
   upstreams:

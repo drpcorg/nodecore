@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/pkg/test_utils/e2e"
 	"github.com/stretchr/testify/assert"
 	tc "github.com/testcontainers/testcontainers-go"
@@ -16,6 +17,7 @@ import (
 )
 
 var fullUrl string
+var storageRegistry *storages.StorageRegistry
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -41,6 +43,15 @@ func TestMain(m *testing.M) {
 	mp, _ := redisC.MappedPort(ctx, "6379/tcp")
 	fullUrl = fmt.Sprintf("redis://localhost:%s/0?read_timeout=3000ms", mp.Port())
 
+	storageRegistry, _ = storages.NewStorageRegistry([]config.AppStorageConfig{
+		{
+			Name: "test-redis",
+			Redis: &config.RedisStorageConfig{
+				FullUrl: fullUrl,
+			},
+		},
+	})
+
 	code := m.Run()
 	os.Exit(code)
 }
@@ -49,8 +60,9 @@ func TestRedisConnectorInitialize(t *testing.T) {
 	connector, err := caches.NewRedisConnector(
 		"id",
 		&config.RedisCacheConnectorConfig{
-			FullUrl: fullUrl,
+			StorageName: "test-redis",
 		},
+		storageRegistry,
 	)
 	assert.NoError(t, err)
 
@@ -61,8 +73,9 @@ func TestRedisConnectorNoItemThenErrCacheNotFound(t *testing.T) {
 	connector, err := caches.NewRedisConnector(
 		"id",
 		&config.RedisCacheConnectorConfig{
-			FullUrl: fullUrl,
+			StorageName: "test-redis",
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 
@@ -73,8 +86,9 @@ func TestRedisConnectorStoreThenReceive(t *testing.T) {
 	connector, err := caches.NewRedisConnector(
 		"id",
 		&config.RedisCacheConnectorConfig{
-			FullUrl: fullUrl,
+			StorageName: "test-redis",
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 
@@ -85,8 +99,9 @@ func TestRedisConnectorStoreAndRemoveExpired(t *testing.T) {
 	connector, err := caches.NewRedisConnector(
 		"id",
 		&config.RedisCacheConnectorConfig{
-			FullUrl: fullUrl,
+			StorageName: "test-redis",
 		},
+		storageRegistry,
 	)
 	assert.Nil(t, err)
 

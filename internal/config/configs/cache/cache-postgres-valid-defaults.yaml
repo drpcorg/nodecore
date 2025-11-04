@@ -1,12 +1,17 @@
 server:
   port: 9095
 
+app-storages:
+  - name: postgres-storage-defaults
+    postgres:
+      url: postgres://user:pass@localhost:5432/db
+
 cache:
   connectors:
     - driver: postgres
       id: pg1
       postgres:
-        url: postgres://user:pass@localhost:5432/db
+        storage-name: postgres-storage-defaults
 
 upstream-config:
   upstreams:

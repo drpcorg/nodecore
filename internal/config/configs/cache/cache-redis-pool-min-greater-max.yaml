@@ -1,15 +1,20 @@
 server:
   port: 9095
 
+app-storages:
+  - name: redis-storage-min-gt-max
+    redis:
+      address: localhost:6379
+      pool:
+        min-idle-conns: 10
+        max-idle-conns: 5
+
 cache:
   connectors:
     - driver: redis
       id: redis9
       redis:
-        address: localhost:6379
-        pool:
-          min-idle-conns: 10
-          max-idle-conns: 5
+        storage-name: redis-storage-min-gt-max
 
 upstream-config:
   upstreams:
