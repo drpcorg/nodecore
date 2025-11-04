@@ -94,4 +94,4 @@ cat tor-data/hostname  # Get your .onion address
 
 For complete setup instructions, security considerations, and troubleshooting, see:
 
-- [Tor Setup Guide (English)](docs/nodecore/07-tor-setup.md)
+- [Tor Setup Guide](docs/nodecore/07-tor-setup.md)
