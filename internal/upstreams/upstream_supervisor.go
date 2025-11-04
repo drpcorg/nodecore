@@ -94,7 +94,7 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, currentIndex, u.rateLimitBudgetRegistry)
+			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
