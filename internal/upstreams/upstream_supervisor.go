@@ -35,9 +35,10 @@ type BaseUpstreamSupervisor struct {
 	upstreamIndices         *utils.CMap[string, int]
 	upstreamIndicesCounter  int
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
+	torProxyUrl             string
 }
 
-func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker, rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry) UpstreamSupervisor {
+func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker, rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry, torProxyUrl string) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
 		ctx:                     ctx,
 		upstreams:               utils.NewCMap[string, Upstream](),
@@ -49,6 +50,7 @@ func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.Upst
 		upstreamIndices:         utils.NewCMap[string, int](),
 		upstreamIndicesCounter:  1,
 		rateLimitBudgetRegistry: rateLimitBudgetRegistry,
+		torProxyUrl:             torProxyUrl,
 	}
 }
 
@@ -94,7 +96,7 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry)
+			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry, u.torProxyUrl)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return

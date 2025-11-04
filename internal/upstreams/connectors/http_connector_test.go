@@ -55,7 +55,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 				return resp, nil
 			})
 
-			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -114,7 +114,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 				return resp, nil
 			})
 
-			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -137,7 +137,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 		return resp, nil
 	})
 
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -167,7 +167,7 @@ func TestHttpConnectorType(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			connector := connectors.NewHttpConnector("http://localhost:8080", test.connType, nil)
+			connector := connectors.NewHttpConnector("http://localhost:8080", test.connType, nil, "")
 
 			assert.Equal(te, test.connType, connector.GetType())
 		})
@@ -182,7 +182,7 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 		return resp, nil
 	})
 
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -201,7 +201,7 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 		return resp, nil
 	})
 
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil)
+	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)

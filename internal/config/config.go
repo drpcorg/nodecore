@@ -148,6 +148,7 @@ type ServerConfig struct {
 	PprofPort       int              `yaml:"pprof-port"`
 	TlsConfig       *TlsConfig       `yaml:"tls"`
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
+	TorUrl          string           `yaml:"tor-url"`
 }
 
 type PyroscopeConfig struct {

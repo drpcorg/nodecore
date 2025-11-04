@@ -969,3 +969,26 @@ func TestDuplicateStorageNamesThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "duplicate storage name 'redis-storage'")
 }
+
+func TestOnionEndpointNoTorProxyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/tor-onion-no-proxy.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: tor proxy url is required for onion endpoints")
+}
+
+func TestInvalidConnectorUrlThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-connector-url.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "invalid url for connector 'rest' -")
+}
+
+func TestOnionEndpointWithTorProxyThenSuccess(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/tor-onion-with-proxy.yaml")
+	appConfig, err := config.NewAppConfig()
+	assert.NoError(t, err)
+	assert.NotNil(t, appConfig)
+	assert.Equal(t, "localhost:9050", appConfig.ServerConfig.TorUrl)
+	assert.Equal(t, 1, len(appConfig.UpstreamConfig.Upstreams))
+	assert.Equal(t, "eth-upstream", appConfig.UpstreamConfig.Upstreams[0].Id)
+	assert.Equal(t, 2, len(appConfig.UpstreamConfig.Upstreams[0].Connectors))
+}

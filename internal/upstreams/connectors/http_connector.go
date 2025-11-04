@@ -7,11 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/rs/zerolog"
+	"golang.org/x/net/proxy"
 )
 
 type HttpConnector struct {
@@ -19,16 +23,48 @@ type HttpConnector struct {
 	httpClient        *http.Client
 	additionalHeaders map[string]string
 	connectorType     protocol.ApiConnectorType
+	torProxyUrl       string
 }
 
 var _ ApiConnector = (*HttpConnector)(nil)
 
-func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, additionalHeaders map[string]string) *HttpConnector {
+func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, additionalHeaders map[string]string, torProxyUrl string) *HttpConnector {
+	url, err := url.Parse(endpoint)
+	if err != nil {
+		panic(fmt.Errorf("error parsing the endpoint: %v", err))
+	}
+	client := http.DefaultClient
+	if strings.HasSuffix(url.Hostname(), ".onion") {
+		if torProxyUrl == "" {
+			panic("tor proxy url is required for onion endpoints")
+		}
+		dialer := &net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}
+		proxy, err := proxy.SOCKS5("tcp", torProxyUrl, nil, dialer)
+		if err != nil {
+			panic(fmt.Errorf("error creating socks5 proxy: %v", err))
+		}
+		client = &http.Client{
+			Timeout: 60 * time.Second,
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return proxy.Dial(network, addr)
+				},
+				MaxIdleConns:        100,
+				IdleConnTimeout:     90 * time.Second,
+				TLSHandshakeTimeout: 10 * time.Second,
+			},
+		}
+	}
+
 	return &HttpConnector{
 		endpoint:          endpoint,
-		httpClient:        http.DefaultClient,
+		httpClient:        client,
 		connectorType:     connectorType,
 		additionalHeaders: additionalHeaders,
+		torProxyUrl:       torProxyUrl,
 	}
 }
 

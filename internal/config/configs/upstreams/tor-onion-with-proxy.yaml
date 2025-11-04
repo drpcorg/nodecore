@@ -1,0 +1,13 @@
+server:
+  port: 9095
+  tor-url: localhost:9050
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: http://examplehidden.onion
+        - type: websocket
+          url: ws://examplehidden.onion
