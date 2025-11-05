@@ -506,10 +506,10 @@ func (f *FailsafeConfig) validate() error {
 }
 
 func (o *UpstreamOptions) validate() error {
-	if o.InternalTimeout <= 0 {
+	if o.InternalTimeout < 0 {
 		return errors.New("internal timeout can't be less than 0")
 	}
-	if o.ValidationInterval <= 0 {
+	if o.ValidationInterval < 0 {
 		return errors.New("validation interval can't be less than 0")
 	}
 	return nil

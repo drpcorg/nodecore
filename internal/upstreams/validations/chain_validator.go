@@ -2,7 +2,6 @@ package validations
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -36,7 +35,6 @@ func NewChainValidator(
 }
 
 func (c *ChainValidator) Validate() ValidationSettingResult {
-	ix.Add(1)
 	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
 	defer cancel()
 
@@ -116,7 +114,5 @@ func (c *ChainValidator) getNetVersion(ctx context.Context) (string, error) {
 
 	return response.ResponseResultString()
 }
-
-var ix = atomic.Int64{}
 
 var _ SettingsValidator = (*ChainValidator)(nil)
