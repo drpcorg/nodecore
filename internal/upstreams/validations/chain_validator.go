@@ -46,7 +46,7 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 	group.Go(func() error {
 		result, err := c.getChainId(ctx)
 		if err != nil {
-			logger.Warn().Err(err).Msgf("failed to get chainId")
+			logger.Warn().Err(err).Msgf("failed to get chainId of upstream '%s'", c.upstreamId)
 			return err
 		}
 		chainId = result
@@ -56,7 +56,7 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 	group.Go(func() error {
 		result, err := c.getNetVersion(ctx)
 		if err != nil {
-			logger.Warn().Err(err).Msgf("failed to get netVersion")
+			logger.Warn().Err(err).Msgf("failed to get netVersion of upstream '%s'", c.upstreamId)
 			return err
 		}
 		netVersion = result
