@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ func (a *AppConfig) validate() error {
 		}
 	}
 
-	if err := a.UpstreamConfig.validate(rateLimitBudgetNames); err != nil {
+	if err := a.UpstreamConfig.validate(rateLimitBudgetNames, a.ServerConfig.TorUrl); err != nil {
 		return err
 	}
 
@@ -427,7 +428,7 @@ func (r *RateLimiterConfig) validate() error {
 	return nil
 }
 
-func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string]) error {
+func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torProxyUrl string) error {
 	if err := u.ScorePolicyConfig.validate(); err != nil {
 		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
 	}
@@ -457,7 +458,7 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string]) error
 		if idSet.Contains(upstream.Id) {
 			return fmt.Errorf("error during upstream validation, cause: upstream with id '%s' already exists", upstream.Id)
 		}
-		if err := upstream.validate(); err != nil {
+		if err := upstream.validate(torProxyUrl); err != nil {
 			return fmt.Errorf("error during upstream '%s' validation, cause: %s", upstream.Id, err.Error())
 		}
 		// Validate rate limit budget reference
@@ -592,7 +593,7 @@ func (p *PyroscopeConfig) validate() error {
 	return nil
 }
 
-func (u *Upstream) validate() error {
+func (u *Upstream) validate(torProxyUrl string) error {
 	if !chains.IsSupported(u.ChainName) {
 		return fmt.Errorf("not supported chain '%s'", u.ChainName)
 	}
@@ -612,7 +613,7 @@ func (u *Upstream) validate() error {
 		if connectorTypeSet.Contains(connector.Type) {
 			return fmt.Errorf("there can be only one connector of type '%s'", connector.Type)
 		}
-		if err := connector.validate(); err != nil {
+		if err := connector.validate(torProxyUrl); err != nil {
 			return err
 		}
 		connectorTypeSet.Add(connector.Type)
@@ -661,13 +662,25 @@ func (c *ChainDefaults) validate() error {
 	return nil
 }
 
-func (c *ApiConnectorConfig) validate() error {
+func (c *ApiConnectorConfig) validate(torProxyUrl string) error {
 	if err := c.Type.validate(); err != nil {
 		return err
 	}
 
 	if c.Url == "" {
 		return fmt.Errorf("url must be specified for connector '%s'", c.Type)
+	}
+	parsedUrl, err := url.Parse(c.Url)
+	if err != nil {
+		return fmt.Errorf("invalid url for connector '%s' - %s", c.Type, err.Error())
+	}
+	if parsedUrl.Scheme == "" || parsedUrl.Host == "" {
+		return fmt.Errorf("invalid url for connector '%s' - scheme and host are required", c.Type)
+	}
+	if strings.HasSuffix(parsedUrl.Hostname(), ".onion") {
+		if torProxyUrl == "" {
+			return errors.New("tor proxy url is required for onion endpoints")
+		}
 	}
 
 	return nil

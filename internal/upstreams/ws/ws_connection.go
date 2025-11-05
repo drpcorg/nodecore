@@ -3,7 +3,10 @@ package ws
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +23,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/net/proxy"
 )
 
 var jsonRpcWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -67,6 +71,7 @@ type JsonRpcWsConnection struct {
 	requests    *utils.CMap[string, reqOp] // to store internal ids and websocket requests
 	subs        *utils.CMap[string, reqOp] // to store a subId and its request to identify events
 	executor    failsafe.Executor[bool]
+	torProxyUrl string
 }
 
 func NewJsonRpcWsConnection(
@@ -76,14 +81,37 @@ func NewJsonRpcWsConnection(
 	methodSpec,
 	endpoint string,
 	additionalHeaders map[string]string,
+	torProxyUrl string,
 ) WsConnection {
 	log.Info().Msgf("connecting to %s", endpoint)
+	var socksDialer func(network, addr string) (net.Conn, error)
+
+	parsedEndpoint, err := url.Parse(endpoint)
+	if err != nil {
+		panic(fmt.Errorf("error parsing the endpoint: %v", err))
+	}
+	if strings.HasSuffix(parsedEndpoint.Hostname(), ".onion") {
+		if torProxyUrl == "" {
+			panic("tor proxy url is required for onion endpoints")
+		}
+		netDialer := &net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}
+		dial, err := proxy.SOCKS5("tcp", torProxyUrl, nil, netDialer)
+		if err != nil {
+			panic(err)
+		}
+		socksDialer = dial.Dial
+	}
 
 	dialer := &websocket.Dialer{
-		ReadBufferSize:  wsReadBuffer,
-		WriteBufferSize: wsWriteBuffer,
-		WriteBufferPool: wsBufferPool,
-		Proxy:           http.ProxyFromEnvironment,
+		ReadBufferSize:   wsReadBuffer,
+		WriteBufferSize:  wsWriteBuffer,
+		WriteBufferPool:  wsBufferPool,
+		Proxy:            http.ProxyFromEnvironment,
+		NetDial:          socksDialer,
+		HandshakeTimeout: 45 * time.Second,
 	}
 	var header http.Header = map[string][]string{}
 	for key, val := range additionalHeaders {
@@ -111,9 +139,10 @@ func NewJsonRpcWsConnection(
 		connection:  utils.NewAtomic[*websocket.Conn](),
 		executor:    failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),
 		connClosed:  atomic.Bool{},
+		torProxyUrl: torProxyUrl,
 	}
 
-	err := wsConnection.connect()
+	err = wsConnection.connect()
 	if err != nil {
 		go wsConnection.reconnect()
 	}

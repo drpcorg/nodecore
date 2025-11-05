@@ -66,7 +66,7 @@ func main() {
 		log.Panic().Err(err).Msg("unable to create the rate limit budget registry")
 	}
 
-	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker, rateLimitBudgetRegistry)
+	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(mainCtx, appConfig.UpstreamConfig, dimensionTracker, rateLimitBudgetRegistry, appConfig.ServerConfig.TorUrl)
 	go upstreamSupervisor.StartUpstreams()
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
 	go ratingRegistry.Start()
