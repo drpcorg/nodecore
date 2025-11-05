@@ -17,6 +17,12 @@ upstream-config:
       max: 2
   chain-defaults:
     ethereum:
+      options:
+        internal-timeout: 5s
+        validation-interval: 30s
+        disable-validation: false
+        disable-settings-validation: false
+        disable-chain-validation: false
       poll-interval: 45s
     polygon:
       poll-interval: 30s
@@ -44,6 +50,11 @@ upstream-config:
           url: wss://path-to-polygon-provider.com
       head-connector: websocket
       poll-interval: 5s
+      options:
+        internal-timeout: 15s
+        validation-interval: 10s
+        disable-settings-validation: false
+        disable-chain-validation: true
       methods:
         ban-duration: 10m
         enable:
@@ -153,6 +164,12 @@ To eliminate these issues, nodecore implements a pure hedging strategy with clea
 ```yaml
 chain-defaults:
   ethereum:
+    options:
+      internal-timeout: 5s
+      validation-interval: 30s
+      disable-validation: false
+      disable-settings-validation: false
+      disable-chain-validation: false
     poll-interval: 45s
   polygon:
     poll-interval: 30s
@@ -162,10 +179,28 @@ The `chain-defaults` section defines per-chain baseline settings that apply to a
 
 `chain-defaults` fields:
 
-- `<chain>.poll-interval` - Defines how often nodecore polls the upstreams for that chain to fetch new head/finality information
-  - Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** `poll-interval` value globally is `1m` (1 minute)
+* `<chain>.options` - Defines global behavioral and validation options for upstreams of this chain
+  * `internal-timeout` - Maximum time allowed for internal nodecore requests. **_Defaults_**: `5s`
+  * `validation-interval` - How frequently nodecore performs validation checks for the upstream. **_Defaults_**: `30s`
+  * `disable-validation` - If true, completely disables *all* validation logic. **_Defaults_**: `false`
+  * `disable-settings-validation` - If true, disables *all* validation of upstream configuration settings. **_Defaults_**: `false`
+  * `disable-chain-validation` - If true, disables chain validation logic. **_Defaults_**: `false`
+* `<chain>.poll-interval` - Defines how often nodecore polls the upstreams for that chain to fetch new head/finality information
+  * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** `poll-interval` value globally is `1m` (1 minute)
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
+
+### Validations
+
+Nodecore can perform different types of validations with their own logic.
+
+#### Settings validations
+
+Settings validation is a group of checks that verify the correctness of upstream configuration and its compatibility with the target blockchain. These checks ensure that each upstream is properly configured and connected to the right network. If a validation fails, the upstream can be temporarily removed from the active pool until it becomes valid again.
+
+Types:
+* `chain validation` - It verifies whether an upstream is actually linked to the correct blockchain. For Ethereum-like chains, this is done by checking the `eth_chainId` and `net_version` values.
+  If these values are incorrect during application startup, the upstream is not started. If a mismatch is detected at runtime, the upstream is removed from the pool to prevent invalid requests.
 
 ## score-policy-config
 
@@ -346,6 +381,7 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
   - Example: `head-connector: websocket`
   - If not set, nodecore picks a default depending on connector types
 - `poll-interval` - Overrides the `chain-defaults.poll-interval` for this specific upstream. **_Default_**: `1m` (1 minute)
+- - `options` - Overrides the `chain-defaults.options` for this specific upstream.
 - `methods` - Allows per-upstream method overrides. A method cannot be listed in both `enable` and `disable`:
   - `enable` – list of methods to explicitly allow
   - `disable` – list of methods to disable for this upstream

@@ -5,13 +5,42 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+func TestChainValidator(t *testing.T) {
+	options := &config.UpstreamOptions{
+		DisableChainValidation: lo.ToPtr(false),
+	}
+	connector := mocks.NewConnectorMock()
+
+	validators := specific.EvmChainSpecific.SettingsValidators("id", connector, chains.UnknownChain, options)
+
+	_, ok := lo.Find(validators, func(item validations.SettingsValidator) bool {
+		_, ok := item.(*validations.ChainValidator)
+		return ok
+	})
+	assert.True(t, ok)
+
+	options.DisableChainValidation = lo.ToPtr(true)
+	validators = specific.EvmChainSpecific.SettingsValidators("id", connector, chains.UnknownChain, options)
+
+	_, ok = lo.Find(validators, func(item validations.SettingsValidator) bool {
+		_, ok := item.(*validations.ChainValidator)
+		return ok
+	})
+
+	assert.False(t, ok)
+}
 
 func TestEvmSubscribeHeadRequest(t *testing.T) {
 	req, err := specific.EvmChainSpecific.SubscribeHeadRequest()

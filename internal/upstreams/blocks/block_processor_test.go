@@ -15,7 +15,7 @@ import (
 )
 
 func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
-	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second}
+	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second}}
 	ctx := context.Background()
 	connector := mocks.NewConnectorMock()
 	body := []byte(`{
@@ -65,7 +65,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 }
 
 func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
-	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second}
+	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second}}
 	ctx := context.Background()
 	connector := mocks.NewConnectorMock()
 	body := []byte(`{

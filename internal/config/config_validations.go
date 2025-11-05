@@ -505,6 +505,16 @@ func (f *FailsafeConfig) validate() error {
 	return nil
 }
 
+func (o *UpstreamOptions) validate() error {
+	if o.InternalTimeout < 0 {
+		return errors.New("internal timeout can't be less than 0")
+	}
+	if o.ValidationInterval < 0 {
+		return errors.New("validation interval can't be less than 0")
+	}
+	return nil
+}
+
 func (r *RetryConfig) validate() error {
 	if r.Attempts < 1 {
 		return errors.New("the number of attempts can't be less than 1")
@@ -635,6 +645,10 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		return err
 	}
 
+	if err := u.Options.validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -659,6 +673,11 @@ func (m *MethodsConfig) validate() error {
 }
 
 func (c *ChainDefaults) validate() error {
+	if c.Options != nil {
+		if err := c.Options.validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

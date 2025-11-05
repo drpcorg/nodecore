@@ -231,6 +231,10 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 	if u.FailsafeConfig == nil {
 		u.FailsafeConfig = &FailsafeConfig{}
 	}
+	if u.Options == nil {
+		u.Options = &UpstreamOptions{}
+	}
+	u.Options.setDefaults(defaults)
 	if u.FailsafeConfig != nil {
 		if u.FailsafeConfig.RetryConfig != nil {
 			u.FailsafeConfig.RetryConfig.setDefaults()
@@ -256,6 +260,44 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 			pollInterval = defaults.PollInterval
 		}
 		u.PollInterval = pollInterval
+	}
+}
+
+func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults) {
+	if o.InternalTimeout == 0 {
+		timeout := 5 * time.Second
+		if defaults != nil && defaults.Options != nil && defaults.Options.InternalTimeout != 0 {
+			timeout = defaults.Options.InternalTimeout
+		}
+		o.InternalTimeout = timeout
+	}
+	if o.ValidationInterval == 0 {
+		interval := 30 * time.Second
+		if defaults != nil && defaults.Options != nil && defaults.Options.ValidationInterval != 0 {
+			interval = defaults.Options.ValidationInterval
+		}
+		o.ValidationInterval = interval
+	}
+	if o.DisableValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableValidation != nil {
+			value = *defaults.Options.DisableValidation
+		}
+		o.DisableValidation = &value
+	}
+	if o.DisableChainValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableChainValidation != nil {
+			value = *defaults.Options.DisableChainValidation
+		}
+		o.DisableChainValidation = &value
+	}
+	if o.DisableSettingsValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableSettingsValidation != nil {
+			value = *defaults.Options.DisableSettingsValidation
+		}
+		o.DisableSettingsValidation = &value
 	}
 }
 

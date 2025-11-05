@@ -5,8 +5,11 @@ import (
 	"fmt"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -16,6 +19,7 @@ type ChainSpecific interface {
 	ParseBlock([]byte) (*protocol.Block, error)
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
+	SettingsValidators(upstreamId string, connector connectors.ApiConnector, chain chains.ConfiguredChain, options *config.UpstreamOptions) []validations.SettingsValidator
 }
 
 var EvmChainSpecific *EvmChainSpecificObject
@@ -25,6 +29,21 @@ func init() {
 }
 
 type EvmChainSpecificObject struct {
+}
+
+func (e *EvmChainSpecificObject) SettingsValidators(
+	upstreamId string,
+	connector connectors.ApiConnector,
+	chain chains.ConfiguredChain,
+	options *config.UpstreamOptions,
+) []validations.SettingsValidator {
+	settingsValidators := make([]validations.SettingsValidator, 0)
+
+	if !*options.DisableChainValidation {
+		settingsValidators = append(settingsValidators, validations.NewChainValidator(upstreamId, connector, chain, options))
+	}
+
+	return settingsValidators
 }
 
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)

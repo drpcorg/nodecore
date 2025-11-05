@@ -5,8 +5,11 @@ import (
 	"fmt"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/samber/lo"
 )
 
@@ -17,6 +20,15 @@ func init() {
 }
 
 type SolanaChainSpecificObject struct {
+}
+
+func (s *SolanaChainSpecificObject) SettingsValidators(
+	_ string,
+	_ connectors.ApiConnector,
+	_ chains.ConfiguredChain,
+	_ *config.UpstreamOptions,
+) []validations.SettingsValidator {
+	return nil
 }
 
 var _ ChainSpecific = (*SolanaChainSpecificObject)(nil)

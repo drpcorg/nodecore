@@ -154,6 +154,7 @@ type RequestHolder interface {
 
 type ResponseHolder interface {
 	ResponseResult() []byte
+	ResponseResultString() (string, error)
 	GetError() *ResponseError
 	EncodeResponse(realId []byte) io.Reader
 	HasError() bool
@@ -194,10 +195,29 @@ func (a AvailabilityStatus) String() string {
 }
 
 type UpstreamEvent struct {
-	Id    string
-	Chain chains.Chain
+	Id        string
+	Chain     chains.Chain
+	EventType UpstreamEventType
+}
+
+type UpstreamEventType interface {
+	eventData()
+}
+
+type StateUpstreamEvent struct {
 	State *UpstreamState
 }
+
+func (u StateUpstreamEvent) eventData() {
+}
+
+type RemoveUpstreamEvent struct{}
+
+func (r RemoveUpstreamEvent) eventData() {}
+
+type ValidUpstreamEvent struct{}
+
+func (r ValidUpstreamEvent) eventData() {}
 
 type Cap int
 
@@ -263,6 +283,14 @@ func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
 type AbstractUpstreamStateEvent interface {
 	event()
 }
+
+type FatalErrorUpstreamStateEvent struct{}
+
+func (f *FatalErrorUpstreamStateEvent) event() {}
+
+type ValidUpstreamStateEvent struct{}
+
+func (f *ValidUpstreamStateEvent) event() {}
 
 type HeadUpstreamStateEvent struct {
 	HeadData *BlockData

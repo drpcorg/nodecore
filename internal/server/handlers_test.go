@@ -173,6 +173,10 @@ type testResponseHolder struct {
 	id string
 }
 
+func (t testResponseHolder) ResponseResultString() (string, error) {
+	return "", nil
+}
+
 func (t testResponseHolder) ResponseResult() []byte {
 	return nil
 }
@@ -196,3 +200,5 @@ func (t testResponseHolder) Id() string {
 func (t testResponseHolder) HasStream() bool {
 	return false
 }
+
+var _ protocol.ResponseHolder = (*testResponseHolder)(nil)

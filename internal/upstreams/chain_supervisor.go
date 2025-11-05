@@ -109,6 +109,9 @@ func (c *ChainSupervisor) GetMethod(methodName string) *specs.Method {
 }
 
 func (c *ChainSupervisor) GetMethods() []string {
+	if c.GetChainState().Methods == nil {
+		return nil
+	}
 	return c.GetChainState().Methods.GetSupportedMethods().ToSlice()
 }
 
@@ -158,30 +161,40 @@ func (c *ChainSupervisor) processEvents() {
 			return
 		case event, ok := <-c.eventsChan:
 			if ok {
-				availabilityMetric.WithLabelValues(c.Chain.String(), event.Id).Set(float64(event.State.Status))
-
-				state := c.state.Load()
-				c.upstreamStates.Store(event.Id, event.State)
-
-				// it's necessary to merge states only from available upstreams
-				availableUpstreams := c.availableUpstreams()
-
-				if event.State.HeadData != nil {
-					updated, headHeight := c.fc.Choose(event)
-					if updated {
-						state.HeadData = NewChainHeadData(headHeight, event.Id)
-					}
+				switch eventType := event.EventType.(type) {
+				case *protocol.RemoveUpstreamEvent:
+					c.upstreamStates.Delete(event.Id)
+					c.updateState(event.Id, nil)
+				case *protocol.StateUpstreamEvent:
+					availabilityMetric.WithLabelValues(c.Chain.String(), event.Id).Set(float64(eventType.State.Status))
+					c.upstreamStates.Store(event.Id, eventType.State)
+					c.updateState(event.Id, eventType)
 				}
-				state.Status = c.processUpstreamStatuses()
-				state.Methods = c.processUpstreamMethods(availableUpstreams)
-				state.Blocks = c.processUpstreamBlocks(availableUpstreams)
-
-				c.state.Store(state)
-
-				c.calculateLags()
 			}
 		}
 	}
+}
+
+func (c *ChainSupervisor) updateState(upstreamId string, upstreamState *protocol.StateUpstreamEvent) {
+	state := c.state.Load()
+	// it's necessary to merge states only from available upstreams
+	availableUpstreams := c.availableUpstreams()
+
+	if upstreamState != nil && upstreamState.State.HeadData != nil {
+		updated, headHeight := c.fc.Choose(upstreamId, upstreamState)
+		if updated {
+			state.HeadData = NewChainHeadData(headHeight, upstreamId)
+		}
+	} else if upstreamState != nil {
+		state.HeadData = NewChainHeadData(0, upstreamId)
+	}
+	state.Status = c.processUpstreamStatuses()
+	state.Methods = c.processUpstreamMethods(availableUpstreams)
+	state.Blocks = c.processUpstreamBlocks(availableUpstreams)
+
+	c.state.Store(state)
+
+	c.calculateLags()
 }
 
 func (c *ChainSupervisor) calculateLags() {
@@ -224,7 +237,7 @@ func (c *ChainSupervisor) processUpstreamMethods(availableStates []*protocol.Ups
 }
 
 func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
-	var status protocol.AvailabilityStatus = protocol.UnknownStatus
+	var status = protocol.Unavailable
 	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
 		if upState.Status < status {
 			status = upState.Status

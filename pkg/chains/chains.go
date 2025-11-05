@@ -3,8 +3,10 @@ package chains
 import (
 	_ "embed"
 	"maps"
+	"math/big"
 	"time"
 
+	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,6 +41,7 @@ type ChainData struct {
 	ChainId    string                 `yaml:"chain-id"`
 	MethodSpec string                 `yaml:"method-spec"`
 	Settings   map[string]interface{} `yaml:"settings"`
+	NetVersion string                 `yaml:"net-version"`
 }
 
 type Protocol struct {
@@ -53,6 +56,7 @@ type Settings struct {
 
 type ConfiguredChain struct {
 	ChainId    string
+	NetVersion string
 	ShortNames []string
 	Type       BlockchainType
 	Settings   Settings
@@ -62,6 +66,7 @@ type ConfiguredChain struct {
 
 var UnknownChain = ConfiguredChain{
 	ChainId:    "0x0",
+	NetVersion: "0",
 	ShortNames: []string{},
 	Settings:   Settings{},
 	Chain:      -1,
@@ -92,6 +97,15 @@ func GetChain(chainName string) ConfiguredChain {
 		return UnknownChain
 	}
 	return found
+}
+
+func GetChainByChainIdAndVersion(chainId, netVersion string) ConfiguredChain {
+	for _, chain := range chains {
+		if chain.ChainId == chainId && chain.NetVersion == netVersion {
+			return chain
+		}
+	}
+	return UnknownChain
 }
 
 func GetMethodSpecNameByChain(chain Chain) string {
@@ -131,9 +145,12 @@ func configureChains() (map[string]ConfiguredChain, error) {
 			}
 
 			if network, ok := chainsMap[chain.ShortNames[0]]; ok {
+				netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(chain.ChainId))
+
 				configuredChains[chain.ShortNames[0]] = ConfiguredChain{
 					ChainId:    chain.ChainId,
 					ShortNames: chain.ShortNames,
+					NetVersion: netVersion,
 					Type:       protocol.Type,
 					Chain:      network,
 					MethodSpec: getMethodSpecName(protocol.Type, chain.MethodSpec),
@@ -143,6 +160,13 @@ func configureChains() (map[string]ConfiguredChain, error) {
 	}
 
 	return configuredChains, nil
+}
+
+func getNetVersion(chainId string) string {
+	n := new(big.Int)
+	n.SetString(chainId, 0)
+
+	return n.String()
 }
 
 func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) string {
