@@ -193,7 +193,7 @@ func (u *Upstream) Start() {
 				log.Error().Msgf("failed to start upstream '%s' due to invalid upstream settings", u.Id)
 				return errors.New("invalid upstream settings")
 			case validations.SettingsError:
-				log.Warn().Msgf("non fatal upstream settings error, keep validating...")
+				log.Warn().Msgf("non fatal settings error of upstream '%s', keep validating...", u.Id)
 				go u.validateUpstreamSettings(ctx, validations.SettingsError)
 			case validations.Valid:
 				go u.validateUpstreamSettings(ctx, validations.Valid)
