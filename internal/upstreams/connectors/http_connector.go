@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
 )
@@ -28,44 +31,58 @@ type HttpConnector struct {
 
 var _ ApiConnector = (*HttpConnector)(nil)
 
-func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, additionalHeaders map[string]string, torProxyUrl string) *HttpConnector {
-	url, err := url.Parse(endpoint)
+func NewHttpConnector(
+	connectorConfig *config.ApiConnectorConfig,
+	connectorType protocol.ApiConnectorType,
+	torProxyUrl string,
+) (*HttpConnector, error) {
+	endpoint, err := url.Parse(connectorConfig.Url)
 	if err != nil {
-		panic(fmt.Errorf("error parsing the endpoint: %v", err))
+		return nil, fmt.Errorf("error parsing the endpoint: %v", err)
 	}
 	client := http.DefaultClient
-	if strings.HasSuffix(url.Hostname(), ".onion") {
+	customCA, err := utils.GetCustomCAPool(connectorConfig.Ca)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasSuffix(endpoint.Hostname(), ".onion") {
 		if torProxyUrl == "" {
-			panic("tor proxy url is required for onion endpoints")
+			return nil, errors.New("tor proxy url is required for onion endpoints")
 		}
 		dialer := &net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}
-		proxy, err := proxy.SOCKS5("tcp", torProxyUrl, nil, dialer)
+		socksProxy, err := proxy.SOCKS5("tcp", torProxyUrl, nil, dialer)
 		if err != nil {
-			panic(fmt.Errorf("error creating socks5 proxy: %v", err))
+			return nil, fmt.Errorf("error creating socks5 proxy: %v", err)
 		}
 		client = &http.Client{
 			Timeout: 60 * time.Second,
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return proxy.Dial(network, addr)
+					return socksProxy.Dial(network, addr)
 				},
 				MaxIdleConns:        100,
 				IdleConnTimeout:     90 * time.Second,
 				TLSHandshakeTimeout: 10 * time.Second,
 			},
 		}
+	} else if customCA != nil {
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: customCA,
+			},
+		}
 	}
 
 	return &HttpConnector{
-		endpoint:          endpoint,
+		endpoint:          connectorConfig.Url,
 		httpClient:        client,
 		connectorType:     connectorType,
-		additionalHeaders: additionalHeaders,
+		additionalHeaders: connectorConfig.Headers,
 		torProxyUrl:       torProxyUrl,
-	}
+	}, nil
 }
 
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {

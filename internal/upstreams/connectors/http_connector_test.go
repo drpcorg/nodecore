@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
@@ -55,7 +56,11 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 				return resp, nil
 			})
 
-			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
+			cfg := &config.ApiConnectorConfig{
+				Url: "http://localhost:8080",
+			}
+			connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
+			assert.NoError(te, err)
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -114,7 +119,11 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 				return resp, nil
 			})
 
-			connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
+			cfg := &config.ApiConnectorConfig{
+				Url: "http://localhost:8080",
+			}
+			connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
+			assert.NoError(te, err)
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -137,7 +146,11 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 		return resp, nil
 	})
 
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
+	cfg := &config.ApiConnectorConfig{
+		Url: "http://localhost:8080",
+	}
+	connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
+	assert.NoError(t, err)
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -167,7 +180,11 @@ func TestHttpConnectorType(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			connector := connectors.NewHttpConnector("http://localhost:8080", test.connType, nil, "")
+			cfg := &config.ApiConnectorConfig{
+				Url: "http://localhost:8080",
+			}
+			connector, err := connectors.NewHttpConnector(cfg, test.connType, "")
+			assert.NoError(te, err)
 
 			assert.Equal(te, test.connType, connector.GetType())
 		})
@@ -182,7 +199,11 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 		return resp, nil
 	})
 
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
+	cfg := &config.ApiConnectorConfig{
+		Url: "http://localhost:8080",
+	}
+	connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
+	assert.NoError(t, err)
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -201,7 +222,11 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 		return resp, nil
 	})
 
-	connector := connectors.NewHttpConnector("http://localhost:8080", protocol.JsonRpcConnector, nil, "")
+	cfg := &config.ApiConnectorConfig{
+		Url: "http://localhost:8080",
+	}
+	connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
+	assert.NoError(t, err)
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)

@@ -342,6 +342,7 @@ type ApiConnectorConfig struct {
 	Type    ApiConnectorType  `yaml:"type"`
 	Url     string            `yaml:"url"`
 	Headers map[string]string `yaml:"headers,omitempty"`
+	Ca      string            `yaml:"ca"`
 }
 
 type CacheConfig struct {
