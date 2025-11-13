@@ -2,6 +2,8 @@ package ws
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -78,21 +80,21 @@ func NewJsonRpcWsConnection(
 	ctx context.Context,
 	chain chains.Chain,
 	upId,
-	methodSpec,
-	endpoint string,
-	additionalHeaders map[string]string,
+	methodSpec string,
+	connectorConfig *config.ApiConnectorConfig,
 	torProxyUrl string,
-) WsConnection {
+) (*JsonRpcWsConnection, error) {
+	endpoint := connectorConfig.Url
 	log.Info().Msgf("connecting to %s", endpoint)
 	var socksDialer func(network, addr string) (net.Conn, error)
 
 	parsedEndpoint, err := url.Parse(endpoint)
 	if err != nil {
-		panic(fmt.Errorf("error parsing the endpoint: %v", err))
+		return nil, fmt.Errorf("error parsing the endpoint: %v", err)
 	}
 	if strings.HasSuffix(parsedEndpoint.Hostname(), ".onion") {
 		if torProxyUrl == "" {
-			panic("tor proxy url is required for onion endpoints")
+			return nil, errors.New("tor proxy url is required for onion endpoints")
 		}
 		netDialer := &net.Dialer{
 			Timeout:   30 * time.Second,
@@ -100,12 +102,23 @@ func NewJsonRpcWsConnection(
 		}
 		dial, err := proxy.SOCKS5("tcp", torProxyUrl, nil, netDialer)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		socksDialer = dial.Dial
 	}
+	customCA, err := utils.GetCustomCAPool(connectorConfig.Ca)
+	if err != nil {
+		return nil, err
+	}
+	var tlsCfg *tls.Config
+	if customCA != nil {
+		tlsCfg = &tls.Config{
+			RootCAs: customCA,
+		}
+	}
 
 	dialer := &websocket.Dialer{
+		TLSClientConfig:  tlsCfg,
 		ReadBufferSize:   wsReadBuffer,
 		WriteBufferSize:  wsWriteBuffer,
 		WriteBufferPool:  wsBufferPool,
@@ -114,7 +127,7 @@ func NewJsonRpcWsConnection(
 		HandshakeTimeout: 45 * time.Second,
 	}
 	var header http.Header = map[string][]string{}
-	for key, val := range additionalHeaders {
+	for key, val := range connectorConfig.Headers {
 		header.Add(key, val)
 	}
 
@@ -147,7 +160,7 @@ func NewJsonRpcWsConnection(
 		go wsConnection.reconnect()
 	}
 
-	return wsConnection
+	return wsConnection, nil
 }
 
 func (w *JsonRpcWsConnection) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {

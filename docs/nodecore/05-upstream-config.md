@@ -377,6 +377,7 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
   - `type` - supported values: `json-rpc`, `websocket`. **_Required_**
   - `url` - full endpoint URL. **_Required_**
   - `headers` - optional key/value map of extra headers to send with requests
+  - `ca` - Path to a Certificate Authority (CA) certificate file to validate client certificates (for example, if you use self-signed certificates)
 - `head-connector` - Specifies which connector is used to fetch chain head/finality values
   - Example: `head-connector: websocket`
   - If not set, nodecore picks a default depending on connector types

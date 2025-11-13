@@ -97,7 +97,11 @@ func NewUpstream(
 
 	var headConnector connectors.ApiConnector
 	for _, connectorConfig := range conf.Connectors {
-		apiConnector := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
+		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
+		if err != nil {
+			cancel()
+			return nil, fmt.Errorf("cound't create api connector of %s: %v", conf.Id, err)
+		}
 		apiConnector = connectors.NewDimensionTrackerConnector(configuredChain.Chain, conf.Id, apiConnector, tracker, executor)
 		if connectorConfig.Type == conf.HeadConnector {
 			headConnector = apiConnector
@@ -351,15 +355,24 @@ func (u *Upstream) processBlocks(ctx context.Context) {
 	}
 }
 
-func createConnector(ctx context.Context, upId string, configuredChain chains.ConfiguredChain, connectorConfig *config.ApiConnectorConfig, torProxyUrl string) connectors.ApiConnector {
+func createConnector(
+	ctx context.Context,
+	upId string,
+	configuredChain chains.ConfiguredChain,
+	connectorConfig *config.ApiConnectorConfig,
+	torProxyUrl string,
+) (connectors.ApiConnector, error) {
 	switch connectorConfig.Type {
 	case config.JsonRpc:
-		return connectors.NewHttpConnector(connectorConfig.Url, protocol.JsonRpcConnector, connectorConfig.Headers, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, protocol.JsonRpcConnector, torProxyUrl)
 	case config.Ws:
-		connection := ws.NewJsonRpcWsConnection(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec, connectorConfig.Url, connectorConfig.Headers, torProxyUrl)
-		return connectors.NewWsConnector(connection)
+		connection, err := ws.NewJsonRpcWsConnection(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec, connectorConfig, torProxyUrl)
+		if err != nil {
+			return nil, err
+		}
+		return connectors.NewWsConnector(connection), nil
 	case config.Rest:
-		return connectors.NewHttpConnector(connectorConfig.Url, protocol.RestConnector, connectorConfig.Headers, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, protocol.RestConnector, torProxyUrl)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}
