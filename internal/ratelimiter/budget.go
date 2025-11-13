@@ -5,7 +5,26 @@ import (
 	"strconv"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var rateLimitRequestMetrics = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "nodecore",
+	Subsystem: "ratelimiter",
+	Name:      "rate_limit_budget_requests",
+	Help:      "The number of requests to the rate limit budget",
+}, []string{"budget", "method"})
+
+var rateLimitExceededMetrics = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "nodecore",
+	Subsystem: "ratelimiter",
+	Name:      "rate_limit_budget_exceeded",
+	Help:      "The number of requests that exceeded the rate limit budget",
+}, []string{"budget", "method"})
+
+func init() {
+	prometheus.MustRegister(rateLimitRequestMetrics, rateLimitExceededMetrics)
+}
 
 type RateLimitBudget struct {
 	Name   string
@@ -14,6 +33,7 @@ type RateLimitBudget struct {
 }
 
 func (b *RateLimitBudget) Allow(method string) (bool, error) {
+	rateLimitRequestMetrics.WithLabelValues(b.Name, method).Inc()
 	items := make([]RateLimitCommand, 0)
 	for i, rule := range b.Rules {
 		if rule.Check.match(method) {
@@ -23,7 +43,11 @@ func (b *RateLimitBudget) Allow(method string) (bool, error) {
 			})
 		}
 	}
-	return b.Engine.Execute(items)
+	allowed, err := b.Engine.Execute(items)
+	if !allowed {
+		rateLimitExceededMetrics.WithLabelValues(b.Name, method).Inc()
+	}
+	return allowed, err
 }
 
 func NewRateLimitBudget(config *config.RateLimitBudget, engine RateLimitEngine) *RateLimitBudget {
