@@ -465,6 +465,9 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 		if upstream.RateLimitBudget != "" && !rateLimitBudgetNames.Contains(upstream.RateLimitBudget) {
 			return fmt.Errorf("upstream '%s' references non-existent rate limit budget '%s'", upstream.Id, upstream.RateLimitBudget)
 		}
+		if err := upstream.RateLimitAutoTune.validate(); err != nil {
+			return fmt.Errorf("error during rate limit auto-tune config validation, cause: %s", err.Error())
+		}
 		idSet.Add(upstream.Id)
 	}
 
@@ -750,6 +753,34 @@ func (r *RateLimitBudget) validate(storageNames map[string]string) error {
 		if storage != "redis" {
 			return fmt.Errorf("rate limit budget '%s' storage '%s' is not a redis storage (type: %s)", r.Name, r.Storage, storage)
 		}
+	}
+
+	return nil
+}
+
+func (r *RateLimitAutoTuneConfig) validate() error {
+	if !r.Enabled {
+		return nil
+	}
+
+	if r.Period <= 0 {
+		return errors.New("period must be greater than 0 when auto-tune is enabled")
+	}
+
+	if r.ErrorRateThreshold < 0 || r.ErrorRateThreshold > 1 {
+		return errors.New("error-threshold must be between 0 and 1")
+	}
+
+	if r.InitRateLimit <= 0 {
+		return errors.New("init-rate-limit must be greater than 0 when auto-tune is enabled")
+	}
+
+	if r.InitRateLimitPeriod <= 0 {
+		return errors.New("init-rate-limit-period must be greater than 0 when auto-tune is enabled")
+	}
+
+	if r.InitRateLimitPeriod > r.Period {
+		return errors.New("init-rate-limit-period must be less than or equal to the period when auto-tune is enabled")
 	}
 
 	return nil

@@ -79,6 +79,7 @@ type Upstream struct {
 	headProcessor               *blocks.HeadProcessor
 	blockProcessor              blocks.BlockProcessor
 	settingsValidationProcessor *validations.SettingsValidationProcessor
+	autoTuneRateLimiter         *ratelimiter.UpstreamAutoTune
 }
 
 func NewUpstream(
@@ -134,7 +135,11 @@ func NewUpstream(
 		}
 		rt = rateLimitBudget
 	}
-	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt))
+	var autoTuneRateLimiter *ratelimiter.UpstreamAutoTune
+	if conf.RateLimitAutoTune != nil && conf.RateLimitAutoTune.Enabled {
+		autoTuneRateLimiter = ratelimiter.NewUpstreamAutoTune(ctx, conf.RateLimitAutoTune)
+	}
+	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt, autoTuneRateLimiter))
 
 	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
 	processorsLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_processors_upstream", conf.Id), ctx)

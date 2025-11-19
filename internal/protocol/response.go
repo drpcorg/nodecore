@@ -62,6 +62,10 @@ func (s *SubscriptionEventResponse) Id() string {
 	return s.id
 }
 
+func (s *SubscriptionEventResponse) ResponseCode() int {
+	return 0
+}
+
 var _ ResponseHolder = (*SubscriptionEventResponse)(nil)
 
 type WsJsonRpcResponse struct {
@@ -115,12 +119,21 @@ func (w *WsJsonRpcResponse) Id() string {
 
 var _ ResponseHolder = (*WsJsonRpcResponse)(nil)
 
+func (w *WsJsonRpcResponse) ResponseCode() int {
+	return 0
+}
+
 type BaseUpstreamResponse struct {
-	id          string
-	result      []byte
-	error       *ResponseError
-	requestType RequestType
-	stream      io.Reader
+	id           string
+	result       []byte
+	error        *ResponseError
+	requestType  RequestType
+	stream       io.Reader
+	responseCode int
+}
+
+func (h *BaseUpstreamResponse) ResponseCode() int {
+	return h.responseCode
 }
 
 func (h *BaseUpstreamResponse) ResponseResultString() (string, error) {
@@ -197,7 +210,7 @@ func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestTy
 	var response *BaseUpstreamResponse
 	switch requestType {
 	case JsonRpc:
-		response = parseJsonRpcBody(id, body)
+		response = parseJsonRpcBody(id, body, responseCode)
 	case Rest:
 		response = parseHttpResponse(id, body, responseCode)
 	default:
@@ -214,13 +227,14 @@ func parseHttpResponse(id string, body []byte, responseCode int) *BaseUpstreamRe
 		err, result = parseError(body), body
 	}
 	return &BaseUpstreamResponse{
-		id:     id,
-		result: result,
-		error:  err,
+		id:           id,
+		result:       result,
+		error:        err,
+		responseCode: responseCode,
 	}
 }
 
-func parseJsonRpcBody(id string, body []byte) *BaseUpstreamResponse {
+func parseJsonRpcBody(id string, body []byte, responseCode int) *BaseUpstreamResponse {
 	var upstreamError *ResponseError
 	var result []byte
 
@@ -247,9 +261,10 @@ func parseJsonRpcBody(id string, body []byte) *BaseUpstreamResponse {
 	}
 
 	return &BaseUpstreamResponse{
-		id:     id,
-		result: result,
-		error:  upstreamError,
+		id:           id,
+		result:       result,
+		responseCode: responseCode,
+		error:        upstreamError,
 	}
 }
 
@@ -400,6 +415,10 @@ type ReplyError struct {
 	ErrorKind     ResponseErrorKind
 	responseError *ResponseError
 	responseType  RequestType
+}
+
+func (r *ReplyError) ResponseCode() int {
+	return 0
 }
 
 func (r *ReplyError) ResponseResultString() (string, error) {

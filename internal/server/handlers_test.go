@@ -173,6 +173,10 @@ type testResponseHolder struct {
 	id string
 }
 
+func (t testResponseHolder) ResponseCode() int {
+	return 0
+}
+
 func (t testResponseHolder) ResponseResultString() (string, error) {
 	return "", nil
 }
