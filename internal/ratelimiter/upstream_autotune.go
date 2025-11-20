@@ -9,7 +9,18 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/juju/ratelimit"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
+)
+
+var TunedRateLimitMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: config.AppName,
+		Subsystem: "ratelimiter_auto_tune",
+		Name:      "tuned_rate_limit",
+		Help:      "The current auto-tuned rate limit for an upstream",
+	},
+	[]string{"upstream", "period"},
 )
 
 type direction int
@@ -48,6 +59,7 @@ func NewUpstreamAutoTune(ctx context.Context, upstreamId string, config *config.
 	result.ratelimit.Store(int32(config.InitRateLimit))
 	result.bucket.Store(ratelimit.NewBucketWithQuantum(config.InitRateLimitPeriod, int64(config.InitRateLimit), int64(config.InitRateLimit)))
 	result.attemptCounts.Store(utils.NewCMap[int64, atomic.Int32]())
+	TunedRateLimitMetric.WithLabelValues(upstreamId, config.InitRateLimitPeriod.String()).Set(float64(config.InitRateLimit))
 	go func() {
 		result.Run(ctx)
 	}()
@@ -162,6 +174,7 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 	}
 
 	if newLimit != oldLimit {
+		TunedRateLimitMetric.WithLabelValues(u.upstreamId, u.rateLimitPeriod.String()).Set(float64(newLimit))
 		u.ratelimit.Store(int32(newLimit))
 		u.bucket.Store(ratelimit.NewBucketWithQuantum(u.rateLimitPeriod, int64(newLimit), int64(newLimit)))
 	}
