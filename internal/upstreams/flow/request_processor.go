@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync/atomic"
 
 	"github.com/drpcorg/nodecore/internal/caches"
@@ -197,6 +198,9 @@ func sendUnaryRequest(
 
 	response := apiConnector.SendRequest(ctx, request)
 
+	if response.ResponseCode() == http.StatusTooManyRequests && upstream.GetUpstreamState().AutoTuneRateLimiter != nil {
+		upstream.GetUpstreamState().AutoTuneRateLimiter.IncErrors()
+	}
 	return &protocol.ResponseHolderWrapper{
 		RequestId:  request.Id(),
 		UpstreamId: upstream.Id,

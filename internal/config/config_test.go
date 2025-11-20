@@ -1085,3 +1085,46 @@ func TestUpstreamOptionsDisableFlagsRead(t *testing.T) {
 	assert.True(t, *reqUp.Options.DisableSettingsValidation)
 	assert.True(t, *reqUp.Options.DisableChainValidation)
 }
+
+func TestRateLimitAutoTuneValidConfig(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-valid.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+	assert.NotNil(t, appConfig)
+}
+
+func TestRateLimitAutoTunePeriodNegativeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-period-negative.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "period must be greater than 0 when auto-tune is enabled")
+}
+
+func TestRateLimitAutoTuneErrorThresholdNegativeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-error-threshold-negative.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error-threshold must be between 0 and 1")
+}
+
+func TestRateLimitAutoTuneErrorThresholdGreaterThanOneThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-error-threshold-greater-one.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error-threshold must be between 0 and 1")
+}
+
+func TestRateLimitAutoTuneInitRateLimitNegativeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-init-rate-limit-negative.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "init-rate-limit must be greater than 0 when auto-tune is enabled")
+}
+
+func TestRateLimitAutoTuneInitRateLimitPeriodNegativeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-init-period-negative.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "init-rate-limit-period must be greater than 0 when auto-tune is enabled")
+}
+
+func TestRateLimitAutoTuneInitRateLimitPeriodGreaterThanPeriodThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-init-period-greater-period.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "init-rate-limit-period must be less than or equal to the period when auto-tune is enabled")
+}

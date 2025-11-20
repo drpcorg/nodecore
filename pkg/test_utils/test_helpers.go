@@ -139,6 +139,7 @@ func TestEvmUpstream(
 			mapset.NewThreadUnsafeSet[protocol.Cap](),
 			"00012",
 			nil,
+			nil,
 		),
 	)
 

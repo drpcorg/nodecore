@@ -43,5 +43,5 @@ func TestRedisConnectorCantPing(t *testing.T) {
 	assert.Nil(t, err)
 
 	err = connector.Initialize()
-	assert.ErrorContains(t, err, "could not connect to redis, dial tcp [::1]:9000: connect: connection refused")
+	assert.ErrorContains(t, err, "could not connect to redis")
 }

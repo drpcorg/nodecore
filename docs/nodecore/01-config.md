@@ -223,4 +223,15 @@ upstream-config:
           delay: 2s
           max-delay: 5s
           jitter: 3s
+    - id: auto-tune-upstream
+      chain: ethereum
+      rate-limit-auto-tune:
+        enabled: true
+        period: 1m
+        error-threshold: 0.1
+        init-rate-limit: 100
+        init-rate-limit-period: 1s
+      connectors:
+        - type: json-rpc
+          url: https://path-to-eth-provider-2.com
 ```
