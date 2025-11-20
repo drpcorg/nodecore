@@ -268,10 +268,9 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 			u.HeadConnector = defaultHeadConnectorType
 		}
 	}
-	if u.RateLimitAutoTune == nil {
-		u.RateLimitAutoTune = &RateLimitAutoTuneConfig{}
+	if u.RateLimitAutoTune != nil {
+		u.RateLimitAutoTune.setDefaults()
 	}
-	u.RateLimitAutoTune.setDefaults()
 	if u.PollInterval == 0 {
 		pollInterval := defaultInterval
 		if defaults != nil && defaults.PollInterval != 0 {

@@ -465,8 +465,10 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 		if upstream.RateLimitBudget != "" && !rateLimitBudgetNames.Contains(upstream.RateLimitBudget) {
 			return fmt.Errorf("upstream '%s' references non-existent rate limit budget '%s'", upstream.Id, upstream.RateLimitBudget)
 		}
-		if err := upstream.RateLimitAutoTune.validate(); err != nil {
-			return fmt.Errorf("error during rate limit auto-tune config validation, cause: %s", err.Error())
+		if upstream.RateLimitAutoTune != nil {
+			if err := upstream.RateLimitAutoTune.validate(); err != nil {
+				return fmt.Errorf("error during rate limit auto-tune config validation, cause: %s", err.Error())
+			}
 		}
 		idSet.Add(upstream.Id)
 	}
