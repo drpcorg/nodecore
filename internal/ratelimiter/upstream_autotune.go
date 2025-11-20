@@ -12,24 +12,38 @@ import (
 	"github.com/rs/zerolog"
 )
 
+type direction int
+
+const (
+	directionStable direction = iota
+	directionIncrease
+	directionDecrease
+)
+
 type UpstreamAutoTune struct {
 	period             time.Duration
 	rateLimitPeriod    time.Duration
+	upstreamId         string
 	ratelimit          atomic.Int32
 	errorRateThreshold float64
 	bucket             atomic.Pointer[ratelimit.Bucket]
 	accumErrors        atomic.Int32
 	accumRateLimited   atomic.Int32
 	attemptCounts      atomic.Pointer[utils.CMap[int64, atomic.Int32]]
+	lastDirection      direction
+	stepPercent        float64
 }
 
-func NewUpstreamAutoTune(ctx context.Context, config *config.RateLimitAutoTuneConfig) *UpstreamAutoTune {
+func NewUpstreamAutoTune(ctx context.Context, upstreamId string, config *config.RateLimitAutoTuneConfig) *UpstreamAutoTune {
 	result := &UpstreamAutoTune{
 		period:             config.Period,
+		upstreamId:         upstreamId,
 		rateLimitPeriod:    config.InitRateLimitPeriod,
 		errorRateThreshold: config.ErrorRateThreshold,
 		bucket:             atomic.Pointer[ratelimit.Bucket]{},
 		attemptCounts:      atomic.Pointer[utils.CMap[int64, atomic.Int32]]{},
+		stepPercent:        10.0,
+		lastDirection:      directionStable,
 	}
 	result.ratelimit.Store(int32(config.InitRateLimit))
 	result.bucket.Store(ratelimit.NewBucketWithQuantum(config.InitRateLimitPeriod, int64(config.InitRateLimit), int64(config.InitRateLimit)))
@@ -69,6 +83,8 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 	errors := u.accumErrors.Swap(0)
 	rateLimited := u.accumRateLimited.Swap(0)
 	oldMap := u.attemptCounts.Swap(utils.NewCMap[int64, atomic.Int32]())
+	log.Info().
+		Msg("auto-tune: recalculating rate limit")
 
 	totalAttempts := 0
 	oldMap.Range(func(key int64, val *atomic.Int32) bool {
@@ -95,12 +111,12 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 		errorRate = float64(errors) / float64(allowed)
 	}
 
+	var newDirection direction = directionStable
+
 	if errorRate >= u.errorRateThreshold && allowed > 0 {
-		reductionFactor := 0.7
-		if errorRate >= u.errorRateThreshold*2 {
-			reductionFactor = 0.5
-		}
-		newLimit = int(math.Ceil(float64(oldLimit) * reductionFactor))
+		newDirection = directionDecrease
+		newLimit = u.applyAdaptiveStep(oldLimit, newDirection)
+
 		log.Info().
 			Int("old_limit", oldLimit).
 			Int("new_limit", newLimit).
@@ -110,10 +126,25 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 			Float64("error_rate", errorRate).
 			Int("allowed", allowed).
 			Float64("threshold", u.errorRateThreshold).
-			Msg("auto-tune: reducing rate limit due to errors")
+			Float64("step_percent", u.stepPercent).
+			Msgf("auto-tune: reducing rate limit for upstream %s due to errors", u.upstreamId)
 	} else if errors == 0 && (peakUtilization > 0.95 || rateLimitedRate > u.errorRateThreshold) {
-		newLimit = int(math.Ceil(float64(oldLimit) * 1.1))
+		newDirection = directionIncrease
+		newLimit = u.applyAdaptiveStep(oldLimit, newDirection)
+
 		log.Info().
+			Int("old_limit", oldLimit).
+			Int("new_limit", newLimit).
+			Float64("error_rate", errorRate).
+			Int("peak_requests", peakRequests).
+			Float64("peak_utilization", peakUtilization).
+			Float64("rate_limited_rate", rateLimitedRate).
+			Int("total_attempts", totalAttempts).
+			Int("allowed", allowed).
+			Float64("step_percent", u.stepPercent).
+			Msgf("auto-tune: increasing rate limit for upstream %s", u.upstreamId)
+	} else {
+		log.Debug().
 			Int("old_limit", oldLimit).
 			Int("new_limit", newLimit).
 			Int("peak_requests", peakRequests).
@@ -121,7 +152,9 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 			Float64("rate_limited_rate", rateLimitedRate).
 			Int("total_attempts", totalAttempts).
 			Int("allowed", allowed).
-			Msg("auto-tune: increasing rate limit")
+			Float64("error_rate", errorRate).
+			Float64("step_percent", u.stepPercent).
+			Msgf("auto-tune: no change in rate limit for upstream %s", u.upstreamId)
 	}
 
 	if newLimit < 1 {
@@ -136,4 +169,31 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 
 func (u *UpstreamAutoTune) IncErrors() {
 	u.accumErrors.Add(1)
+}
+
+func (u *UpstreamAutoTune) applyAdaptiveStep(currentLimit int, newDirection direction) int {
+	lastDir := u.lastDirection
+	currentStepPercent := u.stepPercent
+
+	var newStepPercent float64
+
+	if newDirection == lastDir && lastDir != directionStable {
+		newStepPercent = math.Min(currentStepPercent*2.0, 50.0)
+	} else if newDirection != lastDir && lastDir != directionStable {
+		newStepPercent = math.Max(currentStepPercent/2.0, 2.5)
+	} else {
+		newStepPercent = 10.0
+	}
+
+	u.stepPercent = newStepPercent
+	u.lastDirection = newDirection
+
+	var factor float64
+	if newDirection == directionDecrease {
+		factor = 1.0 - newStepPercent/100.0
+	} else {
+		factor = 1.0 + newStepPercent/100.0
+	}
+
+	return int(math.Ceil(float64(currentLimit) * factor))
 }

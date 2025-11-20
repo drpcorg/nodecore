@@ -19,7 +19,7 @@ func TestUpstreamAutoTune_Allow_BasicRateLimiting(t *testing.T) {
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	// Should allow up to InitRateLimit requests
 	for i := 0; i < 5; i++ {
@@ -41,7 +41,7 @@ func TestUpstreamAutoTune_RecalculateRateLimit_ReduceLimitOnHighErrors(t *testin
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	// Simulate requests
 	for i := 0; i < 50; i++ {
@@ -72,7 +72,7 @@ func TestUpstreamAutoTune_RecalculateRateLimit_IncreaseLimitOnHighUtilization(t 
 		InitRateLimitPeriod: 50 * time.Millisecond,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	// Simulate high utilization without errors
 	// Make requests at peak near the limit
@@ -102,7 +102,7 @@ func TestUpstreamAutoTune_RecalculateRateLimit_IncreaseLimitOnHighRateLimited(t 
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	// Simulate many requests, some will be rate limited
 	for i := 0; i < 30; i++ {
@@ -127,7 +127,7 @@ func TestUpstreamAutoTune_RecalculateRateLimit_NoChangeOnStableLoad(t *testing.T
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 	for i := 0; i < 50; i++ {
 		autotune.Allow()
 	}
@@ -149,7 +149,7 @@ func TestUpstreamAutoTune_RecalculateRateLimit_NoRequestsNoChange(t *testing.T) 
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	oldLimit := int(autotune.ratelimit.Load())
 
@@ -169,7 +169,7 @@ func TestUpstreamAutoTune_RecalculateRateLimit_ErrorsButNoAllowedRequests(t *tes
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	// Try to make many requests (most will be denied)
 	for i := 0; i < 30; i++ {
@@ -235,7 +235,7 @@ func TestUpstreamAutoTune_ConcurrentAccess(t *testing.T) {
 		InitRateLimitPeriod: time.Second,
 	}
 
-	autotune := NewUpstreamAutoTune(ctx, cfg)
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
 
 	// Run concurrent operations
 	done := make(chan bool)

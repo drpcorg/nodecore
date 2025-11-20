@@ -137,7 +137,7 @@ func NewUpstream(
 	}
 	var autoTuneRateLimiter *ratelimiter.UpstreamAutoTune
 	if conf.RateLimitAutoTune != nil && conf.RateLimitAutoTune.Enabled {
-		autoTuneRateLimiter = ratelimiter.NewUpstreamAutoTune(ctx, conf.RateLimitAutoTune)
+		autoTuneRateLimiter = ratelimiter.NewUpstreamAutoTune(ctx, conf.Id, conf.RateLimitAutoTune)
 	}
 	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt, autoTuneRateLimiter))
 
