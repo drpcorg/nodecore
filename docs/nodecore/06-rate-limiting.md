@@ -313,19 +313,56 @@ upstream-config:
 
 For complete Redis storage configuration options (timeouts, pool settings, etc.), see [App Storages](07-app-storages.md).
 
-## Validation
+## Auto-Tune Rate Limiting
 
-- Storage names in `app-storages` must be unique and non-empty
-- Budget names must be unique and non-empty across all budget groups
-- Referenced budgets in upstreams must exist
-- Budget `storage` field must reference an existing Redis storage from `app-storages` (if specified)
-- Budget `default-storage` must reference an existing Redis storage from `app-storages` (if specified)
-- Storage referenced by budgets must be of type `redis`
-- Rules must specify either `method` or `pattern`, not both
-- `method` must be alphanumeric with underscores only (no regex)
-- `pattern` must be valid regex
-- `requests` > 0, `period` > 0
-- Cannot use both `rate-limit-budget` and `rate-limit` on same upstream
+Auto-tune dynamically adjusts the rate of **outgoing requests from nodecore to a specific upstream** based on the upstream's actual capacity and rate limiting behavior.
+
+### Purpose
+
+Most RPC providers implement their own rate limiting on their side. When nodecore exceeds the provider's rate limit, those requests fail with errors (typically HTTP 429 or similar). Auto-tune solves this by:
+
+1. **Avoiding Wasted Requests** - Prevents sending requests that will be rejected by the upstream's rate limiter
+2. **Finding Optimal Rate** - Automatically discovers the maximum request rate the upstream can handle
+
+> **Important**: This is a client-side rate limit that controls how fast nodecore sends requests to the upstream provider. It does NOT limit requests from your users to nodecore.
+
+### How It Works
+
+Auto-tune monitors the upstream's responses and adjusts the outgoing request rate using the following logic:
+
+1. **Decrease Limit** - When error rate from upstream exceeds the configured threshold, reduce the request rate to avoid hitting the upstream's rate limit
+2. **Increase Limit** - When there are no errors from upstream and either:
+   - Peak utilization exceeds 95% (we can safely send more requests)
+   - Too many requests are being blocked locally (our limit is too conservative)
+3. **Stable** - No change when error rate and utilization are within acceptable ranges
+
+### Configuration
+
+Auto-tune is configured per upstream:
+
+```yaml
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      rate-limit-auto-tune:
+        enabled: true
+        period: 1m
+        error-threshold: 0.1
+        init-rate-limit: 100
+        init-rate-limit-period: 1s
+      connectors:
+        - type: json-rpc
+          url: https://provider.example.com
+```
+
+### Configuration Fields
+
+- `enabled` - Enable auto-tune for this upstream. **Required**, defaults to `false`
+- `period` - How often to recalculate the rate limit (e.g., `30s`, `1m`, `5m`). **Optional**, defaults to `1m`
+- `error-threshold` - Error rate threshold (0.0 to 1.0) that triggers limit reduction. **Optional**, defaults to `0.1` (10%)
+- `init-rate-limit` - Initial rate limit to start with. **Optional**, defaults to `100`
+- `init-rate-limit-period` - Time window for the rate limit (e.g., `1s`, `100ms`). **Optional**, defaults to `1s`
 
 ## Error Response
 
