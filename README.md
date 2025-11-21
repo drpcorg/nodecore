@@ -95,3 +95,11 @@ cat tor-data/hostname  # Get your .onion address
 For complete setup instructions, security considerations, and troubleshooting, see:
 
 - [Tor Setup Guide](docs/nodecore/07-tor-setup.md)
+
+
+# Nodecore Helm Chart
+
+The Helm chart and instructions for deploying **nodecore** to Kubernetes are located in [`chart/nodecore`](./chart/nodecore) in this repository 
+and are published as an OCI artifact to the GitHub Container Registry (GHCR).
+
+

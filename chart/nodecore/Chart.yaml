@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nodecore
+description: a helm chart for nodecore
+type: application
+version: 1.0.0
+appVersion: 1.0.0
