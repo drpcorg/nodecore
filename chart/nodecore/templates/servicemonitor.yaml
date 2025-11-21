@@ -1,0 +1,29 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ template "k8s.fullname" . }}-metrics
+  {{- if .Values.metrics.serviceMonitor.namespace }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels: {{- include "k8s.labels" . | nindent 4 }}
+    {{- range $key, $value := .Values.metrics.serviceMonitor.additionalLabels }}
+    {{ $key }}: {{ $value | quote }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "k8s.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: "/metrics"
+      {{- if .Values.metrics.serviceMonitor.interval }}
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      {{- end }}
+      {{- if .Values.metrics.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+      {{- end }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}

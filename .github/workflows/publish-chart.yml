@@ -1,0 +1,95 @@
+name: Publish nodecore Helm Chart
+
+on:
+  push:
+    branches:
+      - helm-chart
+      - main
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to publish from (empty = current branch)"
+        required: false
+        type: string
+        default: ""
+
+env:
+  HELM_VERSION: v3.8.0
+  CHART_DIR: chart/nodecore
+  CHART_NAME: nodecore
+  CHART_REPOSITORY: nodecore-chart
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ct-lint:
+    if: github.event_name == 'pull_request'
+    name: Lint & check version bump
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Install chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Run chart-testing (lint + version increment)
+        run: |
+          ct lint \
+            --chart-dirs chart \
+            --charts ${{ env.CHART_DIR }} \
+            --check-version-increment \
+            --target-branch main
+
+  publish-helm-chart-nodecore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.ref_name }}
+
+      - name: Resolve parameters
+        id: resolve_parameters
+        run: |
+          resolvedRef="${{ inputs.ref }}"
+          if [ -z "$resolvedRef" ]; then
+            resolvedRef="${{ github.ref }}"
+          fi
+          echo "resolved_ref=$resolvedRef" >> $GITHUB_OUTPUT
+          echo "short_sha=$(git rev-parse --short "$resolvedRef")" >> $GITHUB_OUTPUT
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ github.token }}" \
+            | helm registry login ghcr.io \
+                --username "${{ github.actor }}" \
+                --password-stdin
+
+      - name: Package & push nodecore chart
+        run: |
+          CHART_VERSION_TAG=$(grep '^version:' "${{ env.CHART_DIR }}/Chart.yaml" | awk '{print $2}')
+          echo "CHART_VERSION_TAG=${CHART_VERSION_TAG}" >> $GITHUB_ENV
+      
+          helm package "${{ env.CHART_DIR }}" \
+            --version="${CHART_VERSION_TAG}" \
+            --app-version="${CHART_VERSION_TAG}"
+      
+          # file: nodecore-<version>.tgz
+          helm push "${{ env.CHART_NAME }}-${CHART_VERSION_TAG}.tgz" \
+            oci://ghcr.io/drpcorg/${{ env.CHART_REPOSITORY }}

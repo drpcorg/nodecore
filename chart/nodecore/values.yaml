@@ -1,0 +1,145 @@
+image:
+  name: drpcorg/nodecore
+  pullPolicy: Always
+
+deployment:
+  enabled: true
+
+revisionHistoryLimit: 3
+
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: "ClusterIP"
+
+serviceHeadless:
+  type: "ClusterIP"
+  clusterIP: None
+  ports:
+    - name: app
+      port: 9095
+      targetPort: app
+      protocol: TCP
+    - name: metrics
+      port: 9093
+      targetPort: metrics
+      protocol: TCP
+    - name: health
+      port: 9096
+      targetPort: health
+      protocol: TCP
+
+containerPorts:
+  app:
+    port: 9095
+    protocol: TCP
+  metrics:
+    port: 9093
+    protocol: TCP
+  health:
+    port: 9096
+    protocol: TCP
+
+tolerations: []
+
+affinity: {}
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    additionalLabels: {}
+    interval: 30s
+    scrapeTimeout: {}
+
+ingress:
+  enabled: false
+  ingressClassName: nginx
+  backendServicePort: 9095
+  hosts:
+    - host: []  
+      paths:
+        - /rpc
+        - /ogrpc 
+        - /status
+        - /ws
+        - /ogws
+  tls: []
+
+nodeSelector: {}
+
+resources:
+  limits:
+    cpu: 1
+    memory: 3Gi
+  requests:
+    cpu: 200m
+    memory: 1Gi
+
+env:
+  - name: NODECORE_CONFIG_PATH
+    value: "/etc/nodecore/nodecore.yaml"
+
+extraVolumeMounts: []
+
+extraVolumes: []
+
+# service env variables
+serviceEnv: {}
+
+# service yaml config
+nodecoreConfig: {}
+    # server:
+    #     port: 9095
+    #     metrics-port: 9093
+    # cache:
+    #     connectors:
+    #         - id: memory-connector
+    #           driver: memory
+    #           memory:
+    #             max-items: 5000
+    #             expired-remove-interval: 10s
+    #     policies:
+    #         - chain: '*'
+    #           id: memory-forever
+    #           method: '*'
+    #           connector-id: memory-connector
+    #           finalization-type: finalized
+    #           ttl: 30s
+    # upstream-config:
+    #     score-policy-config:
+    #         calculation-interval: 5s
+    #         calculation-function-name: defaultLatencyErrorRatePolicyFunc
+    #     failsafe-config:
+    #         retry:
+    #             delay: 100ms
+    #         hedge:
+    #             delay: 3000ms
+    #             max: 1
+    #     upstreams:
+    #         - id: solana-main
+    #           chain: solana
+    #           connectors:
+    #             - type: json-rpc
+    #               url: https://api.mainnet-beta.solana.com
+    #           head-connector: ""
+    #           poll-interval: 0s
+    #           methods: null
+    #           failsafe-config: null
+
+# nodecore ssl certs
+nodecoreSSL: {}
+
+# nodecore rsa keys
+rsaKeys: {}
