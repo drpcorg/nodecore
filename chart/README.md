@@ -81,7 +81,7 @@ This removes all Kubernetes resources created by the chart.
 ## Configuration
 
 All configuration options are documented in
-[`values.yaml`](./values.yaml).
+[`values.yaml`](./nodecore/values.yaml).
 
 Common settings (mirroring the defaults from `values.yaml`):
 
@@ -99,5 +99,5 @@ Common settings (mirroring the defaults from `values.yaml`):
 | `affinity`         | object | Affinity/anti-affinity rules                   |
 | `nodecoreConfig`   | object | Nodecore configuration                         |
 
-See [`values.yaml`](./values.yaml) for the full list of options and their
+See [`values.yaml`](./nodecore/values.yaml) for the full list of options and their
 defaults.
