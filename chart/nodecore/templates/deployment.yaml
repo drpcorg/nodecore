@@ -89,13 +89,6 @@ spec:
         - name: {{ .Release.Name }}-config
           secret:
             secretName: {{ .Release.Name }}-config
-        - name: {{ .Release.Name }}-ssl
-          secret:
-            secretName: {{ .Release.Name }}-ssl
-        - name: {{ .Release.Name }}-rsa
-          secret:
-            secretName: {{ .Release.Name }}-rsa
-        {{- with .Values.extraVolumes}}
           {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}
