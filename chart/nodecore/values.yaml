@@ -10,6 +10,7 @@ revisionHistoryLimit: 3
 replicaCount: 1
 
 nameOverride: ""
+
 fullnameOverride: ""
 
 serviceAccount:
@@ -70,11 +71,7 @@ ingress:
   hosts:
     - host: []  
       paths:
-        - /rpc
-        - /ogrpc 
-        - /status
-        - /ws
-        - /ogws
+        - /
   tls: []
 
 nodeSelector: {}
@@ -137,9 +134,3 @@ nodecoreConfig: {}
     #           poll-interval: 0s
     #           methods: null
     #           failsafe-config: null
-
-# nodecore ssl certs
-nodecoreSSL: {}
-
-# nodecore rsa keys
-rsaKeys: {}
