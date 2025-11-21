@@ -59,8 +59,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
-			assert.NoError(te, err)
+			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -122,8 +121,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
-			assert.NoError(te, err)
+			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -149,8 +147,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
-	assert.NoError(t, err)
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -202,8 +199,7 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
-	assert.NoError(t, err)
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -225,13 +221,12 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector, err := connectors.NewHttpConnector(cfg, protocol.JsonRpcConnector, "")
-	assert.NoError(t, err)
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
 
 	r := connector.SendRequest(context.Background(), req)
 
 	assert.False(t, r.HasStream())
 	assert.True(t, r.HasError())
-	assert.Equal(t, &protocol.ResponseError{Message: "0x11", Code: 500}, r.GetError())
+	assert.Equal(t, &protocol.ResponseError{Message: "0x11", Code: -32000}, r.GetError())
 }

@@ -407,9 +407,7 @@
       "name": "accountUnsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     },
@@ -428,9 +426,7 @@
       "name": "blockUnsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     },
@@ -449,9 +445,7 @@
       "name": "logsUnsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     },
@@ -470,9 +464,7 @@
       "name": "programUnsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     },
@@ -491,9 +483,7 @@
       "name": "signatureUnsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     },
@@ -512,9 +502,7 @@
       "name": "slotUnsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     }
