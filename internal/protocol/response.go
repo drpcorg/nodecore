@@ -211,7 +211,7 @@ func parseHttpResponse(id string, body []byte, responseCode int) *BaseUpstreamRe
 	var err *ResponseError
 	result := body
 	if responseCode != 200 {
-		err, result = parseError(body), body
+		err, result = parseError(body, Rest), body
 	}
 	return &BaseUpstreamResponse{
 		id:     id,
@@ -237,7 +237,7 @@ func parseJsonRpcBody(id string, body []byte) *BaseUpstreamResponse {
 			if errorNode.TypeSafe() == ast.V_STRING {
 				upstreamError, result = ResponseErrorWithMessage(errorRaw[1:len(errorRaw)-1]), bodyBytes
 			} else {
-				upstreamError, result = parseError([]byte(errorRaw)), bodyBytes
+				upstreamError, result = parseError([]byte(errorRaw), JsonRpc), bodyBytes
 			}
 		}
 	}
@@ -260,7 +260,7 @@ func incorrectJsonRpcBody() (*ResponseError, []byte) {
 	return err, errBytes
 }
 
-func parseError(errorRaw []byte) *ResponseError {
+func parseError(errorRaw []byte, reqType RequestType) *ResponseError {
 	jsonRpcErr := jsonRpcError{}
 	if err := sonic.Unmarshal(errorRaw, &jsonRpcErr); err == nil {
 		message := "internal server error"
@@ -270,7 +270,7 @@ func parseError(errorRaw []byte) *ResponseError {
 			message = jsonRpcErr.Message
 		}
 
-		code := 500
+		code := lo.Ternary(reqType == JsonRpc, -32000, 500)
 		if jsonRpcErr.Code != nil {
 			code = *jsonRpcErr.Code
 		}
@@ -324,7 +324,7 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 			if len(wsMessage.Error) > 0 {
 				responseType = JsonRpc
 				message = wsMessage.Error
-				upstreamError = parseError(wsMessage.Error)
+				upstreamError = parseError(wsMessage.Error, JsonRpc)
 			}
 		}
 	}

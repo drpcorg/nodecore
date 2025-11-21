@@ -361,9 +361,7 @@
       "name": "eth_unsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     },
@@ -408,6 +406,9 @@
     },
     {
       "name": "net_version",
+      "settings": {
+        "local": true
+      },
       "params": []
     },
     {
@@ -448,6 +449,9 @@
     },
     {
       "name": "eth_chainId",
+      "settings": {
+        "local": true
+      },
       "params": []
     }
   ]

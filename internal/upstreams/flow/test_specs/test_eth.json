@@ -23,9 +23,7 @@
       "name": "eth_unsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     }

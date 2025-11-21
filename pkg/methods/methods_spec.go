@@ -46,6 +46,7 @@ type MethodSettings struct {
 	EnforceIntegrity bool          `json:"enforce-integrity"`
 	Sticky           *Sticky       `json:"sticky"`
 	Subscription     *Subscription `json:"subscription"`
+	Local            bool          `json:"local"`
 }
 
 type Sticky struct {
@@ -54,9 +55,8 @@ type Sticky struct {
 }
 
 type Subscription struct {
-	IsSubscribe   bool   `json:"is-subscribe"`
-	IsUnsubscribe bool   `json:"is-unsubscribe"`
-	UnsubMethod   string `json:"unsubscribe-method"`
+	IsSubscribe bool   `json:"is-subscribe"`
+	UnsubMethod string `json:"unsubscribe-method"`
 }
 
 type ParserReturnType string
@@ -106,12 +106,12 @@ func IsSubscribeMethod(specName, methodName string) bool {
 	return subSettings.IsSubscribe
 }
 
-func IsUnsubscribeMethod(specName, methodName string) bool {
-	subSettings := subscribeSettings(specName, methodName)
-	if subSettings == nil {
+func IsLocalMethod(specName, methodName string) bool {
+	method := getMethod(specName, methodName)
+	if method == nil {
 		return false
 	}
-	return subSettings.IsUnsubscribe
+	return method.IsLocal()
 }
 
 func IsStickySendMethod(specMethod *Method) bool {
@@ -408,11 +408,6 @@ func (m *MethodSettings) validate() error {
 	if m.Sticky != nil {
 		if m.Sticky.CreateSticky && m.Sticky.SendSticky {
 			return errors.New("both 'create-sticky' and 'send-sticky' are enabled")
-		}
-	}
-	if m.Subscription != nil {
-		if m.Subscription.IsSubscribe && m.Subscription.IsUnsubscribe {
-			return errors.New("both 'is-subscribe' and 'is-unsubscribe' are enabled")
 		}
 	}
 	return nil

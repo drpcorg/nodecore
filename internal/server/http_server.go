@@ -91,13 +91,20 @@ func (FastJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
 	return decoder.NewStreamDecoder(c.Request().Body).Decode(i)
 }
 
+func configureServer(ctx context.Context, server *http.Server) {
+	server.BaseContext = func(listener net.Listener) context.Context {
+		return ctx
+	}
+	server.IdleTimeout = 1 * time.Minute // TODO: pass it to the config
+	server.ReadTimeout = 1 * time.Minute
+	server.WriteTimeout = 2 * time.Minute
+}
+
 func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpServer := echo.New()
 	httpServer.HideBanner = true
-	httpServer.Server.BaseContext = func(listener net.Listener) context.Context {
-		return ctx
-	}
-	httpServer.Server.IdleTimeout = 1 * time.Minute // TODO: pass it to the config
+	configureServer(ctx, httpServer.Server)
+	configureServer(ctx, httpServer.TLSServer)
 	httpServer.JSONSerializer = &FastJSONSerializer{}
 	httpServer.Use(middleware.Decompress())
 	httpServer.Use(GzipWithConfig(GzipConfig{Level: gzip.BestSpeed}))

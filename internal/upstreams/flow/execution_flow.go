@@ -185,7 +185,7 @@ func (e *BaseExecutionFlow) responseReceive(ctx context.Context, request protoco
 }
 
 func isLocalRequest(chain chains.Chain, method string) bool {
-	return specs.IsUnsubscribeMethod(chains.GetMethodSpecNameByChain(chain), method)
+	return specs.IsLocalMethod(chains.GetMethodSpecNameByChain(chain), method)
 }
 
 func isStickyRequest(specMethod *specs.Method) bool {

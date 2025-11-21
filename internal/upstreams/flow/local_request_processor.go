@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -21,13 +22,11 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	_ UpstreamStrategy,
 	request protocol.RequestHolder,
 ) ProcessedResponse {
-	responseWrapper := &protocol.ResponseHolderWrapper{
-		UpstreamId: NoUpstream,
-		RequestId:  request.Id(),
-		Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), ResultTrue, request.RequestType()),
+	if !specs.IsLocalMethod(chains.GetMethodSpecNameByChain(l.chain), request.Method()) {
+		return &UnaryResponse{processedServerError(request, fmt.Errorf("method '%s' is not local", request.Method()))}
 	}
 
-	if l.subCtx != nil && specs.IsUnsubscribeMethod(chains.GetMethodSpecNameByChain(l.chain), request.Method()) {
+	if l.subCtx != nil {
 		body, _ := request.Body()
 		node, err := sonic.Get(body, "params", 0)
 		if err != nil {
@@ -38,9 +37,34 @@ func (l *LocalRequestProcessor) ProcessRequest(
 			return &UnaryResponse{processedServerError(request, err)}
 		}
 		l.subCtx.Unsubscribe(protocol.ResultAsString([]byte(value)))
+		return &UnaryResponse{
+			&protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				RequestId:  request.Id(),
+				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), ResultTrue, request.RequestType()),
+			},
+		}
+	} else {
+		chain := chains.GetChain(l.chain.String())
+		var response protocol.ResponseHolder = protocol.NewTotalFailureFromErr(
+			request.Id(),
+			fmt.Errorf("there no local handler for  method '%s'", request.Method()),
+			request.RequestType(),
+		)
+		switch request.Method() {
+		case "eth_chainId":
+			response = protocol.NewSimpleHttpUpstreamResponse(request.Id(), []byte(fmt.Sprintf(`"%s"`, chain.ChainId)), request.RequestType())
+		case "net_version":
+			response = protocol.NewSimpleHttpUpstreamResponse(request.Id(), []byte(fmt.Sprintf(`"%s"`, chain.NetVersion)), request.RequestType())
+		}
+		return &UnaryResponse{
+			&protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				RequestId:  request.Id(),
+				Response:   response,
+			},
+		}
 	}
-
-	return &UnaryResponse{responseWrapper}
 }
 
 func NewLocalRequestProcessor(chain chains.Chain, subCtx *SubCtx) *LocalRequestProcessor {
