@@ -9,6 +9,27 @@
   },
   "methods": [
     {
+      "name": "super_method",
+      "settings": {
+        "local": true
+      },
+      "params": []
+    },
+    {
+      "name": "net_version",
+      "settings": {
+        "local": true
+      },
+      "params": []
+    },
+    {
+      "name": "eth_chainId",
+      "settings": {
+        "local": true
+      },
+      "params": []
+    },
+    {
       "name": "eth_subscribe",
       "settings": {
         "cacheable": false,
@@ -23,9 +44,7 @@
       "name": "eth_unsubscribe",
       "settings": {
         "cacheable": false,
-        "subscription": {
-          "is-unsubscribe": true
-        }
+        "local": true
       },
       "params": []
     }
