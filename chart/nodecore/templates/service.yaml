@@ -8,17 +8,11 @@ metadata:
 spec: 
   type: {{ .Values.service.type }}
   ports:
-  - name: app
-    port: 9095
-    targetPort: 9095
-    protocol: TCP
-  - name: metrics
-    port: 9093
-    targetPort: 9093
-    protocol: TCP
-  - name: health
-    port: 9096
-    targetPort: 9096
-    protocol: TCP
+  {{- range .Values.service.ports }}
+  - name: {{ .name }}
+    port: {{ .port }}
+    targetPort: {{ .targetPort }}
+    protocol: {{ .protocol | default "TCP" }}
+  {{- end }}
   selector:
     {{- include "k8s.selectorLabels" . | nindent 4 }}
