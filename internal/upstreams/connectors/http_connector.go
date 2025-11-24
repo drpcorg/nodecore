@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
 )
@@ -28,44 +31,67 @@ type HttpConnector struct {
 
 var _ ApiConnector = (*HttpConnector)(nil)
 
-func NewHttpConnector(endpoint string, connectorType protocol.ApiConnectorType, additionalHeaders map[string]string, torProxyUrl string) *HttpConnector {
-	url, err := url.Parse(endpoint)
-	if err != nil {
-		panic(fmt.Errorf("error parsing the endpoint: %v", err))
+func NewHttpConnectorWithDefaultClient(
+	connectorConfig *config.ApiConnectorConfig,
+	connectorType protocol.ApiConnectorType,
+	torProxyUrl string,
+) *HttpConnector {
+	return &HttpConnector{
+		endpoint:          connectorConfig.Url,
+		httpClient:        http.DefaultClient,
+		connectorType:     connectorType,
+		additionalHeaders: connectorConfig.Headers,
+		torProxyUrl:       torProxyUrl,
 	}
-	client := http.DefaultClient
-	if strings.HasSuffix(url.Hostname(), ".onion") {
+}
+
+func NewHttpConnector(
+	connectorConfig *config.ApiConnectorConfig,
+	connectorType protocol.ApiConnectorType,
+	torProxyUrl string,
+) (*HttpConnector, error) {
+	endpoint, err := url.Parse(connectorConfig.Url)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing the endpoint: %v", err)
+	}
+	transport := defaultHttpTransport()
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+	customCA, err := utils.GetCustomCAPool(connectorConfig.Ca)
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.HasSuffix(endpoint.Hostname(), ".onion") {
 		if torProxyUrl == "" {
-			panic("tor proxy url is required for onion endpoints")
+			return nil, errors.New("tor proxy url is required for onion endpoints")
 		}
 		dialer := &net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}
-		proxy, err := proxy.SOCKS5("tcp", torProxyUrl, nil, dialer)
+		socksProxy, err := proxy.SOCKS5("tcp", torProxyUrl, nil, dialer)
 		if err != nil {
-			panic(fmt.Errorf("error creating socks5 proxy: %v", err))
+			return nil, fmt.Errorf("error creating socks5 proxy: %v", err)
 		}
-		client = &http.Client{
-			Timeout: 60 * time.Second,
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return proxy.Dial(network, addr)
-				},
-				MaxIdleConns:        100,
-				IdleConnTimeout:     90 * time.Second,
-				TLSHandshakeTimeout: 10 * time.Second,
-			},
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return socksProxy.Dial(network, addr)
+		}
+	} else if customCA != nil {
+		transport.TLSClientConfig = &tls.Config{
+			RootCAs: customCA,
 		}
 	}
+	client.Transport = transport
 
 	return &HttpConnector{
-		endpoint:          endpoint,
+		endpoint:          connectorConfig.Url,
 		httpClient:        client,
 		connectorType:     connectorType,
-		additionalHeaders: additionalHeaders,
+		additionalHeaders: connectorConfig.Headers,
 		torProxyUrl:       torProxyUrl,
-	}
+	}, nil
 }
 
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
@@ -154,6 +180,19 @@ func (h *HttpConnector) GetType() protocol.ApiConnectorType {
 
 func (h *HttpConnector) Subscribe(_ context.Context, _ protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
+}
+
+func defaultHttpTransport() *http.Transport {
+	// to move all these params to the config per upstream?
+	return &http.Transport{
+		MaxIdleConns:          1024,
+		MaxIdleConnsPerHost:   256,
+		MaxConnsPerHost:       0,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 5 * time.Second,
+	}
 }
 
 func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, string, error) {

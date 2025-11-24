@@ -19,6 +19,7 @@ type Method struct {
 	enabled          bool
 	cacheable        bool
 	enforceIntegrity bool
+	local            bool
 	parser           *jqParser
 	modifyParser     *modifyJqParser
 	Subscription     *Subscription
@@ -70,6 +71,10 @@ func (m *Method) Enabled() bool {
 	return m.enabled
 }
 
+func (m *Method) IsLocal() bool {
+	return m.local
+}
+
 func fromMethodData(methodData *MethodData) (*Method, error) {
 	var parser *jqParser
 	if methodData.TagParser != nil {
@@ -87,6 +92,7 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	var sticky *Sticky
 	var modifyParser *modifyJqParser
 	cacheable := true
+	local := false
 	enforceIntegrity := false
 	if methodData.Settings != nil {
 		if methodData.Settings.Cacheable != nil {
@@ -96,6 +102,7 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 			sub = methodData.Settings.Subscription
 		}
 		enforceIntegrity = methodData.Settings.EnforceIntegrity
+		local = methodData.Settings.Local
 		if methodData.Settings.Sticky != nil {
 			sticky = methodData.Settings.Sticky
 			if methodData.Settings.Sticky.SendSticky && methodData.TagParser != nil {
@@ -118,6 +125,7 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	return &Method{
 		enabled:          lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
 		cacheable:        cacheable,
+		local:            local,
 		enforceIntegrity: enforceIntegrity,
 		Name:             methodData.Name,
 		parser:           parser,
