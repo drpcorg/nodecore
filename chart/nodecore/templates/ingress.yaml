@@ -5,7 +5,7 @@ metadata:
   name: {{ include "k8s.fullname" . }}
   annotations: {}
 spec:
-  ingressClassName: {{ .Values.ingress.ingressClassName | default "nginx" }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
   {{- if .Values.ingress.tls }}
   tls:
   {{- toYaml $.Values.ingress.tls | nindent 2 }}

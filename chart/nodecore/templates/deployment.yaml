@@ -5,6 +5,8 @@ metadata:
   name: {{ include "k8s.fullname" . }}
   labels:
     {{- include "k8s.labels" . | nindent 4 }}
+  annotations:
+    checksum/nodecore-config: {{ .Values.nodecoreConfig | toJson | sha256sum }}
 spec:
   replicas: {{ .Values.replicaCount }}
   {{- if .Values.revisionHistoryLimit }}
@@ -47,8 +49,6 @@ spec:
               protocol: {{ $portSpec.protocol }}
             {{- end }}
           env:
-            - name: RUN_ID
-              value: "{{ .Values.run_id }}"
             {{- toYaml .Values.env | nindent 12 }}
           envFrom:
             - secretRef:

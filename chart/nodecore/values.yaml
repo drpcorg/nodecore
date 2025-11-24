@@ -66,13 +66,13 @@ metrics:
 
 ingress:
   enabled: false
-  ingressClassName: nginx
-  backendServicePort: 9095
-  hosts:
-    - host: []  
-      paths:
-        - /
-  tls: []
+  # ingressClassName: nginx
+  # backendServicePort: 9095
+  # hosts:
+  #   - host: []  
+  #     paths:
+  #       - /
+  # tls: []
 
 nodeSelector: {}
 
@@ -97,6 +97,7 @@ serviceEnv: {}
 
 # service yaml config
 nodecoreConfig: {}
+    # Basic example nodecore configuration 
     # server:
     #     port: 9095
     #     metrics-port: 9093
