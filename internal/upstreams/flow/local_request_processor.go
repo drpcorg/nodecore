@@ -48,13 +48,13 @@ func (l *LocalRequestProcessor) ProcessRequest(
 		chain := chains.GetChain(l.chain.String())
 		var response protocol.ResponseHolder = protocol.NewTotalFailureFromErr(
 			request.Id(),
-			fmt.Errorf("there no local handler for  method '%s'", request.Method()),
+			fmt.Errorf("there is no local handler for method '%s'", request.Method()),
 			request.RequestType(),
 		)
 		switch request.Method() {
-		case "eth_chainId":
+		case specs.EthChainId:
 			response = protocol.NewSimpleHttpUpstreamResponse(request.Id(), []byte(fmt.Sprintf(`"%s"`, chain.ChainId)), request.RequestType())
-		case "net_version":
+		case specs.NetVersion:
 			response = protocol.NewSimpleHttpUpstreamResponse(request.Id(), []byte(fmt.Sprintf(`"%s"`, chain.NetVersion)), request.RequestType())
 		}
 		return &UnaryResponse{
