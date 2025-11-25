@@ -1,0 +1,91 @@
+{{- if default .Values.deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s.fullname" . }}
+  labels:
+    {{- include "k8s.labels" . | nindent 4 }}
+  annotations:
+    checksum/nodecore-config: {{ .Values.nodecoreConfig | toJson | sha256sum }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  {{- if .Values.revisionHistoryLimit }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 3 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "k8s.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  template:
+    metadata:
+    {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      labels:
+        {{- include "k8s.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: default
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Release.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.name }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            {{- range $key, $portSpec := .Values.containerPorts }}
+            - name: {{ $key }}
+              containerPort: {{ int $portSpec.port }}
+              protocol: {{ $portSpec.protocol }}
+            {{- end }}
+          env:
+            {{- toYaml .Values.env | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ include "k8s.fullname" . }}-env
+          {{- if .Values.readinessProbe}}
+          readinessProbe: {{ toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe: {{ toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- with .Values.resources }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - mountPath: /etc/nodecore
+              name: {{ .Release.Name }}-config
+            {{- with .Values.extraVolumeMounts}}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: {{ .Release.Name }}-config
+          secret:
+            secretName: {{ .Release.Name }}-config
+        {{- with .Values.extraVolumes }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
