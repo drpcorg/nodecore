@@ -95,8 +95,6 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 	errors := u.accumErrors.Swap(0)
 	rateLimited := u.accumRateLimited.Swap(0)
 	oldMap := u.attemptCounts.Swap(utils.NewCMap[int64, atomic.Int32]())
-	log.Info().
-		Msg("auto-tune: recalculating rate limit")
 
 	totalAttempts := 0
 	oldMap.Range(func(key int64, val *atomic.Int32) bool {
@@ -123,7 +121,7 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 		errorRate = float64(errors) / float64(allowed)
 	}
 
-	var newDirection direction = directionStable
+	var newDirection direction
 
 	if errorRate >= u.errorRateThreshold && allowed > 0 {
 		newDirection = directionDecrease

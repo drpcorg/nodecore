@@ -79,7 +79,6 @@ type Upstream struct {
 	headProcessor               *blocks.HeadProcessor
 	blockProcessor              blocks.BlockProcessor
 	settingsValidationProcessor *validations.SettingsValidationProcessor
-	autoTuneRateLimiter         *ratelimiter.UpstreamAutoTune
 }
 
 func NewUpstream(

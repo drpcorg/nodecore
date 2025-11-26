@@ -33,7 +33,9 @@ func TestUpstreamAutoTune_Allow_BasicRateLimiting(t *testing.T) {
 }
 
 func TestUpstreamAutoTune_RecalculateRateLimit_ReduceLimitOnHighErrors(t *testing.T) {
-	ctx := zerolog.New(zerolog.NewTestWriter(t)).WithContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              100 * time.Millisecond,
 		ErrorRateThreshold:  0.1,
@@ -64,7 +66,9 @@ func TestUpstreamAutoTune_RecalculateRateLimit_ReduceLimitOnHighErrors(t *testin
 }
 
 func TestUpstreamAutoTune_RecalculateRateLimit_IncreaseLimitOnHighUtilization(t *testing.T) {
-	ctx := zerolog.New(zerolog.NewTestWriter(t)).WithContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              50 * time.Millisecond,
 		ErrorRateThreshold:  0.1,
@@ -94,7 +98,9 @@ func TestUpstreamAutoTune_RecalculateRateLimit_IncreaseLimitOnHighUtilization(t 
 }
 
 func TestUpstreamAutoTune_RecalculateRateLimit_IncreaseLimitOnHighRateLimited(t *testing.T) {
-	ctx := zerolog.New(zerolog.NewTestWriter(t)).WithContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              100 * time.Millisecond,
 		ErrorRateThreshold:  0.1,
@@ -119,7 +125,9 @@ func TestUpstreamAutoTune_RecalculateRateLimit_IncreaseLimitOnHighRateLimited(t 
 }
 
 func TestUpstreamAutoTune_RecalculateRateLimit_NoChangeOnStableLoad(t *testing.T) {
-	ctx := zerolog.New(zerolog.NewTestWriter(t)).WithContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              100 * time.Millisecond,
 		ErrorRateThreshold:  0.1,
@@ -141,7 +149,9 @@ func TestUpstreamAutoTune_RecalculateRateLimit_NoChangeOnStableLoad(t *testing.T
 }
 
 func TestUpstreamAutoTune_RecalculateRateLimit_NoRequestsNoChange(t *testing.T) {
-	ctx := zerolog.New(zerolog.NewTestWriter(t)).WithContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              100 * time.Millisecond,
 		ErrorRateThreshold:  0.1,
@@ -161,7 +171,9 @@ func TestUpstreamAutoTune_RecalculateRateLimit_NoRequestsNoChange(t *testing.T) 
 }
 
 func TestUpstreamAutoTune_RecalculateRateLimit_ErrorsButNoAllowedRequests(t *testing.T) {
-	ctx := zerolog.New(zerolog.NewTestWriter(t)).WithContext(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              100 * time.Millisecond,
 		ErrorRateThreshold:  0.1,
@@ -194,6 +206,8 @@ func TestUpstreamAutoTune_RecalculateRateLimit_ErrorsButNoAllowedRequests(t *tes
 
 func TestUpstreamAutoTune_Run_CancelsOnContextDone(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ctx = zerolog.New(zerolog.NewTestWriter(t)).WithContext(ctx)
 	cfg := &config.RateLimitAutoTuneConfig{
 		Period:              1 * time.Second,
 		ErrorRateThreshold:  0.1,
