@@ -40,7 +40,7 @@ func (k *KeyResolver) GetKey(keyStr string) (Key, bool) {
 
 type Key interface {
 	Id() string
-	PreCheckSetting(ctx context.Context) error
+	PreCheckSetting(ctx context.Context) ([]string, error)
 	PostCheckSetting(ctx context.Context, request protocol.RequestHolder) error
 }
 
@@ -54,22 +54,32 @@ func (l *LocalKey) Id() string {
 	return l.id
 }
 
-func (l *LocalKey) PreCheckSetting(ctx context.Context) error {
+func (l *LocalKey) PreCheckSetting(ctx context.Context) ([]string, error) {
+	if l.keySettingsCfg == nil {
+		return nil, nil
+	}
+
+	corsOrigins := l.keySettingsCfg.CorsOrigins
+
 	if len(l.keySettingsCfg.AllowedIps) == 0 {
-		return nil
+		return corsOrigins, nil
 	}
 
 	ips := utils.IpsFromContext(ctx)
 	for _, allowedIp := range l.keySettingsCfg.AllowedIps {
 		if ips.ContainsOne(allowedIp) {
-			return nil
+			return corsOrigins, nil
 		}
 	}
 
-	return fmt.Errorf("ips [%s] are not allowed", strings.Join(ips.ToSlice(), ", "))
+	return corsOrigins, fmt.Errorf("ips [%s] are not allowed", strings.Join(ips.ToSlice(), ", "))
 }
 
 func (l *LocalKey) PostCheckSetting(_ context.Context, request protocol.RequestHolder) error {
+	if l.keySettingsCfg == nil {
+		return nil
+	}
+
 	err := CheckMethod(l.keySettingsCfg.Methods, request.Method())
 	if err != nil {
 		return err

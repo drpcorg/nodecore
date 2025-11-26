@@ -9,8 +9,8 @@ import (
 type noopAuthProcessor struct {
 }
 
-func (n *noopAuthProcessor) PreKeyValidate(_ context.Context, _ AuthPayload) error {
-	return nil
+func (n *noopAuthProcessor) PreKeyValidate(_ context.Context, _ AuthPayload) ([]string, error) {
+	return nil, nil
 }
 
 func (n *noopAuthProcessor) PostKeyValidate(_ context.Context, _ AuthPayload, _ protocol.RequestHolder) error {
@@ -31,8 +31,8 @@ type simpleAuthProcessor struct {
 	authRequestStrategy AuthRequestStrategy
 }
 
-func (s *simpleAuthProcessor) PreKeyValidate(_ context.Context, _ AuthPayload) error {
-	return nil
+func (s *simpleAuthProcessor) PreKeyValidate(_ context.Context, _ AuthPayload) ([]string, error) {
+	return nil, nil
 }
 
 func (s *simpleAuthProcessor) PostKeyValidate(_ context.Context, _ AuthPayload, _ protocol.RequestHolder) error {

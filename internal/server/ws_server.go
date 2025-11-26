@@ -90,7 +90,7 @@ func handleWebsocket(
 			break
 		}
 
-		responseWrappers := handleRequest(cancelCtx, requestHandler, authPayload, appCtx, subCtx)
+		handleResp := handleRequest(cancelCtx, requestHandler, authPayload, appCtx, subCtx)
 
 		wg.Add(1)
 		go func() {
@@ -99,7 +99,7 @@ func handleWebsocket(
 				select {
 				case <-cancelCtx.Done():
 					return
-				case response, ok := <-responseWrappers:
+				case response, ok := <-handleResp.responseWrappers:
 					if !ok {
 						return
 					}

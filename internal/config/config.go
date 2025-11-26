@@ -135,6 +135,7 @@ type KeySettingsConfig struct {
 	AllowedIps    []string       `yaml:"allowed-ips"`
 	Methods       *AuthMethods   `yaml:"methods"`
 	AuthContracts *AuthContracts `yaml:"contracts"`
+	CorsOrigins   []string       `yaml:"cors-origins"`
 }
 
 type LocalKeyConfig struct {

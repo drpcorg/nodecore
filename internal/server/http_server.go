@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/bytedance/sonic/decoder"
@@ -38,6 +37,18 @@ var requestTimeToLastByte = prometheus.NewHistogram(
 
 func init() {
 	prometheus.MustRegister(requestTimeToLastByte)
+}
+
+type HandleResponse struct {
+	responseWrappers chan *protocol.ResponseHolderWrapper
+	corsOrigins      []string
+}
+
+func NewHandleResponse(responseWrappers chan *protocol.ResponseHolderWrapper, corsOrigins []string) *HandleResponse {
+	return &HandleResponse{
+		responseWrappers: responseWrappers,
+		corsOrigins:      corsOrigins,
+	}
 }
 
 type Request struct {
@@ -110,41 +121,59 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 	httpServer.Use(GzipWithConfig(GzipConfig{Level: gzip.BestSpeed}))
 
 	httpGroup := httpServer.Group("/queries/:chain")
-	httpGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			start := time.Now()
-			reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
-			chain := c.Param("chain")
-			path := strings.Split(c.Request().URL.Path, chain)
-			isWs := c.Request().Header.Get("Upgrade") == "websocket"
-			reqType := lo.Ternary(
-				isWs || c.Request().Method == "POST" && len(path) == 2 && path[1] == "",
-				protocol.JsonRpc,
-				protocol.Rest,
-			)
-			authPayload := auth.NewHttpAuthPayload(c.Request())
 
-			err := appCtx.authProcessor.Authenticate(c.Request().Context(), authPayload)
-			if err != nil {
-				resp := protocol.NewTotalFailureFromErr("0", protocol.AuthError(err), reqType)
-				return writeResponse(
-					c.Response(),
-					protocol.ToHttpCode(resp),
-					resp.EncodeResponse([]byte("0")),
-				)
-			}
-
-			if isWs {
-				handleWebsocket(reqCtx, c, chain, authPayload, appCtx)
-				return nil
-			}
-			err = handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)
-			requestTimeToLastByte.Observe(time.Since(start).Seconds())
-			return err
+	requestHandler := func(c echo.Context) error {
+		if c.Request().Method == http.MethodOptions {
+			return handleCorsOptions(c)
 		}
-	})
+		start := time.Now()
+		c.Request().SetPathValue("key", c.Param("key"))
+		chain := c.Param("chain")
+		restPath := c.Param("*") // for rest requests
+		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
+		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
+		authPayload := auth.NewHttpAuthPayload(c.Request())
+
+		err := appCtx.authProcessor.Authenticate(c.Request().Context(), authPayload)
+		if err != nil {
+			resp := protocol.NewTotalFailureFromErr("0", protocol.AuthError(err), reqType)
+			return writeResponse(
+				c.Response(),
+				protocol.ToHttpCode(resp),
+				resp.EncodeResponse([]byte("0")),
+			)
+		}
+
+		if c.Request().Header.Get("Upgrade") == "websocket" {
+			handleWebsocket(reqCtx, c, chain, authPayload, appCtx)
+			return nil
+		}
+		err = handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)
+		requestTimeToLastByte.Observe(time.Since(start).Seconds())
+		return err
+	}
+
+	httpGroup.Any("/api-key/:key/*", requestHandler)
+	httpGroup.Any("/api-key/:key", requestHandler)
+	httpGroup.Any("/*", requestHandler)
+	httpGroup.Any("", requestHandler)
 
 	return httpServer
+}
+
+var corsHeaders = []lo.Tuple2[string, string]{
+	lo.T2("Origin", "Access-Control-Allow-Origin"),
+	lo.T2("Access-Control-Request-Headers", "Access-Control-Allow-Headers"),
+	lo.T2("Access-Control-Request-Method", "Access-Control-Allow-Methods"),
+}
+
+func handleCorsOptions(c echo.Context) error {
+	for _, header := range corsHeaders {
+		if requestHeaderValue := c.Request().Header.Get(header.A); requestHeaderValue != "" {
+			c.Response().Header().Set(header.B, requestHeaderValue)
+		}
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 func handleHttp(
@@ -174,21 +203,22 @@ func handleHttp(
 			resp.EncodeResponse([]byte("0")),
 		)
 	}
-	responseWrappers := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
+	handleResp := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
 
-	return handleResponse(ctx, requestHandler, reqCtx.Response(), responseWrappers)
+	return handleResponse(ctx, requestHandler, reqCtx, handleResp)
 }
 
 func handleResponse(
 	ctx context.Context,
 	requestHandler RequestHandler,
-	httpResponse *echo.Response,
-	responseWrappers chan *protocol.ResponseHolderWrapper,
+	reqCtx echo.Context,
+	handleResp *HandleResponse,
 ) error {
 	var responseReader io.Reader
 	code := http.StatusOK
+	httpResponse := reqCtx.Response()
 	if !requestHandler.IsSingle() {
-		responses := utils.Map(responseWrappers, func(wrapper *protocol.ResponseHolderWrapper) *Response {
+		responses := utils.Map(handleResp.responseWrappers, func(wrapper *protocol.ResponseHolderWrapper) *Response {
 			return requestHandler.ResponseEncode(wrapper.Response)
 		})
 		responseReader = ArraySortingStream(ctx, responses, requestHandler.RequestCount())
@@ -201,7 +231,7 @@ func handleResponse(
 				protocol.ToHttpCode(resp),
 				resp.EncodeResponse([]byte("0")),
 			)
-		case responseWrapper, ok := <-responseWrappers:
+		case responseWrapper, ok := <-handleResp.responseWrappers:
 			if ok {
 				httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
 				code = protocol.ToHttpCode(responseWrapper.Response)
@@ -209,7 +239,25 @@ func handleResponse(
 			}
 		}
 	}
+
+	setCorsHeaders(reqCtx, handleResp.corsOrigins)
+
 	return writeResponse(httpResponse, code, responseReader)
+}
+
+func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
+	if len(corsOrigins) > 0 {
+		origin := reqCtx.Request().Header.Get("Origin")
+		for _, item := range corsOrigins {
+			if utils.MatchWildcards(item, origin) {
+				reqCtx.Response().Header().Set("Access-Control-Allow-Origin", origin)
+				reqCtx.Response().Header().Set("Vary", "Origin")
+				return
+			}
+		}
+	} else {
+		reqCtx.Response().Header().Set("Access-Control-Allow-Origin", "*")
+	}
 }
 
 func writeResponse(httpResponse *echo.Response, code int, responseReader io.Reader) error {
@@ -225,31 +273,43 @@ func handleRequest(
 	authPayload auth.AuthPayload,
 	appCtx *ApplicationContext,
 	subCtx *flow.SubCtx,
-) chan *protocol.ResponseHolderWrapper {
+) *HandleResponse {
 	var request *Request
 
-	err := appCtx.authProcessor.PreKeyValidate(ctx, authPayload)
+	corsOrigins, err := appCtx.authProcessor.PreKeyValidate(ctx, authPayload)
 	if err != nil {
-		return createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType())
+		return NewHandleResponse(
+			createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
+			nil,
+		)
 	}
 
 	request, err = requestHandler.RequestDecode(ctx)
 	if err != nil {
-		return createWrapperFromError(request, err, requestHandler.GetRequestType())
+		return NewHandleResponse(createWrapperFromError(request, err, requestHandler.GetRequestType()), nil)
 	}
 	if !chains.IsSupported(request.Chain) {
-		return createWrapperFromError(request, protocol.WrongChainError(request.Chain), requestHandler.GetRequestType())
+		return NewHandleResponse(
+			createWrapperFromError(request, protocol.WrongChainError(request.Chain), requestHandler.GetRequestType()),
+			nil,
+		)
 	}
 	chain := chains.GetChain(request.Chain).Chain
 
 	if appCtx.upstreamSupervisor.GetChainSupervisor(chain) == nil {
-		return createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType())
+		return NewHandleResponse(
+			createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType()),
+			nil,
+		)
 	}
 
 	for _, requestHolder := range request.UpstreamRequests {
 		err = appCtx.authProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
 		if err != nil {
-			return createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType())
+			return NewHandleResponse(
+				createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
+				nil,
+			)
 		}
 	}
 
@@ -268,7 +328,7 @@ func handleRequest(
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 
-	return responseChan
+	return NewHandleResponse(responseChan, corsOrigins)
 }
 
 func createWrapperFromError(request *Request, err error, requestType protocol.RequestType) chan *protocol.ResponseHolderWrapper {

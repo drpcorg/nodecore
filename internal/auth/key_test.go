@@ -191,7 +191,7 @@ func TestLocalKey_PreCheckSetting_Allows_WithXFF(t *testing.T) {
 	lk := auth.NewLocalKey(cfg)
 
 	ctx := test_utils.CtxWithXFF("10.0.0.1")
-	err := lk.PreCheckSetting(ctx)
+	_, err := lk.PreCheckSetting(ctx)
 	assert.NoError(t, err)
 }
 
@@ -200,7 +200,7 @@ func TestLocalKey_PreCheckSetting_Allows_WithRemoteAddr_NoXFF(t *testing.T) {
 	lk := auth.NewLocalKey(cfg)
 
 	ctx := test_utils.CtxWithRemoteAddr("192.168.1.2:5555")
-	err := lk.PreCheckSetting(ctx)
+	_, err := lk.PreCheckSetting(ctx)
 	assert.NoError(t, err)
 }
 
@@ -210,7 +210,7 @@ func TestLocalKey_PreCheckSetting_Error_WhenNotAllowed_SingleIP(t *testing.T) {
 
 	// use single IP in XFF so error message order is deterministic
 	ctx := test_utils.CtxWithXFF("8.8.8.8")
-	err := lk.PreCheckSetting(ctx)
+	_, err := lk.PreCheckSetting(ctx)
 	assert.ErrorContains(t, err, "ips [8.8.8.8] are not allowed")
 }
 
