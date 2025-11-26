@@ -155,6 +155,7 @@ type RequestHolder interface {
 type ResponseHolder interface {
 	ResponseResult() []byte
 	ResponseResultString() (string, error)
+	ResponseCode() int
 	GetError() *ResponseError
 	EncodeResponse(realId []byte) io.Reader
 	HasError() bool
@@ -226,24 +227,26 @@ const (
 )
 
 type UpstreamState struct {
-	Status            AvailabilityStatus
-	HeadData          *BlockData
-	UpstreamMethods   methods.Methods
-	BlockInfo         *BlockInfo
-	Caps              mapset.Set[Cap]
-	UpstreamIndex     string
-	RateLimiterBudget *ratelimiter.RateLimitBudget
+	Status              AvailabilityStatus
+	HeadData            *BlockData
+	UpstreamMethods     methods.Methods
+	BlockInfo           *BlockInfo
+	Caps                mapset.Set[Cap]
+	UpstreamIndex       string
+	RateLimiterBudget   *ratelimiter.RateLimitBudget
+	AutoTuneRateLimiter *ratelimiter.UpstreamAutoTune
 }
 
-func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string, rt *ratelimiter.RateLimitBudget) UpstreamState {
+func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string, rt *ratelimiter.RateLimitBudget, autoTuneRateLimiter *ratelimiter.UpstreamAutoTune) UpstreamState {
 	return UpstreamState{
-		Status:            Unavailable,
-		UpstreamMethods:   upstreamMethods,
-		BlockInfo:         NewBlockInfo(),
-		Caps:              caps,
-		HeadData:          &BlockData{},
-		UpstreamIndex:     upstreamIndex,
-		RateLimiterBudget: rt,
+		Status:              Unavailable,
+		UpstreamMethods:     upstreamMethods,
+		BlockInfo:           NewBlockInfo(),
+		Caps:                caps,
+		HeadData:            &BlockData{},
+		UpstreamIndex:       upstreamIndex,
+		RateLimiterBudget:   rt,
+		AutoTuneRateLimiter: autoTuneRateLimiter,
 	}
 }
 

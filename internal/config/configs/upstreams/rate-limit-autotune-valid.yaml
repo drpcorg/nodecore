@@ -1,0 +1,13 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      rate-limit-auto-tune:
+        enabled: true
+        period: 10s
+        error-threshold: 0.5
+        init-rate-limit: 100
+        init-rate-limit-period: 5s
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -185,6 +185,14 @@ type UpstreamConfig struct {
 	IntegrityConfig   *IntegrityConfig          `yaml:"integrity"`
 }
 
+type RateLimitAutoTuneConfig struct {
+	Enabled             bool          `yaml:"enabled"`
+	Period              time.Duration `yaml:"period"`
+	ErrorRateThreshold  float64       `yaml:"error-threshold"`
+	InitRateLimit       int           `yaml:"init-rate-limit"`
+	InitRateLimitPeriod time.Duration `yaml:"init-rate-limit-period"`
+}
+
 type IntegrityConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
@@ -296,16 +304,17 @@ type RateLimitBudget struct {
 }
 
 type Upstream struct {
-	Id              string                `yaml:"id"`
-	ChainName       string                `yaml:"chain"`
-	Connectors      []*ApiConnectorConfig `yaml:"connectors"`
-	HeadConnector   ApiConnectorType      `yaml:"head-connector"`
-	PollInterval    time.Duration         `yaml:"poll-interval"`
-	Methods         *MethodsConfig        `yaml:"methods"`
-	FailsafeConfig  *FailsafeConfig       `yaml:"failsafe-config"`
-	Options         *UpstreamOptions      `yaml:"options"`
-	RateLimitBudget string                `yaml:"rate-limit-budget"`
-	RateLimit       *RateLimiterConfig    `yaml:"rate-limit"`
+	Id                string                   `yaml:"id"`
+	ChainName         string                   `yaml:"chain"`
+	Connectors        []*ApiConnectorConfig    `yaml:"connectors"`
+	HeadConnector     ApiConnectorType         `yaml:"head-connector"`
+	PollInterval      time.Duration            `yaml:"poll-interval"`
+	Methods           *MethodsConfig           `yaml:"methods"`
+	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config"`
+	Options           *UpstreamOptions         `yaml:"options"`
+	RateLimitBudget   string                   `yaml:"rate-limit-budget"`
+	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
+	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 }
 
 type UpstreamOptions struct {

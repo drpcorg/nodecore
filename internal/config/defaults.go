@@ -213,6 +213,21 @@ func (u *UpstreamConfig) setDefaults() {
 	}
 }
 
+func (r *RateLimitAutoTuneConfig) setDefaults() {
+	if r.Period == 0 {
+		r.Period = 1 * time.Minute
+	}
+	if r.ErrorRateThreshold == 0 {
+		r.ErrorRateThreshold = 0.1
+	}
+	if r.InitRateLimit == 0 {
+		r.InitRateLimit = 100
+	}
+	if r.InitRateLimitPeriod == 0 {
+		r.InitRateLimitPeriod = 1 * time.Second
+	}
+}
+
 func (s *ScorePolicyConfig) setDefaults() {
 	if s.CalculationInterval == 0 {
 		s.CalculationInterval = 10 * time.Second
@@ -252,6 +267,9 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 			}).Type
 			u.HeadConnector = defaultHeadConnectorType
 		}
+	}
+	if u.RateLimitAutoTune != nil {
+		u.RateLimitAutoTune.setDefaults()
 	}
 	if u.PollInterval == 0 {
 		pollInterval := defaultInterval

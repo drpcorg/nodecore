@@ -136,7 +136,6 @@ func filterUpstreams(
 	}
 
 	multiMatcher := NewMultiMatcher(matchers...)
-
 	for i := 0; i < len(upstreamIds); i++ {
 		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
 		if upstreamState == nil {
@@ -146,7 +145,13 @@ func filterUpstreams(
 
 		upstreamMatched, newReason := processMatchedResponse(mu, matched, currentReason, selectedUpstreams, upstreamIds[i], upstreamState, request)
 		if upstreamMatched {
-			return upstreamIds[i], nil
+			allowed := true
+			if upstreamState.AutoTuneRateLimiter != nil {
+				allowed = upstreamState.AutoTuneRateLimiter.Allow()
+			}
+			if allowed {
+				return upstreamIds[i], nil
+			}
 		} else if newReason != nil {
 			currentReason = newReason
 		}
