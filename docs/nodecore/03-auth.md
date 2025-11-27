@@ -134,7 +134,7 @@ settings:
 
 The `local` key type is the simplest form of key management. It allows you to define access keys directly in the configuration file, without relying on an external service. This is useful for quick setups and internal environments.
 
-* `key` - The actual access key value. Any string. Should be passed via the `"X-Nodecore-Key"` header. **_Required_**, **_Unique_**
+* `key` - The actual access key value. Any string. Should be passed via the `"X-Nodecore-Key"` header OR via a path param in your URL (`https://your-site.com/queries/ethereum/api-key/bXkta2V5`). **_Required_**, **_Unique_**
 * `settings.allowed-ips` - Restricts key usage to the listed IP addresses. When validating requests, nodecore determines the client IPs in the following order:
   * It first checks the `X-Forwarded-For` header (commonly set by proxies or load balancers). If present, all comma-separated values are collected as candidate IPs
   * If the header is missing or empty, it falls back to the remote address of the TCP connection
@@ -143,4 +143,6 @@ The `local` key type is the simplest form of key management. It allows you to de
 * `settings.methods.forbidden` - A blacklist of RPC methods that cannot be called with this key
 * `settings.contracts.allowed` - Restricts interaction to a specific set of contract addresses for `eth_call` and `eth_getLogs` methods
 
-> **⚠️ Important**: If at least one key is defined in the `key-management` section, then every request must include a valid nodecore key. If no key is provided, or the provided key does not match the configured rules, the request will be rejected.
+> **⚠️ Important**: 
+> 1. If at least one key is defined in the `key-management` section, then every request must include a valid nodecore key. If no key is provided, or the provided key does not match the configured rules, the request will be rejected.
+> 2. If you want to pass your key via the URL you have to use another endpoint path - `/queries/{chain}/api-key/{your-key}`
