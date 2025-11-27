@@ -94,7 +94,7 @@ func TestBasicAuthProcessor_PreKeyValidate_Success(t *testing.T) {
 	// context with XFF = 10.0.0.1
 	ctx := test_utils.CtxWithXFF("10.0.0.1")
 
-	err := processor.PreKeyValidate(ctx, payload)
+	_, err := processor.PreKeyValidate(ctx, payload)
 	assert.NoError(t, err)
 }
 
@@ -104,8 +104,8 @@ func TestBasicAuthProcessor_PreKeyValidate_MissingHeader_Error(t *testing.T) {
 	// no X-Nodecore-Key header provided
 	payload := newPayload(t, map[string]string{auth.XNodecoreToken: "tok-123"})
 
-	err := processor.PreKeyValidate(context.Background(), payload)
-	assert.ErrorContains(t, err, "X-Nodecore-Key must be provided")
+	_, err := processor.PreKeyValidate(context.Background(), payload)
+	assert.ErrorContains(t, err, "api-key must be provided")
 }
 
 func TestBasicAuthProcessor_PreKeyValidate_KeyNotFound_Error(t *testing.T) {
@@ -117,8 +117,8 @@ func TestBasicAuthProcessor_PreKeyValidate_KeyNotFound_Error(t *testing.T) {
 		auth.XNodecoreToken: "tok-123",
 	})
 
-	err := processor.PreKeyValidate(context.Background(), payload)
-	assert.ErrorContains(t, err, "specified X-Nodecore-Key not found")
+	_, err := processor.PreKeyValidate(context.Background(), payload)
+	assert.ErrorContains(t, err, "specified api-key not found")
 }
 
 func TestBasicAuthProcessor_PreKeyValidate_IPNotAllowed_Error(t *testing.T) {
@@ -132,7 +132,7 @@ func TestBasicAuthProcessor_PreKeyValidate_IPNotAllowed_Error(t *testing.T) {
 	// context IP does not match allowed list
 	ctx := test_utils.CtxWithXFF("8.8.8.8")
 
-	err := processor.PreKeyValidate(ctx, payload)
+	_, err := processor.PreKeyValidate(ctx, payload)
 	assert.ErrorContains(t, err, "ips [8.8.8.8] are not allowed")
 }
 
@@ -200,7 +200,7 @@ func TestBasicAuthProcessor_PostKeyValidate_MissingHeader_Error(t *testing.T) {
 	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
-	assert.ErrorContains(t, err, "X-Nodecore-Key must be provided")
+	assert.ErrorContains(t, err, "api-key must be provided")
 }
 
 func TestBasicAuthProcessor_PostKeyValidate_KeyNotFound_Error(t *testing.T) {
@@ -216,7 +216,7 @@ func TestBasicAuthProcessor_PostKeyValidate_KeyNotFound_Error(t *testing.T) {
 	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
-	assert.ErrorContains(t, err, "specified X-Nodecore-Key not found")
+	assert.ErrorContains(t, err, "specified api-key not found")
 }
 
 // helper to create a real UpstreamJsonRpcRequest with realistic params

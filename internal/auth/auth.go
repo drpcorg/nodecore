@@ -2,7 +2,7 @@ package auth
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -36,7 +36,7 @@ func NewAuthProcessor(authCfg *config.AuthConfig) (AuthProcessor, error) {
 
 type AuthProcessor interface {
 	Authenticate(ctx context.Context, payload AuthPayload) error
-	PreKeyValidate(ctx context.Context, payload AuthPayload) error
+	PreKeyValidate(ctx context.Context, payload AuthPayload) ([]string, error)
 	PostKeyValidate(ctx context.Context, payload AuthPayload, request protocol.RequestHolder) error
 }
 
@@ -65,10 +65,10 @@ func (b *basicAuthProcessor) Authenticate(ctx context.Context, payload AuthPaylo
 	return b.requestStrategy.AuthenticateRequest(ctx, payload)
 }
 
-func (b *basicAuthProcessor) PreKeyValidate(ctx context.Context, payload AuthPayload) error {
+func (b *basicAuthProcessor) PreKeyValidate(ctx context.Context, payload AuthPayload) ([]string, error) {
 	key, err := b.getKey(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	return key.PreCheckSetting(ctx)
 }
@@ -84,12 +84,12 @@ func (b *basicAuthProcessor) PostKeyValidate(ctx context.Context, payload AuthPa
 func (b *basicAuthProcessor) getKey(payload AuthPayload) (Key, error) {
 	keyStr := getPayloadKey(payload)
 	if keyStr == "" {
-		return nil, fmt.Errorf("%s must be provided", XNodecoreKey)
+		return nil, errors.New("api-key must be provided")
 	}
 
-	key, ok := b.keyResolver.GetKey(getPayloadKey(payload))
+	key, ok := b.keyResolver.GetKey(keyStr)
 	if !ok {
-		return nil, fmt.Errorf("specified %s not found", XNodecoreKey)
+		return nil, errors.New("specified api-key not found")
 	}
 	return key, nil
 }
@@ -98,7 +98,10 @@ func getPayloadKey(payload AuthPayload) string {
 	var keyStr string
 	switch p := payload.(type) {
 	case *HttpAuthPayload:
-		keyStr = p.httpRequest.Header.Get(XNodecoreKey)
+		keyStr = p.httpRequest.PathValue("key")
+		if keyStr == "" {
+			keyStr = p.httpRequest.Header.Get(XNodecoreKey)
+		}
 	}
 	return keyStr
 }
