@@ -84,14 +84,14 @@ func init() {
 }
 
 type DimensionTracker struct {
-	upstreamDimensionsMap *utils.CMap[upstreamDimensionKey, UpstreamDimensions]
-	chainDimensionsMap    *utils.CMap[chainDimensionKey, ChainDimensions]
+	upstreamDimensionsMap *utils.CMap[upstreamDimensionKey, *UpstreamDimensions]
+	chainDimensionsMap    *utils.CMap[chainDimensionKey, *ChainDimensions]
 }
 
 func NewDimensionTracker() *DimensionTracker {
 	return &DimensionTracker{
-		upstreamDimensionsMap: utils.NewCMap[upstreamDimensionKey, UpstreamDimensions](),
-		chainDimensionsMap:    utils.NewCMap[chainDimensionKey, ChainDimensions](),
+		upstreamDimensionsMap: utils.NewCMap[upstreamDimensionKey, *UpstreamDimensions](),
+		chainDimensionsMap:    utils.NewCMap[chainDimensionKey, *ChainDimensions](),
 	}
 }
 

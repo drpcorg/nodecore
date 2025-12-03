@@ -26,13 +26,12 @@ type UpstreamSupervisor interface {
 
 type BaseUpstreamSupervisor struct {
 	ctx                     context.Context
-	chainSupervisors        *utils.CMap[chains.Chain, ChainSupervisor]
-	upstreams               *utils.CMap[string, Upstream]
+	chainSupervisors        *utils.CMap[chains.Chain, *ChainSupervisor]
+	upstreams               *utils.CMap[string, *Upstream]
 	eventsChan              chan protocol.UpstreamEvent
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
 	tracker                 *dimensions.DimensionTracker
-	upstreamIndices         *utils.CMap[string, int]
 	upstreamIndicesCounter  int
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
 	torProxyUrl             string
@@ -41,13 +40,12 @@ type BaseUpstreamSupervisor struct {
 func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker, rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry, torProxyUrl string) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
 		ctx:                     ctx,
-		upstreams:               utils.NewCMap[string, Upstream](),
-		chainSupervisors:        utils.NewCMap[chains.Chain, ChainSupervisor](),
+		upstreams:               utils.NewCMap[string, *Upstream](),
+		chainSupervisors:        utils.NewCMap[chains.Chain, *ChainSupervisor](),
 		eventsChan:              make(chan protocol.UpstreamEvent, 100),
 		upstreamsConfig:         upstreamsConfig,
 		tracker:                 tracker,
 		executor:                createFlowExecutor(upstreamsConfig.FailsafeConfig),
-		upstreamIndices:         utils.NewCMap[string, int](),
 		upstreamIndicesCounter:  1,
 		rateLimitBudgetRegistry: rateLimitBudgetRegistry,
 		torProxyUrl:             torProxyUrl,

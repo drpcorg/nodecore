@@ -6,12 +6,12 @@ import (
 )
 
 type RateLimitMemoryEngine struct {
-	limiters utils.CMap[string, ratelimit.Bucket]
+	limiters utils.CMap[string, *ratelimit.Bucket]
 }
 
 func NewRateLimitMemoryEngine() *RateLimitMemoryEngine {
 	return &RateLimitMemoryEngine{
-		limiters: utils.CMap[string, ratelimit.Bucket]{},
+		limiters: utils.CMap[string, *ratelimit.Bucket]{},
 	}
 }
 

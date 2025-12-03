@@ -207,14 +207,14 @@ func NewSubCtx() *SubCtx {
 }
 
 func (s *SubCtx) AddSub(sub string, cancel context.CancelFunc) {
-	s.subscriptions.Store(sub, &cancel)
+	s.subscriptions.Store(sub, cancel)
 }
 
 func (s *SubCtx) Unsubscribe(sub string) {
 	cancel, ok := s.subscriptions.Load(sub)
 	if ok {
 		s.subscriptions.Delete(sub)
-		(*cancel)()
+		cancel()
 	}
 }
 

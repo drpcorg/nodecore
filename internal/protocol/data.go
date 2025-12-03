@@ -27,6 +27,18 @@ const (
 	ResultStop
 )
 
+type ClientRetryableError struct {
+	err error
+}
+
+func (e ClientRetryableError) Error() string {
+	return e.err.Error()
+}
+
+func NewClientRetryableError(err error) *ClientRetryableError {
+	return &ClientRetryableError{err: err}
+}
+
 type StopRetryErr struct {
 }
 
@@ -251,12 +263,12 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap],
 }
 
 type BlockInfo struct {
-	blocks *utils.CMap[BlockType, BlockData]
+	blocks *utils.CMap[BlockType, *BlockData]
 }
 
 func NewBlockInfo() *BlockInfo {
 	return &BlockInfo{
-		blocks: utils.NewCMap[BlockType, BlockData](),
+		blocks: utils.NewCMap[BlockType, *BlockData](),
 	}
 }
 
