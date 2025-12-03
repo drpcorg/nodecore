@@ -84,7 +84,6 @@ func (d *DrpcIntegrationClient) pollKeys(ownerId, apiToken string, keyEvents cha
 					delete(currentKeys, apiKey)
 				}
 			}
-		default:
 		}
 	}
 }
