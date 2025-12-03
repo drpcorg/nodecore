@@ -1,0 +1,9 @@
+integration:
+  drpc:
+    url: http://localhost:9195
+
+auth:
+  enabled: true
+  key-management:
+    - id: "drpc-super-key"
+      type: drpc

@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/server"
@@ -50,7 +51,9 @@ func main() {
 
 	mainCtx, mainCtxCancel := context.WithCancel(context.Background())
 
-	authProcessor, err := auth.NewAuthProcessor(appConfig.AuthConfig)
+	integrationResolver := integration.NewIntegrationResolver(appConfig.IntegrationConfig)
+
+	authProcessor, err := auth.NewAuthProcessor(appConfig.AuthConfig, integrationResolver)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the auth processor")
 	}

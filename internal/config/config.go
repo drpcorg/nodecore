@@ -22,12 +22,22 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig   *ServerConfig            `yaml:"server"`
-	UpstreamConfig *UpstreamConfig          `yaml:"upstream-config"`
-	CacheConfig    *CacheConfig             `yaml:"cache"`
-	AuthConfig     *AuthConfig              `yaml:"auth"`
-	RateLimit      []RateLimitBudgetsConfig `yaml:"rate-limit"`
-	AppStorages    []AppStorageConfig       `yaml:"app-storages"`
+	ServerConfig      *ServerConfig            `yaml:"server"`
+	UpstreamConfig    *UpstreamConfig          `yaml:"upstream-config"`
+	CacheConfig       *CacheConfig             `yaml:"cache"`
+	AuthConfig        *AuthConfig              `yaml:"auth"`
+	RateLimit         []RateLimitBudgetsConfig `yaml:"rate-limit"`
+	AppStorages       []AppStorageConfig       `yaml:"app-storages"`
+	IntegrationConfig *IntegrationConfig       `yaml:"integration"`
+}
+
+type IntegrationConfig struct {
+	Drpc *DrpcIntegrationConfig `yaml:"drpc"`
+}
+
+type DrpcIntegrationConfig struct {
+	Url            string        `yaml:"url"`
+	RequestTimeout time.Duration `yaml:"request-timeout"`
 }
 
 type AppStorageConfig struct {
@@ -91,12 +101,14 @@ type KeyConfig struct {
 	Id             string          `yaml:"id"`
 	Type           KeyType         `yaml:"type"`
 	LocalKeyConfig *LocalKeyConfig `yaml:"local"`
+	DrpcKeyConfig  *DrpcKeyConfig  `yaml:"drpc"`
 }
 
 type KeyType string
 
 const (
-	Local KeyType = "local"
+	LocalKey KeyType = "local"
+	DrpcKey  KeyType = "drpc"
 )
 
 type RequestStrategyConfig struct {
@@ -136,6 +148,26 @@ type KeySettingsConfig struct {
 	Methods       *AuthMethods   `yaml:"methods"`
 	AuthContracts *AuthContracts `yaml:"contracts"`
 	CorsOrigins   []string       `yaml:"cors-origins"`
+}
+
+type IntegrationKeyConfig interface {
+	keyCfg()
+}
+
+type ExternalKeyConfig struct {
+}
+
+func (d *ExternalKeyConfig) keyCfg() {}
+
+type DrpcKeyConfig struct {
+	Owner *DrpcOwnerConfig `yaml:"owner"`
+}
+
+func (d *DrpcKeyConfig) keyCfg() {}
+
+type DrpcOwnerConfig struct {
+	Id       string `yaml:"id"`
+	ApiToken string `yaml:"api-token"`
 }
 
 type LocalKeyConfig struct {

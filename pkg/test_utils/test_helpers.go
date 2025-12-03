@@ -4,6 +4,7 @@ import (
 	"context"
 	json2 "encoding/json"
 	"net/http"
+	"testing"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -24,6 +25,30 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
+
+func BuildLocalKeyConfig(id, key string, allowedIps []string, methods *config.AuthMethods, contracts *config.AuthContracts) *config.KeyConfig {
+	return &config.KeyConfig{
+		Id:   id,
+		Type: config.LocalKey,
+		LocalKeyConfig: &config.LocalKeyConfig{
+			Key: key,
+			KeySettingsConfig: &config.KeySettingsConfig{
+				AllowedIps:    allowedIps,
+				Methods:       methods,
+				AuthContracts: contracts,
+			},
+		},
+	}
+}
+
+func NewUpstreamRequest(t *testing.T, method string, params any) protocol.RequestHolder {
+	t.Helper()
+	req, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params)
+	if err != nil {
+		t.Fatalf("failed to build UpstreamJsonRpcRequest: %v", err)
+	}
+	return req
+}
 
 func CtxWithRemoteAddr(remote string) context.Context {
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)

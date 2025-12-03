@@ -40,7 +40,7 @@ type UpstreamAutoTune struct {
 	bucket             atomic.Pointer[ratelimit.Bucket]
 	accumErrors        atomic.Int32
 	accumRateLimited   atomic.Int32
-	attemptCounts      atomic.Pointer[utils.CMap[int64, atomic.Int32]]
+	attemptCounts      atomic.Pointer[utils.CMap[int64, *atomic.Int32]]
 	lastDirection      direction
 	stepPercent        float64
 }
@@ -52,13 +52,13 @@ func NewUpstreamAutoTune(ctx context.Context, upstreamId string, config *config.
 		rateLimitPeriod:    config.InitRateLimitPeriod,
 		errorRateThreshold: config.ErrorRateThreshold,
 		bucket:             atomic.Pointer[ratelimit.Bucket]{},
-		attemptCounts:      atomic.Pointer[utils.CMap[int64, atomic.Int32]]{},
+		attemptCounts:      atomic.Pointer[utils.CMap[int64, *atomic.Int32]]{},
 		stepPercent:        10.0,
 		lastDirection:      directionStable,
 	}
 	result.ratelimit.Store(int32(config.InitRateLimit))
 	result.bucket.Store(ratelimit.NewBucketWithQuantum(config.InitRateLimitPeriod, int64(config.InitRateLimit), int64(config.InitRateLimit)))
-	result.attemptCounts.Store(utils.NewCMap[int64, atomic.Int32]())
+	result.attemptCounts.Store(utils.NewCMap[int64, *atomic.Int32]())
 	TunedRateLimitMetric.WithLabelValues(upstreamId, config.InitRateLimitPeriod.String()).Set(float64(config.InitRateLimit))
 	go func() {
 		result.Run(ctx)
@@ -94,7 +94,7 @@ func (u *UpstreamAutoTune) RecalculateRateLimit(ctx context.Context) {
 	log := zerolog.Ctx(ctx)
 	errors := u.accumErrors.Swap(0)
 	rateLimited := u.accumRateLimited.Swap(0)
-	oldMap := u.attemptCounts.Swap(utils.NewCMap[int64, atomic.Int32]())
+	oldMap := u.attemptCounts.Swap(utils.NewCMap[int64, *atomic.Int32]())
 
 	totalAttempts := 0
 	oldMap.Range(func(key int64, val *atomic.Int32) bool {

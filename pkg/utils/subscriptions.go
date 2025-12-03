@@ -52,7 +52,7 @@ func (s *Subscription[T]) Unsubscribe() {
 }
 
 type SubscriptionManager[T any] struct {
-	subscriptions CMap[string, Subscription[T]]
+	subscriptions CMap[string, *Subscription[T]]
 	name          string
 }
 
@@ -112,7 +112,7 @@ func (sm *SubscriptionManager[T]) Publish(event T) {
 
 func NewSubscriptionManager[T any](name string) *SubscriptionManager[T] {
 	return &SubscriptionManager[T]{
-		subscriptions: CMap[string, Subscription[T]]{},
+		subscriptions: CMap[string, *Subscription[T]]{},
 		name:          name,
 	}
 }
