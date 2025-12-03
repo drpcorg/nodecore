@@ -159,15 +159,15 @@ func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			httpmock.Activate(te)
-			defer httpmock.Deactivate()
+			defer httpmock.DeactivateAndReset()
 
 			test.responder()
 
-			connector := getDrpcHttpConnectorWithTimeout(0)
+			connector := getDrpcHttpConnectorWithTimeout(1 * time.Millisecond)
 			err := connector.OwnerExists("id", "token")
 
 			var expectedErr *protocol.ClientRetryableError
-			assert.ErrorAs(t, err, &expectedErr)
+			assert.ErrorAs(te, err, &expectedErr)
 
 			assert.ErrorContains(te, err, test.err)
 		})
@@ -205,15 +205,15 @@ func TestDrpcHttpConnectorLoadKeysRequestErrorThenRetryableErr(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			httpmock.Activate(te)
-			defer httpmock.Deactivate()
+			defer httpmock.DeactivateAndReset()
 
 			test.responder()
 
-			connector := getDrpcHttpConnectorWithTimeout(0)
+			connector := getDrpcHttpConnectorWithTimeout(1 * time.Millisecond)
 			keys, err := connector.LoadOwnerKeys("id", "token")
 
 			var expectedErr *protocol.ClientRetryableError
-			assert.ErrorAs(t, err, &expectedErr)
+			assert.ErrorAs(te, err, &expectedErr)
 
 			assert.Empty(te, keys)
 			assert.ErrorContains(te, err, test.err)
