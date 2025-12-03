@@ -81,7 +81,7 @@ func (h *HeadProcessor) Start() {
 		go h.head.Start()
 		h.lastUpdate.Store(time.Now())
 
-		timeout := time.NewTimer(5 * time.Second)
+		timeout := time.NewTimer(h.headNoUpdatesTimeout)
 		for {
 			select {
 			case <-timeout.C:
