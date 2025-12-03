@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 )
 
 type DrpcIntegrationClient struct {
+	ctx          context.Context
 	connector    drpc.DrpcHttpConnector
 	ownerKeys    *utils.CMap[string, map[string]*drpc.DrpcKey]
 	pollInterval time.Duration
@@ -54,30 +56,35 @@ func (d *DrpcIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (*Init
 
 func (d *DrpcIntegrationClient) pollKeys(ownerId, apiToken string, keyEvents chan KeyEvent) {
 	for {
-		time.Sleep(d.pollInterval)
-		currentKeys, _ := d.ownerKeys.Load(ownerId)
-		ownerKeys, err := d.getOwnerKeys(ownerId, apiToken)
-		if err != nil {
-			log.Warn().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
-			continue
-		}
-
-		newKeys := mapset.NewThreadUnsafeSet[string]()
-		for _, key := range ownerKeys {
-			newKeys.Add(key.GetKeyValue())
-			currentKey, ok := currentKeys[key.GetKeyValue()]
-
-			if !ok || !cmp.Equal(currentKey, key) {
-				keyEvents <- NewUpdatedKeyEvent(key)
-				currentKeys[key.GetKeyValue()] = key
+		select {
+		case <-d.ctx.Done():
+			return
+		case <-time.After(d.pollInterval):
+			currentKeys, _ := d.ownerKeys.Load(ownerId)
+			ownerKeys, err := d.getOwnerKeys(ownerId, apiToken)
+			if err != nil {
+				log.Warn().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
+				continue
 			}
-		}
 
-		for apiKey, key := range currentKeys {
-			if !newKeys.Contains(apiKey) {
-				keyEvents <- NewRemovedKeyEvent(key)
-				delete(currentKeys, apiKey)
+			newKeys := mapset.NewThreadUnsafeSet[string]()
+			for _, key := range ownerKeys {
+				newKeys.Add(key.GetKeyValue())
+				currentKey, ok := currentKeys[key.GetKeyValue()]
+
+				if !ok || !cmp.Equal(currentKey, key) {
+					keyEvents <- NewUpdatedKeyEvent(key)
+					currentKeys[key.GetKeyValue()] = key
+				}
 			}
+
+			for apiKey, key := range currentKeys {
+				if !newKeys.Contains(apiKey) {
+					keyEvents <- NewRemovedKeyEvent(key)
+					delete(currentKeys, apiKey)
+				}
+			}
+		default:
 		}
 	}
 }
@@ -94,8 +101,9 @@ func (d *DrpcIntegrationClient) getOwnerKeys(ownerId, apiToken string) ([]*drpc.
 	return drpcKeys, nil
 }
 
-func NewDrpcIntegrationClientWithConnector(connector drpc.DrpcHttpConnector, pollInterval time.Duration) *DrpcIntegrationClient {
+func NewDrpcIntegrationClientWithConnector(ctx context.Context, connector drpc.DrpcHttpConnector, pollInterval time.Duration) *DrpcIntegrationClient {
 	return &DrpcIntegrationClient{
+		ctx:          ctx,
 		connector:    connector,
 		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
 		pollInterval: pollInterval,
@@ -106,6 +114,7 @@ func NewDrpcIntegrationClient(
 	drpcIntegration *config.DrpcIntegrationConfig,
 ) *DrpcIntegrationClient {
 	return &DrpcIntegrationClient{
+		ctx:          context.Background(),
 		connector:    drpc.NewSimpleDrpcHttpConnector(drpcIntegration),
 		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
 		pollInterval: 1 * time.Minute,
