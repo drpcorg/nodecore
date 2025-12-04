@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -13,100 +14,100 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-//func TestDrpcIntegrationClientReturnType(t *testing.T) {
-//	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
-//
-//	assert.Equal(t, integration.IntegrationType("drpc"), client.Type())
-//}
-//
-//func TestDrpcIntegrationClientNotDrpcCfgThenErr(t *testing.T) {
-//	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
-//
-//	resp, err := client.InitKeys(&config.ExternalKeyConfig{})
-//
-//	assert.Nil(t, resp)
-//	assert.ErrorContains(t, err, "drpc init keys expects drpc key config")
-//}
-//
-//func TestDrpcIntegrationClientNoOwnerThenErr(t *testing.T) {
-//	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
-//
-//	resp, err := client.InitKeys(&config.DrpcKeyConfig{})
-//
-//	assert.Nil(t, resp)
-//	assert.ErrorContains(t, err, "there must be drpc owner config to init drpc keys")
-//}
-//
-//func TestDrpcIntegrationClientOwnerErrorThenErr(t *testing.T) {
-//	connector := mocks.NewMockDrpcHttpcConnector()
-//	client := integration.NewDrpcIntegrationClientWithConnector(connector, 0)
-//	cfg := &config.DrpcKeyConfig{Owner: &config.DrpcOwnerConfig{Id: "owner", ApiToken: "owner-token"}}
-//
-//	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(errors.New("super error"))
-//
-//	resp, err := client.InitKeys(cfg)
-//
-//	connector.AssertExpectations(t)
-//
-//	assert.Nil(t, resp)
-//	assert.ErrorContains(t, err, "super error")
-//}
-//
-//func TestDrpcIntegrationClientLoadKeysErrorThenErr(t *testing.T) {
-//	connector := mocks.NewMockDrpcHttpcConnector()
-//	client := integration.NewDrpcIntegrationClientWithConnector(connector, 0)
-//	cfg := &config.DrpcKeyConfig{Owner: &config.DrpcOwnerConfig{Id: "owner", ApiToken: "owner-token"}}
-//
-//	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil)
-//	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil, errors.New("super error"))
-//
-//	resp, err := client.InitKeys(cfg)
-//
-//	connector.AssertExpectations(t)
-//
-//	assert.Nil(t, resp)
-//	assert.ErrorContains(t, err, "super error")
-//}
-//
-//func TestDrpcIntegrationClientInitKeys(t *testing.T) {
-//	connector := mocks.NewMockDrpcHttpcConnector()
-//	client := integration.NewDrpcIntegrationClientWithConnector(connector, 1*time.Minute)
-//	cfg := &config.DrpcKeyConfig{Owner: &config.DrpcOwnerConfig{Id: "owner", ApiToken: "owner-token"}}
-//
-//	drpcKeys := []*drpc.DrpcKey{
-//		{
-//			KeyId:             "id",
-//			IpWhitelist:       []string{"1.1.1.1"},
-//			MethodsBlacklist:  []string{"method"},
-//			MethodsWhitelist:  []string{"method1"},
-//			ContractWhitelist: []string{"contract"},
-//			CorsOrigins:       []string{"http://localhost:8080"},
-//			ApiKey:            "api-key",
-//		},
-//		{
-//			KeyId:             "id2",
-//			IpWhitelist:       []string{"2.2.2.2"},
-//			MethodsBlacklist:  []string{"method2"},
-//			MethodsWhitelist:  []string{"method3"},
-//			ContractWhitelist: []string{"contract2"},
-//		},
-//	}
-//
-//	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil)
-//	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(drpcKeys, nil)
-//
-//	resp, err := client.InitKeys(cfg)
-//
-//	connector.AssertExpectations(t)
-//
-//	expected := make([]keymanagement.Key, 0)
-//	for _, key := range drpcKeys {
-//		expected = append(expected, key)
-//	}
-//
-//	assert.NoError(t, err)
-//	assert.Equal(t, expected, resp.InitialKeys)
-//}
+func TestDrpcIntegrationClientReturnType(t *testing.T) {
+	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
+
+	assert.Equal(t, integration.IntegrationType("drpc"), client.Type())
+}
+
+func TestDrpcIntegrationClientNotDrpcCfgThenErr(t *testing.T) {
+	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
+
+	resp, err := client.InitKeys(&config.ExternalKeyConfig{})
+
+	assert.Nil(t, resp)
+	assert.ErrorContains(t, err, "drpc init keys expects drpc key config")
+}
+
+func TestDrpcIntegrationClientNoOwnerThenErr(t *testing.T) {
+	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
+
+	resp, err := client.InitKeys(&config.DrpcKeyConfig{})
+
+	assert.Nil(t, resp)
+	assert.ErrorContains(t, err, "there must be drpc owner config to init drpc keys")
+}
+
+func TestDrpcIntegrationClientOwnerErrorThenErr(t *testing.T) {
+	connector := mocks.NewMockDrpcHttpcConnector()
+	client := integration.NewDrpcIntegrationClientWithConnector(context.Background(), connector, 0)
+	cfg := &config.DrpcKeyConfig{Owner: &config.DrpcOwnerConfig{Id: "owner", ApiToken: "owner-token"}}
+
+	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(errors.New("super error"))
+
+	resp, err := client.InitKeys(cfg)
+
+	connector.AssertExpectations(t)
+
+	assert.Nil(t, resp)
+	assert.ErrorContains(t, err, "super error")
+}
+
+func TestDrpcIntegrationClientLoadKeysErrorThenErr(t *testing.T) {
+	connector := mocks.NewMockDrpcHttpcConnector()
+	client := integration.NewDrpcIntegrationClientWithConnector(context.Background(), connector, 0)
+	cfg := &config.DrpcKeyConfig{Owner: &config.DrpcOwnerConfig{Id: "owner", ApiToken: "owner-token"}}
+
+	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil)
+	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil, errors.New("super error"))
+
+	resp, err := client.InitKeys(cfg)
+
+	connector.AssertExpectations(t)
+
+	assert.Nil(t, resp)
+	assert.ErrorContains(t, err, "super error")
+}
+
+func TestDrpcIntegrationClientInitKeys(t *testing.T) {
+	connector := mocks.NewMockDrpcHttpcConnector()
+	client := integration.NewDrpcIntegrationClientWithConnector(context.Background(), connector, 1*time.Minute)
+	cfg := &config.DrpcKeyConfig{Owner: &config.DrpcOwnerConfig{Id: "owner", ApiToken: "owner-token"}}
+
+	drpcKeys := []*drpc.DrpcKey{
+		{
+			KeyId:             "id",
+			IpWhitelist:       []string{"1.1.1.1"},
+			MethodsBlacklist:  []string{"method"},
+			MethodsWhitelist:  []string{"method1"},
+			ContractWhitelist: []string{"contract"},
+			CorsOrigins:       []string{"http://localhost:8080"},
+			ApiKey:            "api-key",
+		},
+		{
+			KeyId:             "id2",
+			IpWhitelist:       []string{"2.2.2.2"},
+			MethodsBlacklist:  []string{"method2"},
+			MethodsWhitelist:  []string{"method3"},
+			ContractWhitelist: []string{"contract2"},
+		},
+	}
+
+	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil)
+	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(drpcKeys, nil)
+
+	resp, err := client.InitKeys(cfg)
+
+	connector.AssertExpectations(t)
+
+	expected := make([]keymanagement.Key, 0)
+	for _, key := range drpcKeys {
+		expected = append(expected, key)
+	}
+
+	assert.NoError(t, err)
+	assert.Equal(t, expected, resp.InitialKeys)
+}
 
 func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
