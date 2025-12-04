@@ -48,7 +48,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			httpmock.Activate()
+			httpmock.Activate(t)
 			defer httpmock.Deactivate()
 
 			httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
@@ -110,7 +110,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			httpmock.Activate()
+			httpmock.Activate(te)
 			defer httpmock.Deactivate()
 
 			httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
@@ -136,7 +136,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 }
 
 func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
-	httpmock.Activate()
+	httpmock.Activate(t)
 	defer httpmock.Deactivate()
 
 	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
@@ -189,7 +189,7 @@ func TestHttpConnectorType(t *testing.T) {
 }
 
 func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
-	httpmock.Activate()
+	httpmock.Activate(t)
 	defer httpmock.Deactivate()
 	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
 		resp := httpmock.NewBytesResponse(200, []byte(`{"id": 1, "jsonrpc": "2.0", "result": {"number": "0x11"} }`))
@@ -210,7 +210,7 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 }
 
 func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
-	httpmock.Activate()
+	httpmock.Activate(t)
 	defer httpmock.Deactivate()
 
 	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {

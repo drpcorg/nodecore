@@ -40,7 +40,7 @@ type ChainSupervisor struct {
 	fc             choice.ForkChoice
 	state          *utils.Atomic[ChainSupervisorState]
 	eventsChan     chan protocol.UpstreamEvent
-	upstreamStates *utils.CMap[string, protocol.UpstreamState]
+	upstreamStates *utils.CMap[string, *protocol.UpstreamState]
 	tracker        *dimensions.DimensionTracker
 }
 
@@ -79,7 +79,7 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 		Chain:          chain,
 		fc:             fc,
 		eventsChan:     make(chan protocol.UpstreamEvent, 100),
-		upstreamStates: utils.NewCMap[string, protocol.UpstreamState](),
+		upstreamStates: utils.NewCMap[string, *protocol.UpstreamState](),
 		state:          utils.NewAtomic[ChainSupervisorState](),
 	}
 }
