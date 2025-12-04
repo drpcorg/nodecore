@@ -68,6 +68,24 @@ func TestDrpcHttpConnectorOwnerForbiddenThenError(t *testing.T) {
 	assert.ErrorContains(t, err, "forbidden, owner - 'id', message: wrong api token")
 }
 
+func TestDrpcHttpConnectorOwnerTooManyRequestsThenError(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterMatcherResponder("GET", "/nodecore/owners/id", httpmock.HeaderIs(drpc.ApiToken, "token"), func(request *http.Request) (*http.Response, error) {
+		resp := httpmock.NewBytesResponse(http.StatusTooManyRequests, nil)
+		return resp, nil
+	})
+
+	connector := getDrpcHttpConnector()
+	err := connector.OwnerExists("id", "token")
+
+	var expectedErr *protocol.ClientRetryableError
+	assert.NotErrorAs(t, err, &expectedErr)
+
+	assert.ErrorContains(t, err, "too many requests, please try again later")
+}
+
 func TestDrpcHttpConnectorOwnerForbiddenCantParseBodyThenError(t *testing.T) {
 	httpmock.Activate(t)
 	defer httpmock.Deactivate()
@@ -361,6 +379,25 @@ func TestDrpcHttpConnectorLoadKeysInternalServerErrorThenRetryableErr(t *testing
 
 	assert.Empty(t, keys)
 	assert.ErrorContains(t, err, `internal server error while loading keys of owner 'id', {"message":"internal error!", "code":500}`)
+}
+
+func TestDrpcHttpConnectorLoadKeysTooManyRequestsThenError(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterMatcherResponder("GET", "/nodecore/owners/id/keys", httpmock.HeaderIs(drpc.ApiToken, "token"), func(request *http.Request) (*http.Response, error) {
+		resp := httpmock.NewBytesResponse(http.StatusTooManyRequests, nil)
+		return resp, nil
+	})
+
+	connector := getDrpcHttpConnector()
+	keys, err := connector.LoadOwnerKeys("id", "token")
+
+	var expectedErr *protocol.ClientRetryableError
+	assert.NotErrorAs(t, err, &expectedErr)
+
+	assert.Empty(t, keys)
+	assert.ErrorContains(t, err, "too many requests, please try again later")
 }
 
 func TestDrpcHttpConnectorLoadKeysAnyUnexpectedCodeThenErr(t *testing.T) {
