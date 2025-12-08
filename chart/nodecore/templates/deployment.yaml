@@ -34,7 +34,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- if .Values.serviceAccount.create }}
-      serviceAccountName: {{ .Release.name }}
+      serviceAccountName: {{ .Release.Name }}
       {{- else }}
       serviceAccountName: default
       {{- end }}
