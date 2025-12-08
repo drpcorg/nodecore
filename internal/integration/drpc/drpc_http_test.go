@@ -81,7 +81,7 @@ func TestDrpcHttpConnectorOwnerTooManyRequestsThenError(t *testing.T) {
 	err := connector.OwnerExists("id", "token")
 
 	var expectedErr *protocol.ClientRetryableError
-	assert.NotErrorAs(t, err, &expectedErr)
+	assert.ErrorAs(t, err, &expectedErr)
 
 	assert.ErrorContains(t, err, "too many requests, please try again later")
 }
@@ -394,7 +394,7 @@ func TestDrpcHttpConnectorLoadKeysTooManyRequestsThenError(t *testing.T) {
 	keys, err := connector.LoadOwnerKeys("id", "token")
 
 	var expectedErr *protocol.ClientRetryableError
-	assert.NotErrorAs(t, err, &expectedErr)
+	assert.ErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
 	assert.ErrorContains(t, err, "too many requests, please try again later")
