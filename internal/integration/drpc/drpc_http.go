@@ -66,7 +66,7 @@ func (s *SimpleDrpcHttpConnector) OwnerExists(ownerId, apiToken string) error {
 	case http.StatusNotFound:
 		return fmt.Errorf("owner '%s' not found", ownerId)
 	case http.StatusTooManyRequests:
-		return errors.New("too many requests, please try again later")
+		return protocol.NewClientRetryableError(errors.New("too many requests, please try again later"))
 	case http.StatusForbidden:
 		var jsonErr jsonError
 		err = json.NewDecoder(response.Body).Decode(&jsonErr)
@@ -99,7 +99,7 @@ func (s *SimpleDrpcHttpConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*Dr
 	case http.StatusNotFound:
 		return nil, fmt.Errorf("owner '%s' not found", ownerId)
 	case http.StatusTooManyRequests:
-		return nil, errors.New("too many requests, please try again later")
+		return nil, protocol.NewClientRetryableError(errors.New("too many requests, please try again later"))
 	case http.StatusForbidden:
 		var jsonErr jsonError
 		err = json.NewDecoder(response.Body).Decode(&jsonErr)
