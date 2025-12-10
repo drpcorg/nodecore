@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.24.1-alpine AS builder
+FROM golang:1.25.5-bookworm AS builder
 WORKDIR /app
 
 # Install build dependencies
