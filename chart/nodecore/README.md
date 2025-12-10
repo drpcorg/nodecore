@@ -45,7 +45,7 @@ Replace `<VERSION>` with one of the published chart versions.
 ```bash
 helm upgrade \
   --install nodecore \
-  oci://ghcr.io/drpcorg/nodecore-chart \
+  oci://ghcr.io/drpcorg/nodecore-chart/nodecore \
   --version <VERSION> \
   --namespace nodecore \
   --create-namespace
@@ -73,7 +73,7 @@ Install with:
 ```bash
 helm upgrade \
   --install nodecore \
-  oci://ghcr.io/drpcorg/nodecore-chart \
+  oci://ghcr.io/drpcorg/nodecore-chart/nodecore \
   --version <VERSION> \
   --namespace nodecore \
   --create-namespace \
