@@ -14,23 +14,23 @@ on:
 env:
   REGISTRY: docker.io
   IMAGE_NAME: drpcorg/nodecore
-  GO_VERSION: "1.24.1"
+  GO_VERSION: "1.25.5"
 
 jobs:
   test:
     uses: ./.github/workflows/test.yml
     with:
-      go-version: "1.24.1"
+      go-version: "1.25.5"
 
   lint:
     uses: ./.github/workflows/lint.yml
     with:
-      go-version: "1.24.1"
+      go-version: "1.25.5"
 
   build:
     uses: ./.github/workflows/build.yml
     with:
-      go-version: "1.24.1"
+      go-version: "1.25.5"
 
   upload-release-assets:
     if: github.event_name == 'release'
@@ -46,13 +46,13 @@ jobs:
       - name: Download Ubuntu artifacts
         uses: actions/download-artifact@v4
         with:
-          name: nodecore-ubuntu-latest-1.24.1-${{ steps.short_sha.outputs.sha }}
+          name: nodecore-ubuntu-latest-1.25.5-${{ steps.short_sha.outputs.sha }}
           path: ./artifacts/ubuntu
 
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          name: nodecore-macos-latest-1.24.1-${{ steps.short_sha.outputs.sha }}
+          name: nodecore-macos-latest-1.25.5-${{ steps.short_sha.outputs.sha }}
           path: ./artifacts/macos
 
       - name: Prepare release assets
