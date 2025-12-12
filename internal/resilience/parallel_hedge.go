@@ -168,7 +168,7 @@ func (e *hedgeExecutor[R]) Apply(innerFn func(failsafe.Execution[R]) *common.Pol
 		resultCount := atomic.Int32{}
 		resultChan := make(chan execResult, 1) // Only one result is sent
 
-		possibleResults := utils.CMap[int, execResult]{}
+		possibleResults := utils.CMap[int, *execResult]{}
 
 		executions[0] = parentExecution.CopyForCancellable().(policy.ExecutionInternal[R])
 

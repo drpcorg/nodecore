@@ -1,4 +1,4 @@
-package auth
+package keymanagement
 
 import (
 	"context"
@@ -14,32 +14,9 @@ import (
 	"github.com/samber/lo"
 )
 
-type KeyResolver struct {
-	keys map[string]Key
-}
-
-func NewKeyResolver(keyCfgs []*config.KeyConfig) *KeyResolver {
-	keys := make(map[string]Key)
-	for _, keyCfg := range keyCfgs {
-		switch keyCfg.Type {
-		case config.Local:
-			localKey := NewLocalKey(keyCfg)
-			keys[localKey.key] = localKey
-		}
-	}
-
-	return &KeyResolver{
-		keys: keys,
-	}
-}
-
-func (k *KeyResolver) GetKey(keyStr string) (Key, bool) {
-	key, ok := k.keys[keyStr]
-	return key, ok
-}
-
 type Key interface {
 	Id() string
+	GetKeyValue() string
 	PreCheckSetting(ctx context.Context) ([]string, error)
 	PostCheckSetting(ctx context.Context, request protocol.RequestHolder) error
 }
@@ -48,6 +25,10 @@ type LocalKey struct {
 	id             string
 	key            string
 	keySettingsCfg *config.KeySettingsConfig
+}
+
+func (l *LocalKey) GetKeyValue() string {
+	return l.key
 }
 
 func (l *LocalKey) Id() string {
@@ -80,11 +61,13 @@ func (l *LocalKey) PostCheckSetting(_ context.Context, request protocol.RequestH
 		return nil
 	}
 
-	err := CheckMethod(l.keySettingsCfg.Methods, request.Method())
+	methods := lo.Ternary(l.keySettingsCfg.Methods != nil, l.keySettingsCfg.Methods, &config.AuthMethods{})
+	err := CheckMethod(methods.Allowed, methods.Forbidden, request.Method())
 	if err != nil {
 		return err
 	}
-	err = CheckContracts(l.keySettingsCfg.AuthContracts, request)
+	contracts := lo.Ternary(l.keySettingsCfg.AuthContracts != nil, l.keySettingsCfg.AuthContracts, &config.AuthContracts{})
+	err = CheckContracts(contracts.Allowed, request)
 	if err != nil {
 		return err
 	}
@@ -102,25 +85,23 @@ func NewLocalKey(keyCfg *config.KeyConfig) *LocalKey {
 
 var _ Key = (*LocalKey)(nil)
 
-func CheckMethod(methodsCfg *config.AuthMethods, method string) error {
-	if methodsCfg != nil {
-		if len(methodsCfg.Allowed) > 0 {
-			if !lo.Contains(methodsCfg.Allowed, method) {
-				return fmt.Errorf("method '%s' is not allowed", method)
-			}
+func CheckMethod(allowedMethods, forbiddenMethods []string, method string) error {
+	if len(allowedMethods) > 0 {
+		if !lo.Contains(allowedMethods, method) {
+			return fmt.Errorf("method '%s' is not allowed", method)
 		}
-		if len(methodsCfg.Forbidden) > 0 {
-			if lo.Contains(methodsCfg.Forbidden, method) {
-				return fmt.Errorf("method '%s' is not allowed", method)
-			}
+	}
+	if len(forbiddenMethods) > 0 {
+		if lo.Contains(forbiddenMethods, method) {
+			return fmt.Errorf("method '%s' is not allowed", method)
 		}
 	}
 
 	return nil
 }
 
-func CheckContracts(contractsCfg *config.AuthContracts, request protocol.RequestHolder) error {
-	if contractsCfg != nil && len(contractsCfg.Allowed) > 0 {
+func CheckContracts(contracts []string, request protocol.RequestHolder) error {
+	if len(contracts) > 0 {
 		switch request.Method() {
 		case "eth_call":
 			body, err := request.Body()
@@ -138,7 +119,7 @@ func CheckContracts(contractsCfg *config.AuthContracts, request protocol.Request
 				return errors.New("'to' param must be string")
 			}
 			toParam, _ := toParamNode.String()
-			allowed := lo.Contains(contractsCfg.Allowed, toParam)
+			allowed := lo.Contains(contracts, toParam)
 			if !allowed {
 				return fmt.Errorf("'%s' address is not allowed", toParam)
 			}
@@ -170,7 +151,7 @@ func CheckContracts(contractsCfg *config.AuthContracts, request protocol.Request
 				addresses = append(addresses, address)
 			}
 			for _, logAddress := range addresses {
-				allowed := lo.Contains(contractsCfg.Allowed, logAddress)
+				allowed := lo.Contains(contracts, logAddress)
 				if !allowed {
 					return fmt.Errorf("'%s' address is not allowed", logAddress)
 				}

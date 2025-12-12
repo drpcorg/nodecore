@@ -37,7 +37,7 @@ type RatingRegistry struct {
 	calculationInterval time.Duration
 	scoreFunc           goja.Callable
 	runtime             *goja.Runtime
-	sortedUpstreams     *utils.Atomic[*utils.CMap[chains.Chain, utils.CMap[string, []string]]]
+	sortedUpstreams     *utils.Atomic[*utils.CMap[chains.Chain, *utils.CMap[string, []string]]]
 }
 
 func NewRatingRegistry(
@@ -46,8 +46,8 @@ func NewRatingRegistry(
 	scorePolicyConfig *config.ScorePolicyConfig,
 ) *RatingRegistry {
 	scoreFunc, _ := scorePolicyConfig.GetScoreFunc()
-	sortedUpstreams := utils.NewAtomic[*utils.CMap[chains.Chain, utils.CMap[string, []string]]]()
-	sortedUpstreams.Store(utils.NewCMap[chains.Chain, utils.CMap[string, []string]]())
+	sortedUpstreams := utils.NewAtomic[*utils.CMap[chains.Chain, *utils.CMap[string, []string]]]()
+	sortedUpstreams.Store(utils.NewCMap[chains.Chain, *utils.CMap[string, []string]]())
 
 	return &RatingRegistry{
 		scoreFunc:           scoreFunc,
@@ -69,7 +69,7 @@ func (r *RatingRegistry) GetSortedUpstreams(chain chains.Chain, method string) [
 		return r.getShuffledUpstreamIds(chain)
 	}
 
-	return *ups
+	return ups
 }
 
 func (r *RatingRegistry) Start() {
@@ -87,7 +87,7 @@ func (r *RatingRegistry) getShuffledUpstreamIds(chain chains.Chain) []string {
 }
 
 func (r *RatingRegistry) calculateRating() {
-	newSortedUpstreams := utils.NewCMap[chains.Chain, utils.CMap[string, []string]]()
+	newSortedUpstreams := utils.NewCMap[chains.Chain, *utils.CMap[string, []string]]()
 
 	for _, chSupervisor := range r.upstreamSupervisor.GetChainSupervisors() {
 		methodUpstreams := utils.NewCMap[string, []string]()
@@ -143,7 +143,7 @@ func (r *RatingRegistry) calculateRating() {
 					sortedUpstreams = append(sortedUpstreams, upstream)
 				}
 
-				methodUpstreams.Store(method, &sortedUpstreams)
+				methodUpstreams.Store(method, sortedUpstreams)
 			} else {
 				log.Debug().Msgf("no upstreams to calculate their rating, chain %s", chSupervisor.Chain)
 			}

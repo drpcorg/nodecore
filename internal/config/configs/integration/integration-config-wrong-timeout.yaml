@@ -1,0 +1,4 @@
+integration:
+  drpc:
+    url: "url"
+    request-timeout: -1s
