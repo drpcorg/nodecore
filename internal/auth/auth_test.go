@@ -36,7 +36,7 @@ func newBasicProcessor(t *testing.T, token string, allowedIps []string, methods 
 		},
 	}
 
-	p, err := auth.NewAuthProcessor(appCfg, nil)
+	p, err := auth.NewAuthProcessor(context.Background(), appCfg, nil)
 	if err != nil {
 		t.Fatalf("NewAuthProcessor error: %v", err)
 	}

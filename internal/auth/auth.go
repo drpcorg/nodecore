@@ -16,7 +16,7 @@ const (
 	XNodecoreKey   = "X-Nodecore-Key"
 )
 
-func NewAuthProcessor(authCfg *config.AuthConfig, integrationResolver *integration.IntegrationResolver) (AuthProcessor, error) {
+func NewAuthProcessor(ctx context.Context, authCfg *config.AuthConfig, integrationResolver *integration.IntegrationResolver) (AuthProcessor, error) {
 	if authCfg == nil || !authCfg.Enabled {
 		return newNoopAuthProcessor(), nil
 	}
@@ -29,7 +29,7 @@ func NewAuthProcessor(authCfg *config.AuthConfig, integrationResolver *integrati
 	if len(authCfg.KeyConfigs) == 0 {
 		authProcessor = newSimpleAuthProcessor(authRequestStrategy)
 	} else {
-		keyResolver, err := NewKeyResolver(authCfg.KeyConfigs, integrationResolver)
+		keyResolver, err := NewKeyResolver(ctx, authCfg.KeyConfigs, integrationResolver)
 		if err != nil {
 			return nil, err
 		}

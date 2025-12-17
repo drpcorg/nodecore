@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 
 func TestNewLocalKey_AndKeyResolver_Retrieval(t *testing.T) {
 	cfg := test_utils.BuildLocalKeyConfig("kid2", "secret-abc", []string{"127.0.0.1"}, nil, nil)
-	resolver, err := auth.NewKeyResolver([]*config.KeyConfig{cfg}, nil)
+	resolver, err := auth.NewKeyResolver(context.Background(), []*config.KeyConfig{cfg}, nil)
 	assert.NoError(t, err)
 
 	k, ok := resolver.GetKey("secret-abc")
@@ -45,7 +46,7 @@ func TestKeyResolverNoIntegrationThenErr(t *testing.T) {
 		},
 	}
 
-	keyResolver, err := auth.NewKeyResolver(cfg, resolver)
+	keyResolver, err := auth.NewKeyResolver(context.Background(), cfg, resolver)
 
 	assert.Nil(t, keyResolver)
 	assert.Error(t, err, "there is no drpc integration config to load drpc keys")
@@ -73,7 +74,7 @@ func TestKeyResolverDrpcKeysFailedInitKeys(t *testing.T) {
 
 	client.On("InitKeys", cfg[0].DrpcKeyConfig).Return(nil, errors.New("some err"))
 
-	_, err := auth.NewKeyResolverWithRetryInterval(cfg, resolver, 5*time.Millisecond)
+	_, err := auth.NewKeyResolverWithRetryInterval(context.Background(), cfg, resolver, 5*time.Millisecond)
 	assert.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -111,7 +112,7 @@ func TestKeyResolverDrpcKeysEvents(t *testing.T) {
 
 	client.On("InitKeys", cfg[0].DrpcKeyConfig).Return(eventChan, nil).Once()
 
-	keyResolver, err := auth.NewKeyResolver(cfg, resolver)
+	keyResolver, err := auth.NewKeyResolver(context.Background(), cfg, resolver)
 	assert.NoError(t, err)
 
 	eventChan <- integration.NewUpdatedKeyEvent(keys[0])

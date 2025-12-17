@@ -53,7 +53,7 @@ func main() {
 
 	integrationResolver := integration.NewIntegrationResolver(appConfig.IntegrationConfig)
 
-	authProcessor, err := auth.NewAuthProcessor(appConfig.AuthConfig, integrationResolver)
+	authProcessor, err := auth.NewAuthProcessor(mainCtx, appConfig.AuthConfig, integrationResolver)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the auth processor")
 	}

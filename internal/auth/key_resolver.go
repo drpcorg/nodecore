@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -13,11 +14,13 @@ import (
 )
 
 type KeyResolver struct {
+	ctx           context.Context
 	keys          *utils.CMap[string, keymanagement.Key]
 	retryInterval time.Duration
 }
 
 func NewKeyResolverWithRetryInterval(
+	ctx context.Context,
 	keyCfgs []*config.KeyConfig,
 	integrationResolver *integration.IntegrationResolver,
 	retryInterval time.Duration,
@@ -26,6 +29,7 @@ func NewKeyResolverWithRetryInterval(
 	resolver := &KeyResolver{
 		retryInterval: retryInterval,
 		keys:          keys,
+		ctx:           ctx,
 	}
 	keyEventsChans := make([]<-chan integration.KeyEvent, 0)
 
@@ -60,8 +64,8 @@ func NewKeyResolverWithRetryInterval(
 	return resolver, nil
 }
 
-func NewKeyResolver(keyCfgs []*config.KeyConfig, integrationResolver *integration.IntegrationResolver) (*KeyResolver, error) {
-	return NewKeyResolverWithRetryInterval(keyCfgs, integrationResolver, 10*time.Second)
+func NewKeyResolver(ctx context.Context, keyCfgs []*config.KeyConfig, integrationResolver *integration.IntegrationResolver) (*KeyResolver, error) {
+	return NewKeyResolverWithRetryInterval(ctx, keyCfgs, integrationResolver, 10*time.Second)
 }
 
 func (k *KeyResolver) GetKey(keyStr string) (keymanagement.Key, bool) {
@@ -81,14 +85,21 @@ func getIntegration(
 }
 
 func (k *KeyResolver) watchKeys(keyEvents <-chan integration.KeyEvent) {
-	for keyEvent := range keyEvents {
-		switch ev := keyEvent.(type) {
-		case *integration.UpdatedKeyEvent:
-			log.Info().Msgf("key '%s' has been updated'", ev.NewKey.Id())
-			k.keys.Store(ev.NewKey.GetKeyValue(), ev.NewKey)
-		case *integration.RemovedKeyEvent:
-			log.Info().Msgf("key '%s' has been removed or deactivated", ev.RemovedKey.Id())
-			k.keys.Delete(ev.RemovedKey.GetKeyValue())
+	for {
+		select {
+		case <-k.ctx.Done():
+			return
+		case keyEvent, ok := <-keyEvents:
+			if ok {
+				switch ev := keyEvent.(type) {
+				case *integration.UpdatedKeyEvent:
+					log.Info().Msgf("key '%s' has been updated'", ev.NewKey.Id())
+					k.keys.Store(ev.NewKey.GetKeyValue(), ev.NewKey)
+				case *integration.RemovedKeyEvent:
+					log.Info().Msgf("key '%s' has been removed or deactivated", ev.RemovedKey.Id())
+					k.keys.Delete(ev.RemovedKey.GetKeyValue())
+				}
+			}
 		}
 	}
 }
