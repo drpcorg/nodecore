@@ -8,7 +8,6 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
-	"github.com/drpcorg/nodecore/internal/key_management"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/google/go-cmp/cmp"
 	"github.com/rs/zerolog/log"
@@ -25,7 +24,7 @@ func (d *DrpcIntegrationClient) Type() IntegrationType {
 	return Drpc
 }
 
-func (d *DrpcIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (*InitKeysData, error) {
+func (d *DrpcIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (chan KeyEvent, error) {
 	drpcKeyCfg, ok := cfg.(*config.DrpcKeyConfig)
 	if !ok {
 		return nil, errors.New("drpc init keys expects drpc key config")
@@ -35,55 +34,47 @@ func (d *DrpcIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (*Init
 		return nil, errors.New("there must be drpc owner config to init drpc keys")
 	}
 
-	drpcKeys, err := d.getOwnerKeys(drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken)
-	if err != nil {
-		return nil, err
-	}
-
-	keys := make([]keymanagement.Key, 0, len(drpcKeys))
-	keyMap := map[string]*drpc.DrpcKey{}
-	for _, key := range drpcKeys {
-		keyMap[key.GetKeyValue()] = key
-		keys = append(keys, key)
-	}
-	d.ownerKeys.Store(drpcKeyCfg.Owner.Id, keyMap)
-
 	keyEvents := make(chan KeyEvent, 100)
 	go d.pollKeys(drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken, keyEvents)
 
-	return NewInitKeysData(keys, keyEvents), nil
+	return keyEvents, nil
 }
 
 func (d *DrpcIntegrationClient) pollKeys(ownerId, apiToken string, keyEvents chan KeyEvent) {
+	d.processKeys(ownerId, apiToken, keyEvents)
 	for {
 		select {
 		case <-d.ctx.Done():
 			return
 		case <-time.After(d.pollInterval):
-			currentKeys, _ := d.ownerKeys.Load(ownerId)
-			ownerKeys, err := d.getOwnerKeys(ownerId, apiToken)
-			if err != nil {
-				log.Warn().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
-				continue
-			}
+			d.processKeys(ownerId, apiToken, keyEvents)
+		}
+	}
+}
 
-			newKeys := mapset.NewThreadUnsafeSet[string]()
-			for _, key := range ownerKeys {
-				newKeys.Add(key.GetKeyValue())
-				currentKey, ok := currentKeys[key.GetKeyValue()]
+func (d *DrpcIntegrationClient) processKeys(ownerId, apiToken string, keyEvents chan KeyEvent) {
+	currentKeys, _ := d.ownerKeys.LoadOrStore(ownerId, map[string]*drpc.DrpcKey{})
+	ownerKeys, err := d.getOwnerKeys(ownerId, apiToken)
+	if err != nil {
+		log.Warn().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
+		return
+	}
 
-				if !ok || !cmp.Equal(currentKey, key) {
-					keyEvents <- NewUpdatedKeyEvent(key)
-					currentKeys[key.GetKeyValue()] = key
-				}
-			}
+	newKeys := mapset.NewThreadUnsafeSet[string]()
+	for _, key := range ownerKeys {
+		newKeys.Add(key.GetKeyValue())
+		currentKey, ok := currentKeys[key.GetKeyValue()]
 
-			for apiKey, key := range currentKeys {
-				if !newKeys.Contains(apiKey) {
-					keyEvents <- NewRemovedKeyEvent(key)
-					delete(currentKeys, apiKey)
-				}
-			}
+		if !ok || !cmp.Equal(currentKey, key) {
+			keyEvents <- NewUpdatedKeyEvent(key)
+			currentKeys[key.GetKeyValue()] = key
+		}
+	}
+
+	for apiKey, key := range currentKeys {
+		if !newKeys.Contains(apiKey) {
+			keyEvents <- NewRemovedKeyEvent(key)
+			delete(currentKeys, apiKey)
 		}
 	}
 }

@@ -1,16 +1,15 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/key_management"
-	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 )
 
 type KeyResolver struct {
@@ -28,8 +27,7 @@ func NewKeyResolverWithRetryInterval(
 		retryInterval: retryInterval,
 		keys:          keys,
 	}
-	retries := make([]func(), 0)
-	initKeysDataArr := make([]*integration.InitKeysData, 0)
+	keyEventsChans := make([]<-chan integration.KeyEvent, 0)
 
 	for _, keyCfg := range keyCfgs {
 		switch keyCfg.Type {
@@ -42,26 +40,21 @@ func NewKeyResolverWithRetryInterval(
 				return nil, err
 			}
 
-			initKeysData, err := integrationClient.InitKeys(keyCfg.DrpcKeyConfig)
+			keyEvents, err := integrationClient.InitKeys(keyCfg.DrpcKeyConfig)
 			if err != nil {
 				log.Warn().Err(err).Msgf("cound't init external %s keys with id '%s'", integrationClient.Type(), keyCfg.Id)
-				var retryableErr *protocol.ClientRetryableError
-				if errors.As(err, &retryableErr) {
-					log.Warn().Msgf("init external %s keys with id '%s' will be retried", integrationClient.Type(), keyCfg.Id)
-					retries = append(retries, resolver.retryInitKeys(keyCfg, integrationClient))
-				}
 			} else {
-				log.Info().Msgf("extrenal %s keys with id '%s' have been successfully loaded", integrationClient.Type(), keyCfg.Id)
-				initKeysDataArr = append(initKeysDataArr, initKeysData)
+				if keyEvents != nil {
+					log.Info().Msgf("extrenal %s keys with id '%s' will be processed", integrationClient.Type(), keyCfg.Id)
+					keyEventsChans = append(keyEventsChans, keyEvents)
+				}
 			}
 		}
 	}
 
-	for _, initKeysData := range initKeysDataArr {
-		go resolver.watchKeys(initKeysData)
-	}
-	for _, retry := range retries {
-		go retry()
+	if len(keyEventsChans) > 0 {
+		allEvents := lo.FanIn(100, keyEventsChans...)
+		go resolver.watchKeys(allEvents)
 	}
 
 	return resolver, nil
@@ -87,32 +80,8 @@ func getIntegration(
 	return integrationClient, nil
 }
 
-func (k *KeyResolver) retryInitKeys(keyCfg *config.KeyConfig, integration integration.IntegrationClient) func() {
-	return func() {
-		for {
-			time.Sleep(k.retryInterval)
-			initKeysData, err := integration.InitKeys(keyCfg.DrpcKeyConfig)
-			if err != nil {
-				log.Warn().Err(err).Msgf("cound't init external %s keys with id '%s'", integration.Type(), keyCfg.Id)
-				continue
-			}
-			log.Info().Msgf("extrenal %s keys with id '%s' have been successfully loaded", integration.Type(), keyCfg.Id)
-			go k.watchKeys(initKeysData)
-			break
-		}
-	}
-}
-
-func (k *KeyResolver) watchKeys(data *integration.InitKeysData) {
-	for _, initialKey := range data.InitialKeys {
-		k.keys.Store(initialKey.GetKeyValue(), initialKey)
-	}
-
-	if data.KeyEvents == nil {
-		return
-	}
-
-	for keyEvent := range data.KeyEvents {
+func (k *KeyResolver) watchKeys(keyEvents <-chan integration.KeyEvent) {
+	for keyEvent := range keyEvents {
 		switch ev := keyEvent.(type) {
 		case *integration.UpdatedKeyEvent:
 			log.Info().Msgf("key '%s' has been updated'", ev.NewKey.Id())

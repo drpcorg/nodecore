@@ -3,7 +3,6 @@ package drpc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,75 +53,62 @@ func NewSimpleDrpcHttpConnector(drpcIntegration *config.DrpcIntegrationConfig) *
 }
 
 func (s *SimpleDrpcHttpConnector) OwnerExists(ownerId, apiToken string) error {
-	response, closeBodyFunc, err := s.makeRequest(http.MethodGet, apiToken, s.baseUrl+fmt.Sprintf("/nodecore/owners/%s", ownerId), nil)
+	path := fmt.Sprintf("/nodecore/owners/%s", ownerId)
+	response, closeBodyFunc, err := s.makeRequest(http.MethodGet, apiToken, s.baseUrl+path, nil)
 	if err != nil {
 		return fmt.Errorf("couldn't get owner: %w", err)
 	}
 	defer closeBodyFunc()
 
-	switch response.StatusCode {
-	case http.StatusOK:
+	if response.StatusCode == http.StatusOK {
 		return nil
-	case http.StatusNotFound:
-		return fmt.Errorf("owner '%s' not found", ownerId)
-	case http.StatusTooManyRequests:
-		return protocol.NewClientRetryableError(errors.New("too many requests, please try again later"))
-	case http.StatusForbidden:
-		var jsonErr jsonError
-		err = json.NewDecoder(response.Body).Decode(&jsonErr)
-		if err != nil {
-			return fmt.Errorf("couldn't parse owner response: %w", err)
-		}
-		return fmt.Errorf("forbidden, owner - '%s', message: %s", ownerId, jsonErr.Message)
-	default:
-		body, err := io.ReadAll(response.Body)
-		if err != nil {
-			return fmt.Errorf("couldn't read owner response: %w", err)
-		}
-		if response.StatusCode == http.StatusInternalServerError {
-			return protocol.NewClientRetryableError(fmt.Errorf("internal server error while getting owner '%s', %s", ownerId, string(body)))
-		} else {
-			return fmt.Errorf("unexpected response while getting owner '%s', code and body - %d, %s", ownerId, response.StatusCode, string(body))
-		}
-
+	} else {
+		return handleStatusCodes(response.StatusCode, ownerId, path, response.Body)
 	}
 }
 
 func (s *SimpleDrpcHttpConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*DrpcKey, error) {
-	response, closeBodyFunc, err := s.makeRequest(http.MethodGet, apiToken, s.baseUrl+fmt.Sprintf("/nodecore/owners/%s/keys", ownerId), nil)
+	path := fmt.Sprintf("/nodecore/owners/%s/keys", ownerId)
+	response, closeBodyFunc, err := s.makeRequest(http.MethodGet, apiToken, s.baseUrl+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't load keys: %w", err)
 	}
 	defer closeBodyFunc()
 
-	switch response.StatusCode {
-	case http.StatusNotFound:
-		return nil, fmt.Errorf("owner '%s' not found", ownerId)
-	case http.StatusTooManyRequests:
-		return nil, protocol.NewClientRetryableError(errors.New("too many requests, please try again later"))
-	case http.StatusForbidden:
-		var jsonErr jsonError
-		err = json.NewDecoder(response.Body).Decode(&jsonErr)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't parse keys response: %w", err)
-		}
-		return nil, fmt.Errorf("forbidden, owner - '%s', message: %s", ownerId, jsonErr.Message)
-	case http.StatusOK:
+	if response.StatusCode == http.StatusOK {
 		var keys []*DrpcKey
 		err = json.NewDecoder(response.Body).Decode(&keys)
 		if err != nil {
 			return nil, fmt.Errorf("couldn't parse keys response: %w", err)
 		}
 		return keys, nil
-	default:
-		body, err := io.ReadAll(response.Body)
+	} else {
+		return nil, handleStatusCodes(response.StatusCode, ownerId, path, response.Body)
+	}
+}
+
+func handleStatusCodes(statusCode int, ownerId, path string, responseBody io.ReadCloser) error {
+	switch statusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("owner '%s' not found", ownerId)
+	case http.StatusTooManyRequests:
+		return protocol.NewClientRetryableError(fmt.Errorf("%s, too many requests, please try again later", path))
+	case http.StatusForbidden:
+		var jsonErr jsonError
+		err := json.NewDecoder(responseBody).Decode(&jsonErr)
 		if err != nil {
-			return nil, fmt.Errorf("couldn't read keys response: %w", err)
+			return fmt.Errorf("%s, couldn't parse forbidden response: %w", path, err)
 		}
-		if response.StatusCode == http.StatusInternalServerError {
-			return nil, protocol.NewClientRetryableError(fmt.Errorf("internal server error while loading keys of owner '%s', %s", ownerId, string(body)))
+		return fmt.Errorf("%s forbidden, owner - '%s', message: %s", path, ownerId, jsonErr.Message)
+	default:
+		body, err := io.ReadAll(responseBody)
+		if err != nil {
+			return fmt.Errorf("%s, couldn't read a response: %w", path, err)
+		}
+		if statusCode == http.StatusInternalServerError {
+			return protocol.NewClientRetryableError(fmt.Errorf("%s, internal server, owner '%s', body - %s", path, ownerId, string(body)))
 		} else {
-			return nil, fmt.Errorf("unexpected response while loading keys of owner '%s', code and body - %d, %s", ownerId, response.StatusCode, string(body))
+			return fmt.Errorf("%s, unexpected response, owner '%s', code and body - %d, %s", path, ownerId, statusCode, string(body))
 		}
 	}
 }

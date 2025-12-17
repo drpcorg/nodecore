@@ -45,7 +45,7 @@ func TestDrpcHttpConnectorOwnerNotExistThenError(t *testing.T) {
 	var expectedErr *protocol.ClientRetryableError
 	assert.NotErrorAs(t, err, &expectedErr)
 
-	assert.ErrorContains(t, err, "owner 'id' not found")
+	assert.EqualError(t, err, "owner 'id' not found")
 }
 
 func TestDrpcHttpConnectorOwnerForbiddenThenError(t *testing.T) {
@@ -65,7 +65,7 @@ func TestDrpcHttpConnectorOwnerForbiddenThenError(t *testing.T) {
 	var expectedErr *protocol.ClientRetryableError
 	assert.NotErrorAs(t, err, &expectedErr)
 
-	assert.ErrorContains(t, err, "forbidden, owner - 'id', message: wrong api token")
+	assert.EqualError(t, err, "/nodecore/owners/id forbidden, owner - 'id', message: wrong api token")
 }
 
 func TestDrpcHttpConnectorOwnerTooManyRequestsThenError(t *testing.T) {
@@ -83,7 +83,7 @@ func TestDrpcHttpConnectorOwnerTooManyRequestsThenError(t *testing.T) {
 	var expectedErr *protocol.ClientRetryableError
 	assert.ErrorAs(t, err, &expectedErr)
 
-	assert.ErrorContains(t, err, "too many requests, please try again later")
+	assert.EqualError(t, err, "/nodecore/owners/id, too many requests, please try again later")
 }
 
 func TestDrpcHttpConnectorOwnerForbiddenCantParseBodyThenError(t *testing.T) {
@@ -103,7 +103,7 @@ func TestDrpcHttpConnectorOwnerForbiddenCantParseBodyThenError(t *testing.T) {
 	var expectedErr *protocol.ClientRetryableError
 	assert.NotErrorAs(t, err, &expectedErr)
 
-	assert.ErrorContains(t, err, "couldn't parse owner response: invalid character 'm' looking for beginning of object key string")
+	assert.EqualError(t, err, "/nodecore/owners/id, couldn't parse forbidden response: invalid character 'm' looking for beginning of object key string")
 }
 
 func TestDrpcHttpConnectorOwnerInternalServerErrorThenRetryableErr(t *testing.T) {
@@ -123,7 +123,7 @@ func TestDrpcHttpConnectorOwnerInternalServerErrorThenRetryableErr(t *testing.T)
 	var expectedErr *protocol.ClientRetryableError
 	assert.ErrorAs(t, err, &expectedErr)
 
-	assert.ErrorContains(t, err, `internal server error while getting owner 'id', {"message":"internal error!", "code":500}`)
+	assert.EqualError(t, err, `/nodecore/owners/id, internal server, owner 'id', body - {"message":"internal error!", "code":500}`)
 }
 
 func TestDrpcHttpConnectorOwnerAnyUnexpectedCodeThenErr(t *testing.T) {
@@ -143,7 +143,7 @@ func TestDrpcHttpConnectorOwnerAnyUnexpectedCodeThenErr(t *testing.T) {
 	var expectedErr *protocol.ClientRetryableError
 	assert.NotErrorAs(t, err, &expectedErr)
 
-	assert.ErrorContains(t, err, `unexpected response while getting owner 'id', code and body - 502, {"message":"bad gateway!"}`)
+	assert.EqualError(t, err, `/nodecore/owners/id, unexpected response, owner 'id', code and body - 502, {"message":"bad gateway!"}`)
 }
 
 func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
@@ -187,7 +187,7 @@ func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
 			var expectedErr *protocol.ClientRetryableError
 			assert.ErrorAs(te, err, &expectedErr)
 
-			assert.ErrorContains(te, err, test.err)
+			assert.EqualError(te, err, test.err)
 		})
 	}
 }
@@ -234,7 +234,7 @@ func TestDrpcHttpConnectorLoadKeysRequestErrorThenRetryableErr(t *testing.T) {
 			assert.ErrorAs(te, err, &expectedErr)
 
 			assert.Empty(te, keys)
-			assert.ErrorContains(te, err, test.err)
+			assert.EqualError(te, err, test.err)
 		})
 	}
 }
@@ -315,7 +315,7 @@ func TestDrpcHttpConnectorLoadKeysOwnerNotFoundThenErr(t *testing.T) {
 	assert.NotErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
-	assert.ErrorContains(t, err, "owner 'id' not found")
+	assert.EqualError(t, err, "owner 'id' not found")
 }
 
 func TestDrpcHttpConnectorLoadKeysForbiddenThenError(t *testing.T) {
@@ -336,7 +336,7 @@ func TestDrpcHttpConnectorLoadKeysForbiddenThenError(t *testing.T) {
 	assert.NotErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
-	assert.ErrorContains(t, err, "forbidden, owner - 'id', message: wrong api token")
+	assert.EqualError(t, err, "/nodecore/owners/id/keys forbidden, owner - 'id', message: wrong api token")
 }
 
 func TestDrpcHttpConnectorLoadKeysForbiddenCantParseBodyThenError(t *testing.T) {
@@ -357,7 +357,7 @@ func TestDrpcHttpConnectorLoadKeysForbiddenCantParseBodyThenError(t *testing.T) 
 	assert.NotErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
-	assert.ErrorContains(t, err, "couldn't parse keys response: invalid character 'm' looking for beginning of object key string")
+	assert.EqualError(t, err, "/nodecore/owners/id/keys, couldn't parse forbidden response: invalid character 'm' looking for beginning of object key string")
 }
 
 func TestDrpcHttpConnectorLoadKeysInternalServerErrorThenRetryableErr(t *testing.T) {
@@ -378,7 +378,7 @@ func TestDrpcHttpConnectorLoadKeysInternalServerErrorThenRetryableErr(t *testing
 	assert.ErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
-	assert.ErrorContains(t, err, `internal server error while loading keys of owner 'id', {"message":"internal error!", "code":500}`)
+	assert.EqualError(t, err, `/nodecore/owners/id/keys, internal server, owner 'id', body - {"message":"internal error!", "code":500}`)
 }
 
 func TestDrpcHttpConnectorLoadKeysTooManyRequestsThenError(t *testing.T) {
@@ -397,7 +397,7 @@ func TestDrpcHttpConnectorLoadKeysTooManyRequestsThenError(t *testing.T) {
 	assert.ErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
-	assert.ErrorContains(t, err, "too many requests, please try again later")
+	assert.EqualError(t, err, "/nodecore/owners/id/keys, too many requests, please try again later")
 }
 
 func TestDrpcHttpConnectorLoadKeysAnyUnexpectedCodeThenErr(t *testing.T) {
@@ -418,7 +418,7 @@ func TestDrpcHttpConnectorLoadKeysAnyUnexpectedCodeThenErr(t *testing.T) {
 	assert.NotErrorAs(t, err, &expectedErr)
 
 	assert.Empty(t, keys)
-	assert.ErrorContains(t, err, `unexpected response while loading keys of owner 'id', code and body - 502, {"message":"bad gateway!"}`)
+	assert.EqualError(t, err, `/nodecore/owners/id/keys, unexpected response, owner 'id', code and body - 502, {"message":"bad gateway!"}`)
 }
 
 func getDrpcHttpConnector() *drpc.SimpleDrpcHttpConnector {

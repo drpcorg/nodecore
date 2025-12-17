@@ -29,13 +29,13 @@ func NewMockIntegrationClient(integrationType integration.IntegrationType) *Mock
 	}
 }
 
-func (m *MockIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (*integration.InitKeysData, error) {
+func (m *MockIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (chan integration.KeyEvent, error) {
 	args := m.Called(cfg)
-	var data *integration.InitKeysData
+	var data chan integration.KeyEvent
 	if args.Get(0) == nil {
 		data = nil
 	} else {
-		data = args.Get(0).(*integration.InitKeysData)
+		data = args.Get(0).(chan integration.KeyEvent)
 	}
 	return data, args.Error(1)
 }

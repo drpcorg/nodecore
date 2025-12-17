@@ -5,7 +5,7 @@ import (
 )
 
 type IntegrationClient interface {
-	InitKeys(cfg config.IntegrationKeyConfig) (*InitKeysData, error)
+	InitKeys(cfg config.IntegrationKeyConfig) (chan KeyEvent, error)
 	Type() IntegrationType
 }
 

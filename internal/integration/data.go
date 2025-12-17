@@ -2,18 +2,6 @@ package integration
 
 import keymanagement "github.com/drpcorg/nodecore/internal/key_management"
 
-type InitKeysData struct {
-	InitialKeys []keymanagement.Key
-	KeyEvents   chan KeyEvent
-}
-
-func NewInitKeysData(keys []keymanagement.Key, eventChan chan KeyEvent) *InitKeysData {
-	return &InitKeysData{
-		InitialKeys: keys,
-		KeyEvents:   eventChan,
-	}
-}
-
 type KeyEvent interface {
 	event()
 }
