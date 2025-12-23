@@ -190,24 +190,13 @@ How DRPC key integration works:
 1. **Integration Configuration Check**. On startup, nodecore verifies that the `integration.drpc` section is present in the configuration.
    * If the section is missing, nodecore fails to start with an error. DRPC-managed keys cannot function without a valid integration endpoint.
 2. **DRPC Key Configuration Validation**. Nodecore inspects each `auth.key-management` entry of type `drpc`. For every such key, the following fields are required: `owner.id`, `owner.api-token`.  If either field is missing, empty, or malformed, nodecore terminates with a configuration error.
-3. **Initial Key Load from DRPC**. Once configuration is validated, nodecore attempts to load the owner’s keys from DRPC:
-   * The request is authenticated using the owner’s api-token.
-   * All key definitions and attributes (IP whitelist, method filters, etc.) are fetched at once.
-4. **Key Registration and Periodic Sync**. When the initial load completes successfully:
-   * nodecore registers all DRPC-managed keys locally
-   * a periodic polling loop begins (every 1 minute):
-     * updates key attributes (IP whitelist, methods, CORS, contracts, enabled/disabled state)
-     * adds new keys created on DRPC
-     * removes keys deleted on DRPC
-5. **Handling Initial Load Failures**. If the initial load fails, nodecore distinguishes between retryable and non-retryable errors:
-   * Retryable Errors. Nodecore retries the initial load every 10 seconds until successful. Once a retry succeeds, NodeCore proceeds to step 4. Errors:
-     * 429 Too Many Requests - Rate limit on DRPC side — safe to retry.
-     * 500 Internal Server Error - Temporary server issue — safe to retry.
-     * Connection errors / timeouts - Network or availability issue — safe to retry.
-   * Non-Retryable Errors. Nodecore immediately disables DRPC key integration for the affected owner.
-     DRPC keys belonging to that owner will not be available. Errors:
-     * 404 Not Found - The provided Owner ID does not exist on DRPC.
-     * 403 Forbidden - API token missing, invalid, or belonging to another owner.
+3. **Key Load from DRPC**. Once configuration is validated, nodecore loads the owner’s keys from DRPC periodically (every 1 minute):
+   * All the requests are authenticated using the owner’s api-token.
+   * All key definitions and attributes (IP whitelist, method filters, etc.) are fetched and stored locally.
+   * Once nodecore receives a response from DRPC, it may:
+       * update key attributes (IP whitelist, methods, CORS, contracts, enabled/disabled state)
+       * add new keys created on DRPC
+       * remove keys deleted on DRPC
 
 > **⚠️ Important**: 
 > 1. If at least one key is defined in the `key-management` section, then every request must include a valid nodecore key. If no key is provided, or the provided key does not match the configured rules, the request will be rejected.
