@@ -54,7 +54,7 @@ func NewHttpConnector(
 	if err != nil {
 		return nil, fmt.Errorf("error parsing the endpoint: %v", err)
 	}
-	transport := defaultHttpTransport()
+	transport := utils.DefaultHttpTransport()
 	client := &http.Client{
 		Timeout: 60 * time.Second,
 	}
@@ -143,19 +143,12 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
 			return protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
 		} else {
-			defer closeBodyReader(ctx, resp.Body)
+			defer utils.CloseBodyReader(ctx, resp.Body)
 			return h.receiveWholeResponse(ctx, request, resp.StatusCode, bufReader)
 		}
 	} else {
-		defer closeBodyReader(ctx, resp.Body)
+		defer utils.CloseBodyReader(ctx, resp.Body)
 		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Body)
-	}
-}
-
-func closeBodyReader(ctx context.Context, bodyReader io.ReadCloser) {
-	err := bodyReader.Close()
-	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("couldn't close a body reader")
 	}
 }
 
@@ -180,19 +173,6 @@ func (h *HttpConnector) GetType() protocol.ApiConnectorType {
 
 func (h *HttpConnector) Subscribe(_ context.Context, _ protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
-}
-
-func defaultHttpTransport() *http.Transport {
-	// to move all these params to the config per upstream?
-	return &http.Transport{
-		MaxIdleConns:          1024,
-		MaxIdleConnsPerHost:   256,
-		MaxConnsPerHost:       0,
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 5 * time.Second,
-	}
 }
 
 func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, string, error) {

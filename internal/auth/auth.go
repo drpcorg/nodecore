@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/internal/key_management"
 	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
@@ -14,7 +16,7 @@ const (
 	XNodecoreKey   = "X-Nodecore-Key"
 )
 
-func NewAuthProcessor(authCfg *config.AuthConfig) (AuthProcessor, error) {
+func NewAuthProcessor(ctx context.Context, authCfg *config.AuthConfig, integrationResolver *integration.IntegrationResolver) (AuthProcessor, error) {
 	if authCfg == nil || !authCfg.Enabled {
 		return newNoopAuthProcessor(), nil
 	}
@@ -27,7 +29,10 @@ func NewAuthProcessor(authCfg *config.AuthConfig) (AuthProcessor, error) {
 	if len(authCfg.KeyConfigs) == 0 {
 		authProcessor = newSimpleAuthProcessor(authRequestStrategy)
 	} else {
-		keyResolver := NewKeyResolver(authCfg.KeyConfigs)
+		keyResolver, err := NewKeyResolver(ctx, authCfg.KeyConfigs, integrationResolver)
+		if err != nil {
+			return nil, err
+		}
 		authProcessor = newBasicAuthProcessor(keyResolver, authRequestStrategy)
 	}
 
@@ -81,7 +86,7 @@ func (b *basicAuthProcessor) PostKeyValidate(ctx context.Context, payload AuthPa
 	return key.PostCheckSetting(ctx, request)
 }
 
-func (b *basicAuthProcessor) getKey(payload AuthPayload) (Key, error) {
+func (b *basicAuthProcessor) getKey(payload AuthPayload) (keymanagement.Key, error) {
 	keyStr := getPayloadKey(payload)
 	if keyStr == "" {
 		return nil, errors.New("api-key must be provided")

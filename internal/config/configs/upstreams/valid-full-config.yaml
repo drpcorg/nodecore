@@ -35,6 +35,11 @@ app-storages:
     postgres:
       url: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
 
+integration:
+  drpc:
+    url: http://localhost:9090
+    request-timeout: 35s
+
 auth:
   enabled: true
   request-strategy:
@@ -60,6 +65,12 @@ auth:
           contracts:
             allowed:
               - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
+    - id: "drpc-super-key"
+      type: drpc
+      drpc:
+        owner:
+          id: "id"
+          api-token: "apiToken"
 
 cache:
   connectors:

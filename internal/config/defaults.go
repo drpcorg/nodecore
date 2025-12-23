@@ -36,7 +36,18 @@ func (a *AppConfig) setDefaults() {
 	if a.AuthConfig != nil {
 		a.AuthConfig.setDefaults()
 	}
+	if a.IntegrationConfig != nil {
+		if a.IntegrationConfig.Drpc != nil {
+			a.IntegrationConfig.Drpc.setDefaults()
+		}
+	}
 	a.UpstreamConfig.setDefaults()
+}
+
+func (d *DrpcIntegrationConfig) setDefaults() {
+	if d.RequestTimeout == 0 {
+		d.RequestTimeout = 10 * time.Second
+	}
 }
 
 func (a *AuthConfig) setDefaults() {

@@ -1,0 +1,9 @@
+auth:
+  enabled: true
+  key-management:
+    - id: "drpc-super-key"
+      type: drpc
+      drpc:
+        owner:
+          id: "13a016c8-cac2-4ce1-b366-6b4e057e54ae"
+          api-token: "91b3a68f8fcc907bb304883a19e38ea26dc8a6007ab0b949a3d9be519b489c78"

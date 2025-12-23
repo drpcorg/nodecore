@@ -7,7 +7,6 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -24,7 +23,7 @@ func newBasicProcessor(t *testing.T, token string, allowedIps []string, methods 
 		KeyConfigs: []*config.KeyConfig{
 			{
 				Id:   "k1",
-				Type: config.Local,
+				Type: config.LocalKey,
 				LocalKeyConfig: &config.LocalKeyConfig{
 					Key: "secret-key",
 					KeySettingsConfig: &config.KeySettingsConfig{
@@ -37,7 +36,7 @@ func newBasicProcessor(t *testing.T, token string, allowedIps []string, methods 
 		},
 	}
 
-	p, err := auth.NewAuthProcessor(appCfg)
+	p, err := auth.NewAuthProcessor(context.Background(), appCfg, nil)
 	if err != nil {
 		t.Fatalf("NewAuthProcessor error: %v", err)
 	}
@@ -149,7 +148,7 @@ func TestBasicAuthProcessor_PostKeyValidate_Success(t *testing.T) {
 	})
 
 	// Build a real RequestHolder for eth_call with 'to'
-	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
+	req := test_utils.NewUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
 	assert.NoError(t, err)
@@ -165,7 +164,7 @@ func TestBasicAuthProcessor_PostKeyValidate_MethodNotAllowed_Error(t *testing.T)
 		auth.XNodecoreToken: "tok-123",
 	})
 
-	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
+	req := test_utils.NewUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
 	assert.ErrorContains(t, err, "method 'eth_call' is not allowed")
@@ -181,7 +180,7 @@ func TestBasicAuthProcessor_PostKeyValidate_ContractNotAllowed_Error(t *testing.
 		auth.XNodecoreToken: "tok-123",
 	})
 
-	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
+	req := test_utils.NewUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
 	assert.ErrorContains(t, err, "'0xabc' address is not allowed")
@@ -197,7 +196,7 @@ func TestBasicAuthProcessor_PostKeyValidate_MissingHeader_Error(t *testing.T) {
 		auth.XNodecoreToken: "tok-123",
 	})
 
-	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
+	req := test_utils.NewUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
 	assert.ErrorContains(t, err, "api-key must be provided")
@@ -213,18 +212,8 @@ func TestBasicAuthProcessor_PostKeyValidate_KeyNotFound_Error(t *testing.T) {
 		auth.XNodecoreToken: "tok-123",
 	})
 
-	req := newUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
+	req := test_utils.NewUpstreamRequest(t, "eth_call", []any{map[string]any{"to": "0xabc"}, "latest"})
 
 	err := processor.PostKeyValidate(context.Background(), payload, req)
 	assert.ErrorContains(t, err, "specified api-key not found")
-}
-
-// helper to create a real UpstreamJsonRpcRequest with realistic params
-func newUpstreamRequest(t *testing.T, method string, params any) protocol.RequestHolder {
-	t.Helper()
-	req, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params)
-	if err != nil {
-		t.Fatalf("failed to build UpstreamJsonRpcRequest: %v", err)
-	}
-	return req
 }

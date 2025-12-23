@@ -6,6 +6,9 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/auth"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/internal/integration/drpc"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
@@ -14,6 +17,56 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
+
+type MockIntegrationClient struct {
+	mock.Mock
+	integrationType integration.IntegrationType
+}
+
+func NewMockIntegrationClient(integrationType integration.IntegrationType) *MockIntegrationClient {
+	return &MockIntegrationClient{
+		integrationType: integrationType,
+	}
+}
+
+func (m *MockIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (chan integration.KeyEvent, error) {
+	args := m.Called(cfg)
+	var data chan integration.KeyEvent
+	if args.Get(0) == nil {
+		data = nil
+	} else {
+		data = args.Get(0).(chan integration.KeyEvent)
+	}
+	return data, args.Error(1)
+}
+
+func (m *MockIntegrationClient) Type() integration.IntegrationType {
+	return m.integrationType
+}
+
+type MockDrpcHttpcConnector struct {
+	mock.Mock
+}
+
+func NewMockDrpcHttpcConnector() *MockDrpcHttpcConnector {
+	return &MockDrpcHttpcConnector{}
+}
+
+func (m *MockDrpcHttpcConnector) OwnerExists(ownerId, apiToken string) error {
+	args := m.Called(ownerId, apiToken)
+	return args.Error(0)
+}
+
+func (m *MockDrpcHttpcConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*drpc.DrpcKey, error) {
+	args := m.Called(ownerId, apiToken)
+	var keys []*drpc.DrpcKey
+	if args.Get(0) == nil {
+		keys = nil
+	} else {
+		keys = args.Get(0).([]*drpc.DrpcKey)
+	}
+	return keys, args.Error(1)
+}
 
 type MockAuthProcessor struct {
 	mock.Mock
