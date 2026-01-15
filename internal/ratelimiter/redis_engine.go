@@ -8,10 +8,10 @@ import (
 
 type RateLimitRedisEngine struct {
 	name  string
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
-func NewRateLimitRedisEngine(name string, redis *redis.Client) *RateLimitRedisEngine {
+func NewRateLimitRedisEngine(name string, redis redis.UniversalClient) *RateLimitRedisEngine {
 	return &RateLimitRedisEngine{
 		name:  name,
 		redis: redis,

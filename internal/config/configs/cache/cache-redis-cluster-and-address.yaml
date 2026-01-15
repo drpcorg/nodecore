@@ -1,0 +1,26 @@
+server:
+  port: 9095
+
+app-storages:
+  - name: redis-invalid
+    redis:
+      address: localhost:6379
+      cluster:
+        addresses:
+          - node1.redis.local:6379
+          - node2.redis.local:6379
+
+cache:
+  connectors:
+    - driver: redis
+      id: redis1
+      redis:
+        storage-name: redis-invalid
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -9,7 +9,7 @@ import (
 )
 
 type RedisStorage struct {
-	Redis *redis.Client
+	Redis redis.UniversalClient
 	name  string
 }
 
@@ -18,6 +18,71 @@ func (r *RedisStorage) storage() string {
 }
 
 func NewRedisStorage(name string, redisConfig *config.RedisStorageConfig) (*RedisStorage, error) {
+	var client redis.UniversalClient
+
+	if redisConfig.Cluster != nil && len(redisConfig.Cluster.Addresses) > 0 {
+		client = newRedisClusterClient(redisConfig)
+	} else {
+		var err error
+		client, err = newRedisSingleClient(name, redisConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &RedisStorage{
+		Redis: client,
+		name:  name,
+	}, nil
+}
+
+func newRedisClusterClient(redisConfig *config.RedisStorageConfig) *redis.ClusterClient {
+	clusterOptions := &redis.ClusterOptions{
+		Addrs:          redisConfig.Cluster.Addresses,
+		RouteByLatency: redisConfig.Cluster.RouteByLatency,
+		RouteRandomly:  redisConfig.Cluster.RouteRandomly,
+		ReadOnly:       redisConfig.Cluster.ReadOnly,
+	}
+
+	if redisConfig.Username != "" {
+		clusterOptions.Username = redisConfig.Username
+	}
+	if redisConfig.Password != "" {
+		clusterOptions.Password = redisConfig.Password
+	}
+
+	if redisConfig.Timeouts != nil {
+		if redisConfig.Timeouts.ConnectTimeout != nil {
+			clusterOptions.DialTimeout = *redisConfig.Timeouts.ConnectTimeout
+		}
+		if redisConfig.Timeouts.ReadTimeout != nil {
+			clusterOptions.ReadTimeout = lo.Ternary(*redisConfig.Timeouts.ReadTimeout == 0, -1, *redisConfig.Timeouts.ReadTimeout)
+		}
+		if redisConfig.Timeouts.WriteTimeout != nil {
+			clusterOptions.WriteTimeout = lo.Ternary(*redisConfig.Timeouts.WriteTimeout == 0, -1, *redisConfig.Timeouts.WriteTimeout)
+		}
+	}
+
+	if redisConfig.Pool != nil {
+		clusterOptions.PoolSize = redisConfig.Pool.Size
+		if redisConfig.Pool.PoolTimeout != nil {
+			clusterOptions.PoolTimeout = *redisConfig.Pool.PoolTimeout
+		}
+		clusterOptions.MinIdleConns = redisConfig.Pool.MinIdleConns
+		clusterOptions.MaxIdleConns = redisConfig.Pool.MaxIdleConns
+		clusterOptions.MaxActiveConns = redisConfig.Pool.MaxActiveConns
+		if redisConfig.Pool.ConnMaxIdleTime != nil {
+			clusterOptions.ConnMaxIdleTime = *redisConfig.Pool.ConnMaxIdleTime
+		}
+		if redisConfig.Pool.ConnMaxLifeTime != nil {
+			clusterOptions.ConnMaxLifetime = *redisConfig.Pool.ConnMaxLifeTime
+		}
+	}
+
+	return redis.NewClusterClient(clusterOptions)
+}
+
+func newRedisSingleClient(name string, redisConfig *config.RedisStorageConfig) (*redis.Client, error) {
 	options := &redis.Options{}
 	var err error
 	if redisConfig.FullUrl != "" {
@@ -76,9 +141,5 @@ func NewRedisStorage(name string, redisConfig *config.RedisStorageConfig) (*Redi
 		}
 	}
 
-	client := redis.NewClient(options)
-	return &RedisStorage{
-		Redis: client,
-		name:  name,
-	}, nil
+	return redis.NewClient(options), nil
 }
