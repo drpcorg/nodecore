@@ -26,8 +26,14 @@ func (a *AppStorageConfig) validate() (string, error) {
 }
 
 func (r *RedisStorageConfig) validate() error {
-	if r.FullUrl == "" && r.Address == "" {
-		return errors.New("either 'address' or 'full_url' must be specified")
+	isClusterMode := r.Cluster != nil && len(r.Cluster.Addresses) > 0
+	isSingleMode := r.FullUrl != "" || r.Address != ""
+
+	if !isClusterMode && !isSingleMode {
+		return errors.New("either 'address', 'full-url', or 'cluster.addresses' must be specified")
+	}
+	if isClusterMode && isSingleMode {
+		return errors.New("cannot use both cluster mode (cluster.addresses) and single mode (address/full-url) at the same time")
 	}
 	if r.Timeouts != nil {
 		if r.Timeouts.ReadTimeout != nil && *r.Timeouts.ReadTimeout < 0 {

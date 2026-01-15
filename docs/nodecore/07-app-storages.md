@@ -24,7 +24,12 @@ app-storages:
 
 ## Redis Storage
 
-All connection parameters can be specified using the `full-url` field.
+Redis storage supports two modes: **single instance** and **cluster mode**.
+
+### Single Instance Mode
+
+For connecting to a single Redis server, use either `full-url` or `address`.
+
 The URL follows the Go Redis library format: `redis://<user>:<password>@<host>:<port>/<db>?<query-params>`. Examples:
 
 - redis://localhost:6379/0
@@ -33,13 +38,48 @@ The URL follows the Go Redis library format: `redis://<user>:<password>@<host>:<
 
 Any parameters defined explicitly under `redis` (e.g. `timeouts`, `pool`) will override the corresponding values in full-url.
 
+### Cluster Mode
+
+For connecting to a Redis Cluster, use the `cluster` section with a list of cluster node addresses.
+
+```yaml
+app-storages:
+  - name: redis-cluster
+    redis:
+      cluster:
+        addresses:
+          - node1.redis.example.com:6379
+          - node2.redis.example.com:6379
+          - node3.redis.example.com:6379
+        route-by-latency: true
+      password: mypassword
+      timeouts:
+        connect-timeout: 1s
+      pool:
+        size: 50
+```
+
+> **Note**: Cluster mode and single instance mode are mutually exclusive. You cannot use `cluster.addresses` together with `address` or `full-url`.
+
 ### Fields
 
+**Single Instance Mode:**
+
 - `full-url` - Full connection URL in Go Redis format — `redis://<user>:<password>@<host>:<port>/<db>?<query-params>`
-- `address` - Host and port of the Redis instance. Either `full-url` or `address` must be specified
+- `address` - Host and port of the Redis instance. Either `full-url` or `address` must be specified for single instance mode
+- `db` - Database index. **_Default_**: `0`
+
+**Cluster Mode:**
+
+- `cluster.addresses` - List of Redis cluster node addresses (host:port). At least one address is required for cluster mode
+- `cluster.route-by-latency` - Route read commands to the node with the lowest latency. **_Default_**: `false`
+- `cluster.route-randomly` - Route read commands to random nodes. **_Default_**: `false`
+- `cluster.read-only` - Enable read-only mode for replica nodes. **_Default_**: `false`
+
+**Common Fields (both modes):**
+
 - `username` - Optional username for Redis authentication
 - `password` - Password for Redis authentication
-- `db` - Database index. **_Default_**: `0`
 - `timeouts.connect-timeout` - Maximum duration for establishing a connection to the Redis server. **_Default_**: `500ms`
 - `timeouts.read-timeout` - Timeout for reading a response from Redis. **_Default_**: `200ms`
 - `timeouts.write-timeout` - Timeout for writing data to Redis. **_Default_**: `200ms`
