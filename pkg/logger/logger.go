@@ -20,7 +20,18 @@ func init() {
 			log.Warn().Err(err).Msgf("invalid log level '%s', seting 'info' level", logLevel)
 		}
 	}
-	enableJsonLogs := false
+
+	var enableJsonLogs bool
+	if logFormat := os.Getenv("LOG_FORMAT"); logFormat != "" {
+		switch logFormat {
+		case "json":
+			enableJsonLogs = true
+		case "console":
+		default:
+			log.Warn().Msgf("invalid log format '%s', setting 'console' format", logFormat)
+		}
+	}
+
 
 	if enableJsonLogs {
 		log.Logger = zerolog.New(os.Stdout).
