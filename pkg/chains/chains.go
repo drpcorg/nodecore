@@ -25,6 +25,7 @@ const (
 	Solana              BlockchainType = "solana"
 	Starknet            BlockchainType = "starknet"
 	Ton                 BlockchainType = "ton"
+	Aztec               BlockchainType = "aztec"
 )
 
 type ChainConfig struct {
@@ -178,6 +179,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "eth"
 	case Solana:
 		return "solana"
+	case Aztec:
+		return "aztec"
 	}
 
 	return ""
