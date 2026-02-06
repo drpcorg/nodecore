@@ -16,14 +16,14 @@ import (
 type ChainValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
-	chain           chains.ConfiguredChain
+	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
 }
 
 func NewChainValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
-	chain chains.ConfiguredChain,
+	chain *chains.ConfiguredChain,
 	options *config.UpstreamOptions,
 ) *ChainValidator {
 	return &ChainValidator{
