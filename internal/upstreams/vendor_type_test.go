@@ -7,6 +7,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestUpstreamVendorNoUrlsThenUnknown(t *testing.T) {
+	vendor := upstreams.DetectUpstreamVendor([]string{})
+	assert.Equal(t, upstreams.Unknown, vendor)
+}
+
+func TestUpstreamVendorFirstUnknownThenUnknown(t *testing.T) {
+	vendor := upstreams.DetectUpstreamVendor([]string{"https://test.com", "https://mainnet.infura.io/v3/123"})
+	assert.Equal(t, upstreams.Unknown, vendor)
+}
+
 func TestUpstreamVendor(t *testing.T) {
 	tests := []struct {
 		name     string
