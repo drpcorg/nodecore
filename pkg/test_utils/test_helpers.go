@@ -155,7 +155,7 @@ func TestEvmUpstream(
 	blockProcessor blocks.BlockProcessor,
 	settingValidationProcessor *validations.SettingsValidationProcessor,
 	upstreamMethods methods.Methods,
-) *upstreams.Upstream {
+) *upstreams.BaseUpstream {
 	index := "00012"
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	upState.Store(
@@ -168,7 +168,7 @@ func TestEvmUpstream(
 		),
 	)
 
-	return upstreams.NewUpstreamWithParams(
+	return upstreams.NewBaseUpstreamWithParams(
 		context.Background(),
 		"id",
 		chains.ETHEREUM,

@@ -16,18 +16,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type UpstreamSupervisor interface {
-	GetChainSupervisor(chain chains.Chain) *ChainSupervisor
-	GetChainSupervisors() []*ChainSupervisor
-	GetUpstream(string) *Upstream
-	GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper]
-	StartUpstreams()
-}
-
 type BaseUpstreamSupervisor struct {
 	ctx                     context.Context
 	chainSupervisors        *utils.CMap[chains.Chain, *ChainSupervisor]
-	upstreams               *utils.CMap[string, *Upstream]
+	upstreams               *utils.CMap[string, Upstream]
 	eventsChan              chan protocol.UpstreamEvent
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
@@ -37,10 +29,16 @@ type BaseUpstreamSupervisor struct {
 	torProxyUrl             string
 }
 
-func NewBaseUpstreamSupervisor(ctx context.Context, upstreamsConfig *config.UpstreamConfig, tracker *dimensions.DimensionTracker, rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry, torProxyUrl string) UpstreamSupervisor {
+func NewBaseUpstreamSupervisor(
+	ctx context.Context,
+	upstreamsConfig *config.UpstreamConfig,
+	tracker *dimensions.DimensionTracker,
+	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
+	torProxyUrl string,
+) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
 		ctx:                     ctx,
-		upstreams:               utils.NewCMap[string, *Upstream](),
+		upstreams:               utils.NewCMap[string, Upstream](),
 		chainSupervisors:        utils.NewCMap[chains.Chain, *ChainSupervisor](),
 		eventsChan:              make(chan protocol.UpstreamEvent, 100),
 		upstreamsConfig:         upstreamsConfig,
@@ -69,7 +67,7 @@ func (u *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) *ChainSu
 	return nil
 }
 
-func (u *BaseUpstreamSupervisor) GetUpstream(upstreamId string) *Upstream {
+func (u *BaseUpstreamSupervisor) GetUpstream(upstreamId string) Upstream {
 	if up, ok := u.upstreams.Load(upstreamId); ok {
 		return up
 	}
@@ -94,16 +92,16 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry, u.torProxyUrl)
+			up, err := NewBaseUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry, u.torProxyUrl)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
 			}
 			up.Start()
 
-			u.upstreams.Store(up.Id, up)
+			u.upstreams.Store(up.GetId(), up)
 
-			upSub := up.Subscribe(fmt.Sprintf("upstream_supervisor_%s_updates", up.Id))
+			upSub := up.Subscribe(fmt.Sprintf("upstream_supervisor_%s_updates", up.GetId()))
 			defer upSub.Unsubscribe()
 
 			for {

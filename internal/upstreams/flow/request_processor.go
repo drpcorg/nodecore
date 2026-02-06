@@ -164,7 +164,7 @@ func executeUnaryRequest(
 	return result, err
 }
 
-func getUnaryCapableConnector(upstream *upstreams.Upstream, requestType protocol.RequestType) connectors.ApiConnector {
+func getUnaryCapableConnector(upstream upstreams.Upstream, requestType protocol.RequestType) connectors.ApiConnector {
 	switch requestType {
 	case protocol.Rest:
 		return upstream.GetConnector(protocol.RestConnector)
@@ -181,10 +181,10 @@ func getUnaryCapableConnector(upstream *upstreams.Upstream, requestType protocol
 
 func sendUnaryRequest(
 	ctx context.Context,
-	upstream *upstreams.Upstream,
+	upstream upstreams.Upstream,
 	request protocol.RequestHolder,
 ) (*protocol.ResponseHolderWrapper, error) {
-	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.Id)
+	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.GetId())
 
 	var apiConnector connectors.ApiConnector
 
@@ -203,7 +203,7 @@ func sendUnaryRequest(
 	}
 	return &protocol.ResponseHolderWrapper{
 		RequestId:  request.Id(),
-		UpstreamId: upstream.Id,
+		UpstreamId: upstream.GetId(),
 		Response:   response,
 	}, nil
 }
