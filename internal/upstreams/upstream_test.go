@@ -261,7 +261,7 @@ func TestUpstreamMethodEventsPreserveMethodFromConfig(t *testing.T) {
 
 func checkMethods(
 	t *testing.T,
-	upstream *upstreams.Upstream,
+	upstream *upstreams.BaseUpstream,
 	sub *utils.Subscription[protocol.UpstreamEvent],
 	upstreamMethods *methods.UpstreamMethods,
 ) {
@@ -313,7 +313,7 @@ func TestUpstreamFatalErrorOnStart(t *testing.T) {
 	upstream.Start()
 
 	assert.False(t, upstream.Running())
-	assert.False(t, upstream.ProcessorsRunning())
+	assert.False(t, upstream.PartialRunning())
 }
 
 func TestUpstreamSettingErrorPartialStart(t *testing.T) {
@@ -338,7 +338,7 @@ func TestUpstreamSettingErrorPartialStart(t *testing.T) {
 	upstream.Start()
 
 	assert.True(t, upstream.Running())
-	assert.False(t, upstream.ProcessorsRunning())
+	assert.False(t, upstream.PartialRunning())
 }
 
 func TestUpstreamValidationEvents(t *testing.T) {
@@ -371,7 +371,7 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	upstream.Start()
 
 	assert.True(t, upstream.Running())
-	assert.False(t, upstream.ProcessorsRunning())
+	assert.False(t, upstream.PartialRunning())
 
 	sub := upstream.Subscribe("name")
 
@@ -382,7 +382,7 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	assert.True(t, ok)
 	upstream.Resume()
 	assert.True(t, upstream.Running())
-	assert.True(t, upstream.ProcessorsRunning())
+	assert.True(t, upstream.PartialRunning())
 
 	event, ok = <-sub.Events
 	assert.True(t, ok)
@@ -391,9 +391,9 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	assert.True(t, ok)
 	upstream.PartialStop()
 	assert.True(t, upstream.Running())
-	assert.False(t, upstream.ProcessorsRunning())
+	assert.False(t, upstream.PartialRunning())
 
 	upstream.Stop()
 	assert.False(t, upstream.Running())
-	assert.False(t, upstream.ProcessorsRunning())
+	assert.False(t, upstream.PartialRunning())
 }

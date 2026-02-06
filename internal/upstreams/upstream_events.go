@@ -12,7 +12,7 @@ import (
 )
 
 // update upstream state through one pipeline
-func (u *Upstream) processStateEvents(ctx context.Context) {
+func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
 	validUpstream := true
 	for {
@@ -46,14 +46,14 @@ func (u *Upstream) processStateEvents(ctx context.Context) {
 				time.AfterFunc(u.upConfig.Methods.BanDuration, func() {
 					u.publishUpstreamStateEvent(&protocol.UnbanMethodUpstreamStateEvent{Method: stateEvent.Method})
 				})
-				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.Id)
+				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Add(stateEvent.Method)
 				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
 			case *protocol.UnbanMethodUpstreamStateEvent:
 				if !bannedMethods.ContainsOne(stateEvent.Method) {
 					continue
 				}
-				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.Id)
+				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Remove(stateEvent.Method)
 				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
 			default:
@@ -67,15 +67,15 @@ func (u *Upstream) processStateEvents(ctx context.Context) {
 	}
 }
 
-func (u *Upstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
+func (u *BaseUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
-		Id:        u.Id,
-		Chain:     u.Chain,
+		Id:        u.id,
+		Chain:     u.chain,
 		EventType: eventType,
 	}
 }
 
-func (u *Upstream) publishUpstreamEvent(state protocol.UpstreamState, eventType protocol.UpstreamEventType) {
+func (u *BaseUpstream) publishUpstreamEvent(state protocol.UpstreamState, eventType protocol.UpstreamEventType) {
 	u.upstreamState.Store(state)
 	upstreamEvent := u.createUpstreamEvent(eventType)
 
