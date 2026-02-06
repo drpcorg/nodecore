@@ -362,7 +362,7 @@ func (u *Upstream) processBlocks(ctx context.Context) {
 func createConnector(
 	ctx context.Context,
 	upId string,
-	configuredChain chains.ConfiguredChain,
+	configuredChain *chains.ConfiguredChain,
 	connectorConfig *config.ApiConnectorConfig,
 	torProxyUrl string,
 ) (connectors.ApiConnector, error) {
@@ -385,7 +385,7 @@ func createConnector(
 func createSettingValidationProcessor(
 	upstreamId string,
 	connector connectors.ApiConnector,
-	configuredChain chains.ConfiguredChain,
+	configuredChain *chains.ConfiguredChain,
 	chainSpecific specific.ChainSpecific,
 	options *config.UpstreamOptions,
 ) *validations.SettingsValidationProcessor {

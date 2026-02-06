@@ -65,7 +65,7 @@ type ConfiguredChain struct {
 	MethodSpec string
 }
 
-var UnknownChain = ConfiguredChain{
+var UnknownChain = &ConfiguredChain{
 	ChainId:    "0x0",
 	NetVersion: "0",
 	ShortNames: []string{},
@@ -73,7 +73,7 @@ var UnknownChain = ConfiguredChain{
 	Chain:      -1,
 }
 
-var chains map[string]ConfiguredChain
+var chains map[string]*ConfiguredChain
 
 func init() {
 	result, err := configureChains()
@@ -83,7 +83,7 @@ func init() {
 	chains = result
 }
 
-func GetAllChains() map[string]ConfiguredChain {
+func GetAllChains() map[string]*ConfiguredChain {
 	return maps.Clone(chains)
 }
 
@@ -92,7 +92,7 @@ func IsSupported(chainName string) bool {
 	return ok
 }
 
-func GetChain(chainName string) ConfiguredChain {
+func GetChain(chainName string) *ConfiguredChain {
 	found, ok := chains[chainName]
 	if !ok {
 		return UnknownChain
@@ -100,7 +100,7 @@ func GetChain(chainName string) ConfiguredChain {
 	return found
 }
 
-func GetChainByChainIdAndVersion(chainId, netVersion string) ConfiguredChain {
+func GetChainByChainIdAndVersion(chainId, netVersion string) *ConfiguredChain {
 	for _, chain := range chains {
 		if chain.ChainId == chainId && chain.NetVersion == netVersion {
 			return chain
@@ -118,13 +118,8 @@ func GetMethodSpecNameByChainName(chainName string) string {
 	return GetChain(chainName).MethodSpec
 }
 
-func configureChains() (map[string]ConfiguredChain, error) {
-	configuredChains := make(map[string]ConfiguredChain)
-
-	//chainsFile, err := os.ReadFile("pkg/chains/public/chains.yaml")
-	//if err != nil {
-	//	log.Panic().Err(err).Msg("couldn't read chains.yaml")
-	//}
+func configureChains() (map[string]*ConfiguredChain, error) {
+	configuredChains := make(map[string]*ConfiguredChain)
 
 	var config ChainConfig
 	if err := yaml.Unmarshal(chainsCfg, &config); err != nil {
@@ -148,13 +143,17 @@ func configureChains() (map[string]ConfiguredChain, error) {
 			if network, ok := chainsMap[chain.ShortNames[0]]; ok {
 				netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(chain.ChainId))
 
-				configuredChains[chain.ShortNames[0]] = ConfiguredChain{
+				configuredChain := &ConfiguredChain{
 					ChainId:    chain.ChainId,
 					ShortNames: chain.ShortNames,
 					NetVersion: netVersion,
 					Type:       protocol.Type,
 					Chain:      network,
 					MethodSpec: getMethodSpecName(protocol.Type, chain.MethodSpec),
+				}
+
+				for _, shortName := range chain.ShortNames {
+					configuredChains[shortName] = configuredChain
 				}
 			}
 		}

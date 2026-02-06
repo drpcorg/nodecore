@@ -26,7 +26,7 @@ var _ ChainSpecific = (*AztecChainSpecificObject)(nil)
 func (a *AztecChainSpecificObject) SettingsValidators(
 	_ string,
 	_ connectors.ApiConnector,
-	_ chains.ConfiguredChain,
+	_ *chains.ConfiguredChain,
 	_ *config.UpstreamOptions,
 ) []validations.SettingsValidator {
 	return nil

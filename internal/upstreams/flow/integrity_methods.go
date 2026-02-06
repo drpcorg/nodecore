@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/bytedance/sonic"
@@ -130,7 +131,7 @@ func (e *EthGetBlockByNumberIntegrityHandler) HandleResponse(
 	request protocol.RequestHolder,
 	currentResponse *protocol.ResponseHolderWrapper,
 ) (bool, []string, IntegrityBlock) {
-	if currentResponse.Response.HasError() {
+	if currentResponse.Response.HasError() || bytes.Equal(currentResponse.Response.ResponseResult(), []byte("null")) {
 		return false, nil, nil
 	}
 
