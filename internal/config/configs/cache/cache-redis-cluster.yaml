@@ -1,0 +1,42 @@
+server:
+  port: 9095
+
+app-storages:
+  - name: redis-cluster-storage
+    redis:
+      cluster:
+        addresses:
+          - node1.redis.local:6379
+          - node2.redis.local:6379
+          - node3.redis.local:6379
+        route-by-latency: true
+        route-randomly: false
+        read-only: false
+      password: cluster-password
+      timeouts:
+        connect-timeout: 1s
+        read-timeout: 500ms
+        write-timeout: 500ms
+      pool:
+        size: 100
+        pool-timeout: 5s
+        min-idle-conns: 10
+        max-idle-conns: 50
+        max-active-conns: 200
+        conn-max-idle-time: 10m
+        conn-max-life-time: 1h
+
+cache:
+  connectors:
+    - driver: redis
+      id: redis-cluster
+      redis:
+        storage-name: redis-cluster-storage
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

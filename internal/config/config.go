@@ -54,6 +54,14 @@ type RedisStorageConfig struct {
 	DB       *int                        `yaml:"db"`
 	Timeouts *RedisStorageTimeoutsConfig `yaml:"timeouts"`
 	Pool     *RedisStoragePoolConfig     `yaml:"pool"`
+	Cluster  *RedisClusterConfig         `yaml:"cluster"`
+}
+
+type RedisClusterConfig struct {
+	Addresses      []string `yaml:"addresses"`
+	RouteByLatency bool     `yaml:"route-by-latency"`
+	RouteRandomly  bool     `yaml:"route-randomly"`
+	ReadOnly       bool     `yaml:"read-only"`
 }
 
 type RedisStorageTimeoutsConfig struct {
