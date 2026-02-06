@@ -1,0 +1,256 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Aztec JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "aztec"
+  },
+  "methods": [
+    {
+      "name": "node_getBlockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getProvenBlockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getL2Tips",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getBlock",
+      "params": []
+    },
+    {
+      "name": "node_getBlocks",
+      "params": []
+    },
+    {
+      "name": "node_getBlockHeader",
+      "params": []
+    },
+    {
+      "name": "node_sendTx",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getTxReceipt",
+      "params": []
+    },
+    {
+      "name": "node_getTxEffect",
+      "params": []
+    },
+    {
+      "name": "node_getTxByHash",
+      "params": []
+    },
+    {
+      "name": "node_getPendingTxs",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getPendingTxCount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_isValidTx",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_simulatePublicCalls",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getPublicStorageAt",
+      "params": []
+    },
+    {
+      "name": "node_getWorldStateSyncStatus",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_findLeavesIndexes",
+      "params": []
+    },
+    {
+      "name": "node_getNullifierSiblingPath",
+      "params": []
+    },
+    {
+      "name": "node_getNoteHashSiblingPath",
+      "params": []
+    },
+    {
+      "name": "node_getArchiveSiblingPath",
+      "params": []
+    },
+    {
+      "name": "node_getPublicDataSiblingPath",
+      "params": []
+    },
+    {
+      "name": "node_getNullifierMembershipWitness",
+      "params": []
+    },
+    {
+      "name": "node_getLowNullifierMembershipWitness",
+      "params": []
+    },
+    {
+      "name": "node_getPublicDataWitness",
+      "params": []
+    },
+    {
+      "name": "node_getArchiveMembershipWitness",
+      "params": []
+    },
+    {
+      "name": "node_getNoteHashMembershipWitness",
+      "params": []
+    },
+    {
+      "name": "node_getL1ToL2MessageMembershipWitness",
+      "params": []
+    },
+    {
+      "name": "node_getL1ToL2MessageBlock",
+      "params": []
+    },
+    {
+      "name": "node_isL1ToL2MessageSynced",
+      "params": []
+    },
+    {
+      "name": "node_getL2ToL1Messages",
+      "params": []
+    },
+    {
+      "name": "node_getPrivateLogs",
+      "params": []
+    },
+    {
+      "name": "node_getPublicLogs",
+      "params": []
+    },
+    {
+      "name": "node_getContractClassLogs",
+      "params": []
+    },
+    {
+      "name": "node_getLogsByTags",
+      "params": []
+    },
+    {
+      "name": "node_getContractClass",
+      "params": []
+    },
+    {
+      "name": "node_getContract",
+      "params": []
+    },
+    {
+      "name": "node_isReady",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getNodeInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getNodeVersion",
+      "params": []
+    },
+    {
+      "name": "node_getVersion",
+      "params": []
+    },
+    {
+      "name": "node_getChainId",
+      "params": []
+    },
+    {
+      "name": "node_getL1ContractAddresses",
+      "params": []
+    },
+    {
+      "name": "node_getProtocolContractAddresses",
+      "params": []
+    },
+    {
+      "name": "node_getEncodedEnr",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getCurrentBaseFees",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getValidatorsStats",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getValidatorStats",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_registerContractFunctionSignatures",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getAllowedPublicSetup",
+      "params": []
+    }
+  ]
+}
