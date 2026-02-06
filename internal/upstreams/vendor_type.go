@@ -36,7 +36,7 @@ func upstreamVendor(url string) UpstreamVendor {
 		return Infura
 	} else if strings.Contains(url, "quiknode.pro") {
 		return QuickNode
-	} else if strings.Contains(url, "alchemy.com") || strings.Contains(url, ".alchemyapi.io") {
+	} else if strings.Contains(url, "alchemy.com") || strings.Contains(url, "alchemyapi.io") {
 		return Alchemy
 	} else if strings.Contains(url, "drpc.live") || strings.Contains(url, "drpc.org") {
 		return DRPC
