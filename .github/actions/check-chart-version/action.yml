@@ -21,6 +21,7 @@ runs:
     - name: Validate chart version
       shell: bash
       run: |
+        ls -la
         CHART_PATH="${{ inputs.chart-path }}"
         CHART_VERSION=$(yq e '.version' "$CHART_PATH/Chart.yaml")
         echo "CHART_VERSION=$CHART_VERSION"
