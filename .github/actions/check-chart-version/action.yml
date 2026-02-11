@@ -1,6 +1,11 @@
 name: "Check Chart Version"
 description: "Ensures Helm Chart.yaml version is higher than latest Git tag"
 
+inputs:
+  chart-path:
+    description: "Path to the Helm chart to validate"
+    required: true
+
 runs:
   using: "composite"
   steps:
@@ -17,7 +22,8 @@ runs:
       shell: bash
       run: |
         ls -la
-        CHART_VERSION=$(yq e '.version' "chart/nodecore/Chart.yaml")
+        CHART_PATH="${{ inputs.chart-path }}"
+        CHART_VERSION=`yq e '.version' "$CHART_PATH/Chart.yaml"`
         echo "CHART_VERSION=$CHART_VERSION"
 
         LATEST_TAG=$(git fetch --tags && git tag -l "nodecore-*" | sort -V | tail -n1)

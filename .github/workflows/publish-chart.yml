@@ -60,6 +60,8 @@ jobs:
 
       - name: Check chart version increment
         uses: ./.github/actions/check-chart-version
+        with:
+          chart-path: chart/nodecore
 
   publish-helm-chart-nodecore:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
