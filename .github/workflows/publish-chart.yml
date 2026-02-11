@@ -1,9 +1,12 @@
 name: Publish nodecore Helm Chart
 
 on:
+  pull_request:
+    paths:
+      - 'chart/nodecore/**'
   push:
     branches:
-      - helm-chart
+      # - helm-chart
       - main
   workflow_dispatch:
     inputs:
@@ -51,7 +54,17 @@ jobs:
             --check-version-increment \
             --target-branch main
 
+      - name: Helm lint chart
+        shell: bash
+        run: helm lint chart/nodecore --strict
+
+      - name: Check chart version increment
+        uses: ./.github/actions/check-chart-version
+        with:
+          chart-path: chart/nodecore
+
   publish-helm-chart-nodecore:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -83,7 +96,7 @@ jobs:
 
       - name: Package & push nodecore chart
         run: |
-          CHART_VERSION_TAG=$(grep '^version:' "${{ env.CHART_DIR }}/Chart.yaml" | awk '{print $2}')
+          CHART_VERSION_TAG=$(yq e '.version' ${{ env.CHART_DIR }}/Chart.yaml)
           echo "CHART_VERSION_TAG=${CHART_VERSION_TAG}" >> $GITHUB_ENV
       
           helm package "${{ env.CHART_DIR }}" \

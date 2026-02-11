@@ -1,0 +1,39 @@
+name: "Check Chart Version"
+description: "Ensures Helm Chart.yaml version is higher than latest Git tag"
+
+inputs:
+  chart-path:
+    description: "Path to the Helm chart to validate"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Install yq
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y yq
+
+    - name: Validate chart version
+      shell: bash
+      run: |
+        CHART_PATH="${{ inputs.chart-path }}"
+        CHART_VERSION=$(yq e '.version' "$CHART_PATH/Chart.yaml")
+        echo "CHART_VERSION=$CHART_VERSION"
+
+        LATEST_TAG=$(git fetch --tags && git tag -l "nodecore-*" | sort -V | tail -n1)
+        echo "LATEST_TAG=$LATEST_TAG"
+
+        if [ -n "$LATEST_TAG" ]; then
+          LATEST_VERSION=${LATEST_TAG#nodecore-}
+          if [ "$(printf '%s\n' "$CHART_VERSION" "$LATEST_VERSION" | sort -V | head -n1)" = "$CHART_VERSION" ]; then
+            echo "ERROR: Chart.yaml version ($CHART_VERSION) must be higher than latest release ($LATEST_VERSION)"
+            exit 1
+          fi
+        fi
+
+        echo "Chart version $CHART_VERSION is valid."
