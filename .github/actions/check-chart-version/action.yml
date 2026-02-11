@@ -17,6 +17,7 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y yq
+        yq -V
 
     - name: Validate chart version
       shell: bash
