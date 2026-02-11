@@ -87,6 +87,14 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
+      - name: Install yq
+        shell: bash
+        run: |
+          YQ_VERSION=v4.45.1
+          sudo curl -L https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64 -o /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
       - name: Login to GHCR
         run: |
           echo "${{ github.token }}" \
