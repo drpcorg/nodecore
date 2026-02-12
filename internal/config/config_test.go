@@ -571,7 +571,7 @@ func TestCachePolicyNoChainThenError(t *testing.T) {
 func TestCachePolicyNotSupportedChainThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-not-supported-chain.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain 'eth' is not supported")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain 'not-supported' is not supported")
 }
 
 func TestCachePolicyWrongMaxSizeThenError(t *testing.T) {
