@@ -70,8 +70,8 @@ type JsonRpcWsConnection struct {
 	connectFunc func() (*websocket.Conn, error)
 	connection  *utils.Atomic[*websocket.Conn]
 	internalId  atomic.Uint64
-	requests    *utils.CMap[string, reqOp] // to store internal ids and websocket requests
-	subs        *utils.CMap[string, reqOp] // to store a subId and its request to identify events
+	requests    *utils.CMap[string, *reqOp] // to store internal ids and websocket requests
+	subs        *utils.CMap[string, *reqOp] // to store a subId and its request to identify events
 	executor    failsafe.Executor[bool]
 	torProxyUrl string
 }
@@ -146,8 +146,8 @@ func NewJsonRpcWsConnection(
 		endpoint:    endpoint,
 		ctx:         ctx,
 		connectFunc: connectFunc,
-		requests:    utils.NewCMap[string, reqOp](),
-		subs:        utils.NewCMap[string, reqOp](),
+		requests:    utils.NewCMap[string, *reqOp](),
+		subs:        utils.NewCMap[string, *reqOp](),
 		rpcTimeout:  1 * time.Minute,
 		connection:  utils.NewAtomic[*websocket.Conn](),
 		executor:    failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),

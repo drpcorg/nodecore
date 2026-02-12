@@ -53,6 +53,12 @@ func TestReadFullConfig(t *testing.T) {
 				},
 			},
 		},
+		IntegrationConfig: &config.IntegrationConfig{
+			Drpc: &config.DrpcIntegrationConfig{
+				Url:            "http://localhost:9090",
+				RequestTimeout: 35 * time.Second,
+			},
+		},
 		ServerConfig: &config.ServerConfig{
 			Port: 9095,
 			PyroscopeConfig: &config.PyroscopeConfig{
@@ -81,7 +87,7 @@ func TestReadFullConfig(t *testing.T) {
 			KeyConfigs: []*config.KeyConfig{
 				{
 					Id:   "other-key",
-					Type: config.Local,
+					Type: config.LocalKey,
 					LocalKeyConfig: &config.LocalKeyConfig{
 						Key: "asadasdjabdhjabshjd",
 						KeySettingsConfig: &config.KeySettingsConfig{
@@ -93,6 +99,16 @@ func TestReadFullConfig(t *testing.T) {
 							AuthContracts: &config.AuthContracts{
 								Allowed: []string{"0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"},
 							},
+						},
+					},
+				},
+				{
+					Id:   "drpc-super-key",
+					Type: config.DrpcKey,
+					DrpcKeyConfig: &config.DrpcKeyConfig{
+						Owner: &config.DrpcOwnerConfig{
+							Id:       "id",
+							ApiToken: "apiToken",
 						},
 					},
 				},
@@ -555,7 +571,7 @@ func TestCachePolicyNoChainThenError(t *testing.T) {
 func TestCachePolicyNotSupportedChainThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-not-supported-chain.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain 'eth' is not supported")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain 'not-supported' is not supported")
 }
 
 func TestCachePolicyWrongMaxSizeThenError(t *testing.T) {
@@ -801,7 +817,7 @@ func TestAuthKeyLocalNoSettingsThenError(t *testing.T) {
 func TestAuthKeyLocalEmptyKeyThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/auth/auth-key-local-empty-key.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during 'key1' key config validation, cause: error during 'key1' key config validation, cause: 'key' field is empty")
+	assert.ErrorContains(t, err, "error during 'key1' key config validation, cause: 'key' field is empty")
 }
 
 func TestTlsEnabledNoCertificateThenError(t *testing.T) {
@@ -1127,4 +1143,58 @@ func TestRateLimitAutoTuneInitRateLimitPeriodGreaterThanPeriodThenError(t *testi
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/rate-limit-autotune-init-period-greater-period.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "init-rate-limit-period must be less than or equal to the period when auto-tune is enabled")
+}
+
+func TestDrpcIntegrationConfigNoUrlThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/integration/integration-config-no-url.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during drpc integration validation, cause - url cannot be empty")
+}
+
+func TestDrpcIntegrationConfigWrongRequestTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/integration/integration-config-wrong-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during drpc integration validation, cause - request timeout cannot be less than 0")
+}
+
+func TestDrpcIntegrationConfigDefaultRequestTimeout(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/integration/default-request-timeout.yaml")
+	appCfg, err := config.NewAppConfig()
+	assert.NoError(t, err)
+
+	expected := &config.DrpcIntegrationConfig{
+		Url:            "http://localhost:9195",
+		RequestTimeout: 10 * time.Second,
+	}
+	assert.Equal(t, expected, appCfg.IntegrationConfig.Drpc)
+}
+
+func TestDrpcKeyNoIntegrationThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-no-drpc-integration.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'drpc-super-key' key config validation, cause: there is no drpc integration for drpc keys")
+}
+
+func TestDrpcKeyNoDrpcKeyConfigThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-no-drpc-key-config.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'drpc-super-key' key config validation, cause: specified 'drpc' key management rule type but there are no its settings")
+}
+
+func TestDrpcKeyEmptyOwnerThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-drpc-key-empty-owner.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'drpc-super-key' key config validation, cause: owner config is empty")
+}
+
+func TestDrpcKeyEmptyOwnerIdThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-drpc-key-empty-owner-id.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'drpc-super-key' key config validation, cause: owner id is empty")
+}
+
+func TestDrpcKeyEmptyOwnerTokenThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/auth/auth-drpc-key-empty-owner-token.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during 'drpc-super-key' key config validation, cause: owner API token is empty")
 }

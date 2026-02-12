@@ -19,7 +19,7 @@ type ChainSpecific interface {
 	ParseBlock([]byte) (*protocol.Block, error)
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
-	SettingsValidators(upstreamId string, connector connectors.ApiConnector, chain chains.ConfiguredChain, options *config.UpstreamOptions) []validations.SettingsValidator
+	SettingsValidators(upstreamId string, connector connectors.ApiConnector, chain *chains.ConfiguredChain, options *config.UpstreamOptions) []validations.SettingsValidator
 }
 
 var EvmChainSpecific *EvmChainSpecificObject
@@ -34,7 +34,7 @@ type EvmChainSpecificObject struct {
 func (e *EvmChainSpecificObject) SettingsValidators(
 	upstreamId string,
 	connector connectors.ApiConnector,
-	chain chains.ConfiguredChain,
+	chain *chains.ConfiguredChain,
 	options *config.UpstreamOptions,
 ) []validations.SettingsValidator {
 	settingsValidators := make([]validations.SettingsValidator, 0)
