@@ -1,0 +1,324 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "image": {
+      "type": "object",
+      "description": "Container image configuration",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Container image repository"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ],
+          "description": "Image pull policy"
+        }
+      },
+      "required": [
+        "name",
+        "pullPolicy"
+      ]
+    },
+    "deployment": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable Deployment resource"
+        }
+      }
+    },
+    "revisionHistoryLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of old ReplicaSets to retain"
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of replicas"
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "podSecurityContext": {
+      "type": "object"
+    },
+    "securityContext": {
+      "type": "object"
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer",
+            "ExternalName"
+          ]
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "targetPort": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "TCP",
+                  "UDP",
+                  "SCTP"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "port",
+              "targetPort",
+              "protocol"
+            ]
+          }
+        }
+      },
+      "required": [
+        "type",
+        "ports"
+      ]
+    },
+    "containerPorts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "TCP",
+              "UDP",
+              "SCTP"
+            ]
+          }
+        },
+        "required": [
+          "port",
+          "protocol"
+        ]
+      }
+    },
+    "tolerations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "additionalLabels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "interval": {
+              "type": "string"
+            },
+            "scrapeTimeout": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "ingressClassName": {
+          "type": "string"
+        },
+        "backendServicePort": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "extraVolumes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "serviceEnv": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "nodecoreConfig": {
+      "type": "object",
+      "description": "NodeCore application configuration (must contain at least one upstream)",
+      "properties": {
+        "upstream-config": {
+          "type": "object",
+          "properties": {
+            "upstreams": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "image",
+    "replicaCount",
+    "service",
+    "nodecoreConfig"
+  ]
+}

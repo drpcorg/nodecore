@@ -1,0 +1,3 @@
+/chart/nodecore/** @drpcorg/infra
+.github/workflows/publish-chart.yml @drpcorg/infra
+.github/actions/check-chart-version/** @drpcorg/infra

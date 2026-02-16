@@ -65,7 +65,7 @@ ingress:
   # ingressClassName: nginx
   # backendServicePort: 9095
   # hosts:
-  #   - host: []  
+  #   - host: []
   #     paths:
   #       - /
   # tls: []
@@ -74,10 +74,10 @@ nodeSelector: {}
 
 resources:
   limits:
-    cpu: 1
+    cpu: "1"
     memory: 2Gi
   requests:
-    cpu: 500m
+    cpu: "500m"
     memory: 1Gi
 
 env:
@@ -93,40 +93,40 @@ serviceEnv: {}
 
 # Example of nodecore configuration file (it's mandatory - there must be at least one upstream in the config)
 nodecoreConfig:
-    server:
-        port: 9095
-        metrics-port: 9093
-    cache:
+  server:
+    port: 9095
+    metrics-port: 9093
+  cache:
+    connectors:
+      - id: memory-connector
+        driver: memory
+        memory:
+          max-items: 5000
+          expired-remove-interval: 10s
+    policies:
+      - chain: '*'
+        id: memory-forever
+        method: '*'
+        connector-id: memory-connector
+        finalization-type: finalized
+        ttl: 30s
+  upstream-config:
+    score-policy-config:
+      calculation-interval: 5s
+      calculation-function-name: defaultLatencyErrorRatePolicyFunc
+    failsafe-config:
+      retry:
+        delay: 100ms
+      hedge:
+        delay: 3000ms
+        max: 1
+    upstreams:
+      - id: solana-main
+        chain: solana
         connectors:
-            - id: memory-connector
-              driver: memory
-              memory:
-                max-items: 5000
-                expired-remove-interval: 10s
-        policies:
-            - chain: '*'
-              id: memory-forever
-              method: '*'
-              connector-id: memory-connector
-              finalization-type: finalized
-              ttl: 30s
-    upstream-config:
-        score-policy-config:
-            calculation-interval: 5s
-            calculation-function-name: defaultLatencyErrorRatePolicyFunc
-        failsafe-config:
-            retry:
-                delay: 100ms
-            hedge:
-                delay: 3000ms
-                max: 1
-        upstreams:
-            - id: solana-main
-              chain: solana
-              connectors:
-                - type: json-rpc
-                  url: https://api.mainnet-beta.solana.com
-              head-connector: ""
-              poll-interval: 0s
-              methods: null
-              failsafe-config: null
+          - type: json-rpc
+            url: https://api.mainnet-beta.solana.com
+        head-connector: ""
+        poll-interval: 0s
+        methods: null
+        failsafe-config: null
