@@ -53,8 +53,11 @@ func NewSimpleDrpcHttpConnector(drpcIntegration *config.DrpcIntegrationConfig) *
 }
 
 func (s *SimpleDrpcHttpConnector) OwnerExists(ownerId, apiToken string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
+	defer cancel()
+
 	path := fmt.Sprintf("/nodecore/owners/%s", ownerId)
-	response, closeBodyFunc, err := s.makeRequest(http.MethodGet, apiToken, s.baseUrl+path, nil)
+	response, closeBodyFunc, err := s.makeRequest(ctx, http.MethodGet, apiToken, s.baseUrl+path, nil)
 	if err != nil {
 		return fmt.Errorf("couldn't get owner: %w", err)
 	}
@@ -68,8 +71,11 @@ func (s *SimpleDrpcHttpConnector) OwnerExists(ownerId, apiToken string) error {
 }
 
 func (s *SimpleDrpcHttpConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*DrpcKey, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
+	defer cancel()
+
 	path := fmt.Sprintf("/nodecore/owners/%s/keys", ownerId)
-	response, closeBodyFunc, err := s.makeRequest(http.MethodGet, apiToken, s.baseUrl+path, nil)
+	response, closeBodyFunc, err := s.makeRequest(ctx, http.MethodGet, apiToken, s.baseUrl+path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't load keys: %w", err)
 	}
@@ -113,10 +119,7 @@ func handleStatusCodes(statusCode int, ownerId, path string, responseBody io.Rea
 	}
 }
 
-func (s *SimpleDrpcHttpConnector) makeRequest(method, apiToken, url string, body io.Reader) (*http.Response, func(), error) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
-	defer cancel()
-
+func (s *SimpleDrpcHttpConnector) makeRequest(ctx context.Context, method, apiToken, url string, body io.Reader) (*http.Response, func(), error) {
 	request, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error making request %s %s: %w", method, url, err)
