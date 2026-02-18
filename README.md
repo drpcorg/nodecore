@@ -79,6 +79,10 @@ curl --location 'http://localhost:9090/queries/ethereum' \
 
 For detailed documentation [see](docs/nodecore)
 
+## Integrations
+
+Nodecore can be integrated with other services to provide additional functionality. For example, with DRPC. For more information, see [Integrations](docs/nodecore/09-integration.md).
+
 ## Special Deployments
 
 ### Running NodeCore as a Tor Hidden Service
