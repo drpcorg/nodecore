@@ -15,7 +15,7 @@ const cacheKeyPrefix = "nodecore:entry:"
 
 type RedisConnector struct {
 	id     string
-	client *redis.Client
+	client redis.UniversalClient
 }
 
 func (r *RedisConnector) Initialize() error {
