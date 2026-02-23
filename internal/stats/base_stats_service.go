@@ -3,7 +3,6 @@ package stats
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,12 +109,6 @@ func (b *BaseStatsService) process() {
 			log.Debug().Msg("waiting for stats aggregation to finish...")
 			time.Sleep(200 * time.Millisecond)
 		}
-		currentAggregatedData.statsAggregatedData.Range(func(key statsdata.StatsKey, val statsdata.StatsData) bool {
-			if v, ok := val.(*statsdata.RequestStatsData); ok {
-				fmt.Println(key, v.GetRequestAmount())
-			}
-			return true
-		})
 		go b.integrationClient.ProcessStatsData(currentAggregatedData.statsAggregatedData)
 	}
 }
