@@ -8,14 +8,14 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: "1.25.5"
+        default: "1.26.0"
   pull_request: null
   push:
     branches:
       - main
 
 env:
-  GO_VERSION: ${{ inputs.go-version || '1.25.5' }}
+  GO_VERSION: ${{ inputs.go-version || '1.26.0' }}
 
 jobs:
   build:
@@ -23,7 +23,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go-version: ["1.25.5"]
+        go-version: ["1.26.0"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

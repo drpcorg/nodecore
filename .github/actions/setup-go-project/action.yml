@@ -4,7 +4,7 @@ inputs:
   go-version:
     description: "Go version to use"
     required: false
-    default: "1.25.5"
+    default: "1.26.0"
   cache-key-suffix:
     description: "Additional suffix for cache key"
     required: false
