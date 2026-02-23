@@ -195,6 +195,7 @@ func TestUnaryRequestProcessorReceiveFromCache(t *testing.T) {
 	cacheProcessor.AssertNotCalled(t, "Store")
 	cacheProcessor.AssertExpectations(t)
 
+	assert.Equal(t, protocol.Cached, request.RequestObserver().GetRequestKind())
 	assert.Equal(t, "223", unaryRespWrapper.RequestId)
 	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
 	assert.False(t, unaryRespWrapper.Response.HasError())

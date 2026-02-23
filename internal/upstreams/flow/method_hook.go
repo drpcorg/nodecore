@@ -45,4 +45,4 @@ func NewMethodBanHook(upstreamSupervisor upstreams.UpstreamSupervisor) *MethodBa
 	return &MethodBanHook{upstreamSupervisor: upstreamSupervisor}
 }
 
-var _ ResponseReceivedHook = (*MethodBanHook)(nil)
+var _ protocol.ResponseReceivedHook = (*MethodBanHook)(nil)

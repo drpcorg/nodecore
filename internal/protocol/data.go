@@ -17,6 +17,10 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
+type ResponseReceivedHook interface {
+	OnResponseReceived(ctx context.Context, request RequestHolder, respWrapper *ResponseHolderWrapper)
+}
+
 type ResultType int
 
 const (
@@ -156,12 +160,15 @@ type RequestHolder interface {
 	Headers() map[string]string
 	Body() ([]byte, error)
 	ParseParams(ctx context.Context) specs.MethodParam
-	ModifyParams(ctx context.Context, newValue any)
-	IsStream() bool
-	IsSubscribe() bool
 	RequestType() RequestType
 	RequestHash() string
 	SpecMethod() *specs.Method
+	RequestObserver() *RequestObserver
+
+	ModifyParams(ctx context.Context, newValue any)
+
+	IsStream() bool
+	IsSubscribe() bool
 }
 
 type ResponseHolder interface {

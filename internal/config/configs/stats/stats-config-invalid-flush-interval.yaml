@@ -1,0 +1,12 @@
+stats:
+  enabled: true
+  type: drpc
+  flush-interval: 1m
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

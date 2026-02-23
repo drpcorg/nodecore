@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/key_management"
+	"github.com/drpcorg/nodecore/internal/key_management/keydata"
 	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
@@ -29,7 +30,7 @@ func NewAuthProcessor(ctx context.Context, authCfg *config.AuthConfig, integrati
 	if len(authCfg.KeyConfigs) == 0 {
 		authProcessor = newSimpleAuthProcessor(authRequestStrategy)
 	} else {
-		keyResolver, err := NewKeyResolver(ctx, authCfg.KeyConfigs, integrationResolver)
+		keyResolver, err := keymanagement.NewKeyService(ctx, authCfg.KeyConfigs, integrationResolver)
 		if err != nil {
 			return nil, err
 		}
@@ -43,6 +44,7 @@ type AuthProcessor interface {
 	Authenticate(ctx context.Context, payload AuthPayload) error
 	PreKeyValidate(ctx context.Context, payload AuthPayload) ([]string, error)
 	PostKeyValidate(ctx context.Context, payload AuthPayload, request protocol.RequestHolder) error
+	GetKeyValue(payload AuthPayload) string
 }
 
 type AuthPayload interface {
@@ -63,7 +65,15 @@ func (h *HttpAuthPayload) payload() {}
 
 type basicAuthProcessor struct {
 	requestStrategy AuthRequestStrategy
-	keyResolver     *KeyResolver
+	keyResolver     *keymanagement.KeyService
+}
+
+func (b *basicAuthProcessor) GetKeyValue(payload AuthPayload) string {
+	key, err := b.getKey(payload)
+	if err != nil {
+		return ""
+	}
+	return key.GetKeyValue()
 }
 
 func (b *basicAuthProcessor) Authenticate(ctx context.Context, payload AuthPayload) error {
@@ -86,7 +96,7 @@ func (b *basicAuthProcessor) PostKeyValidate(ctx context.Context, payload AuthPa
 	return key.PostCheckSetting(ctx, request)
 }
 
-func (b *basicAuthProcessor) getKey(payload AuthPayload) (keymanagement.Key, error) {
+func (b *basicAuthProcessor) getKey(payload AuthPayload) (keydata.Key, error) {
 	keyStr := getPayloadKey(payload)
 	if keyStr == "" {
 		return nil, errors.New("api-key must be provided")
@@ -111,7 +121,7 @@ func getPayloadKey(payload AuthPayload) string {
 	return keyStr
 }
 
-func newBasicAuthProcessor(keyResolver *KeyResolver, requestStrategy AuthRequestStrategy) *basicAuthProcessor {
+func newBasicAuthProcessor(keyResolver *keymanagement.KeyService, requestStrategy AuthRequestStrategy) *basicAuthProcessor {
 	return &basicAuthProcessor{
 		requestStrategy: requestStrategy,
 		keyResolver:     keyResolver,

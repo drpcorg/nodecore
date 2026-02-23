@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
+	"github.com/drpcorg/nodecore/internal/key_management/keydata"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
@@ -15,13 +16,13 @@ import (
 func TestDrpcIntegrationClientReturnType(t *testing.T) {
 	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
 
-	assert.Equal(t, integration.IntegrationType("drpc"), client.Type())
+	assert.Equal(t, integration.Drpc, client.Type())
 }
 
 func TestDrpcIntegrationClientNotDrpcCfgThenErr(t *testing.T) {
 	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
 
-	events, err := client.InitKeys(&config.ExternalKeyConfig{})
+	events, err := client.InitKeys("id", &config.ExternalKeyConfig{})
 
 	assert.Nil(t, events)
 	assert.ErrorContains(t, err, "drpc init keys expects drpc key config")
@@ -30,7 +31,7 @@ func TestDrpcIntegrationClientNotDrpcCfgThenErr(t *testing.T) {
 func TestDrpcIntegrationClientNoOwnerThenErr(t *testing.T) {
 	client := integration.NewDrpcIntegrationClient(&config.DrpcIntegrationConfig{Url: "http://localhost:8080"})
 
-	events, err := client.InitKeys(&config.DrpcKeyConfig{})
+	events, err := client.InitKeys("id", &config.DrpcKeyConfig{})
 
 	assert.Nil(t, events)
 	assert.ErrorContains(t, err, "there must be drpc owner config to init drpc keys")
@@ -63,15 +64,15 @@ func TestDrpcIntegrationClientInitKeys(t *testing.T) {
 	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil)
 	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(drpcKeys, nil)
 
-	events, err := client.InitKeys(cfg)
+	events, err := client.InitKeys("id", cfg)
 
 	assert.NoError(t, err)
 
 	key := <-events
-	assert.Equal(t, drpcKeys[0], key.(*integration.UpdatedKeyEvent).NewKey)
+	assert.Equal(t, drpcKeys[0], key.(*keydata.UpdatedKeyEvent).NewKey)
 
 	key = <-events
-	assert.Equal(t, drpcKeys[1], key.(*integration.UpdatedKeyEvent).NewKey)
+	assert.Equal(t, drpcKeys[1], key.(*keydata.UpdatedKeyEvent).NewKey)
 
 	connector.AssertExpectations(t)
 }
@@ -126,14 +127,14 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(changedKeys, nil).Once()
 	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(removedAndAddedKeys, nil).Once()
 
-	events, err := client.InitKeys(cfg)
+	events, err := client.InitKeys("id", cfg)
 	assert.NoError(t, err)
 
 	key := <-events
-	assert.Equal(t, initialKeys[0], key.(*integration.UpdatedKeyEvent).NewKey)
+	assert.Equal(t, initialKeys[0], key.(*keydata.UpdatedKeyEvent).NewKey)
 
 	// get the same key
-	var event integration.KeyEvent
+	var event keydata.KeyEvent
 	select {
 	case <-time.After(5 * time.Millisecond):
 	case event = <-events:
@@ -142,7 +143,7 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 
 	// add a new key
 	event = <-events
-	ev, ok := event.(*integration.UpdatedKeyEvent)
+	ev, ok := event.(*keydata.UpdatedKeyEvent)
 	assert.True(t, ok)
 	drpcKey, ok := ev.NewKey.(*drpc.DrpcKey)
 	assert.True(t, ok)
@@ -150,7 +151,7 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 
 	// change a key
 	event = <-events
-	ev, ok = event.(*integration.UpdatedKeyEvent)
+	ev, ok = event.(*keydata.UpdatedKeyEvent)
 	assert.True(t, ok)
 	drpcKey, ok = ev.NewKey.(*drpc.DrpcKey)
 	assert.True(t, ok)
@@ -158,7 +159,7 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 
 	// add a new key
 	event = <-events
-	ev, ok = event.(*integration.UpdatedKeyEvent)
+	ev, ok = event.(*keydata.UpdatedKeyEvent)
 	assert.True(t, ok)
 	drpcKey, ok = ev.NewKey.(*drpc.DrpcKey)
 	assert.True(t, ok)
@@ -166,7 +167,7 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 
 	// remove a key
 	event = <-events
-	removedEv, ok := event.(*integration.RemovedKeyEvent)
+	removedEv, ok := event.(*keydata.RemovedKeyEvent)
 	assert.True(t, ok)
 	drpcKey, ok = removedEv.RemovedKey.(*drpc.DrpcKey)
 	assert.True(t, ok)

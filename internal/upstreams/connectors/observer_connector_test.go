@@ -12,22 +12,26 @@ import (
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestDimensionConnectorSuccessfulResponse(t *testing.T) {
+func TestObserverConnectorSuccessfulResponse(t *testing.T) {
 	tracker := dimensions.NewDimensionTracker()
+	hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 	executor := resilience.CreateUpstreamExecutor()
 	connectorMock := mocks.NewConnectorMock()
-	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
+	observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
 	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.On("SendRequest", mock.Anything, request).Return(responseHolder)
 
-	result := dimensionConnector.SendRequest(context.Background(), request)
+	result := observerConnector.SendRequest(context.Background(), request)
+	time.Sleep(10 * time.Millisecond)
 	dims := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id", "eth_call")
 
 	connectorMock.AssertExpectations(t)
@@ -40,20 +44,27 @@ func TestDimensionConnectorSuccessfulResponse(t *testing.T) {
 	assert.True(t, dims.GetValueAtQuantile(0.9) > 0)
 }
 
-func TestDimensionConnectorRetryRequest(t *testing.T) {
+func TestObserverConnectorRetryRequest(t *testing.T) {
 	tracker := dimensions.NewDimensionTracker()
+	hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 	executor := resilience.CreateUpstreamExecutor(
 		resilience.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 10 * time.Millisecond}),
 	)
 	connectorMock := mocks.NewConnectorMock()
-	dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
+	observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
 	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
-	connectorMock.On("SendRequest", mock.Anything, request).Return(protocol.NewReplyError("1", protocol.ServerError(), protocol.JsonRpc, protocol.PartialFailure)).Once()
-	connectorMock.On("SendRequest", mock.Anything, request).Return(responseHolder).Once()
+	connectorMock.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(request))).
+		Return(protocol.NewReplyError("1", protocol.ServerError(), protocol.JsonRpc, protocol.PartialFailure)).Once()
+	connectorMock.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(request))).
+		Return(responseHolder).Once()
 
-	result := dimensionConnector.SendRequest(context.Background(), request)
+	result := observerConnector.SendRequest(context.Background(), request)
+	time.Sleep(10 * time.Millisecond)
 	dims := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id", "eth_call")
 
 	connectorMock.AssertExpectations(t)
@@ -66,7 +77,7 @@ func TestDimensionConnectorRetryRequest(t *testing.T) {
 	assert.True(t, dims.GetValueAtQuantile(0.9) > 0)
 }
 
-func TestDimensionConnectorTypeTheSameAsDelegate(t *testing.T) {
+func TestObserverConnectorTypeTheSameAsDelegate(t *testing.T) {
 	tests := []struct {
 		name          string
 		connectorType protocol.ApiConnectorType
@@ -92,14 +103,14 @@ func TestDimensionConnectorTypeTheSameAsDelegate(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			connectorMock := mocks.NewConnectorMockWithType(test.connectorType)
-			dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, nil, nil)
+			observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, nil, nil)
 
-			assert.Equal(te, test.connectorType, dimensionConnector.GetType())
+			assert.Equal(te, test.connectorType, observerConnector.GetType())
 		})
 	}
 }
 
-func TestDimensionConnectorRetryableNonRetryableErrors(t *testing.T) {
+func TestObserverConnectorRetryableNonRetryableErrors(t *testing.T) {
 	tests := []struct {
 		name          string
 		expectedError uint64
@@ -120,14 +131,17 @@ func TestDimensionConnectorRetryableNonRetryableErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			tracker := dimensions.NewDimensionTracker()
+			hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 			executor := resilience.CreateUpstreamExecutor()
 			connectorMock := mocks.NewConnectorMock()
-			dimensionConnector := connectors.NewDimensionTrackerConnector(chains.ARBITRUM, "id", connectorMock, tracker, executor)
+			observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
 			request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+			request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 			connectorMock.On("SendRequest", mock.Anything, request).Return(test.errorResponse)
 
-			result := dimensionConnector.SendRequest(context.Background(), request)
+			result := observerConnector.SendRequest(context.Background(), request)
+			time.Sleep(10 * time.Millisecond)
 			dims := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id", "eth_call")
 
 			connectorMock.AssertExpectations(te)

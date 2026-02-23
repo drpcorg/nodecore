@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
+	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -88,6 +89,7 @@ func NewBaseUpstream(
 	ctx context.Context,
 	conf *config.Upstream,
 	tracker *dimensions.DimensionTracker,
+	statsService stats.StatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	upstreamIndex int,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
@@ -95,24 +97,11 @@ func NewBaseUpstream(
 ) (*BaseUpstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
-	apiConnectors := make([]connectors.ApiConnector, 0)
-	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
 
-	var headConnector connectors.ApiConnector
-	for _, connectorConfig := range conf.Connectors {
-		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("cound't create api connector of %s: %v", conf.Id, err)
-		}
-		apiConnector = connectors.NewDimensionTrackerConnector(configuredChain.Chain, conf.Id, apiConnector, tracker, executor)
-		if connectorConfig.Type == conf.HeadConnector {
-			headConnector = apiConnector
-		}
-		if apiConnector.GetType() == protocol.WsConnector {
-			caps.Add(protocol.WsCap)
-		}
-		apiConnectors = append(apiConnectors, apiConnector)
+	headConnector, apiConnectors, caps, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
+	if err != nil {
+		cancel()
+		return nil, err
 	}
 	chainSpecific := getChainSpecific(configuredChain.Type)
 
@@ -305,7 +294,7 @@ func (u *BaseUpstream) validateUpstreamSettings(ctx context.Context, currentVali
 		for {
 			select {
 			case <-ctx.Done():
-				log.Info().Msgf("stopping setting validations of upstream '%s'", u.id)
+				log.Info().Msgf("stopping settings validations of upstream '%s'", u.id)
 				return
 			case <-time.After(u.upConfig.Options.ValidationInterval):
 				validationResult := u.settingsValidationProcessor.ValidateUpstreamSettings()
@@ -446,4 +435,39 @@ func getUpstreamVendor(connectors []*config.ApiConnectorConfig) UpstreamVendor {
 		return item.Url
 	})
 	return DetectUpstreamVendor(urls)
+}
+
+func createUpstreamConnectors(
+	ctx context.Context,
+	conf *config.Upstream,
+	configuredChain *chains.ConfiguredChain,
+	tracker *dimensions.DimensionTracker,
+	statsService stats.StatsService,
+	executor failsafe.Executor[protocol.ResponseHolder],
+	torProxyUrl string,
+) (connectors.ApiConnector, []connectors.ApiConnector, mapset.Set[protocol.Cap], error) {
+	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
+	apiConnectors := make([]connectors.ApiConnector, 0)
+	var headConnector connectors.ApiConnector
+
+	for _, connectorConfig := range conf.Connectors {
+		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("cound't create api connector of %s: %v", conf.Id, err)
+		}
+		hooks := []protocol.ResponseReceivedHook{
+			dimensions.NewDimensionHook(tracker),
+			stats.NewStatsHook(statsService),
+		}
+		apiConnector = connectors.NewObserverConnector(configuredChain.Chain, conf.Id, apiConnector, hooks, executor)
+		if connectorConfig.Type == conf.HeadConnector {
+			headConnector = apiConnector
+		}
+		if apiConnector.GetType() == protocol.WsConnector {
+			caps.Add(protocol.WsCap)
+		}
+		apiConnectors = append(apiConnectors, apiConnector)
+	}
+
+	return headConnector, apiConnectors, caps, nil
 }

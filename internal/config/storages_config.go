@@ -3,7 +3,44 @@ package config
 import (
 	"errors"
 	"fmt"
+	"time"
 )
+
+type AppStorageConfig struct {
+	Name     string                 `yaml:"name"`
+	Redis    *RedisStorageConfig    `yaml:"redis"`
+	Postgres *PostgresStorageConfig `yaml:"postgres"`
+}
+
+type PostgresStorageConfig struct {
+	Url string `yaml:"url"`
+}
+
+type RedisStorageConfig struct {
+	FullUrl  string                      `yaml:"full-url"`
+	Address  string                      `yaml:"address"`
+	Username string                      `yaml:"username"`
+	Password string                      `yaml:"password"`
+	DB       *int                        `yaml:"db"`
+	Timeouts *RedisStorageTimeoutsConfig `yaml:"timeouts"`
+	Pool     *RedisStoragePoolConfig     `yaml:"pool"`
+}
+
+type RedisStorageTimeoutsConfig struct {
+	ConnectTimeout *time.Duration `yaml:"connect-timeout"`
+	ReadTimeout    *time.Duration `yaml:"read-timeout"`
+	WriteTimeout   *time.Duration `yaml:"write-timeout"`
+}
+
+type RedisStoragePoolConfig struct {
+	Size            int            `yaml:"size"`
+	PoolTimeout     *time.Duration `yaml:"pool-timeout"`
+	MinIdleConns    int            `yaml:"min-idle-conns"`
+	MaxIdleConns    int            `yaml:"max-idle-conns"`
+	MaxActiveConns  int            `yaml:"max-active-conns"`
+	ConnMaxIdleTime *time.Duration `yaml:"conn-max-idle-time"`
+	ConnMaxLifeTime *time.Duration `yaml:"conn-max-life-time"`
+}
 
 func (a *AppStorageConfig) validate() (string, error) {
 	if a.Name == "" {
