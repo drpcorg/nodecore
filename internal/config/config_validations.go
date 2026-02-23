@@ -35,6 +35,11 @@ func (a *AppConfig) validate() error {
 			return err
 		}
 	}
+	if a.StatsConfig != nil {
+		if err := a.StatsConfig.validate(); err != nil {
+			return err
+		}
+	}
 	if err := a.ServerConfig.validate(); err != nil {
 		return err
 	}

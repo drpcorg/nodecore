@@ -26,17 +26,13 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func BuildLocalKeyConfig(id, key string, allowedIps []string, methods *config.AuthMethods, contracts *config.AuthContracts) *config.KeyConfig {
-	return &config.KeyConfig{
-		Id:   id,
-		Type: config.LocalKey,
-		LocalKeyConfig: &config.LocalKeyConfig{
-			Key: key,
-			KeySettingsConfig: &config.KeySettingsConfig{
-				AllowedIps:    allowedIps,
-				Methods:       methods,
-				AuthContracts: contracts,
-			},
+func BuildLocalKeyConfig(key string, allowedIps []string, methods *config.AuthMethods, contracts *config.AuthContracts) *config.LocalKeyConfig {
+	return &config.LocalKeyConfig{
+		Key: key,
+		KeySettingsConfig: &config.KeySettingsConfig{
+			AllowedIps:    allowedIps,
+			Methods:       methods,
+			AuthContracts: contracts,
 		},
 	}
 }

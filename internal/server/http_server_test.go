@@ -126,7 +126,7 @@ func TestHttpServerCantAuthenticate(t *testing.T) {
 	}
 
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil)
+	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil)
 	server := servernodecore.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
@@ -155,7 +155,7 @@ func TestHttpServerCantAuthenticate(t *testing.T) {
 
 func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil)
+	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil)
 	server := servernodecore.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
@@ -181,7 +181,7 @@ func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 
 func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil)
+	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil)
 	server := servernodecore.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
@@ -208,7 +208,7 @@ func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 
 func TestHttpServerNotSupportedChainThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil)
+	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil)
 	server := servernodecore.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
@@ -236,7 +236,7 @@ func TestHttpServerNotSupportedChainThenErr(t *testing.T) {
 func TestHttpServerChainSupervisorIsNilThenErr(t *testing.T) {
 	upSup := mocks.NewUpstreamSupervisorMock()
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(upSup, nil, nil, authProc, nil, nil)
+	appCtx := servernodecore.NewApplicationContext(upSup, nil, nil, authProc, nil, nil, nil, nil)
 	server := servernodecore.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
@@ -266,7 +266,7 @@ func TestHttpServerChainSupervisorIsNilThenErr(t *testing.T) {
 func TestHttpServerPostKeyValidateWithErr(t *testing.T) {
 	upSup := mocks.NewUpstreamSupervisorMock()
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(upSup, nil, nil, authProc, nil, nil)
+	appCtx := servernodecore.NewApplicationContext(upSup, nil, nil, authProc, nil, nil, nil, nil)
 	server := servernodecore.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()

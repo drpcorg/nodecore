@@ -1,0 +1,11 @@
+stats:
+  enabled: true
+  type: invalid-type!
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -9,6 +9,10 @@ import (
 type noopAuthProcessor struct {
 }
 
+func (n *noopAuthProcessor) GetKeyValue(_ AuthPayload) string {
+	return ""
+}
+
 func (n *noopAuthProcessor) PreKeyValidate(_ context.Context, _ AuthPayload) ([]string, error) {
 	return nil, nil
 }
@@ -29,6 +33,10 @@ var _ AuthProcessor = (*noopAuthProcessor)(nil)
 
 type simpleAuthProcessor struct {
 	authRequestStrategy AuthRequestStrategy
+}
+
+func (s *simpleAuthProcessor) GetKeyValue(_ AuthPayload) string {
+	return ""
 }
 
 func (s *simpleAuthProcessor) PreKeyValidate(_ context.Context, _ AuthPayload) ([]string, error) {

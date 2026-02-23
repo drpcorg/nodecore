@@ -38,7 +38,9 @@ func TestUpstreamHeadEvent(t *testing.T) {
 	}`)
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
 	responseLatest := protocol.NewHttpUpstreamResponse("1", bodyLatest, 200, protocol.JsonRpc)
-	connector.On("SendRequest", mock.Anything, requestLatest).Return(responseLatest)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
+		Return(responseLatest)
 
 	upConfig := &config.Upstream{
 		Id:           "id",
@@ -98,11 +100,15 @@ func TestUpstreamBlockEvent(t *testing.T) {
 	}`)
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
 	responseLatest := protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)
-	connector.On("SendRequest", mock.Anything, requestLatest).Return(responseLatest)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
+		Return(responseLatest)
 
 	requestFinalized, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"finalized", false})
 	responseFinalized := protocol.NewHttpUpstreamResponse("1", bodyFinalized, 200, protocol.JsonRpc)
-	connector.On("SendRequest", mock.Anything, requestFinalized).Return(responseFinalized)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestFinalized))).
+		Return(responseFinalized)
 
 	upConfig := &config.Upstream{
 		Id:           "id",
@@ -169,7 +175,9 @@ func TestUpstreamMethodEvents(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
 	responseLatest := protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)
-	connector.On("SendRequest", mock.Anything, requestLatest).Return(responseLatest)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
+		Return(responseLatest)
 
 	upConfig := &config.Upstream{
 		Id:           "id",
@@ -214,7 +222,9 @@ func TestUpstreamMethodEventsPreserveMethodFromConfig(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
 	responseLatest := protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)
-	connector.On("SendRequest", mock.Anything, requestLatest).Return(responseLatest)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
+		Return(responseLatest)
 
 	upConfig := &config.Upstream{
 		Id:           "id",
@@ -356,7 +366,8 @@ func TestUpstreamValidationEvents(t *testing.T) {
 
 	connector := mocks.NewConnectorMock()
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
-	connector.On("SendRequest", mock.Anything, requestLatest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
 		Return(protocol.NewTotalFailureFromErr("id", errors.New("err"), protocol.JsonRpc))
 
 	validator := mocks.NewSettingsValidatorMock()

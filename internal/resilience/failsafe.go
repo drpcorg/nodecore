@@ -43,8 +43,8 @@ func CreateFlowRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[*pro
 
 	retry.OnRetry(func(event failsafe.ExecutionEvent[*protocol.ResponseHolderWrapper]) {
 		ctx := event.Context()
-		request := ctx.Value(RequestKey).(protocol.RequestHolder)
-		if request != nil {
+		request, ok := ctx.Value(RequestKey).(protocol.RequestHolder)
+		if ok && request != nil {
 			wrapper := event.LastResult()
 			zerolog.Ctx(ctx).
 				Debug().
@@ -105,8 +105,8 @@ func CreateUpstreamRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[
 
 	retry.OnRetry(func(event failsafe.ExecutionEvent[protocol.ResponseHolder]) {
 		ctx := event.Context()
-		request := ctx.Value(RequestKey).(protocol.RequestHolder)
-		if request != nil {
+		request, ok := ctx.Value(RequestKey).(protocol.RequestHolder)
+		if ok && request != nil {
 			response := event.LastResult()
 			zerolog.Ctx(ctx).Debug().Err(response.GetError()).Msgf("attemting to retry a request %s", request.Method())
 		}

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	keymanagement "github.com/drpcorg/nodecore/internal/key_management"
+	"github.com/drpcorg/nodecore/internal/key_management/keydata"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/utils"
 )
@@ -46,11 +46,11 @@ func (d *DrpcKey) PreCheckSetting(ctx context.Context) ([]string, error) {
 }
 
 func (d *DrpcKey) PostCheckSetting(_ context.Context, request protocol.RequestHolder) error {
-	err := keymanagement.CheckMethod(d.MethodsWhitelist, d.MethodsBlacklist, request.Method())
+	err := keydata.CheckMethod(d.MethodsWhitelist, d.MethodsBlacklist, request.Method())
 	if err != nil {
 		return err
 	}
-	err = keymanagement.CheckContracts(d.ContractWhitelist, request)
+	err = keydata.CheckContracts(d.ContractWhitelist, request)
 	if err != nil {
 		return err
 	}
@@ -58,4 +58,4 @@ func (d *DrpcKey) PostCheckSetting(_ context.Context, request protocol.RequestHo
 	return nil
 }
 
-var _ keymanagement.Key = (*DrpcKey)(nil)
+var _ keydata.Key = (*DrpcKey)(nil)

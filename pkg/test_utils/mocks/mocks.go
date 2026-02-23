@@ -9,11 +9,14 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
+	"github.com/drpcorg/nodecore/internal/key_management/keydata"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/stats/statsdata"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
@@ -29,15 +32,24 @@ func NewMockIntegrationClient(integrationType integration.IntegrationType) *Mock
 	}
 }
 
-func (m *MockIntegrationClient) InitKeys(cfg config.IntegrationKeyConfig) (chan integration.KeyEvent, error) {
-	args := m.Called(cfg)
-	var data chan integration.KeyEvent
+func (m *MockIntegrationClient) InitKeys(id string, cfg config.IntegrationKeyConfig) (chan keydata.KeyEvent, error) {
+	args := m.Called(id, cfg)
+	var data chan keydata.KeyEvent
 	if args.Get(0) == nil {
 		data = nil
 	} else {
-		data = args.Get(0).(chan integration.KeyEvent)
+		data = args.Get(0).(chan keydata.KeyEvent)
 	}
 	return data, args.Error(1)
+}
+
+func (m *MockIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
+	args := m.Called()
+	return args.Get(0).([]statsdata.StatsDims)
+}
+
+func (m *MockIntegrationClient) ProcessStatsData(aggregatedData *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) {
+	m.Called(aggregatedData)
 }
 
 func (m *MockIntegrationClient) Type() integration.IntegrationType {
@@ -74,6 +86,11 @@ type MockAuthProcessor struct {
 
 func NewMockAuthProcessor() *MockAuthProcessor {
 	return &MockAuthProcessor{}
+}
+
+func (m *MockAuthProcessor) GetKeyValue(payload auth.AuthPayload) string {
+	args := m.Called(payload)
+	return args.String(0)
 }
 
 func (m *MockAuthProcessor) Authenticate(ctx context.Context, payload auth.AuthPayload) error {
