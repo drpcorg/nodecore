@@ -3,7 +3,17 @@ package config
 import (
 	"errors"
 	"fmt"
+	"time"
 )
+
+type IntegrationConfig struct {
+	Drpc *DrpcIntegrationConfig `yaml:"drpc"`
+}
+
+type DrpcIntegrationConfig struct {
+	Url            string        `yaml:"url"`
+	RequestTimeout time.Duration `yaml:"request-timeout"`
+}
 
 func (i *IntegrationConfig) validate() error {
 	if i.Drpc != nil {

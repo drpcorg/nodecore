@@ -36,12 +36,21 @@ func (a *AppConfig) setDefaults() {
 	if a.AuthConfig != nil {
 		a.AuthConfig.setDefaults()
 	}
+	if a.StatsConfig != nil {
+		a.StatsConfig.setDefaults()
+	}
 	if a.IntegrationConfig != nil {
 		if a.IntegrationConfig.Drpc != nil {
 			a.IntegrationConfig.Drpc.setDefaults()
 		}
 	}
 	a.UpstreamConfig.setDefaults()
+}
+
+func (s *StatsConfig) setDefaults() {
+	if s.FlushInterval == 0 {
+		s.FlushInterval = 3 * time.Minute
+	}
 }
 
 func (d *DrpcIntegrationConfig) setDefaults() {

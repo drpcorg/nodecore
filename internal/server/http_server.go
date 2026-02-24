@@ -12,8 +12,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
+	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
@@ -68,6 +70,8 @@ type ApplicationContext struct {
 	authProcessor      auth.AuthProcessor
 	appConfig          *config.AppConfig
 	storageRegistry    *storages.StorageRegistry
+	statsService       stats.StatsService
+	dimensionTracker   *dimensions.DimensionTracker
 }
 
 func NewApplicationContext(
@@ -77,6 +81,8 @@ func NewApplicationContext(
 	authProcessor auth.AuthProcessor,
 	appConfig *config.AppConfig,
 	storageRegistry *storages.StorageRegistry,
+	statsService stats.StatsService,
+	dimensionTracker *dimensions.DimensionTracker,
 ) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
@@ -85,6 +91,8 @@ func NewApplicationContext(
 		authProcessor:      authProcessor,
 		appConfig:          appConfig,
 		storageRegistry:    storageRegistry,
+		statsService:       statsService,
+		dimensionTracker:   dimensionTracker,
 	}
 }
 
@@ -311,6 +319,8 @@ func handleRequest(
 				nil,
 			)
 		}
+		requestHolder.RequestObserver().
+			WithApiKey(appCtx.authProcessor.GetKeyValue(authPayload))
 	}
 
 	executionFlow := flow.NewBaseExecutionFlow(
@@ -323,6 +333,8 @@ func handleRequest(
 	)
 	executionFlow.AddHooks(
 		flow.NewMethodBanHook(appCtx.upstreamSupervisor),
+		dimensions.NewDimensionHook(appCtx.dimensionTracker),
+		stats.NewStatsHook(appCtx.statsService),
 	)
 
 	go executionFlow.Execute(ctx, request.UpstreamRequests)

@@ -8,11 +8,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestIntegrationResolverWithDrpc(t *testing.T) {
+func TestIntegrationResolverWithDrpcAndLocal(t *testing.T) {
 	cfg := &config.IntegrationConfig{
 		Drpc: &config.DrpcIntegrationConfig{Url: "http://localhost:8080"},
 	}
 	resolver := integration.NewIntegrationResolver(cfg)
 
-	assert.NotNil(t, resolver.GetIntegration("drpc"))
+	assert.NotNil(t, resolver.GetIntegration(integration.Drpc))
+	assert.NotNil(t, resolver.GetIntegration(integration.Local))
+}
+
+func TestIntegrationResolverLocalAlways(t *testing.T) {
+	resolver := integration.NewIntegrationResolver(nil)
+
+	assert.NotNil(t, resolver.GetIntegration(integration.Local))
 }

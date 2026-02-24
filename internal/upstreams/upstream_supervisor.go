@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
+	"github.com/drpcorg/nodecore/internal/stats"
 	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -24,6 +25,7 @@ type BaseUpstreamSupervisor struct {
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
 	tracker                 *dimensions.DimensionTracker
+	statsService            stats.StatsService
 	upstreamIndicesCounter  int
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
 	torProxyUrl             string
@@ -33,6 +35,7 @@ func NewBaseUpstreamSupervisor(
 	ctx context.Context,
 	upstreamsConfig *config.UpstreamConfig,
 	tracker *dimensions.DimensionTracker,
+	statsService stats.StatsService,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
 ) UpstreamSupervisor {
@@ -43,6 +46,7 @@ func NewBaseUpstreamSupervisor(
 		eventsChan:              make(chan protocol.UpstreamEvent, 100),
 		upstreamsConfig:         upstreamsConfig,
 		tracker:                 tracker,
+		statsService:            statsService,
 		executor:                createFlowExecutor(upstreamsConfig.FailsafeConfig),
 		upstreamIndicesCounter:  1,
 		rateLimitBudgetRegistry: rateLimitBudgetRegistry,
@@ -92,7 +96,16 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewBaseUpstream(u.ctx, upConfig, u.tracker, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry, u.torProxyUrl)
+			up, err := NewBaseUpstream(
+				u.ctx,
+				upConfig,
+				u.tracker,
+				u.statsService,
+				upstreamConnectorExecutor,
+				upstreamIndex,
+				u.rateLimitBudgetRegistry,
+				u.torProxyUrl,
+			)
 			if err != nil {
 				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return

@@ -7,6 +7,41 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
+type ServerConfig struct {
+	Port            int              `yaml:"port"`
+	MetricsPort     int              `yaml:"metrics-port"`
+	PprofPort       int              `yaml:"pprof-port"`
+	TlsConfig       *TlsConfig       `yaml:"tls"`
+	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
+	TorUrl          string           `yaml:"tor-url"`
+}
+
+type PyroscopeConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Url      string `yaml:"url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+func (p *PyroscopeConfig) GetServerAddress() string {
+	return p.Url
+}
+
+func (p *PyroscopeConfig) GetServerUsername() string {
+	return p.Username
+}
+
+func (p *PyroscopeConfig) GetServerPassword() string {
+	return p.Password
+}
+
+type TlsConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Certificate string `yaml:"certificate"`
+	Key         string `yaml:"key"`
+	Ca          string `yaml:"ca"`
+}
+
 func (s *ServerConfig) validate() error {
 	if s.Port < 0 {
 		return fmt.Errorf("incorrect server port - %d", s.Port)

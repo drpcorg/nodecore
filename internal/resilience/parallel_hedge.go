@@ -177,9 +177,8 @@ func (e *hedgeExecutor[R]) Apply(innerFn func(failsafe.Execution[R]) *common.Pol
 			result := innerFn(hedgeExec)
 			since := time.Since(now)
 
-			isFirstError := execIdx == 0 && result.Error != nil
 			isFinalResult := int(resultCount.Add(1)) == e.maxHedges+1
-			isCancellable := e.IsAbortable(result.Result, result.Error) || isFirstError
+			isCancellable := e.IsAbortable(result.Result, result.Error)
 			noNeedToHedge := execIdx == 0 && since < e.delayFunc(exec)
 
 			if (isCancellable || noNeedToHedge) && resultSent.CompareAndSwap(false, true) {

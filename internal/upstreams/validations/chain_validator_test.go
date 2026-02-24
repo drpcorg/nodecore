@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -21,9 +22,11 @@ func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
 
-	connector.On("SendRequest", mock.Anything, chainIdRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
 		Return(protocol.NewTotalFailure(chainIdRequest, protocol.RequestTimeoutError()))
-	connector.On("SendRequest", mock.Anything, netVersionRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`result`), protocol.JsonRpc))
 
 	validator := validations.NewChainValidator("id", connector, chains.UnknownChain, options)
@@ -41,9 +44,11 @@ func TestChainValidatorNetVersionErrorThenSettingErrorResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
 
-	connector.On("SendRequest", mock.Anything, netVersionRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
 		Return(protocol.NewTotalFailure(netVersionRequest, protocol.RequestTimeoutError()))
-	connector.On("SendRequest", mock.Anything, chainIdRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`result`), protocol.JsonRpc))
 
 	validator := validations.NewChainValidator("id", connector, chains.UnknownChain, options)
@@ -61,9 +66,11 @@ func TestChainValidatorWrongChainSettingsThenFatalErrorResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
 
-	connector.On("SendRequest", mock.Anything, chainIdRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc))
-	connector.On("SendRequest", mock.Anything, netVersionRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc))
 
 	validator := validations.NewChainValidator("id", connector, chains.GetChain("ethereum"), options)
@@ -81,9 +88,11 @@ func TestChainValidatorValidResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
 
-	connector.On("SendRequest", mock.Anything, chainIdRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc))
-	connector.On("SendRequest", mock.Anything, netVersionRequest).
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc))
 
 	validator := validations.NewChainValidator("id", connector, chains.GetChain("bsc"), options)

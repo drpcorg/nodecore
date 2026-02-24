@@ -1,16 +1,13 @@
-package keymanagement
+package keydata
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/samber/lo"
 )
 
@@ -20,70 +17,6 @@ type Key interface {
 	PreCheckSetting(ctx context.Context) ([]string, error)
 	PostCheckSetting(ctx context.Context, request protocol.RequestHolder) error
 }
-
-type LocalKey struct {
-	id             string
-	key            string
-	keySettingsCfg *config.KeySettingsConfig
-}
-
-func (l *LocalKey) GetKeyValue() string {
-	return l.key
-}
-
-func (l *LocalKey) Id() string {
-	return l.id
-}
-
-func (l *LocalKey) PreCheckSetting(ctx context.Context) ([]string, error) {
-	if l.keySettingsCfg == nil {
-		return nil, nil
-	}
-
-	corsOrigins := l.keySettingsCfg.CorsOrigins
-
-	if len(l.keySettingsCfg.AllowedIps) == 0 {
-		return corsOrigins, nil
-	}
-
-	ips := utils.IpsFromContext(ctx)
-	for _, allowedIp := range l.keySettingsCfg.AllowedIps {
-		if ips.ContainsOne(allowedIp) {
-			return corsOrigins, nil
-		}
-	}
-
-	return corsOrigins, fmt.Errorf("ips [%s] are not allowed", strings.Join(ips.ToSlice(), ", "))
-}
-
-func (l *LocalKey) PostCheckSetting(_ context.Context, request protocol.RequestHolder) error {
-	if l.keySettingsCfg == nil {
-		return nil
-	}
-
-	methods := lo.Ternary(l.keySettingsCfg.Methods != nil, l.keySettingsCfg.Methods, &config.AuthMethods{})
-	err := CheckMethod(methods.Allowed, methods.Forbidden, request.Method())
-	if err != nil {
-		return err
-	}
-	contracts := lo.Ternary(l.keySettingsCfg.AuthContracts != nil, l.keySettingsCfg.AuthContracts, &config.AuthContracts{})
-	err = CheckContracts(contracts.Allowed, request)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func NewLocalKey(keyCfg *config.KeyConfig) *LocalKey {
-	return &LocalKey{
-		id:             keyCfg.Id,
-		key:            keyCfg.LocalKeyConfig.Key,
-		keySettingsCfg: keyCfg.LocalKeyConfig.KeySettingsConfig,
-	}
-}
-
-var _ Key = (*LocalKey)(nil)
 
 func CheckMethod(allowedMethods, forbiddenMethods []string, method string) error {
 	if len(allowedMethods) > 0 {
@@ -160,3 +93,31 @@ func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 	}
 	return nil
 }
+
+type KeyEvent interface {
+	event()
+}
+
+type UpdatedKeyEvent struct {
+	NewKey Key
+}
+
+func NewUpdatedKeyEvent(newKey Key) *UpdatedKeyEvent {
+	return &UpdatedKeyEvent{
+		NewKey: newKey,
+	}
+}
+
+func (e *UpdatedKeyEvent) event() {}
+
+type RemovedKeyEvent struct {
+	RemovedKey Key
+}
+
+func NewRemovedKeyEvent(removedKey Key) *RemovedKeyEvent {
+	return &RemovedKeyEvent{
+		RemovedKey: removedKey,
+	}
+}
+
+func (e *RemovedKeyEvent) event() {}

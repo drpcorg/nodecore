@@ -32,12 +32,9 @@ package chains
 type Chain int
 
 const (
-{{- range $index, $item := .Items }}
-	{{- if eq $index 0 }}
-	{{ $item.ConstName }} Chain = iota
-	{{- else }}
-	{{ $item.ConstName }}
-	{{- end }}
+	Unknown Chain = iota
+{{- range .Items }}
+	{{ .ConstName }}
 {{- end }}
 )
 
@@ -49,12 +46,14 @@ var chainsMap = map[string]Chain{
 
 func (c Chain) String() string {
 	switch c {
+	case Unknown:
+		return "unknown"
 	{{- range .Items }}
 	case {{ .ConstName }}:
 		return "{{ .ShortName }}"
 	{{- end }}
 	default:
-		return "Unknown"
+		return "unknown"
 	}
 }
 
