@@ -8,14 +8,14 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: "1.25.5"
+        default: "1.26.0"
   pull_request:
   push:
     branches:
       - main
 
 env:
-  GO_VERSION: ${{ inputs.go-version || '1.25.5' }}
+  GO_VERSION: ${{ inputs.go-version || '1.26.0' }}
 
 jobs:
   lint:
@@ -36,6 +36,6 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.7.2
+          version: v2.10.0
           args: --timeout=10m
           skip-cache: false
