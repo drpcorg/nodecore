@@ -873,7 +873,31 @@ func TestRedisFullCustom(t *testing.T) {
 func TestRedisMissingAddressThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-missing-address.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during redis storage config validation, cause: either 'address' or 'full_url' must be specified")
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: either 'address', 'full-url', or 'cluster.addresses' must be specified")
+}
+
+func TestRedisClusterConfig(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-cluster.yaml")
+	appCfg, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	redisStorage := appCfg.AppStorages[0].Redis
+	require.NotNil(t, redisStorage.Cluster)
+	assert.Equal(t, []string{
+		"node1.redis.local:6379",
+		"node2.redis.local:6379",
+		"node3.redis.local:6379",
+	}, redisStorage.Cluster.Addresses)
+	assert.True(t, redisStorage.Cluster.RouteByLatency)
+	assert.False(t, redisStorage.Cluster.RouteRandomly)
+	assert.False(t, redisStorage.Cluster.ReadOnly)
+	assert.Equal(t, "cluster-password", redisStorage.Password)
+}
+
+func TestRedisClusterAndAddressThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-redis-cluster-and-address.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during redis storage config validation, cause: cannot use both cluster mode (cluster.addresses) and single mode (address/full-url) at the same time")
 }
 
 func TestRedisNegativeReadTimeoutThenError(t *testing.T) {
