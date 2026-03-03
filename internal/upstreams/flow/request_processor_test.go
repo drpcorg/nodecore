@@ -148,7 +148,7 @@ func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
-	chain := chains.POLYGON
+	chain := chains.ALEPHZERO
 	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_subscribe", nil, false, nil)
 
 	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)

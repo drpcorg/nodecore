@@ -53,6 +53,7 @@ type Protocol struct {
 
 type Settings struct {
 	ExpectedBlockTime time.Duration `yaml:"expected-block-time"`
+	MethodSpec        string        `yaml:"method-spec"`
 }
 
 type ConfiguredChain struct {
@@ -142,6 +143,11 @@ func configureChains() (map[string]*ConfiguredChain, error) {
 
 			if network, ok := chainsMap[chain.ShortNames[0]]; ok {
 				netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(chain.ChainId))
+				methodSpec := lo.Ternary(
+					chain.MethodSpec != "",
+					getMethodSpecName(protocol.Type, chain.MethodSpec),
+					getMethodSpecName(protocol.Type, settings.MethodSpec),
+				)
 
 				configuredChain := &ConfiguredChain{
 					ChainId:    chain.ChainId,
@@ -149,7 +155,7 @@ func configureChains() (map[string]*ConfiguredChain, error) {
 					NetVersion: netVersion,
 					Type:       protocol.Type,
 					Chain:      network,
-					MethodSpec: getMethodSpecName(protocol.Type, chain.MethodSpec),
+					MethodSpec: methodSpec,
 				}
 
 				for _, shortName := range chain.ShortNames {

@@ -18,7 +18,7 @@ func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
 	assert.NoError(t, err)
 	subCtx := flow.NewSubCtx()
-	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)
+	processor := flow.NewLocalRequestProcessor(chains.ALEPHZERO, subCtx)
 	subId := "0x112"
 	ctx, cancel := context.WithCancel(context.Background())
 	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_unsubscribe", []byte(fmt.Sprintf(`["%s"]`, subId)), false, nil)
