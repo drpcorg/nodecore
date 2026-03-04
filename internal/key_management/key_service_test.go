@@ -22,15 +22,15 @@ func TestNewLocalKey_AndKeyResolver_Retrieval(t *testing.T) {
 		Type:           config.Local,
 		LocalKeyConfig: test_utils.BuildLocalKeyConfig("secret-abc", []string{"127.0.0.1"}, nil, nil),
 	}
-	resolver, err := keymanagement.NewKeyService(context.Background(), []*config.KeyConfig{cfg}, integration.NewIntegrationResolver(nil))
+	keyService, err := keymanagement.NewBaseKeyService(context.Background(), []*config.KeyConfig{cfg}, integration.NewIntegrationResolver(nil))
 	assert.NoError(t, err)
 	time.Sleep(30 * time.Millisecond)
 
-	k, ok := resolver.GetKey("secret-abc")
+	k, ok := keyService.GetKey("secret-abc")
 	assert.True(t, ok, "expected key to be found by resolver")
 	assert.Equal(t, "kid2", k.Id())
 
-	_, ok = resolver.GetKey("unknown-secret")
+	_, ok = keyService.GetKey("unknown-secret")
 	assert.False(t, ok, "expected not found for unknown key")
 }
 
@@ -51,9 +51,9 @@ func TestKeyResolverNoIntegrationThenErr(t *testing.T) {
 		},
 	}
 
-	keyResolver, err := keymanagement.NewKeyService(context.Background(), cfg, resolver)
+	keyService, err := keymanagement.NewBaseKeyService(context.Background(), cfg, resolver)
 
-	assert.Nil(t, keyResolver)
+	assert.Nil(t, keyService)
 	assert.Error(t, err, "there is no drpc integration config to load drpc keys")
 }
 
@@ -79,7 +79,7 @@ func TestKeyResolverDrpcKeysFailedInitKeys(t *testing.T) {
 
 	client.On("InitKeys", "id", cfg[0].DrpcKeyConfig).Return(nil, errors.New("some err"))
 
-	_, err := keymanagement.NewKeyServiceWithRetryInterval(context.Background(), cfg, resolver, 5*time.Millisecond)
+	_, err := keymanagement.NewBaseKeyServiceWithRetryInterval(context.Background(), cfg, resolver, 5*time.Millisecond)
 	assert.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -117,14 +117,14 @@ func TestKeyResolverDrpcKeysEvents(t *testing.T) {
 
 	client.On("InitKeys", "id", cfg[0].DrpcKeyConfig).Return(eventChan, nil).Once()
 
-	keyResolver, err := keymanagement.NewKeyService(context.Background(), cfg, resolver)
+	keyService, err := keymanagement.NewBaseKeyService(context.Background(), cfg, resolver)
 	assert.NoError(t, err)
 
 	eventChan <- keydata.NewUpdatedKeyEvent(allKeys[0])
 
 	time.Sleep(10 * time.Millisecond)
 
-	key, ok := keyResolver.GetKey("apiKey")
+	key, ok := keyService.GetKey("apiKey")
 	assert.True(t, ok)
 	assert.Equal(t, allKeys[0], key)
 
@@ -138,7 +138,7 @@ func TestKeyResolverDrpcKeysEvents(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	key, ok = keyResolver.GetKey("apiKey")
+	key, ok = keyService.GetKey("apiKey")
 	assert.True(t, ok)
 	assert.Equal(t, updatedKey, key)
 
@@ -147,7 +147,7 @@ func TestKeyResolverDrpcKeysEvents(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	key, ok = keyResolver.GetKey("apiKey")
+	key, ok = keyService.GetKey("apiKey")
 	assert.False(t, ok)
 	assert.Nil(t, key)
 

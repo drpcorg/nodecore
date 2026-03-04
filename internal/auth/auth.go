@@ -30,11 +30,11 @@ func NewAuthProcessor(ctx context.Context, authCfg *config.AuthConfig, integrati
 	if len(authCfg.KeyConfigs) == 0 {
 		authProcessor = newSimpleAuthProcessor(authRequestStrategy)
 	} else {
-		keyResolver, err := keymanagement.NewKeyService(ctx, authCfg.KeyConfigs, integrationResolver)
+		keyService, err := keymanagement.NewBaseKeyService(ctx, authCfg.KeyConfigs, integrationResolver)
 		if err != nil {
 			return nil, err
 		}
-		authProcessor = newBasicAuthProcessor(keyResolver, authRequestStrategy)
+		authProcessor = newBasicAuthProcessor(keyService, authRequestStrategy)
 	}
 
 	return authProcessor, nil
@@ -65,7 +65,7 @@ func (h *HttpAuthPayload) payload() {}
 
 type basicAuthProcessor struct {
 	requestStrategy AuthRequestStrategy
-	keyResolver     *keymanagement.KeyService
+	keyService      keymanagement.KeyService
 }
 
 func (b *basicAuthProcessor) GetKeyValue(payload AuthPayload) string {
@@ -102,7 +102,7 @@ func (b *basicAuthProcessor) getKey(payload AuthPayload) (keydata.Key, error) {
 		return nil, errors.New("api-key must be provided")
 	}
 
-	key, ok := b.keyResolver.GetKey(keyStr)
+	key, ok := b.keyService.GetKey(keyStr)
 	if !ok {
 		return nil, errors.New("specified api-key not found")
 	}
@@ -121,10 +121,10 @@ func getPayloadKey(payload AuthPayload) string {
 	return keyStr
 }
 
-func newBasicAuthProcessor(keyResolver *keymanagement.KeyService, requestStrategy AuthRequestStrategy) *basicAuthProcessor {
+func newBasicAuthProcessor(keyService keymanagement.KeyService, requestStrategy AuthRequestStrategy) *basicAuthProcessor {
 	return &basicAuthProcessor{
 		requestStrategy: requestStrategy,
-		keyResolver:     keyResolver,
+		keyService:      keyService,
 	}
 }
 

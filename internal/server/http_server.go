@@ -71,7 +71,7 @@ type ApplicationContext struct {
 	appConfig          *config.AppConfig
 	storageRegistry    *storages.StorageRegistry
 	statsService       stats.StatsService
-	dimensionTracker   *dimensions.DimensionTracker
+	dimensionTracker   dimensions.DimensionTracker
 }
 
 func NewApplicationContext(
@@ -82,7 +82,7 @@ func NewApplicationContext(
 	appConfig *config.AppConfig,
 	storageRegistry *storages.StorageRegistry,
 	statsService stats.StatsService,
-	dimensionTracker *dimensions.DimensionTracker,
+	dimensionTracker dimensions.DimensionTracker,
 ) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,

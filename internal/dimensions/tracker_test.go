@@ -9,13 +9,13 @@ import (
 )
 
 func TestTrackerAllDimensions(t *testing.T) {
-	tracker := dimensions.NewDimensionTracker()
+	tracker := dimensions.NewBaseDimensionTracker()
 	chain := chains.POLYGON
 	upId := "id1"
 	method := "method"
 	upDims := tracker.GetUpstreamDimensions(chain, upId, method)
 
-	tracker.TrackLags(chain, upId, uint64(5), uint64(10))
+	tracker.GetChainDimensions(chain, upId).TrackLags(uint64(5), uint64(10))
 	upDims.TrackTotalRequests()
 	upDims.TrackTotalRequests()
 	upDims.TrackRequestDuration(100000)

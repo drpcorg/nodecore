@@ -48,7 +48,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the storage registry: %w", err)
 	}
-	dimensionTracker := dimensions.NewDimensionTracker()
+	dimensionTracker := dimensions.NewBaseDimensionTracker()
 	statsService := stats.NewStatsService(ctx, appConfig.StatsConfig, integrationResolver)
 	rateLimitBudgetRegistry, err := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimit, storageRegistry)
 	if err != nil {

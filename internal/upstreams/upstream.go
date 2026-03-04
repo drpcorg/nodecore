@@ -88,7 +88,7 @@ var _ Upstream = (*BaseUpstream)(nil)
 func NewBaseUpstream(
 	ctx context.Context,
 	conf *config.Upstream,
-	tracker *dimensions.DimensionTracker,
+	tracker dimensions.DimensionTracker,
 	statsService stats.StatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	upstreamIndex int,
@@ -441,7 +441,7 @@ func createUpstreamConnectors(
 	ctx context.Context,
 	conf *config.Upstream,
 	configuredChain *chains.ConfiguredChain,
-	tracker *dimensions.DimensionTracker,
+	tracker dimensions.DimensionTracker,
 	statsService stats.StatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	torProxyUrl string,

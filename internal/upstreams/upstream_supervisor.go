@@ -24,7 +24,7 @@ type BaseUpstreamSupervisor struct {
 	eventsChan              chan protocol.UpstreamEvent
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
-	tracker                 *dimensions.DimensionTracker
+	tracker                 dimensions.DimensionTracker
 	statsService            stats.StatsService
 	upstreamIndicesCounter  int
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
@@ -34,7 +34,7 @@ type BaseUpstreamSupervisor struct {
 func NewBaseUpstreamSupervisor(
 	ctx context.Context,
 	upstreamsConfig *config.UpstreamConfig,
-	tracker *dimensions.DimensionTracker,
+	tracker dimensions.DimensionTracker,
 	statsService stats.StatsService,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,

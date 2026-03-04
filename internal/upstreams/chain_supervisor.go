@@ -41,7 +41,7 @@ type ChainSupervisor struct {
 	state          *utils.Atomic[ChainSupervisorState]
 	eventsChan     chan protocol.UpstreamEvent
 	upstreamStates *utils.CMap[string, *protocol.UpstreamState]
-	tracker        *dimensions.DimensionTracker
+	tracker        dimensions.DimensionTracker
 }
 
 type ChainSupervisorState struct {
@@ -63,7 +63,7 @@ func NewChainHeadData(head uint64, upstreamId string) ChainHeadData {
 	}
 }
 
-func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker *dimensions.DimensionTracker) *ChainSupervisor {
+func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker dimensions.DimensionTracker) *ChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
 	state.Store(
 		ChainSupervisorState{
@@ -208,7 +208,7 @@ func (c *ChainSupervisor) calculateLags() {
 			if ok {
 				finalizationLag = finalizationBlock.Height - val.BlockInfo.GetBlock(protocol.FinalizedBlock).Height
 			}
-			c.tracker.TrackLags(c.Chain, key, headLag, finalizationLag)
+			c.tracker.GetChainDimensions(c.Chain, key).TrackLags(headLag, finalizationLag)
 
 			return true
 		})

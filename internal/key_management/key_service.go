@@ -13,19 +13,23 @@ import (
 	"github.com/samber/lo"
 )
 
-type KeyService struct {
+type KeyService interface {
+	GetKey(keyStr string) (keydata.Key, bool)
+}
+
+type BaseKeyService struct {
 	ctx           context.Context
 	keys          *utils.CMap[string, keydata.Key]
 	retryInterval time.Duration
 }
 
-func NewKeyServiceWithRetryInterval(
+func NewBaseKeyServiceWithRetryInterval(
 	ctx context.Context,
 	keyCfgs []*config.KeyConfig,
 	integrationResolver *integration.IntegrationResolver,
 	retryInterval time.Duration,
-) (*KeyService, error) {
-	resolver := &KeyService{
+) (KeyService, error) {
+	keyService := &BaseKeyService{
 		retryInterval: retryInterval,
 		keys:          utils.NewCMap[string, keydata.Key](),
 		ctx:           ctx,
@@ -51,17 +55,17 @@ func NewKeyServiceWithRetryInterval(
 
 	if len(keyEventsChans) > 0 {
 		allEvents := lo.FanIn(100, keyEventsChans...)
-		go resolver.watchKeys(allEvents)
+		go keyService.watchKeys(allEvents)
 	}
 
-	return resolver, nil
+	return keyService, nil
 }
 
-func NewKeyService(ctx context.Context, keyCfgs []*config.KeyConfig, integrationResolver *integration.IntegrationResolver) (*KeyService, error) {
-	return NewKeyServiceWithRetryInterval(ctx, keyCfgs, integrationResolver, 10*time.Second)
+func NewBaseKeyService(ctx context.Context, keyCfgs []*config.KeyConfig, integrationResolver *integration.IntegrationResolver) (KeyService, error) {
+	return NewBaseKeyServiceWithRetryInterval(ctx, keyCfgs, integrationResolver, 10*time.Second)
 }
 
-func (k *KeyService) GetKey(keyStr string) (keydata.Key, bool) {
+func (k *BaseKeyService) GetKey(keyStr string) (keydata.Key, bool) {
 	key, ok := k.keys.Load(keyStr)
 	return key, ok
 }
@@ -77,7 +81,7 @@ func getIntegration(
 	return integrationClient, nil
 }
 
-func (k *KeyService) watchKeys(keyEvents <-chan keydata.KeyEvent) {
+func (k *BaseKeyService) watchKeys(keyEvents <-chan keydata.KeyEvent) {
 	for {
 		select {
 		case <-k.ctx.Done():
@@ -96,3 +100,5 @@ func (k *KeyService) watchKeys(keyEvents <-chan keydata.KeyEvent) {
 		}
 	}
 }
+
+var _ KeyService = (*BaseKeyService)(nil)

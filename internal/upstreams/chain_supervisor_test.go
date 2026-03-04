@@ -41,7 +41,7 @@ func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 }
 
 func TestChainSupervisorTrackLags(t *testing.T) {
-	tracker := dimensions.NewDimensionTracker()
+	tracker := dimensions.NewBaseDimensionTracker()
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), tracker)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))

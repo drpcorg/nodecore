@@ -7,7 +7,7 @@ import (
 )
 
 type DimensionHook struct {
-	tracker *DimensionTracker
+	tracker DimensionTracker
 }
 
 func (d *DimensionHook) OnResponseReceived(
@@ -35,7 +35,7 @@ func (d *DimensionHook) OnResponseReceived(
 	}()
 }
 
-func NewDimensionHook(tracker *DimensionTracker) *DimensionHook {
+func NewDimensionHook(tracker DimensionTracker) *DimensionHook {
 	return &DimensionHook{
 		tracker: tracker,
 	}
