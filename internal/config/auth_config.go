@@ -7,6 +7,94 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
+type AuthConfig struct {
+	Enabled               bool                   `yaml:"enabled"`
+	RequestStrategyConfig *RequestStrategyConfig `yaml:"request-strategy"`
+	KeyConfigs            []*KeyConfig           `yaml:"key-management"`
+}
+
+type RequestStrategyConfig struct {
+	Type                       RequestStrategyType         `yaml:"type"`
+	TokenRequestStrategyConfig *TokenRequestStrategyConfig `yaml:"token"`
+	JwtRequestStrategyConfig   *JwtRequestStrategyConfig   `yaml:"jwt"`
+}
+
+type KeyConfig struct {
+	Id             string          `yaml:"id"`
+	Type           IntegrationType `yaml:"type"`
+	LocalKeyConfig *LocalKeyConfig `yaml:"local"`
+	DrpcKeyConfig  *DrpcKeyConfig  `yaml:"drpc"`
+}
+
+func (k *KeyConfig) GetSpecificKeyConfig() IntegrationKeyConfig {
+	if k.LocalKeyConfig != nil {
+		return k.LocalKeyConfig
+	} else if k.DrpcKeyConfig != nil {
+		return k.DrpcKeyConfig
+	}
+	return nil
+}
+
+type RequestStrategyType string
+
+const (
+	Token RequestStrategyType = "token"
+	Jwt   RequestStrategyType = "jwt"
+)
+
+type TokenRequestStrategyConfig struct {
+	Value string `yaml:"value"`
+}
+
+type JwtRequestStrategyConfig struct {
+	PublicKey          string `yaml:"public-key"`
+	AllowedIssuer      string `yaml:"allowed-issuer"`
+	ExpirationRequired bool   `yaml:"expiration-required"`
+}
+
+type DrpcKeyConfig struct {
+	Owner *DrpcOwnerConfig `yaml:"owner"`
+}
+
+type DrpcOwnerConfig struct {
+	Id       string `yaml:"id"`
+	ApiToken string `yaml:"api-token"`
+}
+
+type LocalKeyConfig struct {
+	Key               string             `yaml:"key"`
+	KeySettingsConfig *KeySettingsConfig `yaml:"settings"`
+}
+
+type KeySettingsConfig struct {
+	AllowedIps    []string       `yaml:"allowed-ips"`
+	Methods       *AuthMethods   `yaml:"methods"`
+	AuthContracts *AuthContracts `yaml:"contracts"`
+	CorsOrigins   []string       `yaml:"cors-origins"`
+}
+
+type AuthMethods struct {
+	Allowed   []string `yaml:"allowed"`
+	Forbidden []string `yaml:"forbidden"`
+}
+
+type AuthContracts struct {
+	Allowed []string `yaml:"allowed"`
+}
+
+type IntegrationKeyConfig interface {
+	keyCfg()
+}
+
+type ExternalKeyConfig struct {
+}
+
+func (d *ExternalKeyConfig) keyCfg() {}
+
+func (d *DrpcKeyConfig) keyCfg() {}
+
+func (l *LocalKeyConfig) keyCfg() {}
+
 func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
 	if !a.Enabled {
 		return nil
@@ -70,14 +158,14 @@ func (k *KeyConfig) validate(integrationCfg *IntegrationConfig) error {
 		return err
 	}
 	switch k.Type {
-	case LocalKey:
+	case Local:
 		if k.LocalKeyConfig == nil {
 			return keyNoSettingsError(k.Type)
 		}
 		if err := k.LocalKeyConfig.validate(); err != nil {
 			return err
 		}
-	case DrpcKey:
+	case Drpc:
 		if integrationCfg == nil || integrationCfg.Drpc == nil {
 			return errors.New("there is no drpc integration for drpc keys")
 		}
@@ -104,22 +192,13 @@ func (d *DrpcKeyConfig) validate() error {
 	return nil
 }
 
-func keyNoSettingsError(keyType KeyType) error {
+func keyNoSettingsError(keyType IntegrationType) error {
 	return fmt.Errorf("specified '%s' key management rule type but there are no its settings", keyType)
 }
 
 func (l *LocalKeyConfig) validate() error {
 	if l.Key == "" {
 		return errors.New("'key' field is empty")
-	}
-	return nil
-}
-
-func (s KeyType) validate() error {
-	switch s {
-	case LocalKey, DrpcKey:
-	default:
-		return fmt.Errorf("invalid settings strategy type - '%s'", s)
 	}
 	return nil
 }

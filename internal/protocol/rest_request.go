@@ -9,6 +9,11 @@ import (
 type UpstreamRestRequest struct {
 }
 
+func (u *UpstreamRestRequest) RequestObserver() *RequestObserver {
+	//TODO implement me
+	panic("implement me")
+}
+
 func NewUpstreamRestRequest() *UpstreamRestRequest {
 	return &UpstreamRestRequest{}
 }

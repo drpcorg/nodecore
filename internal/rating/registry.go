@@ -33,7 +33,7 @@ func init() {
 
 type RatingRegistry struct {
 	upstreamSupervisor  upstreams.UpstreamSupervisor
-	tracker             *dimensions.DimensionTracker
+	tracker             dimensions.DimensionTracker
 	calculationInterval time.Duration
 	scoreFunc           goja.Callable
 	runtime             *goja.Runtime
@@ -42,7 +42,7 @@ type RatingRegistry struct {
 
 func NewRatingRegistry(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
-	tracker *dimensions.DimensionTracker,
+	tracker dimensions.DimensionTracker,
 	scorePolicyConfig *config.ScorePolicyConfig,
 ) *RatingRegistry {
 	scoreFunc, _ := scorePolicyConfig.GetScoreFunc()

@@ -47,7 +47,7 @@ func TestRatingStrategyGetBestByLatency(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisors").Return([]*upstreams.ChainSupervisor{chSup})
 
-	tracker := dimensions.NewDimensionTracker()
+	tracker := dimensions.NewBaseDimensionTracker()
 	dims1 := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id1", "eth_getBalance")
 	dims1.TrackRequestDuration(1000000)
 	dims2 := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id2", "eth_getBalance")
@@ -153,7 +153,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			upSupervisor := mocks.NewUpstreamSupervisorMock()
 			upSupervisor.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
 
-			tracker := dimensions.NewDimensionTracker()
+			tracker := dimensions.NewBaseDimensionTracker()
 			ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName})
 
 			request := test.requestFunc(test.method)

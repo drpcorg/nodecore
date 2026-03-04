@@ -12,6 +12,62 @@ import (
 	"github.com/samber/lo"
 )
 
+type CacheConfig struct {
+	ReceiveTimeout  time.Duration           `yaml:"receive-timeout"`
+	CacheConnectors []*CacheConnectorConfig `yaml:"connectors"`
+	CachePolicies   []*CachePolicyConfig    `yaml:"policies"`
+}
+
+type CacheConnectorConfig struct {
+	Id       string                        `yaml:"id"`
+	Driver   CacheConnectorDriver          `yaml:"driver"`
+	Redis    *RedisCacheConnectorConfig    `yaml:"redis"`
+	Memory   *MemoryCacheConnectorConfig   `yaml:"memory"`
+	Postgres *PostgresCacheConnectorConfig `yaml:"postgres"`
+}
+
+type CachePolicyConfig struct {
+	Id               string           `yaml:"id"`
+	Chain            string           `yaml:"chain"`
+	Method           string           `yaml:"method"`
+	FinalizationType FinalizationType `yaml:"finalization-type"`
+	CacheEmpty       bool             `yaml:"cache-empty"`
+	Connector        string           `yaml:"connector-id"`
+	ObjectMaxSize    string           `yaml:"object-max-size"`
+	TTL              string           `yaml:"ttl"`
+}
+
+type FinalizationType string
+
+const (
+	Finalized FinalizationType = "finalized"
+	None      FinalizationType = "none"
+)
+
+type CacheConnectorDriver string
+
+const (
+	Memory   CacheConnectorDriver = "memory"
+	Redis    CacheConnectorDriver = "redis"
+	Postgres CacheConnectorDriver = "postgres"
+)
+
+type RedisCacheConnectorConfig struct {
+	StorageName string `yaml:"storage-name"`
+}
+
+type MemoryCacheConnectorConfig struct {
+	MaxItems              int           `yaml:"max-items"`
+	ExpiredRemoveInterval time.Duration `yaml:"expired-remove-interval"`
+}
+
+type PostgresCacheConnectorConfig struct {
+	StorageName           string         `yaml:"storage-name"`
+	QueryTimeout          *time.Duration `yaml:"query-timeout"`
+	CacheTable            string         `yaml:"cache-table"`
+	ExpiredRemoveInterval time.Duration  `yaml:"expired-remove-interval"`
+}
+
 func (c *CacheConfig) validate(storageNames map[string]string) error {
 	connectors := mapset.NewThreadUnsafeSet[string]()
 	for i, connector := range c.CacheConnectors {

@@ -18,7 +18,7 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Msg("stopping upstream event processing")
+			log.Info().Msgf("stopping upstream '%s' event processing", u.id)
 			return
 		case event := <-u.stateChan:
 			state := u.upstreamState.Load()

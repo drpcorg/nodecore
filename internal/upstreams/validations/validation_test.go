@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -47,8 +48,12 @@ func getTestChainValidator(chainIdResp, netVersionResp protocol.ResponseHolder) 
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
 
-	connector.On("SendRequest", mock.Anything, chainIdRequest).Return(chainIdResp)
-	connector.On("SendRequest", mock.Anything, netVersionRequest).Return(netVersionResp)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
+		Return(chainIdResp)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
+		Return(netVersionResp)
 
 	return connector, validations.NewChainValidator("id", connector, chains.GetChain("bsc"), options)
 }

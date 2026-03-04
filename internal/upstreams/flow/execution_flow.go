@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
@@ -41,10 +42,6 @@ func init() {
 	prometheus.MustRegister(requestTotalMetric, requestErrorsMetric)
 }
 
-type ResponseReceivedHook interface {
-	OnResponseReceived(ctx context.Context, request protocol.RequestHolder, respWrapper *protocol.ResponseHolderWrapper)
-}
-
 type ExecutionFlow interface {
 	Execute(ctx context.Context, requests []protocol.RequestHolder)
 	GetResponses() chan *protocol.ResponseHolderWrapper
@@ -62,7 +59,7 @@ type BaseExecutionFlow struct {
 	appConfig          *config.AppConfig
 
 	hooks struct {
-		receivedHooks []ResponseReceivedHook
+		receivedHooks []protocol.ResponseReceivedHook
 	}
 }
 
@@ -102,7 +99,7 @@ func (e *BaseExecutionFlow) Execute(ctx context.Context, requests []protocol.Req
 
 func (e *BaseExecutionFlow) AddHooks(hooks ...any) {
 	for _, hook := range hooks {
-		if receiveHook, ok := hook.(ResponseReceivedHook); ok {
+		if receiveHook, ok := hook.(protocol.ResponseReceivedHook); ok {
 			e.hooks.receivedHooks = append(e.hooks.receivedHooks, receiveHook)
 		}
 	}
@@ -131,35 +128,32 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
+		defer e.wg.Done()
 		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 
-		defer e.wg.Done()
+		reqObserver := request.RequestObserver().WithChain(e.chain)
+
 		execCtx := context.WithValue(ctx, resilience.RequestKey, request)
-		var requestProcessor RequestProcessor
+		requestProcessor := e.createRequestProcessor(request)
 
-		if request.IsSubscribe() {
-			requestProcessor = NewSubscriptionRequestProcessor(e.upstreamSupervisor, e.subCtx)
-		} else if isLocalRequest(e.chain, request.Method()) {
-			requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
-		} else if isStickyRequest(request.SpecMethod()) {
-			requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
-		} else if shouldEnforceIntegrity(request.SpecMethod(), e.appConfig.UpstreamConfig.IntegrityConfig) {
-			requestProcessor = NewIntegrityRequestProcessor(
-				e.chain,
-				e.upstreamSupervisor,
-				NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor),
-			)
-		} else {
-			requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
-		}
-
+		now := time.Now()
 		processedResponse := requestProcessor.ProcessRequest(execCtx, upstreamStrategy, request)
+		duration := time.Since(now).Seconds()
 
 		switch resp := processedResponse.(type) {
 		case *UnaryResponse:
 			if protocol.IsRetryable(resp.ResponseWrapper.Response) {
 				requestErrorsMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 			}
+
+			reqObserver.AddResult(
+				protocol.NewUnaryRequestResult().
+					WithDuration(duration).
+					WithUpstreamId(resp.ResponseWrapper.UpstreamId).
+					WithRespKindFromResponse(resp.ResponseWrapper.Response),
+				true,
+			)
+
 			e.responseReceive(ctx, request, resp.ResponseWrapper)
 			e.sendResponse(ctx, resp.ResponseWrapper, request)
 		case *SubscriptionResponse:
@@ -168,6 +162,33 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			}
 		}
 	}()
+}
+
+func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolder) RequestProcessor {
+	reqObserver := request.RequestObserver()
+	var requestProcessor RequestProcessor
+
+	if request.IsSubscribe() {
+		requestProcessor = NewSubscriptionRequestProcessor(e.upstreamSupervisor, e.subCtx)
+	} else if isLocalRequest(e.chain, request.Method()) {
+		requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
+		reqObserver.WithRequestKind(protocol.Local)
+	} else if isStickyRequest(request.SpecMethod()) {
+		requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
+		reqObserver.WithRequestKind(protocol.Unary)
+	} else if shouldEnforceIntegrity(request.SpecMethod(), e.appConfig.UpstreamConfig.IntegrityConfig) {
+		requestProcessor = NewIntegrityRequestProcessor(
+			e.chain,
+			e.upstreamSupervisor,
+			NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor),
+		)
+		reqObserver.WithRequestKind(protocol.Unary)
+	} else {
+		requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
+		reqObserver.WithRequestKind(protocol.Unary)
+	}
+
+	return requestProcessor
 }
 
 func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {

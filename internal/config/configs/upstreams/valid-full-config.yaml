@@ -11,6 +11,11 @@ server:
     key: "/path/key"
     ca: "/path/ca"
 
+stats:
+  enabled: true
+  type: drpc
+  flush-interval: 5m
+
 app-storages:
   - name: redis-storage-1
     redis:

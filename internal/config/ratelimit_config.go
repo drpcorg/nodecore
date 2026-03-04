@@ -3,9 +3,40 @@ package config
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 )
+
+type RateLimitBudgetsConfig struct {
+	DefaultStorage string            `yaml:"default-engine"`
+	Budgets        []RateLimitBudget `yaml:"budgets"`
+}
+
+type RateLimitBudget struct {
+	Name    string             `yaml:"name"`
+	Storage string             `yaml:"storage"`
+	Config  *RateLimiterConfig `yaml:"config"`
+}
+
+type RateLimiterConfig struct {
+	Rules []RateLimitRule `yaml:"rules"`
+}
+
+type RateLimitRule struct {
+	Method   string        `yaml:"method"`
+	Pattern  string        `yaml:"pattern"`
+	Requests int           `yaml:"requests"`
+	Period   time.Duration `yaml:"period"`
+}
+
+type RateLimitAutoTuneConfig struct {
+	Enabled             bool          `yaml:"enabled"`
+	Period              time.Duration `yaml:"period"`
+	ErrorRateThreshold  float64       `yaml:"error-threshold"`
+	InitRateLimit       int           `yaml:"init-rate-limit"`
+	InitRateLimitPeriod time.Duration `yaml:"init-rate-limit-period"`
+}
 
 func (r *RateLimitBudgetsConfig) validate(budgetNames mapset.Set[string], storageNames map[string]string) error {
 	for i, budget := range r.Budgets {

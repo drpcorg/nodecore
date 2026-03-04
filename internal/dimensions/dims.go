@@ -1,0 +1,135 @@
+package dimensions
+
+import (
+	"sync/atomic"
+
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/utils"
+)
+
+type FullDimensions struct {
+	ChainDimensions    *ChainDimensions
+	UpstreamDimensions *UpstreamDimensions
+}
+
+type ChainDimensions struct {
+	headLag         atomic.Uint64
+	finalizationLag atomic.Uint64
+	key             *utils.Atomic[chainDimensionKey]
+}
+
+func (c *ChainDimensions) TrackLags(headLag, finalizationLag uint64) {
+	key := c.key.Load()
+	c.headLag.Store(headLag)
+	c.finalizationLag.Store(finalizationLag)
+
+	headLagMetric.WithLabelValues(key.chain.String(), key.upstreamId).Set(float64(headLag))
+	finalizationLagMetric.WithLabelValues(key.chain.String(), key.upstreamId).Set(float64(finalizationLag))
+}
+
+func newChainDimensions(key chainDimensionKey) *ChainDimensions {
+	chainKey := utils.NewAtomic[chainDimensionKey]()
+	chainKey.Store(key)
+	return &ChainDimensions{
+		key: chainKey,
+	}
+}
+
+func (c *ChainDimensions) GetHeadLag() uint64 {
+	return c.headLag.Load()
+}
+
+func (c *ChainDimensions) GetFinalizationLag() uint64 {
+	return c.finalizationLag.Load()
+}
+
+type UpstreamDimensions struct {
+	quantileTracker   *quantileTracker
+	totalRequests     atomic.Uint64
+	totalErrors       atomic.Uint64
+	successfulRetries atomic.Uint64
+	key               *utils.Atomic[upstreamDimensionKey]
+}
+
+func (d *UpstreamDimensions) TrackSuccessfulRetries() {
+	d.successfulRetries.Add(1)
+	key := d.key.Load()
+	successfulRetriesMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Inc()
+}
+
+func (d *UpstreamDimensions) TrackRequestDuration(duration float64) {
+	d.quantileTracker.add(duration)
+	key := d.key.Load()
+	requestDurationMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Observe(duration)
+}
+
+func (d *UpstreamDimensions) TrackTotalRequests() {
+	d.totalRequests.Add(1)
+	key := d.key.Load()
+	requestTotalMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Inc()
+}
+
+func (d *UpstreamDimensions) TrackTotalErrors() {
+	d.totalErrors.Add(1)
+	key := d.key.Load()
+	errorTotalMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Inc()
+}
+
+func (d *UpstreamDimensions) GetSuccessfulRetries() uint64 {
+	return d.successfulRetries.Load()
+}
+
+func (d *UpstreamDimensions) GetTotalRequests() uint64 {
+	return d.totalRequests.Load()
+}
+
+func (d *UpstreamDimensions) GetTotalErrors() uint64 {
+	return d.totalErrors.Load()
+}
+
+func (d *UpstreamDimensions) GetErrorRate() float64 {
+	totalRequests := d.totalRequests.Load()
+	if totalRequests == 0 {
+		return 0
+	}
+	return float64(d.totalErrors.Load()) / float64(totalRequests)
+}
+
+func (d *UpstreamDimensions) GetValueAtQuantile(quantile float64) float64 {
+	return d.quantileTracker.getValueAtQuantile(quantile).Seconds()
+}
+
+func newUpstreamDimensions(key upstreamDimensionKey) *UpstreamDimensions {
+	upstreamKey := utils.NewAtomic[upstreamDimensionKey]()
+	upstreamKey.Store(key)
+	return &UpstreamDimensions{
+		quantileTracker: newQuantileTracker(),
+		key:             upstreamKey,
+	}
+}
+
+type upstreamDimensionKey struct {
+	chain      chains.Chain
+	upstreamId string
+	method     string
+}
+
+func newUpstreamDimensionKey(chain chains.Chain, upstreamId, method string) upstreamDimensionKey {
+	return upstreamDimensionKey{
+		chain:      chain,
+		upstreamId: upstreamId,
+		method:     method,
+	}
+}
+
+type chainDimensionKey struct {
+	chain      chains.Chain
+	upstreamId string
+}
+
+func newChainDimensionKey(chain chains.Chain, upstreamId string) chainDimensionKey {
+	return chainDimensionKey{
+		chain:      chain,
+		upstreamId: upstreamId,
+	}
+}
