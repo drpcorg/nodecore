@@ -1,0 +1,53 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Fantom JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "fantom"
+  },
+  "spec-imports": [
+    "eth"
+  ],
+  "methods": [
+    {
+      "name": "ftm_effectiveBaseFee",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "ftm_currentEpoch",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "ftm_getEpochBlock",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "ftm_getRules",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    },
+    {
+      "name": "ftm_getEpochStats",
+      "params": [],
+      "tag-parser": {
+        "type": "blockNumber",
+        "path": ".[0]"
+      }
+    }
+  ]
+}
