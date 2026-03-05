@@ -78,6 +78,10 @@ func TestReadFullConfig(t *testing.T) {
 				Key:         "/path/key",
 				Ca:          "/path/ca",
 			},
+			GrpcAuthConfig: &config.GrpcAuthConfig{
+				PublicKeyOwner: "drpc",
+				SessionTTL:     24 * time.Hour,
+			},
 		},
 		AuthConfig: &config.AuthConfig{
 			Enabled: true,
