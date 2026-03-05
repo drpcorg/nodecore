@@ -104,6 +104,19 @@ func (s *ServerConfig) setDefaults() {
 	if s.TlsConfig == nil {
 		s.TlsConfig = &TlsConfig{}
 	}
+	if s.GrpcAuthConfig == nil {
+		s.GrpcAuthConfig = &GrpcAuthConfig{}
+	}
+	s.GrpcAuthConfig.setDefaults()
+}
+
+func (g *GrpcAuthConfig) setDefaults() {
+	if g.PublicKeyOwner == "" {
+		g.PublicKeyOwner = "drpc"
+	}
+	if g.SessionTTL == 0 {
+		g.SessionTTL = 24 * time.Hour
+	}
 }
 
 func (c *CacheConfig) setDefaults() {

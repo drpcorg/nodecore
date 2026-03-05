@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -19,6 +20,10 @@ func TestServerConfig(t *testing.T) {
 		PprofPort:       6061,
 		PyroscopeConfig: &config.PyroscopeConfig{},
 		TlsConfig:       &config.TlsConfig{},
+		GrpcAuthConfig: &config.GrpcAuthConfig{
+			PublicKeyOwner: "drpc",
+			SessionTTL:     24 * time.Hour,
+		},
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
