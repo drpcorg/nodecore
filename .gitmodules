@@ -1,3 +1,6 @@
 [submodule "pkg/chains/public"]
 	path = pkg/chains/public
 	url = https://github.com/drpcorg/public
+[submodule "emerald-grpc"]
+	path = emerald-grpc
+	url = https://github.com/drpcorg/emerald-grpc
