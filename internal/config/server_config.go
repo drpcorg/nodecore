@@ -3,17 +3,30 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
 type ServerConfig struct {
 	Port            int              `yaml:"port"`
+	GrpcPort        int              `yaml:"grpc-port"`
 	MetricsPort     int              `yaml:"metrics-port"`
 	PprofPort       int              `yaml:"pprof-port"`
 	TlsConfig       *TlsConfig       `yaml:"tls"`
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
+	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
 	TorUrl          string           `yaml:"tor-url"`
+}
+
+type GrpcAuthConfig struct {
+	Enabled                bool          `yaml:"enabled"`
+	PublicKeyOwner         string        `yaml:"public-key-owner"`
+	ProviderPrivateKeyPath string        `yaml:"provider-private-key-path"`
+	ExternalPublicKeyPath  string        `yaml:"external-public-key-path"`
+	SessionTTL             time.Duration `yaml:"session-ttl"`
 }
 
 type PyroscopeConfig struct {
@@ -46,6 +59,9 @@ func (s *ServerConfig) validate() error {
 	if s.Port < 0 {
 		return fmt.Errorf("incorrect server port - %d", s.Port)
 	}
+	if s.GrpcPort < 0 {
+		return fmt.Errorf("incorrect grpc port - %d", s.GrpcPort)
+	}
 	if s.MetricsPort < 0 {
 		return fmt.Errorf("incorrect metrics port - %d", s.MetricsPort)
 	}
@@ -54,6 +70,10 @@ func (s *ServerConfig) validate() error {
 	}
 
 	ports := mapset.NewThreadUnsafeSet[int](s.Port)
+	if ports.Contains(s.GrpcPort) && s.GrpcPort != 0 {
+		return fmt.Errorf("grpc port %d is already in use", s.GrpcPort)
+	}
+	ports.Add(s.GrpcPort)
 	if ports.Contains(s.MetricsPort) && s.MetricsPort != 0 {
 		return fmt.Errorf("metrics port %d is already in use", s.MetricsPort)
 	}
@@ -67,6 +87,10 @@ func (s *ServerConfig) validate() error {
 	}
 
 	if err := s.PyroscopeConfig.validate(); err != nil {
+		return err
+	}
+
+	if err := s.GrpcAuthConfig.validate(); err != nil {
 		return err
 	}
 
@@ -98,5 +122,27 @@ func (p *PyroscopeConfig) validate() error {
 		}
 	}
 
+	return nil
+}
+
+func (g *GrpcAuthConfig) validate() error {
+	if !g.Enabled {
+		return nil
+	}
+	if g.PublicKeyOwner == "" {
+		return errors.New("grpc auth is enabled, public-key-owner must be specified")
+	}
+	if strings.TrimSpace(g.ProviderPrivateKeyPath) == "" {
+		return errors.New("grpc auth is enabled, provider-private-key-path must be specified")
+	}
+	if strings.TrimSpace(g.ExternalPublicKeyPath) == "" {
+		return errors.New("grpc auth is enabled, external-public-key-path must be specified")
+	}
+	if _, err := os.Stat(g.ProviderPrivateKeyPath); err != nil {
+		return fmt.Errorf("grpc auth provider-private-key-path is invalid: %w", err)
+	}
+	if _, err := os.Stat(g.ExternalPublicKeyPath); err != nil {
+		return fmt.Errorf("grpc auth external-public-key-path is invalid: %w", err)
+	}
 	return nil
 }

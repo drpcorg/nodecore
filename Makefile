@@ -1,3 +1,20 @@
+.PHONY: dshackle-proto-gen
+dshackle-proto-gen:
+	mkdir -p pkg/dshackle
+	protoc -I ./emerald-grpc/proto \
+		--proto_path=emerald-grpc/proto \
+		--go_out=pkg/dshackle \
+		--go-grpc_out=pkg/dshackle \
+		--go_opt=paths=source_relative \
+		--go_opt=Mblockchain.proto=github.com/drpcorg/nodecore/pkg/dshackle \
+		--go_opt=Mcommon.proto=github.com/drpcorg/nodecore/pkg/dshackle \
+		--go_opt=Mauth.proto=github.com/drpcorg/nodecore/pkg/dshackle \
+		--go-grpc_opt=paths=source_relative \
+		--go-grpc_opt=Mblockchain.proto=github.com/drpcorg/nodecore/pkg/dshackle \
+		--go-grpc_opt=Mcommon.proto=github.com/drpcorg/nodecore/pkg/dshackle \
+		--go-grpc_opt=Mauth.proto=github.com/drpcorg/nodecore/pkg/dshackle \
+		blockchain.proto common.proto auth.proto
+
 .PHONY: generate-networks
 generate-networks:
 	go run cmd/chains/init_chains.go
