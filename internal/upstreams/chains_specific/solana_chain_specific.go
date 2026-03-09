@@ -79,7 +79,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(
 	}
 	lastSlot, _ := s.lastCheckedSlots.Load(upstreamId)
 	lastHeight, _ := s.lastKnownHeights.Load(upstreamId)
-	shouldCheck := slotEvent.Slot-lastSlot >= checkInterval
+	shouldCheck := slotEvent.Slot >= lastSlot && slotEvent.Slot-lastSlot >= checkInterval
 	estimatedHeight := lo.Ternary(lastHeight != 0 && lastSlot != 0, lastHeight+(slotEvent.Slot-lastSlot), 0)
 
 	if shouldCheck || estimatedHeight == 0 {

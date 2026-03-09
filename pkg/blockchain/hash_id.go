@@ -12,6 +12,7 @@ var EmptyHash HashId = nil
 type HashId []byte
 
 func NewHashIdFromBytes(value []byte) HashId {
+	// just pass bytes as is
 	if len(value) >= 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X') {
 		value = value[2:]
 	}
