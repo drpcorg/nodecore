@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
@@ -94,6 +95,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(
 					height = slotEvent.Slot
 				}
 			}
+			log.Err(err).Msgf("couldn't get the epoch info for upstream %s, using the estimated height %d, slot %d", upstreamId, height, slotEvent.Slot)
 			return createNewSolanaBlock(height, slotEvent.Slot), nil
 		}
 		return createNewSolanaBlock(block.BlockData.Height, block.BlockData.Slot), nil
