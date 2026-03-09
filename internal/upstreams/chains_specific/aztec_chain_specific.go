@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
@@ -62,7 +63,7 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Bloc
 		return nil, fmt.Errorf("couldn't parse the aztec block, got '%s'", string(blockBytes))
 	}
 
-	return nil, nil
+	return protocol.NewBlock(height, 0, blockchain.NewHashIdFromString(block.BlockHash), blockchain.EmptyHash), nil
 }
 
 func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte, _ connectors.ApiConnector, _ string) (*protocol.Block, error) {
