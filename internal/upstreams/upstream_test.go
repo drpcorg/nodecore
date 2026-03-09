@@ -14,6 +14,7 @@ import (
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
@@ -33,7 +34,8 @@ func TestUpstreamHeadEvent(t *testing.T) {
 	  "jsonrpc": "2.0",
 	  "result": {
 		"number": "0x41fd60b",
-		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"
+		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
 	  }
 	}`)
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
@@ -53,14 +55,11 @@ func TestUpstreamHeadEvent(t *testing.T) {
 
 	sub := upstream.Subscribe("name")
 
-	checkFunc := func(height uint64, hash string) {
+	checkFunc := func(blockData *protocol.BlockData) {
 		event, ok := <-sub.Events
 		state := protocol.UpstreamState{
-			Status: protocol.Available,
-			HeadData: &protocol.BlockData{
-				Height: height,
-				Hash:   hash,
-			},
+			Status:          protocol.Available,
+			HeadData:        blockData,
 			BlockInfo:       protocol.NewBlockInfo(),
 			UpstreamMethods: mocks.NewMethodsMock(),
 			Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
@@ -79,9 +78,15 @@ func TestUpstreamHeadEvent(t *testing.T) {
 		assert.Equal(t, state, upstream.GetUpstreamState())
 	}
 
-	checkFunc(69195275, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18")
+	blockData := protocol.NewBlockData(
+		69195275,
+		0,
+		blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
+		blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+	)
+	checkFunc(blockData)
 	upstream.UpdateHead(79195275, 0)
-	checkFunc(79195275, "")
+	checkFunc(protocol.NewBlockData(79195275, 0, blockchain.EmptyHash, blockchain.EmptyHash))
 	connector.AssertExpectations(t)
 
 }
@@ -95,7 +100,8 @@ func TestUpstreamBlockEvent(t *testing.T) {
 	 "jsonrpc": "2.0",
 	 "result": {
 		"number": "0x345",
-		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"
+		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
 	 }
 	}`)
 	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
@@ -156,9 +162,15 @@ func TestUpstreamBlockEvent(t *testing.T) {
 		assert.Equal(t, state.BlockInfo.GetBlocks(), upstream.GetUpstreamState().BlockInfo.GetBlocks())
 	}
 
-	checkFunc(protocol.NewBlockData(837, 0, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"))
+	blockData := protocol.NewBlockData(
+		837,
+		0,
+		blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
+		blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+	)
+	checkFunc(blockData)
 	upstream.UpdateBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
-	checkFunc(protocol.NewBlockData(1000, 0, ""))
+	checkFunc(protocol.NewBlockData(1000, 0, blockchain.EmptyHash, blockchain.EmptyHash))
 
 	time.Sleep(15 * time.Millisecond)
 

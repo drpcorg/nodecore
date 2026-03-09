@@ -98,7 +98,7 @@ func NewBaseUpstream(
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
 
-	headConnector, apiConnectors, caps, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
+	upstreamConnectorsInfo, caps, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -138,7 +138,7 @@ func NewBaseUpstream(
 		id:               conf.Id,
 		chain:            configuredChain.Chain,
 		vendorType:       getUpstreamVendor(conf.Connectors),
-		apiConnectors:    apiConnectors,
+		apiConnectors:    upstreamConnectorsInfo.allConnectors,
 		upstreamCtx:      newUpstreamCtx(cancel, mainLifecycle, processorsLifecycle),
 		upstreamState:    upState,
 		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
@@ -147,9 +147,9 @@ func NewBaseUpstream(
 		upstreamIndexHex: upstreamIndexHex,
 		upConfig:         conf,
 
-		headProcessor:               blocks.NewHeadProcessor(ctx, conf, headConnector, chainSpecific),
-		blockProcessor:              createBlockProcessor(ctx, conf, headConnector, chainSpecific, configuredChain.Type),
-		settingsValidationProcessor: createSettingValidationProcessor(conf.Id, headConnector, configuredChain, chainSpecific, conf.Options),
+		headProcessor:               blocks.NewHeadProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, upstreamConnectorsInfo.headConnector, chainSpecific),
+		blockProcessor:              createBlockProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain.Type),
+		settingsValidationProcessor: createSettingValidationProcessor(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, chainSpecific, conf.Options),
 	}, nil
 }
 
@@ -445,15 +445,16 @@ func createUpstreamConnectors(
 	statsService stats.StatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	torProxyUrl string,
-) (connectors.ApiConnector, []connectors.ApiConnector, mapset.Set[protocol.Cap], error) {
+) (*connectorsInfo, mapset.Set[protocol.Cap], error) {
 	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
 	apiConnectors := make([]connectors.ApiConnector, 0)
 	var headConnector connectors.ApiConnector
+	var internalRequestConnector connectors.ApiConnector
 
 	for _, connectorConfig := range conf.Connectors {
 		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("cound't create api connector of %s: %v", conf.Id, err)
+			return nil, nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
 		}
 		hooks := []protocol.ResponseReceivedHook{
 			dimensions.NewDimensionHook(tracker),
@@ -463,11 +464,32 @@ func createUpstreamConnectors(
 		if connectorConfig.Type == conf.HeadConnector {
 			headConnector = apiConnector
 		}
+		if connectorConfig.Type == conf.GetBestConnector() {
+			internalRequestConnector = apiConnector
+		}
 		if apiConnector.GetType() == protocol.WsConnector {
 			caps.Add(protocol.WsCap)
 		}
 		apiConnectors = append(apiConnectors, apiConnector)
 	}
 
-	return headConnector, apiConnectors, caps, nil
+	return newConnectorInfo(headConnector, internalRequestConnector, apiConnectors), caps, nil
+}
+
+type connectorsInfo struct {
+	headConnector            connectors.ApiConnector
+	internalRequestConnector connectors.ApiConnector
+	allConnectors            []connectors.ApiConnector
+}
+
+func newConnectorInfo(
+	headConnector,
+	internalRequestConnector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
+) *connectorsInfo {
+	return &connectorsInfo{
+		headConnector:            headConnector,
+		internalRequestConnector: internalRequestConnector,
+		allConnectors:            allConnectors,
+	}
 }

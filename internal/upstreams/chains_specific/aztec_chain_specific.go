@@ -32,7 +32,7 @@ func (a *AztecChainSpecificObject) SettingsValidators(
 	return nil
 }
 
-func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector, _ string) (*protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{"latest"})
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context, connector
 	return a.ParseBlock(response.ResponseResult())
 }
 
-func (a *AztecChainSpecificObject) GetFinalizedBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) GetFinalizedBlock(_ context.Context, _ connectors.ApiConnector) (*protocol.Block, error) {
 	return nil, nil
 }
 
@@ -62,10 +62,10 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Bloc
 		return nil, fmt.Errorf("couldn't parse the aztec block, got '%s'", string(blockBytes))
 	}
 
-	return protocol.NewBlock(height, 0, block.BlockHash), nil
+	return nil, nil
 }
 
-func (a *AztecChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte, _ connectors.ApiConnector, _ string) (*protocol.Block, error) {
 	return nil, fmt.Errorf("aztec does not support websocket subscriptions")
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,7 +23,8 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 	  "jsonrpc": "2.0",
 	  "result": {
 		"number": "0x41fd60b",
-		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"
+		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
 	  }
 	}`)
 	response := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
@@ -37,8 +39,9 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 
 	expected := blocks.BlockEvent{
 		BlockData: &protocol.BlockData{
-			Height: uint64(69195275),
-			Hash:   "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+			Height:     uint64(69195275),
+			Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
+			ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
 		},
 		BlockType: protocol.FinalizedBlock,
 	}

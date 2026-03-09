@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/samber/lo"
@@ -58,14 +59,20 @@ func TestEvmSubscribeHeadRequest(t *testing.T) {
 func TestEvmParseSubBLock(t *testing.T) {
 	body := []byte(`{
       "number": "0x41fd60b",
-      "hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"
+      "hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+	  "parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
     }`)
 
-	block, err := specific.EvmChainSpecific.ParseSubscriptionBlock(body)
-
+	block, err := specific.EvmChainSpecific.ParseSubscriptionBlock(body, nil, "")
 	assert.Nil(t, err)
-	assert.Equal(t, uint64(69195275), block.BlockData.Height)
-	assert.Equal(t, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18", block.BlockData.Hash)
+
+	expected := &protocol.BlockData{
+		Height:     uint64(69195275),
+		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
+		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+	}
+
+	assert.Equal(t, expected, block.BlockData)
 }
 
 func TestEvmGetLatestBlock(t *testing.T) {
@@ -75,19 +82,25 @@ func TestEvmGetLatestBlock(t *testing.T) {
 	  "jsonrpc": "2.0",
 	  "result": {
 		"number": "0x41fd60b",
-		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"
+		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
 	  }
 	}`)
 	response := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)
 
-	block, err := specific.EvmChainSpecific.GetLatestBlock(ctx, connector)
+	block, err := specific.EvmChainSpecific.GetLatestBlock(ctx, connector, "")
+	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
-	assert.Nil(t, err)
-	assert.Equal(t, uint64(69195275), block.BlockData.Height)
-	assert.Equal(t, "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18", block.BlockData.Hash)
+
+	expected := &protocol.BlockData{
+		Height:     uint64(69195275),
+		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
+		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+	}
+	assert.Equal(t, expected, block.BlockData)
 }
 
 func TestEvmGetLatestBlockWithError(t *testing.T) {
@@ -97,7 +110,7 @@ func TestEvmGetLatestBlockWithError(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)
 
-	block, err := specific.EvmChainSpecific.GetLatestBlock(ctx, connector)
+	block, err := specific.EvmChainSpecific.GetLatestBlock(ctx, connector, "")
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, block)

@@ -6,6 +6,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
@@ -114,8 +115,8 @@ func TestDefaultUpstreamState(t *testing.T) {
 
 func TestBlockInfo(t *testing.T) {
 	blockInfo := protocol.NewBlockInfo()
-	blockData := &protocol.BlockData{Height: uint64(75), Hash: "hash"}
-	blockData2 := &protocol.BlockData{Height: uint64(86), Hash: "hash1", Slot: uint64(25)}
+	blockData := &protocol.BlockData{Height: uint64(75), Hash: blockchain.NewHashIdFromString("0x2345")}
+	blockData2 := &protocol.BlockData{Height: uint64(86), Hash: blockchain.NewHashIdFromString("0x2345"), Slot: uint64(25)}
 	assert.NotNil(t, blockInfo)
 
 	blockInfo.AddBlock(blockData, protocol.FinalizedBlock)

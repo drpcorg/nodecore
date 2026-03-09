@@ -4,13 +4,24 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBlockCreation(t *testing.T) {
-	block := protocol.NewBlock(uint64(15), uint64(55), "hash")
+	block := protocol.NewBlock(
+		uint64(15),
+		uint64(55),
+		blockchain.NewHashIdFromString("0x2345"),
+		blockchain.NewHashIdFromString("0x1111"),
+	)
 	expectedBlock := protocol.Block{
-		BlockData: &protocol.BlockData{Height: uint64(15), Slot: uint64(55), Hash: "hash"},
+		BlockData: &protocol.BlockData{
+			Height:     uint64(15),
+			Slot:       uint64(55),
+			Hash:       blockchain.NewHashIdFromString("0x2345"),
+			ParentHash: blockchain.NewHashIdFromString("0x1111"),
+		},
 	}
 
 	assert.Equal(t, &expectedBlock, block)
@@ -47,7 +58,7 @@ func TestBlockData(t *testing.T) {
 		},
 		{
 			name:      "data with hash",
-			blockData: protocol.BlockData{Hash: "hash"},
+			blockData: protocol.BlockData{Hash: blockchain.NewHashIdFromString("0x2345")},
 			expected:  false,
 		},
 		{
@@ -57,12 +68,12 @@ func TestBlockData(t *testing.T) {
 		},
 		{
 			name:      "data with height and hash",
-			blockData: protocol.BlockData{Height: uint64(12), Hash: "hash"},
+			blockData: protocol.BlockData{Height: uint64(12), Hash: blockchain.NewHashIdFromString("0x2345")},
 			expected:  false,
 		},
 		{
 			name:      "data with slot and hash",
-			blockData: protocol.BlockData{Slot: uint64(12), Hash: "hash"},
+			blockData: protocol.BlockData{Slot: uint64(12), Hash: blockchain.NewHashIdFromString("0x2345")},
 			expected:  false,
 		},
 	}

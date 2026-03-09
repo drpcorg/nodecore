@@ -9,16 +9,19 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type ChainSpecific interface {
-	GetLatestBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
+	GetLatestBlock(ctx context.Context, connector connectors.ApiConnector, upstreamId string) (*protocol.Block, error)
 	GetFinalizedBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
+
 	ParseBlock([]byte) (*protocol.Block, error)
+	ParseSubscriptionBlock(data []byte, connector connectors.ApiConnector, upstreamId string) (*protocol.Block, error)
+
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
-	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
 	SettingsValidators(upstreamId string, connector connectors.ApiConnector, chain *chains.ConfiguredChain, options *config.UpstreamOptions) []validations.SettingsValidator
 }
 
@@ -48,7 +51,7 @@ func (e *EvmChainSpecificObject) SettingsValidators(
 
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
-func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector, _ string) (*protocol.Block, error) {
 	return e.getBlockByTag(ctx, connector, rpc.LatestBlockNumber)
 }
 
@@ -56,7 +59,7 @@ func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context, connecto
 	return e.getBlockByTag(ctx, connector, rpc.FinalizedBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte, _ connectors.ApiConnector, _ string) (*protocol.Block, error) {
 	return e.ParseBlock(blockBytes)
 }
 
@@ -70,7 +73,12 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 		return nil, fmt.Errorf("couldn't parse the evm block, got '%s'", string(blockBytes))
 	}
 
-	return protocol.NewBlock(uint64(evmBlock.Height.Int64()), 0, evmBlock.Hash), nil
+	return protocol.NewBlock(
+		uint64(evmBlock.Height.Int64()),
+		0,
+		blockchain.NewHashIdFromString(evmBlock.Hash),
+		blockchain.NewHashIdFromString(evmBlock.Parent),
+	), nil
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
@@ -97,5 +105,6 @@ func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector co
 
 type EvmBlock struct {
 	Hash   string           `json:"hash"`
+	Parent string           `json:"parentHash"`
 	Height *rpc.BlockNumber `json:"number"`
 }

@@ -39,6 +39,20 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 }
 
+func (u *Upstream) GetBestConnector() ApiConnectorType {
+	filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
+		_, ok := connectorTypesRating[item.Type]
+		return ok
+	})
+
+	if len(filteredConnectors) > 0 {
+		return lo.MinBy(filteredConnectors, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
+			return connectorTypesRating[a.Type] < connectorTypesRating[b.Type]
+		}).Type
+	}
+	return ""
+}
+
 type UpstreamOptions struct {
 	InternalTimeout           time.Duration `yaml:"internal-timeout"`
 	ValidationInterval        time.Duration `yaml:"validation-interval"`

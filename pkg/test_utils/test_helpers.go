@@ -169,7 +169,7 @@ func TestEvmUpstream(
 		"id",
 		chains.ETHEREUM,
 		[]connectors.ApiConnector{connector},
-		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
+		blocks.NewHeadProcessor(ctx, upConfig, connector, connector, specific.EvmChainSpecific),
 		blockProcessor,
 		settingValidationProcessor,
 		upState,
