@@ -387,24 +387,38 @@ func mapNativeSubscribeMethod(
 	requestedMethod string,
 	payload []byte,
 ) (string, []byte, error) {
-	if specs.IsSubscribeMethod(methodSpecName, requestedMethod) {
-		if len(payload) == 0 {
-			return requestedMethod, []byte("[]"), nil
-		}
-		if !json.Valid(payload) {
-			return "", nil, fmt.Errorf("invalid subscribe payload format")
-		}
-		return requestedMethod, payload, nil
+	if supportsNativeSubscribeMethod(methodSpecName, requestedMethod) {
+		return normalizeNativeSubscribePayload(requestedMethod, payload)
 	}
+	if !supportsEthSubscribeFallback(methodSpecName, chainSupervisor) {
+		return "", nil, fmt.Errorf("%w: subscribe %s is not supported for chain spec %s", errSubscribeMappingNotSupported, requestedMethod, methodSpecName)
+	}
+	return mapToEthSubscribeFallback(requestedMethod, payload)
+}
 
+func supportsNativeSubscribeMethod(methodSpecName string, requestedMethod string) bool {
+	return specs.IsSubscribeMethod(methodSpecName, requestedMethod)
+}
+
+func normalizeNativeSubscribePayload(requestedMethod string, payload []byte) (string, []byte, error) {
+	if len(payload) == 0 {
+		return requestedMethod, []byte("[]"), nil
+	}
+	if !json.Valid(payload) {
+		return "", nil, fmt.Errorf("invalid subscribe payload format")
+	}
+	return requestedMethod, payload, nil
+}
+
+func supportsEthSubscribeFallback(methodSpecName string, chainSupervisor *upstreams.ChainSupervisor) bool {
 	ethSubscribeSupported := specs.IsSubscribeMethod(methodSpecName, "eth_subscribe")
 	if !ethSubscribeSupported && chainSupervisor != nil {
 		ethSubscribeSupported = chainSupervisor.GetMethod("eth_subscribe") != nil
 	}
-	if !ethSubscribeSupported {
-		return "", nil, fmt.Errorf("%w: subscribe %s is not supported for chain spec %s", errSubscribeMappingNotSupported, requestedMethod, methodSpecName)
-	}
+	return ethSubscribeSupported
+}
 
+func mapToEthSubscribeFallback(requestedMethod string, payload []byte) (string, []byte, error) {
 	mappedParams, err := mapEthSubscribeParams(requestedMethod, payload)
 	if err != nil {
 		return "", nil, err

@@ -8,11 +8,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
@@ -33,8 +33,7 @@ const (
 
 type grpcSessionStore struct {
 	ttl      time.Duration
-	sessions map[string]time.Time
-	mu       sync.RWMutex
+	sessions *utils.CMap[string, time.Time]
 }
 
 func newGrpcSessionStore(ttl time.Duration) *grpcSessionStore {
@@ -43,7 +42,7 @@ func newGrpcSessionStore(ttl time.Duration) *grpcSessionStore {
 	}
 	return &grpcSessionStore{
 		ttl:      ttl,
-		sessions: make(map[string]time.Time),
+		sessions: utils.NewCMap[string, time.Time](),
 	}
 }
 
@@ -51,9 +50,7 @@ func (s *grpcSessionStore) Put(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sessions[sessionID] = time.Now().Add(s.ttl)
+	s.sessions.Store(sessionID, time.Now().Add(s.ttl))
 }
 
 func (s *grpcSessionStore) Exists(sessionID string) bool {
@@ -62,19 +59,16 @@ func (s *grpcSessionStore) Exists(sessionID string) bool {
 	}
 	now := time.Now()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	expireAt, ok := s.sessions[sessionID]
+	expireAt, ok := s.sessions.Load(sessionID)
 	if !ok {
 		return false
 	}
 	if now.After(expireAt) {
-		delete(s.sessions, sessionID)
+		s.sessions.Delete(sessionID)
 		return false
 	}
 	// dshackle behavior: extend session on access.
-	s.sessions[sessionID] = now.Add(s.ttl)
+	s.sessions.Store(sessionID, now.Add(s.ttl))
 	return true
 }
 
@@ -100,14 +94,11 @@ func (a *grpcSessionAuth) requireSession(ctx context.Context) error {
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return status.Error(codes.Unauthenticated, "sessionId is not passed")
+		return status.Error(codes.Unauthenticated, "no metadata")
 	}
 
 	sessionID := ""
 	values := md.Get(grpcSessionIDHeaderKey)
-	if len(values) == 0 {
-		values = md.Get(grpcAuthSessionIDClaim)
-	}
 	if len(values) > 0 {
 		sessionID = strings.TrimSpace(values[0])
 	}
@@ -135,10 +126,13 @@ type GrpcAuthService struct {
 func NewGrpcAuthService(grpcAuthConfig *config.GrpcAuthConfig) (*GrpcAuthService, *grpcSessionAuth, error) {
 	cfg := grpcAuthConfig
 	if cfg == nil {
-		cfg = &config.GrpcAuthConfig{}
-		cfg.Enabled = false
-		cfg.PublicKeyOwner = "drpc"
-		cfg.SessionTTL = 24 * time.Hour
+		cfg = &config.GrpcAuthConfig{
+			Enabled: false,
+		}
+	}
+
+	if !cfg.Enabled {
+		return nil, nil, nil
 	}
 
 	store := newGrpcSessionStore(cfg.SessionTTL)
@@ -148,10 +142,6 @@ func NewGrpcAuthService(grpcAuthConfig *config.GrpcAuthConfig) (*GrpcAuthService
 		publicKeyOwner:     cfg.PublicKeyOwner,
 		sessions:           store,
 		allowedAuthVersion: grpcAuthVersionV1,
-	}
-
-	if !cfg.Enabled {
-		return service, sessionAuth, nil
 	}
 
 	privateKey, err := loadRSAPrivateKeyFromFile(cfg.ProviderPrivateKeyPath)
@@ -174,7 +164,7 @@ func (s *GrpcAuthService) Authenticate(_ context.Context, request *dshackle.Auth
 		return nil, status.Error(codes.Unimplemented, "Authentication process is not enabled")
 	}
 	if request == nil {
-		return nil, status.Error(codes.InvalidArgument, "Invalid token: request is nil")
+		return nil, status.Error(codes.InvalidArgument, "Invalid request: request is nil")
 	}
 	if err := s.validateIncomingToken(request.GetToken()); err != nil {
 		return nil, err

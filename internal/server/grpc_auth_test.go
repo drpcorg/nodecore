@@ -44,19 +44,17 @@ func TestGrpcAuthServiceAuthenticateSuccess(t *testing.T) {
 	sessionID := extractSessionIDClaim(t, response.GetProviderToken(), &providerPrivateKey.PublicKey)
 	require.NotEmpty(t, sessionID)
 
-	sessionCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionId", sessionID))
+	sessionCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionid", sessionID))
 	assert.NoError(t, sessionAuth.requireSession(sessionCtx))
 }
 
 func TestGrpcAuthServiceAuthenticateDisabled(t *testing.T) {
-	service, _, err := NewGrpcAuthService(&config.GrpcAuthConfig{
+	service, sessionAuth, err := NewGrpcAuthService(&config.GrpcAuthConfig{
 		Enabled: false,
 	})
 	require.NoError(t, err)
-
-	_, authErr := service.Authenticate(context.Background(), &dshackle.AuthRequest{Token: "any"})
-	require.Error(t, authErr)
-	assert.Equal(t, codes.Unimplemented, status.Code(authErr))
+	assert.Nil(t, service)
+	assert.Nil(t, sessionAuth)
 }
 
 func TestGrpcAuthServiceAuthenticateInvalidTokens(t *testing.T) {
@@ -101,6 +99,27 @@ func TestGrpcAuthServiceAuthenticateInvalidTokens(t *testing.T) {
 	}
 }
 
+func TestGrpcAuthServiceAuthenticateNilRequest(t *testing.T) {
+	providerPrivateKey := generateRSAKey(t)
+	externalPrivateKey := generateRSAKey(t)
+
+	cfg := &config.GrpcAuthConfig{
+		Enabled:                true,
+		PublicKeyOwner:         "drpc",
+		ProviderPrivateKeyPath: writePrivateKeyPEM(t, providerPrivateKey),
+		ExternalPublicKeyPath:  writePublicKeyPEM(t, &externalPrivateKey.PublicKey),
+		SessionTTL:             time.Minute,
+	}
+
+	service, _, err := NewGrpcAuthService(cfg)
+	require.NoError(t, err)
+
+	_, authErr := service.Authenticate(context.Background(), nil)
+	require.Error(t, authErr)
+	assert.Equal(t, codes.InvalidArgument, status.Code(authErr))
+	assert.Contains(t, authErr.Error(), "Invalid request: request is nil")
+}
+
 func TestGrpcSessionStoreTTL(t *testing.T) {
 	store := newGrpcSessionStore(40 * time.Millisecond)
 	store.Put("session-1")
@@ -124,15 +143,15 @@ func TestGrpcSessionAuthRequireSession(t *testing.T) {
 	err := authEnabled.requireSession(context.Background())
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
-	assert.Contains(t, err.Error(), "sessionId is not passed")
+	assert.Contains(t, err.Error(), "no metadata")
 
-	invalidCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionId", "missing"))
+	invalidCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionid", "missing"))
 	err = authEnabled.requireSession(invalidCtx)
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 	assert.Contains(t, err.Error(), "does not exist")
 
-	validCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionId", "ok"))
+	validCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionid", "ok"))
 	assert.NoError(t, authEnabled.requireSession(validCtx))
 	assert.NoError(t, authDisabled.requireSession(context.Background()))
 }

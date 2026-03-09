@@ -24,6 +24,19 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 		assert.Equal(te, `["newHeads"]`, string(payload))
 	})
 
+	t.Run("uses native subscribe method with default empty payload", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("eth", nil, "eth_subscribe", nil)
+		require.NoError(te, err)
+		assert.Equal(te, "eth_subscribe", method)
+		assert.Equal(te, `[]`, string(payload))
+	})
+
+	t.Run("fails native subscribe method with invalid payload", func(te *testing.T) {
+		_, _, err := mapNativeSubscribeMethod("eth", nil, "eth_subscribe", []byte(`not-json`))
+		require.Error(te, err)
+		assert.Contains(te, err.Error(), "invalid subscribe payload format")
+	})
+
 	t.Run("maps dproxy style method to eth_subscribe", func(te *testing.T) {
 		method, payload, err := mapNativeSubscribeMethod("eth", nil, "newHeads", []byte(`[{"foo":"bar"}]`))
 		require.NoError(te, err)
@@ -104,9 +117,9 @@ func TestNativeCallUnauthenticated(t *testing.T) {
 	err := service.NativeCall(&dshackle.NativeCallRequest{}, stream)
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
-	assert.Contains(t, err.Error(), "sessionId is not passed")
+	assert.Contains(t, err.Error(), "no metadata")
 
-	stream.ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionId", "unknown"))
+	stream.ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionid", "unknown"))
 	err = service.NativeCall(&dshackle.NativeCallRequest{}, stream)
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -120,7 +133,7 @@ func TestNativeSubscribeUnauthenticated(t *testing.T) {
 	err := service.NativeSubscribe(&dshackle.NativeSubscribeRequest{}, stream)
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
-	assert.Contains(t, err.Error(), "sessionId is not passed")
+	assert.Contains(t, err.Error(), "no metadata")
 }
 
 type testNativeCallStream struct {

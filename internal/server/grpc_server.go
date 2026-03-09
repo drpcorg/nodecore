@@ -45,7 +45,9 @@ func NewGrpcServer(appCtx *ApplicationContext) (*GrpcServer, error) {
 	blockchainService := NewGrpcBlockchainService(appCtx, sessionAuth)
 
 	dshackle.RegisterBlockchainServer(grpcServer, blockchainService)
-	dshackle.RegisterAuthServer(grpcServer, authService)
+	if authService != nil {
+		dshackle.RegisterAuthServer(grpcServer, authService)
+	}
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", serverConfig.GrpcPort))
 	if err != nil {
