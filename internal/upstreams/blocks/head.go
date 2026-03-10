@@ -92,7 +92,7 @@ func (h *HeadProcessor) Start() {
 				return nil
 			case block, ok := <-h.head.HeadsChan():
 				if ok {
-					log.Info().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.BlockData.Height)
+					log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.BlockData.Height)
 					h.lastUpdate.Store(time.Now())
 					h.subManager.Publish(HeadEvent{HeadData: block.BlockData})
 				}
