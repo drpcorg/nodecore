@@ -82,16 +82,8 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 	go executionFlow.Execute(stream.Context(), requests)
 
 	for wrapper := range executionFlow.GetResponses() {
-		replyItems, err := buildNativeCallReplyItems(wrapper, request.GetChunkSize())
-		if err != nil {
-			replyItems = []*dshackle.NativeCallReplyItem{
-				nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil),
-			}
-		}
-		for _, replyItem := range replyItems {
-			if err := stream.Send(replyItem); err != nil {
-				return err
-			}
+		if err := sendNativeCallReplyItems(stream, wrapper, request.GetChunkSize()); err != nil {
+			return err
 		}
 	}
 
@@ -133,7 +125,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		mappedPayload,
 		true,
 		specMethod,
-	)
+	).WithSubscriptionResultOnly(true)
 
 	executionFlow := flow.NewBaseExecutionFlow(
 		configuredChain.Chain,
@@ -166,17 +158,17 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 				return mapNativeSubscribeError(wrapper.Response.GetError())
 			}
 
-			payload, isEvent, err := extractSubscriptionResultPayload(wrapper.Response.ResponseResult())
-			if err != nil {
-				return status.Error(codes.Internal, err.Error())
+			subscriptionResponse, ok := wrapper.Response.(*protocol.SubscriptionEventResponse)
+			if !ok {
+				return status.Error(codes.Internal, "unexpected subscription response type")
 			}
-			// The first frame is usually subscription id ACK. dproxy expects only event payload.
-			if !isEvent {
+			// Skip subscription ACK frame. dproxy expects only event payload.
+			if !subscriptionResponse.IsEventFrame() {
 				continue
 			}
 
 			if err := stream.Send(&dshackle.NativeSubscribeReplyItem{
-				Payload:    payload,
+				Payload:    subscriptionResponse.ResponseResult(),
 				UpstreamId: wrapper.UpstreamId,
 			}); err != nil {
 				return err
@@ -241,56 +233,93 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 			specMethod = chainSupervisor.GetMethod(item.GetMethod())
 		}
 		requestID := strconv.FormatUint(uint64(item.GetId()), 10)
-		requests = append(requests, protocol.NewUpstreamJsonRpcRequest(
-			requestID,
-			[]byte(requestID),
-			item.GetMethod(),
-			payload,
-			false,
-			specMethod,
-		))
+		if protocol.IsStream(item.GetMethod()) {
+			requests = append(requests, protocol.NewStreamUpstreamJsonRpcRequest(
+				requestID,
+				[]byte(requestID),
+				item.GetMethod(),
+				payload,
+				specMethod,
+			))
+		} else {
+			requests = append(requests, protocol.NewUpstreamJsonRpcRequest(
+				requestID,
+				[]byte(requestID),
+				item.GetMethod(),
+				payload,
+				false,
+				specMethod,
+			))
+		}
 	}
 
 	return requests, preResponses
 }
 
-func buildNativeCallReplyItems(
+func sendNativeCallReplyItems(
+	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
 	chunkSize uint32,
-) ([]*dshackle.NativeCallReplyItem, error) {
+) error {
 	if wrapper == nil || wrapper.Response == nil {
-		return nil, fmt.Errorf("response wrapper is empty")
+		return fmt.Errorf("response wrapper is empty")
 	}
 
 	requestID := parseCallItemID(wrapper.RequestId)
 	if wrapper.Response.HasError() {
-		return []*dshackle.NativeCallReplyItem{
-			nativeCallErrorItem(requestID, wrapper.Response.GetError(), wrapper.UpstreamId, wrapper.Response.ResponseResult()),
-		}, nil
+		return stream.Send(nativeCallErrorItem(requestID, wrapper.Response.GetError(), wrapper.UpstreamId, wrapper.Response.ResponseResult()))
 	}
 
-	payload, err := nativeCallPayload(wrapper.Response)
-	if err != nil {
-		return nil, err
+	if wrapper.Response.HasStream() {
+		err := streamNativeCallPayload(
+			requestID,
+			wrapper.UpstreamId,
+			wrapper.Response.EncodeResponse([]byte("0")),
+			chunkSize,
+			func(item *dshackle.NativeCallReplyItem) error {
+				return stream.Send(item)
+			},
+		)
+		if err != nil {
+			return stream.Send(nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil))
+		}
+		return nil
 	}
 
-	return nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize), nil
+	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
+	for _, replyItem := range nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize) {
+		if err := stream.Send(replyItem); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func nativeCallPayload(response protocol.ResponseHolder) ([]byte, error) {
-	if !response.HasStream() {
-		return append([]byte(nil), response.ResponseResult()...), nil
+func streamNativeCallPayload(
+	requestID uint32,
+	upstreamID string,
+	reader io.Reader,
+	chunkSize uint32,
+	send func(*dshackle.NativeCallReplyItem) error,
+) error {
+	effectiveChunkSize := int(chunkSize)
+	if effectiveChunkSize <= 0 {
+		effectiveChunkSize = protocol.MaxChunkSize
 	}
-
-	rawStreamResponse, err := io.ReadAll(response.EncodeResponse([]byte("0")))
-	if err != nil {
-		return nil, fmt.Errorf("unable to read stream response: %w", err)
+	emitter := newNativeCallChunkEmitter(effectiveChunkSize, func(chunk []byte, final bool) error {
+		return send(&dshackle.NativeCallReplyItem{
+			Id:         requestID,
+			Succeed:    true,
+			Payload:    chunk,
+			Chunked:    true,
+			FinalChunk: final,
+			UpstreamId: upstreamID,
+		})
+	})
+	if err := streamJsonRPCResult(reader, emitter); err != nil {
+		return err
 	}
-	parsed := protocol.NewHttpUpstreamResponse("0", rawStreamResponse, 200, protocol.JsonRpc)
-	if parsed.HasError() {
-		return nil, parsed.GetError()
-	}
-	return append([]byte(nil), parsed.ResponseResult()...), nil
+	return emitter.Flush()
 }
 
 func nativeCallSuccessItems(
@@ -326,6 +355,65 @@ func nativeCallSuccessItems(
 		})
 	}
 	return replyItems
+}
+
+type nativeCallChunkEmitter struct {
+	chunkSize int
+	pending   []byte
+	lastChunk []byte
+	hasLast   bool
+	emit      func([]byte, bool) error
+}
+
+func newNativeCallChunkEmitter(chunkSize int, emit func([]byte, bool) error) *nativeCallChunkEmitter {
+	return &nativeCallChunkEmitter{
+		chunkSize: chunkSize,
+		pending:   make([]byte, 0, chunkSize),
+		emit:      emit,
+	}
+}
+
+func (e *nativeCallChunkEmitter) Write(p []byte) (int, error) {
+	written := len(p)
+	for len(p) > 0 {
+		available := e.chunkSize - len(e.pending)
+		if available > len(p) {
+			available = len(p)
+		}
+		e.pending = append(e.pending, p[:available]...)
+		p = p[available:]
+		if len(e.pending) == e.chunkSize {
+			if err := e.pushChunk(append([]byte(nil), e.pending...)); err != nil {
+				return 0, err
+			}
+			e.pending = e.pending[:0]
+		}
+	}
+	return written, nil
+}
+
+func (e *nativeCallChunkEmitter) Flush() error {
+	if len(e.pending) > 0 {
+		if err := e.pushChunk(append([]byte(nil), e.pending...)); err != nil {
+			return err
+		}
+		e.pending = e.pending[:0]
+	}
+	if e.hasLast {
+		return e.emit(e.lastChunk, true)
+	}
+	return e.emit([]byte{}, true)
+}
+
+func (e *nativeCallChunkEmitter) pushChunk(chunk []byte) error {
+	if e.hasLast {
+		if err := e.emit(e.lastChunk, false); err != nil {
+			return err
+		}
+	}
+	e.lastChunk = chunk
+	e.hasLast = true
+	return nil
 }
 
 func nativeCallErrorItem(
@@ -447,30 +535,6 @@ func mapEthSubscribeParams(requestedMethod string, payload []byte) ([]byte, erro
 		return nil, err
 	}
 	return result, nil
-}
-
-func extractSubscriptionResultPayload(raw []byte) ([]byte, bool, error) {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" {
-		return nil, false, nil
-	}
-	// ACK frames contain only subscription id, while events have params.result envelope.
-	if trimmed[0] != '{' {
-		return nil, false, nil
-	}
-
-	var envelope struct {
-		Params struct {
-			Result json.RawMessage `json:"result"`
-		} `json:"params"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil {
-		return nil, false, fmt.Errorf("unable to parse subscription payload: %w", err)
-	}
-	if len(envelope.Params.Result) == 0 {
-		return nil, false, nil
-	}
-	return envelope.Params.Result, true, nil
 }
 
 func mapNativeSubscribeError(responseError *protocol.ResponseError) error {

@@ -21,6 +21,11 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	upstreamStrategy UpstreamStrategy,
 	request protocol.RequestHolder,
 ) ProcessedResponse {
+	subResultOnly := false
+	if jsonRpcRequest, ok := request.(*protocol.UpstreamJsonRpcRequest); ok {
+		subResultOnly = jsonRpcRequest.IsSubscriptionResultOnly()
+	}
+
 	responses := make(chan *protocol.ResponseHolderWrapper)
 
 	go func() {
@@ -70,7 +75,11 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 						s.subCtx.AddSub(protocol.ResultAsString(r.Message), cancel)
 						subResponse = protocol.NewSubscriptionMessageEventResponse(request.Id(), r.Message)
 					} else {
-						subResponse = protocol.NewSubscriptionEventResponse(request.Id(), r.Event)
+						if subResultOnly {
+							subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
+						} else {
+							subResponse = protocol.NewSubscriptionEventResponse(request.Id(), r.Event)
+						}
 					}
 					wrapper := &protocol.ResponseHolderWrapper{
 						UpstreamId: upstreamId,

@@ -15,9 +15,10 @@ import (
 )
 
 type SubscriptionEventResponse struct {
-	id      string
-	event   []byte
-	message []byte
+	id         string
+	event      []byte
+	message    []byte
+	eventFrame bool
 }
 
 func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
@@ -25,11 +26,19 @@ func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
 }
 
 func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionEventResponse {
-	return &SubscriptionEventResponse{message: message, id: id}
+	return &SubscriptionEventResponse{message: message, id: id, eventFrame: false}
 }
 
 func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventResponse {
-	return &SubscriptionEventResponse{event: event, id: id}
+	return &SubscriptionEventResponse{event: event, id: id, eventFrame: true}
+}
+
+func NewSubscriptionResultEventResponse(id string, result []byte) *SubscriptionEventResponse {
+	return &SubscriptionEventResponse{message: result, id: id, eventFrame: true}
+}
+
+func (s *SubscriptionEventResponse) IsEventFrame() bool {
+	return s.eventFrame
 }
 
 func (s *SubscriptionEventResponse) ResponseResult() []byte {
@@ -44,6 +53,9 @@ func (s *SubscriptionEventResponse) GetError() *ResponseError {
 }
 
 func (s *SubscriptionEventResponse) EncodeResponse(realId []byte) io.Reader {
+	if s.eventFrame && len(s.event) > 0 {
+		return bytes.NewReader(s.event)
+	}
 	if len(s.message) == 0 {
 		return bytes.NewReader(s.event)
 	}

@@ -141,6 +141,47 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	assert.Equal(t, "id", responseWrapper.UpstreamId)
 }
 
+func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	apiConnector := mocks.NewWsConnectorMock()
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil).
+		WithSubscriptionResultOnly(true)
+	upstream := test_utils.TestEvmUpstream(context.Background(), apiConnector, upConfig(), nil, nil, mocks.NewMethodsMock())
+	ctx := context.Background()
+	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx())
+	respChan := make(chan *protocol.WsResponse)
+	event := []byte(`{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"id","result":{"foo":"bar"}}}`)
+	result := []byte(`{"foo":"bar"}`)
+	go func() {
+		respChan <- &protocol.WsResponse{Event: event, Message: result, SubId: "id"}
+	}()
+
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(upstream)
+	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan), nil)
+
+	response := processor.ProcessRequest(ctx, strategy, request)
+
+	assert.IsType(t, &flow.SubscriptionResponse{}, response)
+
+	subRespWrappers := response.(*flow.SubscriptionResponse).ResponseWrappers
+	responseWrapper := <-subRespWrappers
+
+	strategy.AssertExpectations(t)
+	upSupervisor.AssertExpectations(t)
+	apiConnector.AssertExpectations(t)
+
+	subscriptionResponse, ok := responseWrapper.Response.(*protocol.SubscriptionEventResponse)
+	assert.True(t, ok)
+	assert.True(t, subscriptionResponse.IsEventFrame())
+	assert.Equal(t, result, subscriptionResponse.ResponseResult())
+	assert.False(t, subscriptionResponse.HasError())
+	assert.False(t, subscriptionResponse.HasStream())
+	assert.Equal(t, "223", responseWrapper.RequestId)
+	assert.Equal(t, "id", responseWrapper.UpstreamId)
+}
+
 func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
 	assert.NoError(t, err)

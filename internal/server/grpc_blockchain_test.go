@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,18 +52,6 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 	})
 }
 
-func TestExtractSubscriptionResultPayload(t *testing.T) {
-	payload, isEvent, err := extractSubscriptionResultPayload([]byte(`{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"0x1","result":{"number":"0x1"}}}`))
-	require.NoError(t, err)
-	assert.True(t, isEvent)
-	assert.Equal(t, `{"number":"0x1"}`, string(payload))
-
-	payload, isEvent, err = extractSubscriptionResultPayload([]byte(`"0xsub"`))
-	require.NoError(t, err)
-	assert.False(t, isEvent)
-	assert.Nil(t, payload)
-}
-
 func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, nil)
 
@@ -91,6 +80,50 @@ func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
 	assert.Equal(t, uint32(1), failures[0].GetId())
 	assert.False(t, failures[0].GetSucceed())
 	assert.Equal(t, int32(400), failures[0].GetItemErrorCode())
+}
+
+func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil)
+	request := &dshackle.NativeCallRequest{
+		Items: []*dshackle.NativeCallItem{
+			{
+				Id:     1,
+				Method: "eth_getLogs",
+				Data: &dshackle.NativeCallItem_Payload{
+					Payload: []byte(`[]`),
+				},
+			},
+		},
+	}
+
+	requests, failures := service.buildNativeCallRequests(request, nil)
+	require.Empty(t, failures)
+	require.Len(t, requests, 1)
+	assert.True(t, requests[0].IsStream())
+}
+
+func TestStreamNativeCallPayloadChunking(t *testing.T) {
+	reader := strings.NewReader(`{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`)
+	items := make([]*dshackle.NativeCallReplyItem, 0)
+
+	err := streamNativeCallPayload(7, "upstream-1", reader, 4, func(item *dshackle.NativeCallReplyItem) error {
+		items = append(items, item)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, items, 3)
+
+	assert.Equal(t, "[1,2", string(items[0].GetPayload()))
+	assert.True(t, items[0].GetChunked())
+	assert.False(t, items[0].GetFinalChunk())
+
+	assert.Equal(t, ",3,4", string(items[1].GetPayload()))
+	assert.True(t, items[1].GetChunked())
+	assert.False(t, items[1].GetFinalChunk())
+
+	assert.Equal(t, "]", string(items[2].GetPayload()))
+	assert.True(t, items[2].GetChunked())
+	assert.True(t, items[2].GetFinalChunk())
 }
 
 func TestNativeCallSuccessItemsChunking(t *testing.T) {
