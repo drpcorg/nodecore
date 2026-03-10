@@ -21,6 +21,7 @@ const checkInterval = 5
 type SolanaChainSpecificObject struct {
 	upstreamId       string
 	connector        connectors.ApiConnector
+	internalTimeout  time.Duration
 	lastKnownHeights *utils.CMap[string, uint64]
 	lastCheckedSlots *utils.CMap[string, uint64]
 }
@@ -28,10 +29,12 @@ type SolanaChainSpecificObject struct {
 func NewSolanaChainSpecificObject(
 	upstreamId string,
 	connector connectors.ApiConnector,
+	internalTimeout time.Duration,
 ) *SolanaChainSpecificObject {
 	return &SolanaChainSpecificObject{
 		upstreamId:       upstreamId,
 		connector:        connector,
+		internalTimeout:  internalTimeout,
 		lastKnownHeights: utils.NewCMap[string, uint64](),
 		lastCheckedSlots: utils.NewCMap[string, uint64](),
 	}
@@ -72,9 +75,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 	estimatedHeight := lo.Ternary(lastHeight != 0 && lastSlot != 0, lastHeight+(slotEvent.Slot-lastSlot), 0)
 
 	if shouldCheck || estimatedHeight == 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		block, err := s.getEpochInfo(ctx)
+		block, err := s.getEpochInfo(context.Background())
 		if err != nil {
 			var height uint64
 			if estimatedHeight != 0 {
@@ -99,6 +100,8 @@ func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHold
 }
 
 func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (*protocol.Block, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
+	defer cancel()
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", nil)
 	if err != nil {
 		return nil, err

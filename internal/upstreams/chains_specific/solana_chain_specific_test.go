@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestSolanaSubscribeHeadRequest(t *testing.T) {
-	req, err := specific.NewSolanaChainSpecificObject("id", nil).SubscribeHeadRequest()
+	req, err := specific.NewSolanaChainSpecificObject("id", nil, 5*time.Second).SubscribeHeadRequest()
 	assert.Nil(t, err)
 
 	body, err := req.Body()
@@ -45,7 +46,7 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := specific.NewSolanaChainSpecificObject("id", connector).ParseSubscriptionBlock(slot)
+	block, err := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second).ParseSubscriptionBlock(slot)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -57,7 +58,7 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 
 func TestSolanaParseSubBLock(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	solanaSpecific := specific.NewSolanaChainSpecificObject("id", connector)
+	solanaSpecific := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second)
 	body := []byte(`{
             "slot": 405220706,
             "parent": 405220705,
@@ -120,9 +121,9 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 	}`)
 	epochResponse := protocol.NewHttpUpstreamResponse("1", epochBody, 200, protocol.JsonRpc)
 
-	connector.On("SendRequest", ctx, mock.Anything).Return(epochResponse)
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := specific.NewSolanaChainSpecificObject("id", connector).GetLatestBlock(ctx)
+	block, err := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second).GetLatestBlock(ctx)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -138,9 +139,9 @@ func TestSolanaGetLatestBlockWithError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "block error", nil))
 
-	connector.On("SendRequest", ctx, mock.Anything).Return(response)
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	block, err := specific.NewSolanaChainSpecificObject("id", connector).GetLatestBlock(ctx)
+	block, err := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second).GetLatestBlock(ctx)
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, block)

@@ -422,7 +422,7 @@ func getChainSpecific(
 	case chains.Aztec:
 		return specific.NewAztecChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
 	case chains.Solana:
-		return specific.NewSolanaChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
+		return specific.NewSolanaChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector, conf.Options.InternalTimeout)
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
 	}

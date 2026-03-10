@@ -114,6 +114,7 @@ func TestWsHead(t *testing.T) {
 		ChainName:    "ethereum",
 		Id:           "id",
 		PollInterval: 10 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
 	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	go headProcessor.Start()
