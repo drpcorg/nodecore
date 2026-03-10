@@ -9,38 +9,48 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 type ChainSpecific interface {
-	GetLatestBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
-	GetFinalizedBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
+	GetLatestBlock(ctx context.Context) (*protocol.Block, error)
+	GetFinalizedBlock(context.Context) (*protocol.Block, error)
+
 	ParseBlock([]byte) (*protocol.Block, error)
+	ParseSubscriptionBlock(data []byte) (*protocol.Block, error)
+
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
-	ParseSubscriptionBlock([]byte) (*protocol.Block, error)
-	SettingsValidators(upstreamId string, connector connectors.ApiConnector, chain *chains.ConfiguredChain, options *config.UpstreamOptions) []validations.SettingsValidator
-}
-
-var EvmChainSpecific *EvmChainSpecificObject
-
-func init() {
-	EvmChainSpecific = &EvmChainSpecificObject{}
+	SettingsValidators() []validations.SettingsValidator
 }
 
 type EvmChainSpecificObject struct {
+	upstreamId string
+	connector  connectors.ApiConnector
+	chain      *chains.ConfiguredChain
+	options    *config.UpstreamOptions
 }
 
-func (e *EvmChainSpecificObject) SettingsValidators(
+func NewEvmChainSpecific(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	options *config.UpstreamOptions,
-) []validations.SettingsValidator {
+) *EvmChainSpecificObject {
+	return &EvmChainSpecificObject{
+		upstreamId: upstreamId,
+		connector:  connector,
+		chain:      chain,
+		options:    options,
+	}
+}
+
+func (e *EvmChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
 	settingsValidators := make([]validations.SettingsValidator, 0)
 
-	if !*options.DisableChainValidation {
-		settingsValidators = append(settingsValidators, validations.NewChainValidator(upstreamId, connector, chain, options))
+	if !*e.options.DisableChainValidation {
+		settingsValidators = append(settingsValidators, validations.NewChainValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 
 	return settingsValidators
@@ -48,12 +58,12 @@ func (e *EvmChainSpecificObject) SettingsValidators(
 
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
-func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	return e.getBlockByTag(ctx, connector, rpc.LatestBlockNumber)
+func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
+	return e.getBlockByTag(ctx, e.connector, rpc.LatestBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	return e.getBlockByTag(ctx, connector, rpc.FinalizedBlockNumber)
+func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context) (*protocol.Block, error) {
+	return e.getBlockByTag(ctx, e.connector, rpc.FinalizedBlockNumber)
 }
 
 func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
@@ -70,7 +80,12 @@ func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block,
 		return nil, fmt.Errorf("couldn't parse the evm block, got '%s'", string(blockBytes))
 	}
 
-	return protocol.NewBlock(uint64(evmBlock.Height.Int64()), 0, evmBlock.Hash), nil
+	return protocol.NewBlock(
+		uint64(evmBlock.Height.Int64()),
+		0,
+		blockchain.NewHashIdFromString(evmBlock.Hash),
+		blockchain.NewHashIdFromString(evmBlock.Parent),
+	), nil
 }
 
 func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
@@ -97,5 +112,6 @@ func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector co
 
 type EvmBlock struct {
 	Hash   string           `json:"hash"`
+	Parent string           `json:"parentHash"`
 	Height *rpc.BlockNumber `json:"number"`
 }

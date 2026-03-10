@@ -34,11 +34,11 @@ var _ utils.Lifecycle = (*HeadProcessor)(nil)
 func NewHeadProcessor(
 	ctx context.Context,
 	upConfig *config.Upstream,
-	apiConnector connectors.ApiConnector,
+	headConnector connectors.ApiConnector,
 	specific specific.ChainSpecific,
 ) *HeadProcessor {
 	configuredChain := chains.GetChain(upConfig.ChainName)
-	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, apiConnector, specific, upConfig.Options)
+	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, headConnector, specific, upConfig.Options)
 
 	headNoUpdatesTimeout := 1 * time.Minute
 	switch head.(type) {
@@ -115,23 +115,23 @@ func (h *HeadProcessor) Stop() {
 }
 
 func (h *HeadProcessor) UpdateHead(height, slot uint64) {
-	h.manualHeadChan <- protocol.NewBlock(height, slot, "")
+	h.manualHeadChan <- protocol.NewBlockWithHeights(height, slot)
 }
 
 func createHead(
 	ctx context.Context,
 	id string, pollInterval time.Duration,
-	apiConnector connectors.ApiConnector,
+	headConnector connectors.ApiConnector,
 	specific specific.ChainSpecific,
 	options *config.UpstreamOptions,
 ) Head {
-	switch apiConnector.GetType() {
+	switch headConnector.GetType() {
 	case protocol.JsonRpcConnector, protocol.RestConnector:
 		log.Info().Msgf("starting an rpc head of upstream %s with poll interval %s", id, pollInterval)
-		return newRpcHead(ctx, id, apiConnector, specific, pollInterval, options)
+		return newRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
 	case protocol.WsConnector:
 		log.Info().Msgf("starting a subscription head of upstream %s", id)
-		return newWsHead(ctx, id, apiConnector, specific)
+		return newWsHead(ctx, id, options.InternalTimeout, headConnector, specific)
 	default:
 		return nil
 	}
@@ -151,7 +151,6 @@ type RpcHead struct {
 	chainSpecific   specific.ChainSpecific
 	pollInterval    time.Duration
 	internalTimeout time.Duration
-	connector       connectors.ApiConnector
 	upstreamId      string
 	pollInProgress  atomic.Bool
 	headsChan       chan *protocol.Block
@@ -175,21 +174,19 @@ var _ Head = (*RpcHead)(nil)
 func newRpcHead(
 	ctx context.Context,
 	upstreamId string,
-	connector connectors.ApiConnector,
-	chainSpecific specific.ChainSpecific,
+	internalTimeout,
 	pollInterval time.Duration,
-	options *config.UpstreamOptions,
+	chainSpecific specific.ChainSpecific,
 ) *RpcHead {
 	head := RpcHead{
 		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_rpc_head", upstreamId), ctx),
 		block:           utils.NewAtomic[protocol.Block](),
 		chainSpecific:   chainSpecific,
 		pollInterval:    pollInterval,
-		connector:       connector,
 		upstreamId:      upstreamId,
 		pollInProgress:  atomic.Bool{},
 		headsChan:       make(chan *protocol.Block),
-		internalTimeout: options.InternalTimeout,
+		internalTimeout: internalTimeout,
 	}
 
 	return &head
@@ -228,7 +225,7 @@ func (r *RpcHead) poll() {
 		ctx, cancel := context.WithTimeout(r.lifecycle.GetParentContext(), r.internalTimeout)
 		defer cancel()
 
-		block, err := r.chainSpecific.GetLatestBlock(ctx, r.connector)
+		block, err := r.chainSpecific.GetLatestBlock(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msgf("couldn't get the latest block of upstream %s", r.upstreamId)
 		} else {
@@ -239,12 +236,13 @@ func (r *RpcHead) poll() {
 }
 
 type SubscriptionHead struct {
-	lifecycle     *utils.BaseLifecycle
-	block         *utils.Atomic[protocol.Block]
-	chainSpecific specific.ChainSpecific
-	connector     connectors.ApiConnector
-	upstreamId    string
-	headsChan     chan *protocol.Block
+	lifecycle       *utils.BaseLifecycle
+	block           *utils.Atomic[protocol.Block]
+	chainSpecific   specific.ChainSpecific
+	headConnector   connectors.ApiConnector
+	upstreamId      string
+	headsChan       chan *protocol.Block
+	internalTimeout time.Duration
 }
 
 func (w *SubscriptionHead) Running() bool {
@@ -269,13 +267,16 @@ func (w *SubscriptionHead) GetCurrentBlock() *protocol.Block {
 
 func (w *SubscriptionHead) Start() {
 	w.lifecycle.Start(func(ctx context.Context) error {
+		// get the latest block in order not to wait for the sub event
+		w.getLatestBlock()
+
 		subReq, err := w.chainSpecific.SubscribeHeadRequest()
 		if err != nil {
 			log.Warn().Err(err).Msgf("couldn't create a subscription request to upstream %s", w.upstreamId)
 			return err
 		}
 
-		subResponse, err := w.connector.Subscribe(ctx, subReq)
+		subResponse, err := w.headConnector.Subscribe(ctx, subReq)
 		if err != nil {
 			log.Warn().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
 			return err
@@ -316,14 +317,33 @@ func (w *SubscriptionHead) OnNoHeadUpdates() {
 	go w.Start()
 }
 
-func newWsHead(ctx context.Context, upstreamId string, connector connectors.ApiConnector, chainSpecific specific.ChainSpecific) *SubscriptionHead {
+func (w *SubscriptionHead) getLatestBlock() {
+	ctx, cancel := context.WithTimeout(w.lifecycle.GetParentContext(), w.internalTimeout)
+	defer cancel()
+	block, err := w.chainSpecific.GetLatestBlock(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msgf("couldn't get the latest block of upstream %s", w.upstreamId)
+		return
+	}
+	w.block.Store(*block)
+	w.headsChan <- block
+}
+
+func newWsHead(
+	ctx context.Context,
+	upstreamId string,
+	internalTimeout time.Duration,
+	headConnector connectors.ApiConnector,
+	chainSpecific specific.ChainSpecific,
+) *SubscriptionHead {
 	head := SubscriptionHead{
-		lifecycle:     utils.NewBaseLifecycle(fmt.Sprintf("%s_subscription_head", upstreamId), ctx),
-		upstreamId:    upstreamId,
-		chainSpecific: chainSpecific,
-		connector:     connector,
-		block:         utils.NewAtomic[protocol.Block](),
-		headsChan:     make(chan *protocol.Block),
+		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_subscription_head", upstreamId), ctx),
+		upstreamId:      upstreamId,
+		chainSpecific:   chainSpecific,
+		headConnector:   headConnector,
+		internalTimeout: internalTimeout,
+		block:           utils.NewAtomic[protocol.Block](),
+		headsChan:       make(chan *protocol.Block),
 	}
 
 	return &head

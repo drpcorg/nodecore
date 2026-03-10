@@ -169,13 +169,17 @@ func TestEvmUpstream(
 		"id",
 		chains.ETHEREUM,
 		[]connectors.ApiConnector{connector},
-		blocks.NewHeadProcessor(ctx, upConfig, connector, specific.EvmChainSpecific),
+		blocks.NewHeadProcessor(ctx, upConfig, connector, NewEvmChainSpecific(connector)),
 		blockProcessor,
 		settingValidationProcessor,
 		upState,
 		index,
 		upConfig,
 	)
+}
+
+func NewEvmChainSpecific(connector connectors.ApiConnector) *specific.EvmChainSpecificObject {
+	return specific.NewEvmChainSpecific("id", connector, chains.GetChain("polygon"), nil)
 }
 
 func CreateChainSupervisor() *upstreams.ChainSupervisor {

@@ -276,16 +276,8 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 		}
 	}
 	if u.HeadConnector == "" && len(u.Connectors) > 0 {
-		filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
-			_, ok := connectorTypesRating[item.Type]
-			return ok
-		})
-
-		if len(filteredConnectors) > 0 {
-			defaultHeadConnectorType := lo.MinBy(filteredConnectors, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
-				return connectorTypesRating[a.Type] < connectorTypesRating[b.Type]
-			}).Type
-			u.HeadConnector = defaultHeadConnectorType
+		if headConnector := u.GetBestConnector(); headConnector != "" {
+			u.HeadConnector = headConnector
 		}
 	}
 	if u.RateLimitAutoTune != nil {

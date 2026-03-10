@@ -2,164 +2,149 @@ package specific
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
-	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
-var SolanaChainSpecific *SolanaChainSpecificObject
-
-func init() {
-	SolanaChainSpecific = &SolanaChainSpecificObject{}
-}
+const checkInterval = 5
 
 type SolanaChainSpecificObject struct {
+	upstreamId       string
+	connector        connectors.ApiConnector
+	internalTimeout  time.Duration
+	lastKnownHeights *utils.CMap[string, uint64]
+	lastCheckedSlots *utils.CMap[string, uint64]
 }
 
-func (s *SolanaChainSpecificObject) SettingsValidators(
-	_ string,
-	_ connectors.ApiConnector,
-	_ *chains.ConfiguredChain,
-	_ *config.UpstreamOptions,
-) []validations.SettingsValidator {
+func NewSolanaChainSpecificObject(
+	upstreamId string,
+	connector connectors.ApiConnector,
+	internalTimeout time.Duration,
+) *SolanaChainSpecificObject {
+	return &SolanaChainSpecificObject{
+		upstreamId:       upstreamId,
+		connector:        connector,
+		internalTimeout:  internalTimeout,
+		lastKnownHeights: utils.NewCMap[string, uint64](),
+		lastCheckedSlots: utils.NewCMap[string, uint64](),
+	}
+}
+
+func (s *SolanaChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
 	return nil
 }
 
-var _ ChainSpecific = (*SolanaChainSpecificObject)(nil)
-
-func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	slot, err := getLatestSlot(ctx, connector)
-	if err != nil {
-		return nil, err
-	}
-
-	maxBlock, err := getMaxBlock(ctx, connector, slot)
-	if err != nil {
-		return nil, err
-	}
-
-	block, err := getBlock(ctx, connector, maxBlock)
-	if err != nil {
-		return nil, err
-	}
-
-	parsedBlock, err := s.ParseBlock(block)
-	if err != nil {
-		return nil, err
-	}
-	parsedBlock.BlockData.Slot = maxBlock
-	return parsedBlock, nil
+func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
+	return s.getEpochInfo(ctx)
 }
 
-func (s *SolanaChainSpecificObject) GetFinalizedBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
+func (s *SolanaChainSpecificObject) GetFinalizedBlock(_ context.Context) (*protocol.Block, error) {
 	// TODO: implement get block/slot with finalized commitment
 	return nil, nil
 }
 
 func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block, error) {
-	solanaBlock := SolanaBlock{}
-	err := sonic.Unmarshal(blockBytes, &solanaBlock)
+	epochInfo := SolanaEpochInfo{}
+	err := sonic.Unmarshal(blockBytes, &epochInfo)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't parse the solana block, reason - %s", err.Error())
 	}
 
-	return protocol.NewBlock(solanaBlock.Height, 0, solanaBlock.Hash), nil
+	return createNewSolanaBlock(epochInfo.BlockHeight, epochInfo.AbsoluteSlot), nil
 }
 
 func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
-	solanaSubBlock := SolanaSubscriptionBlock{}
-	err := sonic.Unmarshal(blockBytes, &solanaSubBlock)
+	slotEvent := SolanaSlotEvent{}
+	err := sonic.Unmarshal(blockBytes, &slotEvent)
 	if err != nil {
 		return nil, err
 	}
+	lastSlot, _ := s.lastCheckedSlots.Load(s.upstreamId)
+	lastHeight, _ := s.lastKnownHeights.Load(s.upstreamId)
+	shouldCheck := slotEvent.Slot >= lastSlot && slotEvent.Slot-lastSlot >= checkInterval
+	estimatedHeight := lo.Ternary(lastHeight != 0 && lastSlot != 0, lastHeight+(slotEvent.Slot-lastSlot), 0)
 
-	return protocol.NewBlock(
-		solanaSubBlock.Value.Block.Height,
-		solanaSubBlock.Context.Slot,
-		solanaSubBlock.Value.Block.Hash,
-	), nil
+	if shouldCheck || estimatedHeight == 0 {
+		block, err := s.getEpochInfo(context.Background())
+		if err != nil {
+			var height uint64
+			if estimatedHeight != 0 {
+				height = estimatedHeight
+			} else {
+				if lastHeight != 0 {
+					height = lastHeight
+				} else {
+					height = slotEvent.Slot
+				}
+			}
+			log.Err(err).Msgf("couldn't get the epoch info for upstream %s, using the estimated height %d, slot %d", s.upstreamId, height, slotEvent.Slot)
+			return createNewSolanaBlock(height, slotEvent.Slot), nil
+		}
+		return createNewSolanaBlock(block.BlockData.Height, block.BlockData.Slot), nil
+	}
+	return createNewSolanaBlock(estimatedHeight, slotEvent.Slot), nil
 }
 
 func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	params := map[string]interface{}{
-		"showRewards":        false,
-		"transactionDetails": "none",
-	}
-	return protocol.NewInternalSubUpstreamJsonRpcRequest("blockSubscribe", []interface{}{"all", params})
+	return protocol.NewInternalSubUpstreamJsonRpcRequest("slotSubscribe", nil)
 }
 
-func getLatestSlot(ctx context.Context, connector connectors.ApiConnector) (uint64, error) {
-	slotReq, err := protocol.NewInternalUpstreamJsonRpcRequest("getSlot", nil)
-	if err != nil {
-		return 0, err
-	}
-	slotResponse := connector.SendRequest(ctx, slotReq)
-	if slotResponse.HasError() {
-		return 0, slotResponse.GetError()
-	}
-
-	slot := protocol.ResultAsNumber(slotResponse.ResponseResult())
-
-	return slot, nil
-}
-
-func getMaxBlock(ctx context.Context, connector connectors.ApiConnector, slot uint64) (uint64, error) {
-	blocksReq, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlocks", []interface{}{slot - 10, slot})
-	if err != nil {
-		return 0, err
-	}
-	blocksResponse := connector.SendRequest(ctx, blocksReq)
-	if blocksResponse.HasError() {
-		return 0, blocksResponse.GetError()
-	}
-
-	var blocks []uint64
-	err = sonic.Unmarshal(blocksResponse.ResponseResult(), &blocks)
-	if err != nil {
-		return 0, err
-	}
-
-	return lo.Max(blocks), nil
-}
-
-func getBlock(ctx context.Context, connector connectors.ApiConnector, block uint64) ([]byte, error) {
-	params := map[string]interface{}{
-		"showRewards":                    false,
-		"transactionDetails":             "none",
-		"maxSupportedTransactionVersion": 0,
-	}
-	blockReq, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlock", []interface{}{block, params})
+func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (*protocol.Block, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
+	defer cancel()
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", nil)
 	if err != nil {
 		return nil, err
 	}
-	blockResponse := connector.SendRequest(ctx, blockReq)
-	if blockResponse.HasError() {
-		return nil, blockResponse.GetError()
+	response := s.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return nil, response.GetError()
+	}
+	block, err := s.ParseBlock(response.ResponseResult())
+	if err != nil {
+		return nil, err
 	}
 
-	return blockResponse.ResponseResult(), nil
+	s.lastKnownHeights.Store(s.upstreamId, block.BlockData.Height)
+	s.lastCheckedSlots.Store(s.upstreamId, block.BlockData.Slot)
+
+	return block, nil
 }
 
-type SolanaBlock struct {
-	Height uint64 `json:"blockHeight"`
-	Hash   string `json:"blockhash"`
+func SyntheticHashes(slot uint64, parentSlot uint64) (blockchain.HashId, blockchain.HashId) {
+	b1 := make([]byte, 32)
+	binary.BigEndian.PutUint64(b1, slot)
+	syntheticHash := blockchain.NewHashIdFromBytes(b1)
+
+	b2 := make([]byte, 32)
+	binary.BigEndian.PutUint64(b2, parentSlot)
+	syntheticParentHash := blockchain.NewHashIdFromBytes(b2)
+
+	return syntheticHash, syntheticParentHash
 }
 
-type SolanaSubscriptionBlock struct {
-	Context Context `json:"context"`
-	Value   Value   `json:"value"`
+func createNewSolanaBlock(height uint64, slot uint64) *protocol.Block {
+	hash, parentHash := SyntheticHashes(slot, slot-1)
+	return protocol.NewBlock(height, slot, hash, parentHash)
 }
 
-type Context struct {
+type SolanaEpochInfo struct {
+	AbsoluteSlot uint64 `json:"absoluteSlot"`
+	BlockHeight  uint64 `json:"blockHeight"`
+}
+
+type SolanaSlotEvent struct {
 	Slot uint64 `json:"slot"`
 }
 
-type Value struct {
-	Block SolanaBlock `json:"block"`
-}
+var _ ChainSpecific = (*SolanaChainSpecificObject)(nil)
