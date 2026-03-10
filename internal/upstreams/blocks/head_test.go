@@ -8,8 +8,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -37,7 +37,7 @@ func TestRpcHead(t *testing.T) {
 		PollInterval: 10 * time.Millisecond,
 		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
-	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, connector, specific.EvmChainSpecific)
+	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))
 	go headProcessor.Start()
 
 	sub := headProcessor.Subscribe("test")
@@ -115,7 +115,7 @@ func TestWsHead(t *testing.T) {
 		Id:           "id",
 		PollInterval: 10 * time.Millisecond,
 	}
-	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, reqConnector, connector, specific.EvmChainSpecific)
+	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	go headProcessor.Start()
 
 	sub := headProcessor.Subscribe("test")

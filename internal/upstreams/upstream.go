@@ -103,7 +103,7 @@ func NewBaseUpstream(
 		cancel()
 		return nil, err
 	}
-	chainSpecific := getChainSpecific(configuredChain.Type)
+	chainSpecific := getChainSpecific(conf, upstreamConnectorsInfo, configuredChain)
 
 	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods)
 	if err != nil {
@@ -147,9 +147,9 @@ func NewBaseUpstream(
 		upstreamIndexHex: upstreamIndexHex,
 		upConfig:         conf,
 
-		headProcessor:               blocks.NewHeadProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, upstreamConnectorsInfo.headConnector, chainSpecific),
+		headProcessor:               blocks.NewHeadProcessor(ctx, conf, upstreamConnectorsInfo.headConnector, chainSpecific),
 		blockProcessor:              createBlockProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain.Type),
-		settingsValidationProcessor: createSettingValidationProcessor(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, chainSpecific, conf.Options),
+		settingsValidationProcessor: createSettingValidationProcessor(chainSpecific),
 	}, nil
 }
 
@@ -387,14 +387,8 @@ func createConnector(
 	}
 }
 
-func createSettingValidationProcessor(
-	upstreamId string,
-	connector connectors.ApiConnector,
-	configuredChain *chains.ConfiguredChain,
-	chainSpecific specific.ChainSpecific,
-	options *config.UpstreamOptions,
-) *validations.SettingsValidationProcessor {
-	validators := chainSpecific.SettingsValidators(upstreamId, connector, configuredChain, options)
+func createSettingValidationProcessor(chainSpecific specific.ChainSpecific) *validations.SettingsValidationProcessor {
+	validators := chainSpecific.SettingsValidators()
 	if len(validators) == 0 {
 		return nil
 	}
@@ -416,17 +410,21 @@ func createBlockProcessor(
 	}
 }
 
-func getChainSpecific(blockchainType chains.BlockchainType) specific.ChainSpecific {
+func getChainSpecific(
+	conf *config.Upstream,
+	upstreamConnectorsInfo *connectorsInfo,
+	configuredChain *chains.ConfiguredChain,
+) specific.ChainSpecific {
 	//TODO: there might be a few protocols a chain can work with, so it will be necessary to implement all of them
-	switch blockchainType {
+	switch configuredChain.Type {
 	case chains.Ethereum:
-		return specific.EvmChainSpecific
+		return specific.NewEvmChainSpecific(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, conf.Options)
 	case chains.Aztec:
-		return specific.AztecChainSpecific
+		return specific.NewAztecChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
 	case chains.Solana:
-		return specific.SolanaChainSpecific
+		return specific.NewSolanaChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
 	default:
-		panic(fmt.Sprintf("unknown blockchain type - %s", blockchainType))
+		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
 	}
 }
 

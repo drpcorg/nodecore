@@ -116,7 +116,7 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 		ctx, cancel := context.WithTimeout(b.lifecycle.GetParentContext(), b.internalTimeout)
 		defer cancel()
 
-		block, err := b.chainSpecific.GetFinalizedBlock(ctx, b.connector)
+		block, err := b.chainSpecific.GetFinalizedBlock(ctx)
 		if err != nil {
 			var respErr *protocol.ResponseError
 			if errors.As(err, &respErr) {

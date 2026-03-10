@@ -5,41 +5,40 @@ import (
 	"fmt"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
-	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-var AztecChainSpecific *AztecChainSpecificObject
-
-func init() {
-	AztecChainSpecific = &AztecChainSpecificObject{}
+type AztecChainSpecificObject struct {
+	upstreamId string
+	connector  connectors.ApiConnector
 }
 
-type AztecChainSpecificObject struct {
+func NewAztecChainSpecificObject(
+	upstreamId string,
+	connector connectors.ApiConnector,
+) *AztecChainSpecificObject {
+	return &AztecChainSpecificObject{
+		upstreamId: upstreamId,
+		connector:  connector,
+	}
 }
 
 var _ ChainSpecific = (*AztecChainSpecificObject)(nil)
 
-func (a *AztecChainSpecificObject) SettingsValidators(
-	_ string,
-	_ connectors.ApiConnector,
-	_ *chains.ConfiguredChain,
-	_ *config.UpstreamOptions,
-) []validations.SettingsValidator {
+func (a *AztecChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
 	return nil
 }
 
-func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector, _ string) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{"latest"})
 	if err != nil {
 		return nil, err
 	}
 
-	response := connector.SendRequest(ctx, request)
+	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return nil, response.GetError()
 	}
@@ -47,7 +46,7 @@ func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context, connector
 	return a.ParseBlock(response.ResponseResult())
 }
 
-func (a *AztecChainSpecificObject) GetFinalizedBlock(_ context.Context, _ connectors.ApiConnector) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) GetFinalizedBlock(_ context.Context) (*protocol.Block, error) {
 	return nil, nil
 }
 
@@ -66,7 +65,7 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Bloc
 	return protocol.NewBlock(height, 0, blockchain.NewHashIdFromString(block.BlockHash), blockchain.EmptyHash), nil
 }
 
-func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte, _ connectors.ApiConnector, _ string) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (*protocol.Block, error) {
 	return nil, fmt.Errorf("aztec does not support websocket subscriptions")
 }
 

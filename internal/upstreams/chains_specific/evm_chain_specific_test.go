@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -24,7 +25,7 @@ func TestChainValidator(t *testing.T) {
 	}
 	connector := mocks.NewConnectorMock()
 
-	validators := specific.EvmChainSpecific.SettingsValidators("id", connector, chains.UnknownChain, options)
+	validators := specific.NewEvmChainSpecific("id", connector, chains.UnknownChain, options).SettingsValidators()
 
 	_, ok := lo.Find(validators, func(item validations.SettingsValidator) bool {
 		_, ok := item.(*validations.ChainValidator)
@@ -33,7 +34,7 @@ func TestChainValidator(t *testing.T) {
 	assert.True(t, ok)
 
 	options.DisableChainValidation = lo.ToPtr(true)
-	validators = specific.EvmChainSpecific.SettingsValidators("id", connector, chains.UnknownChain, options)
+	validators = specific.NewEvmChainSpecific("id", connector, chains.UnknownChain, options).SettingsValidators()
 
 	_, ok = lo.Find(validators, func(item validations.SettingsValidator) bool {
 		_, ok := item.(*validations.ChainValidator)
@@ -44,7 +45,7 @@ func TestChainValidator(t *testing.T) {
 }
 
 func TestEvmSubscribeHeadRequest(t *testing.T) {
-	req, err := specific.EvmChainSpecific.SubscribeHeadRequest()
+	req, err := test_utils.NewEvmChainSpecific(nil).SubscribeHeadRequest()
 	assert.Nil(t, err)
 
 	body, reqErr := req.Body()
@@ -63,7 +64,7 @@ func TestEvmParseSubBLock(t *testing.T) {
 	  "parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
     }`)
 
-	block, err := specific.EvmChainSpecific.ParseSubscriptionBlock(body, nil, "")
+	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(body)
 	assert.Nil(t, err)
 
 	expected := &protocol.BlockData{
@@ -90,7 +91,7 @@ func TestEvmGetLatestBlock(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)
 
-	block, err := specific.EvmChainSpecific.GetLatestBlock(ctx, connector, "")
+	block, err := test_utils.NewEvmChainSpecific(connector).GetLatestBlock(ctx)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -110,7 +111,7 @@ func TestEvmGetLatestBlockWithError(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)
 
-	block, err := specific.EvmChainSpecific.GetLatestBlock(ctx, connector, "")
+	block, err := test_utils.NewEvmChainSpecific(connector).GetLatestBlock(ctx)
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, block)

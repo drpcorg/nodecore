@@ -14,7 +14,7 @@ import (
 )
 
 func TestSolanaSubscribeHeadRequest(t *testing.T) {
-	req, err := specific.SolanaChainSpecific.SubscribeHeadRequest()
+	req, err := specific.NewSolanaChainSpecificObject("id", nil).SubscribeHeadRequest()
 	assert.Nil(t, err)
 
 	body, err := req.Body()
@@ -43,9 +43,9 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 	}`)
 	epochResponse := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
 
-	connector.On("SendRequest", context.Background(), mock.Anything).Return(epochResponse)
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := specific.SolanaChainSpecific.ParseSubscriptionBlock(slot, connector, "up1")
+	block, err := specific.NewSolanaChainSpecificObject("id", connector).ParseSubscriptionBlock(slot)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -57,6 +57,7 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 
 func TestSolanaParseSubBLock(t *testing.T) {
 	connector := mocks.NewConnectorMock()
+	solanaSpecific := specific.NewSolanaChainSpecificObject("id", connector)
 	body := []byte(`{
             "slot": 405220706,
             "parent": 405220705,
@@ -81,9 +82,9 @@ func TestSolanaParseSubBLock(t *testing.T) {
 	}`)
 	epochResponse := protocol.NewHttpUpstreamResponse("1", epochBody, 200, protocol.JsonRpc)
 
-	connector.On("SendRequest", context.Background(), mock.Anything).Return(epochResponse)
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := specific.SolanaChainSpecific.ParseSubscriptionBlock(body, connector, "up1")
+	block, err := solanaSpecific.ParseSubscriptionBlock(body)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -92,7 +93,7 @@ func TestSolanaParseSubBLock(t *testing.T) {
 	blockData := protocol.NewBlockData(383325939, 405219988, hash, parentHash)
 	assert.Equal(t, blockData, block.BlockData)
 
-	block, err = specific.SolanaChainSpecific.ParseSubscriptionBlock(body1, connector, "up1")
+	block, err = solanaSpecific.ParseSubscriptionBlock(body1)
 	assert.Nil(t, err)
 
 	hash, parentHash = specific.SyntheticHashes(405219989, 405219988)
@@ -121,7 +122,7 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(epochResponse)
 
-	block, err := specific.SolanaChainSpecific.GetLatestBlock(ctx, connector, "")
+	block, err := specific.NewSolanaChainSpecificObject("id", connector).GetLatestBlock(ctx)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -139,7 +140,7 @@ func TestSolanaGetLatestBlockWithError(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.Anything).Return(response)
 
-	block, err := specific.SolanaChainSpecific.GetLatestBlock(ctx, connector, "")
+	block, err := specific.NewSolanaChainSpecificObject("id", connector).GetLatestBlock(ctx)
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, block)

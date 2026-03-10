@@ -11,7 +11,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -122,7 +121,7 @@ func TestUpstreamBlockEvent(t *testing.T) {
 		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
 
-	blockProcessor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, &specific.EvmChainSpecificObject{})
+	blockProcessor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
 
 	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, blockProcessor, nil, mocks.NewMethodsMock())
 	go upstream.Start()

@@ -15,35 +15,42 @@ import (
 )
 
 type ChainSpecific interface {
-	GetLatestBlock(ctx context.Context, connector connectors.ApiConnector, upstreamId string) (*protocol.Block, error)
-	GetFinalizedBlock(context.Context, connectors.ApiConnector) (*protocol.Block, error)
+	GetLatestBlock(ctx context.Context) (*protocol.Block, error)
+	GetFinalizedBlock(context.Context) (*protocol.Block, error)
 
 	ParseBlock([]byte) (*protocol.Block, error)
-	ParseSubscriptionBlock(data []byte, connector connectors.ApiConnector, upstreamId string) (*protocol.Block, error)
+	ParseSubscriptionBlock(data []byte) (*protocol.Block, error)
 
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
-	SettingsValidators(upstreamId string, connector connectors.ApiConnector, chain *chains.ConfiguredChain, options *config.UpstreamOptions) []validations.SettingsValidator
-}
-
-var EvmChainSpecific *EvmChainSpecificObject
-
-func init() {
-	EvmChainSpecific = &EvmChainSpecificObject{}
+	SettingsValidators() []validations.SettingsValidator
 }
 
 type EvmChainSpecificObject struct {
+	upstreamId string
+	connector  connectors.ApiConnector
+	chain      *chains.ConfiguredChain
+	options    *config.UpstreamOptions
 }
 
-func (e *EvmChainSpecificObject) SettingsValidators(
+func NewEvmChainSpecific(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	options *config.UpstreamOptions,
-) []validations.SettingsValidator {
+) *EvmChainSpecificObject {
+	return &EvmChainSpecificObject{
+		upstreamId: upstreamId,
+		connector:  connector,
+		chain:      chain,
+		options:    options,
+	}
+}
+
+func (e *EvmChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
 	settingsValidators := make([]validations.SettingsValidator, 0)
 
-	if !*options.DisableChainValidation {
-		settingsValidators = append(settingsValidators, validations.NewChainValidator(upstreamId, connector, chain, options))
+	if !*e.options.DisableChainValidation {
+		settingsValidators = append(settingsValidators, validations.NewChainValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 
 	return settingsValidators
@@ -51,15 +58,15 @@ func (e *EvmChainSpecificObject) SettingsValidators(
 
 var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
-func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context, connector connectors.ApiConnector, _ string) (*protocol.Block, error) {
-	return e.getBlockByTag(ctx, connector, rpc.LatestBlockNumber)
+func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
+	return e.getBlockByTag(ctx, e.connector, rpc.LatestBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context, connector connectors.ApiConnector) (*protocol.Block, error) {
-	return e.getBlockByTag(ctx, connector, rpc.FinalizedBlockNumber)
+func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context) (*protocol.Block, error) {
+	return e.getBlockByTag(ctx, e.connector, rpc.FinalizedBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte, _ connectors.ApiConnector, _ string) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
 	return e.ParseBlock(blockBytes)
 }
 

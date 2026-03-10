@@ -8,8 +8,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -31,7 +31,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, specific.EvmChainSpecific)
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
 	go processor.Start()
 
 	sub := processor.Subscribe("sub")
@@ -82,7 +82,7 @@ func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, specific.EvmChainSpecific)
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
 	go processor.Start()
 
 	sub := processor.Subscribe("sub")
