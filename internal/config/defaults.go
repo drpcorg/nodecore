@@ -342,6 +342,20 @@ func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults) {
 		}
 		o.DisableSettingsValidation = &value
 	}
+	if o.DisableHealthValidation == nil {
+		value := false
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableHealthValidation != nil {
+			value = *defaults.Options.DisableHealthValidation
+		}
+		o.DisableHealthValidation = &value
+	}
+	if o.DisableLowerBoundsDetection == nil {
+		value := true
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableLowerBoundsDetection != nil {
+			value = *defaults.Options.DisableLowerBoundsDetection
+		}
+		o.DisableLowerBoundsDetection = &value
+	}
 }
 
 func (m *MethodsConfig) setDefaults() {

@@ -149,7 +149,7 @@ func TestEvmUpstream(
 	connector connectors.ApiConnector,
 	upConfig *config.Upstream,
 	blockProcessor blocks.BlockProcessor,
-	settingValidationProcessor *validations.SettingsValidationProcessor,
+	settingValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult],
 	upstreamMethods methods.Methods,
 ) *upstreams.BaseUpstream {
 	index := "00012"
@@ -180,6 +180,10 @@ func TestEvmUpstream(
 
 func NewEvmChainSpecific(connector connectors.ApiConnector) *specific.EvmChainSpecificObject {
 	return specific.NewEvmChainSpecific("id", connector, chains.GetChain("polygon"), nil)
+}
+
+func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
+	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, 5*time.Second)
 }
 
 func CreateChainSupervisor() *upstreams.ChainSupervisor {

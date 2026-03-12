@@ -25,6 +25,10 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 			var eventType protocol.UpstreamEventType = &protocol.StateUpstreamEvent{State: &state}
 
 			switch stateEvent := event.(type) {
+			case *protocol.LowerBoundUpstreamStateEvent:
+				state.LowerBoundsInfo.AddLowerBound(stateEvent.Data)
+			case *protocol.StatusUpstreamStateEvent:
+				state.Status = stateEvent.Status
 			case *protocol.FatalErrorUpstreamStateEvent:
 				eventType = &protocol.RemoveUpstreamEvent{}
 				validUpstream = false
@@ -33,9 +37,6 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 				eventType = &protocol.ValidUpstreamEvent{}
 				validUpstream = true
 			case *protocol.HeadUpstreamStateEvent:
-				if state.HeadData != nil && state.HeadData.IsEmpty() {
-					state.Status = protocol.Available
-				}
 				state.HeadData = stateEvent.HeadData
 			case *protocol.BlockUpstreamStateEvent:
 				state.BlockInfo.AddBlock(stateEvent.BlockData, stateEvent.BlockType)

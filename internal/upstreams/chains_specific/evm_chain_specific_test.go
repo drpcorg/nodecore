@@ -27,7 +27,7 @@ func TestChainValidator(t *testing.T) {
 
 	validators := specific.NewEvmChainSpecific("id", connector, chains.UnknownChain, options).SettingsValidators()
 
-	_, ok := lo.Find(validators, func(item validations.SettingsValidator) bool {
+	_, ok := lo.Find(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
 		_, ok := item.(*validations.ChainValidator)
 		return ok
 	})
@@ -36,7 +36,7 @@ func TestChainValidator(t *testing.T) {
 	options.DisableChainValidation = lo.ToPtr(true)
 	validators = specific.NewEvmChainSpecific("id", connector, chains.UnknownChain, options).SettingsValidators()
 
-	_, ok = lo.Find(validators, func(item validations.SettingsValidator) bool {
+	_, ok = lo.Find(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
 		_, ok := item.(*validations.ChainValidator)
 		return ok
 	})

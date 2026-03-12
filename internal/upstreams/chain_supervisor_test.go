@@ -10,11 +10,39 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
+	upmethods "github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
+
+func createEventWithLowerBounds(
+	id string,
+	status protocol.AvailabilityStatus,
+	height uint64,
+	methods upmethods.Methods,
+	lowerBounds ...protocol.LowerBoundData,
+) protocol.UpstreamEvent {
+	lowerBoundsInfo := protocol.NewLowerBoundInfo()
+	for _, bound := range lowerBounds {
+		lowerBoundsInfo.AddLowerBound(bound)
+	}
+
+	return protocol.UpstreamEvent{
+		Id: id,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &protocol.UpstreamState{
+				Status: status,
+				HeadData: &protocol.BlockData{
+					Height: height,
+				},
+				UpstreamMethods: methods,
+				LowerBoundsInfo: lowerBoundsInfo,
+			},
+		},
+	}
+}
 
 func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
@@ -183,4 +211,152 @@ func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	assert.Nil(t, chainSupervisor.GetUpstreamState("id"))
+}
+
+func TestChainSupervisorLowerBoundsInitialStateIsEmpty(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+
+	assert.Empty(t, chainSupervisor.GetChainState().LowerBounds)
+}
+
+func TestChainSupervisorLowerBoundsSingleAvailableUpstream(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	slotBound := protocol.NewLowerBoundData(120, 1000, protocol.SlotBound)
+	stateBound := protocol.NewLowerBoundData(450, 1000, protocol.StateBound)
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id", protocol.Available, 100, methods, slotBound, stateBound))
+	time.Sleep(20 * time.Millisecond)
+
+	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.SlotBound:  slotBound,
+		protocol.StateBound: stateBound,
+	}, chainSupervisor.GetChainState().LowerBounds)
+}
+
+func TestChainSupervisorLowerBoundsUseMinimumBoundPerTypeAcrossAvailableUpstreams(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	slotBound1 := protocol.NewLowerBoundData(200, 1000, protocol.SlotBound)
+	stateBound1 := protocol.NewLowerBoundData(500, 1000, protocol.StateBound)
+	slotBound2 := protocol.NewLowerBoundData(150, 1010, protocol.SlotBound)
+	stateBound2 := protocol.NewLowerBoundData(700, 1010, protocol.StateBound)
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Available, 100, methods, slotBound1, stateBound1))
+	chainSupervisor.Publish(createEventWithLowerBounds("id2", protocol.Available, 110, methods, slotBound2, stateBound2))
+	time.Sleep(20 * time.Millisecond)
+
+	assert.Equal(t, slotBound2, chainSupervisor.GetChainState().LowerBounds[protocol.SlotBound])
+	assert.Equal(t, stateBound1, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+}
+
+func TestChainSupervisorLowerBoundsIgnoreUnavailableUpstreams(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	availableBound := protocol.NewLowerBoundData(300, 1000, protocol.StateBound)
+	unavailableBetterBound := protocol.NewLowerBoundData(100, 1010, protocol.StateBound)
+
+	chainSupervisor.Publish(createEventWithLowerBounds("available", protocol.Available, 100, methods, availableBound))
+	chainSupervisor.Publish(createEventWithLowerBounds("unavailable", protocol.Unavailable, 100, methods, unavailableBetterBound))
+	time.Sleep(20 * time.Millisecond)
+
+	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: availableBound,
+	}, chainSupervisor.GetChainState().LowerBounds)
+}
+
+func TestChainSupervisorLowerBoundsIgnoreUpstreamsWithoutLowerBoundsInfo(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	bound := protocol.NewLowerBoundData(300, 1000, protocol.StateBound)
+	chainSupervisor.Publish(createEventWithLowerBounds("with-bounds", protocol.Available, 100, methods, bound))
+	chainSupervisor.Publish(test_utils.CreateEvent("without-bounds", protocol.Available, 100, methods))
+	time.Sleep(20 * time.Millisecond)
+
+	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: bound,
+	}, chainSupervisor.GetChainState().LowerBounds)
+}
+
+func TestChainSupervisorLowerBoundsUpdateExistingUpstreamState(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	initialBound := protocol.NewLowerBoundData(300, 1000, protocol.StateBound)
+	updatedBound := protocol.NewLowerBoundData(200, 1010, protocol.StateBound)
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id", protocol.Available, 100, methods, initialBound))
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, initialBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id", protocol.Available, 120, methods, updatedBound))
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, updatedBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+}
+
+func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamBecomesUnavailable(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	lowerBound := protocol.NewLowerBoundData(200, 1000, protocol.StateBound)
+	higherBound := protocol.NewLowerBoundData(500, 1010, protocol.StateBound)
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Available, 100, methods, lowerBound))
+	chainSupervisor.Publish(createEventWithLowerBounds("id2", protocol.Available, 100, methods, higherBound))
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, lowerBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Unavailable, 100, methods, lowerBound))
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: higherBound,
+	}, chainSupervisor.GetChainState().LowerBounds)
+}
+
+func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
+	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	lowerBound := protocol.NewLowerBoundData(200, 1000, protocol.StateBound)
+	higherBound := protocol.NewLowerBoundData(500, 1010, protocol.StateBound)
+
+	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Available, 100, methods, lowerBound))
+	chainSupervisor.Publish(createEventWithLowerBounds("id2", protocol.Available, 100, methods, higherBound))
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, lowerBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+
+	chainSupervisor.Publish(test_utils.CreateRemoveEvent("id1"))
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: higherBound,
+	}, chainSupervisor.GetChainState().LowerBounds)
+
+	chainSupervisor.Publish(test_utils.CreateRemoveEvent("id2"))
+	time.Sleep(20 * time.Millisecond)
+	assert.Empty(t, chainSupervisor.GetChainState().LowerBounds)
 }

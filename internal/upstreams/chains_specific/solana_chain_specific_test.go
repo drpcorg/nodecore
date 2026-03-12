@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -15,7 +15,7 @@ import (
 )
 
 func TestSolanaSubscribeHeadRequest(t *testing.T) {
-	req, err := specific.NewSolanaChainSpecificObject("id", nil, 5*time.Second).SubscribeHeadRequest()
+	req, err := test_utils.NewSolanaChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, err)
 
 	body, err := req.Body()
@@ -46,7 +46,7 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second).ParseSubscriptionBlock(slot)
+	block, err := test_utils.NewSolanaChainSpecific(context.Background(), connector).ParseSubscriptionBlock(slot)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -58,7 +58,7 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 
 func TestSolanaParseSubBLock(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	solanaSpecific := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second)
+	solanaSpecific := test_utils.NewSolanaChainSpecific(context.Background(), connector)
 	body := []byte(`{
             "slot": 405220706,
             "parent": 405220705,
@@ -123,7 +123,7 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second).GetLatestBlock(ctx)
+	block, err := test_utils.NewSolanaChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -141,7 +141,7 @@ func TestSolanaGetLatestBlockWithError(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	block, err := specific.NewSolanaChainSpecificObject("id", connector, 5*time.Second).GetLatestBlock(ctx)
+	block, err := test_utils.NewSolanaChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
 
 	connector.AssertExpectations(t)
 	assert.Nil(t, block)

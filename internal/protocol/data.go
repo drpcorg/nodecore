@@ -14,7 +14,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/errors_config"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
-	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type ResponseReceivedHook interface {
@@ -201,6 +200,8 @@ type AvailabilityStatus int
 
 const (
 	Available AvailabilityStatus = iota
+	Immature
+	Syncing
 	Unavailable
 
 	UnknownStatus = math.MaxInt
@@ -214,9 +215,12 @@ func (a AvailabilityStatus) String() string {
 		return "UNAVAILABLE"
 	case UnknownStatus:
 		return "UNKNOWN"
-	default:
-		panic(fmt.Sprintf("unknown status %d", a))
+	case Syncing:
+		return "SYNCING"
+	case Immature:
+		return "IMMATURE"
 	}
+	panic(fmt.Sprintf("unknown status %d", a))
 }
 
 type UpstreamEvent struct {
@@ -251,14 +255,17 @@ const (
 )
 
 type UpstreamState struct {
-	Status              AvailabilityStatus
-	HeadData            *BlockData
-	UpstreamMethods     methods.Methods
-	BlockInfo           *BlockInfo
-	Caps                mapset.Set[Cap]
-	UpstreamIndex       string
+	Status          AvailabilityStatus
+	HeadData        *BlockData
+	UpstreamMethods methods.Methods
+	Caps            mapset.Set[Cap]
+	UpstreamIndex   string
+
 	RateLimiterBudget   *ratelimiter.RateLimitBudget
 	AutoTuneRateLimiter *ratelimiter.UpstreamAutoTune
+
+	BlockInfo       *BlockInfo
+	LowerBoundsInfo *LowerBoundInfo
 }
 
 func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string, rt *ratelimiter.RateLimitBudget, autoTuneRateLimiter *ratelimiter.UpstreamAutoTune) UpstreamState {
@@ -266,6 +273,7 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap],
 		Status:              Unavailable,
 		UpstreamMethods:     upstreamMethods,
 		BlockInfo:           NewBlockInfo(),
+		LowerBoundsInfo:     NewLowerBoundInfo(),
 		Caps:                caps,
 		HeadData:            &BlockData{},
 		UpstreamIndex:       upstreamIndex,
@@ -274,42 +282,22 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap],
 	}
 }
 
-type BlockInfo struct {
-	blocks *utils.CMap[BlockType, *BlockData]
-}
-
-func NewBlockInfo() *BlockInfo {
-	return &BlockInfo{
-		blocks: utils.NewCMap[BlockType, *BlockData](),
-	}
-}
-
-func (b *BlockInfo) GetBlocks() map[BlockType]*BlockData {
-	blocks := map[BlockType]*BlockData{}
-
-	b.blocks.Range(func(key BlockType, val *BlockData) bool {
-		blocks[key] = val
-		return true
-	})
-
-	return blocks
-}
-
-func (b *BlockInfo) AddBlock(data *BlockData, blockType BlockType) {
-	b.blocks.Store(blockType, data)
-}
-
-func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
-	block, ok := b.blocks.Load(blockType)
-	if !ok {
-		return &BlockData{}
-	}
-	return block
-}
-
 type AbstractUpstreamStateEvent interface {
 	event()
 }
+
+type LowerBoundUpstreamStateEvent struct {
+	Data LowerBoundData
+}
+
+func (l *LowerBoundUpstreamStateEvent) event() {
+}
+
+type StatusUpstreamStateEvent struct {
+	Status AvailabilityStatus
+}
+
+func (s *StatusUpstreamStateEvent) event() {}
 
 type FatalErrorUpstreamStateEvent struct{}
 

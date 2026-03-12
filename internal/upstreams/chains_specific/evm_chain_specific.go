@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -22,7 +23,11 @@ type ChainSpecific interface {
 	ParseSubscriptionBlock(data []byte) (*protocol.Block, error)
 
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
-	SettingsValidators() []validations.SettingsValidator
+
+	HealthValidators() []validations.Validator[protocol.AvailabilityStatus]
+	SettingsValidators() []validations.Validator[validations.ValidationSettingResult]
+
+	LowerBoundService() lower_bounds.LowerBoundService
 }
 
 type EvmChainSpecificObject struct {
@@ -32,22 +37,16 @@ type EvmChainSpecificObject struct {
 	options    *config.UpstreamOptions
 }
 
-func NewEvmChainSpecific(
-	upstreamId string,
-	connector connectors.ApiConnector,
-	chain *chains.ConfiguredChain,
-	options *config.UpstreamOptions,
-) *EvmChainSpecificObject {
-	return &EvmChainSpecificObject{
-		upstreamId: upstreamId,
-		connector:  connector,
-		chain:      chain,
-		options:    options,
-	}
+func (e *EvmChainSpecificObject) LowerBoundService() lower_bounds.LowerBoundService {
+	return nil
 }
 
-func (e *EvmChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
-	settingsValidators := make([]validations.SettingsValidator, 0)
+func (e *EvmChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
+	return nil
+}
+
+func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
+	settingsValidators := make([]validations.Validator[validations.ValidationSettingResult], 0)
 
 	if !*e.options.DisableChainValidation {
 		settingsValidators = append(settingsValidators, validations.NewChainValidator(e.upstreamId, e.connector, e.chain, e.options))
@@ -55,8 +54,6 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.SettingsVali
 
 	return settingsValidators
 }
-
-var _ ChainSpecific = (*EvmChainSpecificObject)(nil)
 
 func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
 	return e.getBlockByTag(ctx, e.connector, rpc.LatestBlockNumber)
@@ -92,6 +89,20 @@ func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder,
 	return protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []interface{}{"newHeads"})
 }
 
+func NewEvmChainSpecific(
+	upstreamId string,
+	connector connectors.ApiConnector,
+	chain *chains.ConfiguredChain,
+	options *config.UpstreamOptions,
+) *EvmChainSpecificObject {
+	return &EvmChainSpecificObject{
+		upstreamId: upstreamId,
+		connector:  connector,
+		chain:      chain,
+		options:    options,
+	}
+}
+
 func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector connectors.ApiConnector, blockTag rpc.BlockNumber) (*protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByNumber", []interface{}{blockTag, false})
 	if err != nil {
@@ -115,3 +126,5 @@ type EvmBlock struct {
 	Parent string           `json:"parentHash"`
 	Height *rpc.BlockNumber `json:"number"`
 }
+
+var _ ChainSpecific = (*EvmChainSpecificObject)(nil)

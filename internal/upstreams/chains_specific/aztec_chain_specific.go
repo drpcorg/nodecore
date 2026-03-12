@@ -7,6 +7,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 )
@@ -16,19 +17,15 @@ type AztecChainSpecificObject struct {
 	connector  connectors.ApiConnector
 }
 
-func NewAztecChainSpecificObject(
-	upstreamId string,
-	connector connectors.ApiConnector,
-) *AztecChainSpecificObject {
-	return &AztecChainSpecificObject{
-		upstreamId: upstreamId,
-		connector:  connector,
-	}
+func (a *AztecChainSpecificObject) LowerBoundService() lower_bounds.LowerBoundService {
+	return nil
 }
 
-var _ ChainSpecific = (*AztecChainSpecificObject)(nil)
+func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
+	return nil
+}
 
-func (a *AztecChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
+func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
 	return nil
 }
 
@@ -73,6 +70,16 @@ func (a *AztecChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolde
 	return nil, fmt.Errorf("aztec does not support websocket subscriptions")
 }
 
+func NewAztecChainSpecificObject(
+	upstreamId string,
+	connector connectors.ApiConnector,
+) *AztecChainSpecificObject {
+	return &AztecChainSpecificObject{
+		upstreamId: upstreamId,
+		connector:  connector,
+	}
+}
+
 type AztecBlock struct {
 	BlockHash string      `json:"blockHash"`
 	Header    AztecHeader `json:"header"`
@@ -85,3 +92,5 @@ type AztecHeader struct {
 type AztecGlobalVariables struct {
 	BlockNumber uint64 `json:"blockNumber"`
 }
+
+var _ ChainSpecific = (*AztecChainSpecificObject)(nil)

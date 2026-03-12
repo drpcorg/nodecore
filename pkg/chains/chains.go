@@ -3,6 +3,7 @@ package chains
 import (
 	_ "embed"
 	"maps"
+	"math"
 	"math/big"
 	"time"
 
@@ -89,6 +90,10 @@ func init() {
 	grpcChains = grpcResult
 }
 
+func (c *ConfiguredChain) AverageRemoveSpeed() float64 {
+	return math.Ceil((1000.0/float64(c.Settings.ExpectedBlockTime.Milliseconds()))*100) / 100
+}
+
 func GetAllChains() map[string]*ConfiguredChain {
 	return maps.Clone(chains)
 }
@@ -172,6 +177,7 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 					Settings:   settings,
 					Chain:      network,
 					MethodSpec: methodSpec,
+					Settings:   settings,
 				}
 
 				for _, shortName := range chain.ShortNames {

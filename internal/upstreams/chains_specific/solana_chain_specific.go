@@ -9,8 +9,10 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -19,28 +21,30 @@ import (
 const checkInterval = 5
 
 type SolanaChainSpecificObject struct {
-	upstreamId       string
-	connector        connectors.ApiConnector
-	internalTimeout  time.Duration
+	ctx             context.Context
+	upstreamId      string
+	connector       connectors.ApiConnector
+	internalTimeout time.Duration
+	configuredChain *chains.ConfiguredChain
+
 	lastKnownHeights *utils.CMap[string, uint64]
 	lastCheckedSlots *utils.CMap[string, uint64]
 }
 
-func NewSolanaChainSpecificObject(
-	upstreamId string,
-	connector connectors.ApiConnector,
-	internalTimeout time.Duration,
-) *SolanaChainSpecificObject {
-	return &SolanaChainSpecificObject{
-		upstreamId:       upstreamId,
-		connector:        connector,
-		internalTimeout:  internalTimeout,
-		lastKnownHeights: utils.NewCMap[string, uint64](),
-		lastCheckedSlots: utils.NewCMap[string, uint64](),
+func (s *SolanaChainSpecificObject) LowerBoundService() lower_bounds.LowerBoundService {
+	detectors := []lower_bounds.LowerBoundDetector{
+		lower_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.internalTimeout, s.connector),
+	}
+	return lower_bounds.NewBaseLowerBoundService(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
+}
+
+func (s *SolanaChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
+	return []validations.Validator[protocol.AvailabilityStatus]{
+		validations.NewSolanaHealthValidator(s.upstreamId, s.connector, s.internalTimeout),
 	}
 }
 
-func (s *SolanaChainSpecificObject) SettingsValidators() []validations.SettingsValidator {
+func (s *SolanaChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
 	return nil
 }
 
@@ -97,6 +101,25 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 
 func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
 	return protocol.NewInternalSubUpstreamJsonRpcRequest("slotSubscribe", nil)
+}
+
+func NewSolanaChainSpecificObject(
+	ctx context.Context,
+	configuredChain *chains.ConfiguredChain,
+	upstreamId string,
+	connector connectors.ApiConnector,
+	internalTimeout time.Duration,
+) *SolanaChainSpecificObject {
+	return &SolanaChainSpecificObject{
+		ctx:             ctx,
+		upstreamId:      upstreamId,
+		connector:       connector,
+		internalTimeout: internalTimeout,
+		configuredChain: configuredChain,
+
+		lastKnownHeights: utils.NewCMap[string, uint64](),
+		lastCheckedSlots: utils.NewCMap[string, uint64](),
+	}
 }
 
 func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (*protocol.Block, error) {
