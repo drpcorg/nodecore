@@ -182,6 +182,11 @@ type ResponseHolder interface {
 	Id() string
 }
 
+type SubscriptionResponseHolder interface {
+	ResponseHolder
+	IsEventFrame() bool
+}
+
 type UpstreamSubscriptionResponse interface {
 	ResponseChan() chan *WsResponse
 }

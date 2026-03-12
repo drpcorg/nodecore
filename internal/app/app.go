@@ -35,6 +35,7 @@ type App struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
 
 	httpServer *echo.Echo
+	grpcServer *server.GrpcServer
 }
 
 func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
@@ -80,6 +81,10 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 	)
 
 	httpServer := server.NewHttpServer(ctx, appCtx)
+	grpcServer, err := server.NewGrpcServer(appCtx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create grpc server: %w", err)
+	}
 
 	return &App{
 		ctx:                ctx,
@@ -90,6 +95,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		statsService:       statsService,
 		upstreamSupervisor: upstreamSupervisor,
 		httpServer:         httpServer,
+		grpcServer:         grpcServer,
 	}, nil
 }
 
@@ -142,6 +148,16 @@ func (a *App) Start() {
 			if !shuttingDown.Load() {
 				log.Panic().Err(httpServerErr).Msg("http server couldn't start")
 			}
+		}
+	}()
+
+	go func() {
+		if a.grpcServer != nil {
+			if grpcServerErr := a.grpcServer.Start(a.ctx); grpcServerErr != nil {
+				log.Panic().Err(grpcServerErr).Msg("grpc server couldn't start")
+			}
+		} else {
+			log.Warn().Msg("grpc server is disabled")
 		}
 	}()
 

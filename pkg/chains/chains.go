@@ -40,6 +40,7 @@ type ChainSettings struct {
 type ChainData struct {
 	ShortNames []string               `yaml:"short-names"`
 	ChainId    string                 `yaml:"chain-id"`
+	GrpcId     int                    `yaml:"grpcId"`
 	MethodSpec string                 `yaml:"method-spec"`
 	Settings   map[string]interface{} `yaml:"settings"`
 	NetVersion string                 `yaml:"net-version"`
@@ -57,6 +58,7 @@ type Settings struct {
 }
 
 type ConfiguredChain struct {
+	GrpcId     int
 	ChainId    string
 	NetVersion string
 	ShortNames []string
@@ -67,6 +69,7 @@ type ConfiguredChain struct {
 }
 
 var UnknownChain = &ConfiguredChain{
+	GrpcId:     0,
 	ChainId:    "0x0",
 	NetVersion: "0",
 	ShortNames: []string{},
@@ -75,13 +78,15 @@ var UnknownChain = &ConfiguredChain{
 }
 
 var chains map[string]*ConfiguredChain
+var grpcChains map[int]*ConfiguredChain
 
 func init() {
-	result, err := configureChains()
+	result, grpcResult, err := configureChains()
 	if err != nil {
 		panic(err)
 	}
 	chains = result
+	grpcChains = grpcResult
 }
 
 func GetAllChains() map[string]*ConfiguredChain {
@@ -95,6 +100,14 @@ func IsSupported(chainName string) bool {
 
 func GetChain(chainName string) *ConfiguredChain {
 	found, ok := chains[chainName]
+	if !ok {
+		return UnknownChain
+	}
+	return found
+}
+
+func GetChainByGrpcId(grpcId int) *ConfiguredChain {
+	found, ok := grpcChains[grpcId]
 	if !ok {
 		return UnknownChain
 	}
@@ -119,12 +132,13 @@ func GetMethodSpecNameByChainName(chainName string) string {
 	return GetChain(chainName).MethodSpec
 }
 
-func configureChains() (map[string]*ConfiguredChain, error) {
+func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, error) {
 	configuredChains := make(map[string]*ConfiguredChain)
+	configuredGrpcChains := make(map[int]*ConfiguredChain)
 
 	var config ChainConfig
 	if err := yaml.Unmarshal(chainsCfg, &config); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, protocol := range config.ChainSettings.Protocols {
@@ -133,12 +147,12 @@ func configureChains() (map[string]*ConfiguredChain, error) {
 			chainSettings := deepMerge(defaultSettings, chain.Settings)
 			out, err := yaml.Marshal(chainSettings)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			settings := Settings{}
 			err = yaml.Unmarshal(out, &settings)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 			if network, ok := chainsMap[chain.ShortNames[0]]; ok {
@@ -150,10 +164,12 @@ func configureChains() (map[string]*ConfiguredChain, error) {
 				)
 
 				configuredChain := &ConfiguredChain{
+					GrpcId:     chain.GrpcId,
 					ChainId:    chain.ChainId,
 					ShortNames: chain.ShortNames,
 					NetVersion: netVersion,
 					Type:       protocol.Type,
+					Settings:   settings,
 					Chain:      network,
 					MethodSpec: methodSpec,
 				}
@@ -161,11 +177,12 @@ func configureChains() (map[string]*ConfiguredChain, error) {
 				for _, shortName := range chain.ShortNames {
 					configuredChains[shortName] = configuredChain
 				}
+				configuredGrpcChains[configuredChain.GrpcId] = configuredChain
 			}
 		}
 	}
 
-	return configuredChains, nil
+	return configuredChains, configuredGrpcChains, nil
 }
 
 func getNetVersion(chainId string) string {

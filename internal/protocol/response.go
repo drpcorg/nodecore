@@ -15,42 +15,101 @@ import (
 )
 
 type SubscriptionEventResponse struct {
+	id    string
+	event []byte
+}
+
+type SubscriptionMessageResponse struct {
 	id      string
-	event   []byte
 	message []byte
+}
+
+type SubscriptionResultResponse struct {
+	id     string
+	result []byte
 }
 
 func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
 	return "", nil
 }
 
-func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionEventResponse {
-	return &SubscriptionEventResponse{message: message, id: id}
+func (s *SubscriptionMessageResponse) ResponseResultString() (string, error) {
+	return "", nil
+}
+
+func (s *SubscriptionResultResponse) ResponseResultString() (string, error) {
+	return "", nil
+}
+
+func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionMessageResponse {
+	return &SubscriptionMessageResponse{message: message, id: id}
 }
 
 func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventResponse {
 	return &SubscriptionEventResponse{event: event, id: id}
 }
 
+func NewSubscriptionResultEventResponse(id string, result []byte) *SubscriptionResultResponse {
+	return &SubscriptionResultResponse{result: result, id: id}
+}
+
+func (s *SubscriptionEventResponse) IsEventFrame() bool {
+	return true
+}
+
+func (s *SubscriptionMessageResponse) IsEventFrame() bool {
+	return false
+}
+
+func (s *SubscriptionResultResponse) IsEventFrame() bool {
+	return true
+}
+
 func (s *SubscriptionEventResponse) ResponseResult() []byte {
-	if len(s.message) != 0 {
-		return s.message
-	}
 	return s.event
+}
+
+func (s *SubscriptionMessageResponse) ResponseResult() []byte {
+	return s.message
+}
+
+func (s *SubscriptionResultResponse) ResponseResult() []byte {
+	return s.result
 }
 
 func (s *SubscriptionEventResponse) GetError() *ResponseError {
 	return nil
 }
 
+func (s *SubscriptionMessageResponse) GetError() *ResponseError {
+	return nil
+}
+
+func (s *SubscriptionResultResponse) GetError() *ResponseError {
+	return nil
+}
+
 func (s *SubscriptionEventResponse) EncodeResponse(realId []byte) io.Reader {
-	if len(s.message) == 0 {
-		return bytes.NewReader(s.event)
-	}
+	return bytes.NewReader(s.event)
+}
+
+func (s *SubscriptionMessageResponse) EncodeResponse(realId []byte) io.Reader {
 	return jsonRpcResponseReader(realId, "result", s.message)
 }
 
+func (s *SubscriptionResultResponse) EncodeResponse(realId []byte) io.Reader {
+	return bytes.NewReader(s.result)
+}
+
 func (s *SubscriptionEventResponse) HasError() bool {
+	return false
+}
+
+func (s *SubscriptionMessageResponse) HasError() bool {
+	return false
+}
+
+func (s *SubscriptionResultResponse) HasError() bool {
 	return false
 }
 
@@ -58,7 +117,23 @@ func (s *SubscriptionEventResponse) HasStream() bool {
 	return false
 }
 
+func (s *SubscriptionMessageResponse) HasStream() bool {
+	return false
+}
+
+func (s *SubscriptionResultResponse) HasStream() bool {
+	return false
+}
+
 func (s *SubscriptionEventResponse) Id() string {
+	return s.id
+}
+
+func (s *SubscriptionMessageResponse) Id() string {
+	return s.id
+}
+
+func (s *SubscriptionResultResponse) Id() string {
 	return s.id
 }
 
@@ -66,7 +141,17 @@ func (s *SubscriptionEventResponse) ResponseCode() int {
 	return 0
 }
 
-var _ ResponseHolder = (*SubscriptionEventResponse)(nil)
+func (s *SubscriptionMessageResponse) ResponseCode() int {
+	return 0
+}
+
+func (s *SubscriptionResultResponse) ResponseCode() int {
+	return 0
+}
+
+var _ SubscriptionResponseHolder = (*SubscriptionEventResponse)(nil)
+var _ SubscriptionResponseHolder = (*SubscriptionMessageResponse)(nil)
+var _ SubscriptionResponseHolder = (*SubscriptionResultResponse)(nil)
 
 type WsJsonRpcResponse struct {
 	id     string

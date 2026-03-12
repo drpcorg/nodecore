@@ -70,7 +70,11 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 						s.subCtx.AddSub(protocol.ResultAsString(r.Message), cancel)
 						subResponse = protocol.NewSubscriptionMessageEventResponse(request.Id(), r.Message)
 					} else {
-						subResponse = protocol.NewSubscriptionEventResponse(request.Id(), r.Event)
+						if s.subCtx.IsSubscriptionResultOnly() {
+							subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
+						} else {
+							subResponse = protocol.NewSubscriptionEventResponse(request.Id(), r.Event)
+						}
 					}
 					wrapper := &protocol.ResponseHolderWrapper{
 						UpstreamId: upstreamId,
