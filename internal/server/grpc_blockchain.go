@@ -125,7 +125,8 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		mappedPayload,
 		true,
 		specMethod,
-	).WithSubscriptionResultOnly(true)
+	)
+	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
 
 	executionFlow := flow.NewBaseExecutionFlow(
 		configuredChain.Chain,
@@ -133,7 +134,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		s.appCtx.cacheProcessor,
 		s.appCtx.registry,
 		s.appCtx.appConfig,
-		flow.NewSubCtx(),
+		subCtx,
 	)
 	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.upstreamSupervisor))
 
@@ -158,7 +159,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 				return mapNativeSubscribeError(wrapper.Response.GetError())
 			}
 
-			subscriptionResponse, ok := wrapper.Response.(*protocol.SubscriptionEventResponse)
+			subscriptionResponse, ok := wrapper.Response.(protocol.SubscriptionResponseHolder)
 			if !ok {
 				return status.Error(codes.Internal, "unexpected subscription response type")
 			}

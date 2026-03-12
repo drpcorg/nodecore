@@ -145,11 +145,10 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewWsConnectorMock()
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil).
-		WithSubscriptionResultOnly(true)
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
 	upstream := test_utils.TestEvmUpstream(context.Background(), apiConnector, upConfig(), nil, nil, mocks.NewMethodsMock())
 	ctx := context.Background()
-	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx())
+	processor := flow.NewSubscriptionRequestProcessor(upSupervisor, flow.NewSubCtx().WithSubscriptionResultOnly(true))
 	respChan := make(chan *protocol.WsResponse)
 	event := []byte(`{"jsonrpc":"2.0","method":"eth_subscription","params":{"subscription":"id","result":{"foo":"bar"}}}`)
 	result := []byte(`{"foo":"bar"}`)
@@ -172,7 +171,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 	upSupervisor.AssertExpectations(t)
 	apiConnector.AssertExpectations(t)
 
-	subscriptionResponse, ok := responseWrapper.Response.(*protocol.SubscriptionEventResponse)
+	subscriptionResponse, ok := responseWrapper.Response.(protocol.SubscriptionResponseHolder)
 	assert.True(t, ok)
 	assert.True(t, subscriptionResponse.IsEventFrame())
 	assert.Equal(t, result, subscriptionResponse.ResponseResult())

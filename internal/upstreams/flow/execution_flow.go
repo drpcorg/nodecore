@@ -218,13 +218,23 @@ func shouldEnforceIntegrity(specMethod *specs.Method, integrityConfig *config.In
 }
 
 type SubCtx struct {
-	subscriptions *utils.CMap[string, context.CancelFunc]
+	subscriptions      *utils.CMap[string, context.CancelFunc]
+	subscriptionResult bool
 }
 
 func NewSubCtx() *SubCtx {
 	return &SubCtx{
 		subscriptions: utils.NewCMap[string, context.CancelFunc](),
 	}
+}
+
+func (s *SubCtx) WithSubscriptionResultOnly(enabled bool) *SubCtx {
+	s.subscriptionResult = enabled
+	return s
+}
+
+func (s *SubCtx) IsSubscriptionResultOnly() bool {
+	return s.subscriptionResult
 }
 
 func (s *SubCtx) AddSub(sub string, cancel context.CancelFunc) {

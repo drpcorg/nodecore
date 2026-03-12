@@ -20,10 +20,9 @@ type UpstreamJsonRpcRequest struct {
 	specMethod      *specs.Method
 	requestObserver *RequestObserver
 
-	parsed        bool
-	isStream      bool
-	isSub         bool
-	subResultOnly bool
+	parsed   bool
+	isStream bool
+	isSub    bool
 
 	mu sync.Mutex
 }
@@ -196,15 +195,6 @@ func (u *UpstreamJsonRpcRequest) IsStream() bool {
 
 func (u *UpstreamJsonRpcRequest) IsSubscribe() bool {
 	return u.isSub
-}
-
-func (u *UpstreamJsonRpcRequest) WithSubscriptionResultOnly(enabled bool) *UpstreamJsonRpcRequest {
-	u.subResultOnly = enabled
-	return u
-}
-
-func (u *UpstreamJsonRpcRequest) IsSubscriptionResultOnly() bool {
-	return u.subResultOnly
 }
 
 func (u *UpstreamJsonRpcRequest) RequestType() RequestType {
