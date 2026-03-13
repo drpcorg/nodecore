@@ -20,11 +20,11 @@ import (
 	"github.com/samber/lo"
 )
 
-func createLowerBoundsService(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) lower_bounds.LowerBoundService {
+func createLowerBoundsService(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) lower_bounds.LowerBoundProcessor {
 	if *options.DisableLowerBoundsDetection {
 		return nil
 	}
-	return chainSpecific.LowerBoundService()
+	return chainSpecific.LowerBoundProcessor()
 }
 
 func createConnector(

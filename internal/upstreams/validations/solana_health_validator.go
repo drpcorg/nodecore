@@ -25,8 +25,6 @@ func (s *SolanaHealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-var i = 0
-
 func (s *SolanaHealthValidator) getHealth() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
 	defer cancel()
@@ -44,10 +42,6 @@ func (s *SolanaHealthValidator) getHealth() error {
 	result, err := response.ResponseResultString()
 	if err != nil {
 		return err
-	}
-	i++
-	if s.upstreamId == "upstream-231" && i > 2 && i <= 5 {
-		return errors.New("solana upstream health check failed")
 	}
 
 	if result == "ok" {

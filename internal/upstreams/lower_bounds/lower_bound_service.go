@@ -11,7 +11,7 @@ import (
 	"github.com/samber/lo"
 )
 
-type LowerBoundService interface {
+type LowerBoundProcessor interface {
 	utils.Lifecycle
 	Subscribe(name string) *utils.Subscription[protocol.LowerBoundData]
 	PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64
@@ -141,4 +141,4 @@ func (b *BaseLowerBoundService) processBounds(detector LowerBoundDetector, bound
 	}
 }
 
-var _ LowerBoundService = (*BaseLowerBoundService)(nil)
+var _ LowerBoundProcessor = (*BaseLowerBoundService)(nil)

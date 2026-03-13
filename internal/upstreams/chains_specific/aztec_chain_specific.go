@@ -17,7 +17,7 @@ type AztecChainSpecificObject struct {
 	connector  connectors.ApiConnector
 }
 
-func (a *AztecChainSpecificObject) LowerBoundService() lower_bounds.LowerBoundService {
+func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	return nil
 }
 

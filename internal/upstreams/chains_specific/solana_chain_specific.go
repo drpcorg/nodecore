@@ -31,7 +31,7 @@ type SolanaChainSpecificObject struct {
 	lastCheckedSlots *utils.CMap[string, uint64]
 }
 
-func (s *SolanaChainSpecificObject) LowerBoundService() lower_bounds.LowerBoundService {
+func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
 		lower_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.internalTimeout, s.connector),
 	}

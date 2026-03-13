@@ -27,7 +27,7 @@ type ChainSpecific interface {
 	HealthValidators() []validations.Validator[protocol.AvailabilityStatus]
 	SettingsValidators() []validations.Validator[validations.ValidationSettingResult]
 
-	LowerBoundService() lower_bounds.LowerBoundService
+	LowerBoundProcessor() lower_bounds.LowerBoundProcessor
 }
 
 type EvmChainSpecificObject struct {
@@ -37,7 +37,7 @@ type EvmChainSpecificObject struct {
 	options    *config.UpstreamOptions
 }
 
-func (e *EvmChainSpecificObject) LowerBoundService() lower_bounds.LowerBoundService {
+func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	return nil
 }
 

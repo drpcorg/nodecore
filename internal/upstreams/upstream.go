@@ -82,7 +82,7 @@ type BaseUpstream struct {
 	blockProcessor              blocks.BlockProcessor
 	settingsValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult]
 	healthValidationProcessor   *validations.ValidationProcessor[protocol.AvailabilityStatus]
-	lowerBoundsService          lower_bounds.LowerBoundService
+	lowerBoundsService          lower_bounds.LowerBoundProcessor
 }
 
 var _ Upstream = (*BaseUpstream)(nil)
