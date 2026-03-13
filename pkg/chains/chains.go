@@ -177,7 +177,6 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 					Settings:   settings,
 					Chain:      network,
 					MethodSpec: methodSpec,
-					Settings:   settings,
 				}
 
 				for _, shortName := range chain.ShortNames {
