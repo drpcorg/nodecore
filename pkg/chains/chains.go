@@ -3,9 +3,11 @@ package chains
 import (
 	_ "embed"
 	"maps"
+	"math"
 	"math/big"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
 )
@@ -89,6 +91,10 @@ func init() {
 	grpcChains = grpcResult
 }
 
+func (c *ConfiguredChain) AverageRemoveSpeed() float64 {
+	return math.Ceil((1000.0/float64(c.Settings.ExpectedBlockTime.Milliseconds()))*100) / 100
+}
+
 func GetAllChains() map[string]*ConfiguredChain {
 	return maps.Clone(chains)
 }
@@ -153,6 +159,9 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 			err = yaml.Unmarshal(out, &settings)
 			if err != nil {
 				return nil, nil, err
+			}
+			if settings.ExpectedBlockTime == 0 {
+				log.Panic().Msgf("expected block time of chain %s is zero", chain.ShortNames[0])
 			}
 
 			if network, ok := chainsMap[chain.ShortNames[0]]; ok {

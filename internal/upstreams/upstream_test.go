@@ -60,6 +60,7 @@ func TestUpstreamHeadEvent(t *testing.T) {
 			Status:          protocol.Available,
 			HeadData:        blockData,
 			BlockInfo:       protocol.NewBlockInfo(),
+			LowerBoundsInfo: protocol.NewLowerBoundInfo(),
 			UpstreamMethods: mocks.NewMethodsMock(),
 			Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
 			UpstreamIndex:   "00012",
@@ -83,6 +84,7 @@ func TestUpstreamHeadEvent(t *testing.T) {
 		blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
 	)
+	checkFunc(protocol.NewBlockData(0, 0, blockchain.EmptyHash, blockchain.EmptyHash))
 	checkFunc(blockData)
 	upstream.UpdateHead(79195275, 0)
 	checkFunc(protocol.NewBlockData(79195275, 0, blockchain.EmptyHash, blockchain.EmptyHash))
@@ -127,6 +129,11 @@ func TestUpstreamBlockEvent(t *testing.T) {
 	go upstream.Start()
 
 	sub := upstream.Subscribe("name")
+	event, ok := <-sub.Events
+	assert.True(t, ok)
+	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	assert.True(t, ok)
+	assert.Equal(t, protocol.Available, eventType.State.Status)
 
 	checkFunc := func(blockData *protocol.BlockData) {
 		event, ok := <-sub.Events
@@ -136,9 +143,10 @@ func TestUpstreamBlockEvent(t *testing.T) {
 			protocol.FinalizedBlock,
 		)
 		state := protocol.UpstreamState{
-			Status:          protocol.Unavailable,
+			Status:          protocol.Available,
 			HeadData:        &protocol.BlockData{},
 			BlockInfo:       blockInfo,
+			LowerBoundsInfo: protocol.NewLowerBoundInfo(),
 			UpstreamMethods: mocks.NewMethodsMock(),
 			Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
 			UpstreamIndex:   "00012",
@@ -212,6 +220,11 @@ func TestUpstreamMethodEvents(t *testing.T) {
 	}()
 
 	sub := upstream.Subscribe("name")
+	event, ok := <-sub.Events
+	assert.True(t, ok)
+	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	assert.True(t, ok)
+	assert.Equal(t, protocol.Available, eventType.State.Status)
 
 	upstreamMethods, _ = methods.NewUpstreamMethods("eth", &config.MethodsConfig{DisableMethods: []string{"eth_call"}})
 	checkMethods(t, upstream, sub, upstreamMethods)
@@ -261,6 +274,11 @@ func TestUpstreamMethodEventsPreserveMethodFromConfig(t *testing.T) {
 	}()
 
 	sub := upstream.Subscribe("name")
+	event, ok := <-sub.Events
+	assert.True(t, ok)
+	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	assert.True(t, ok)
+	assert.Equal(t, protocol.Available, eventType.State.Status)
 
 	upstreamMethods, _ = methods.NewUpstreamMethods(
 		"eth",
@@ -288,9 +306,10 @@ func checkMethods(
 ) {
 	event, ok := <-sub.Events
 	state := protocol.UpstreamState{
-		Status:          protocol.Unavailable,
+		Status:          protocol.Available,
 		HeadData:        &protocol.BlockData{},
 		BlockInfo:       protocol.NewBlockInfo(),
+		LowerBoundsInfo: protocol.NewLowerBoundInfo(),
 		UpstreamMethods: upstreamMethods,
 		Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
 		UpstreamIndex:   "00012",
@@ -328,7 +347,7 @@ func TestUpstreamFatalErrorOnStart(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.FatalSettingError)
 
-	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.SettingsValidator{validator})
+	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator})
 
 	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
 	upstream.Start()
@@ -353,7 +372,7 @@ func TestUpstreamSettingErrorPartialStart(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.SettingsError)
 
-	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.SettingsValidator{validator})
+	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator})
 
 	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
 	upstream.Start()
@@ -387,7 +406,7 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	validator.On("Validate").Return(validations.Valid).Once()
 	validator.On("Validate").Return(validations.FatalSettingError).Once()
 
-	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.SettingsValidator{validator})
+	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator})
 
 	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
 	upstream.Start()
@@ -396,7 +415,6 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	assert.False(t, upstream.PartialRunning())
 
 	sub := upstream.Subscribe("name")
-
 	event, ok := <-sub.Events
 	assert.True(t, ok)
 
@@ -405,6 +423,12 @@ func TestUpstreamValidationEvents(t *testing.T) {
 	upstream.Resume()
 	assert.True(t, upstream.Running())
 	assert.True(t, upstream.PartialRunning())
+
+	event, ok = <-sub.Events
+	assert.True(t, ok)
+	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	assert.True(t, ok)
+	assert.Equal(t, protocol.Available, eventType.State.Status)
 
 	event, ok = <-sub.Events
 	assert.True(t, ok)

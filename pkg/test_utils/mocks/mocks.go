@@ -356,6 +356,33 @@ type SettingsValidatorMock struct {
 	mock.Mock
 }
 
+type LowerBoundDetectorMock struct {
+	mock.Mock
+}
+
+func NewLowerBoundDetectorMock() *LowerBoundDetectorMock {
+	return &LowerBoundDetectorMock{}
+}
+
+func (m *LowerBoundDetectorMock) DetectLowerBound() ([]protocol.LowerBoundData, error) {
+	args := m.Called()
+	var bounds []protocol.LowerBoundData
+	if args.Get(0) != nil {
+		bounds = args.Get(0).([]protocol.LowerBoundData)
+	}
+	return bounds, args.Error(1)
+}
+
+func (m *LowerBoundDetectorMock) SupportedTypes() []protocol.LowerBoundType {
+	args := m.Called()
+	return args.Get(0).([]protocol.LowerBoundType)
+}
+
+func (m *LowerBoundDetectorMock) Period() time.Duration {
+	args := m.Called()
+	return args.Get(0).(time.Duration)
+}
+
 func NewSettingsValidatorMock() *SettingsValidatorMock {
 	return &SettingsValidatorMock{}
 }

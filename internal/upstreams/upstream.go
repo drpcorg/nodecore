@@ -15,9 +15,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
-	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
@@ -80,7 +80,9 @@ type BaseUpstream struct {
 
 	headProcessor               *blocks.HeadProcessor
 	blockProcessor              blocks.BlockProcessor
-	settingsValidationProcessor *validations.SettingsValidationProcessor
+	settingsValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult]
+	healthValidationProcessor   *validations.ValidationProcessor[protocol.AvailabilityStatus]
+	lowerBoundsService          lower_bounds.LowerBoundProcessor
 }
 
 var _ Upstream = (*BaseUpstream)(nil)
@@ -103,7 +105,7 @@ func NewBaseUpstream(
 		cancel()
 		return nil, err
 	}
-	chainSpecific := getChainSpecific(conf, upstreamConnectorsInfo, configuredChain)
+	chainSpecific := getChainSpecific(ctx, conf, upstreamConnectorsInfo, configuredChain)
 
 	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods)
 	if err != nil {
@@ -150,6 +152,8 @@ func NewBaseUpstream(
 		headProcessor:               blocks.NewHeadProcessor(ctx, conf, upstreamConnectorsInfo.headConnector, chainSpecific),
 		blockProcessor:              createBlockProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain.Type),
 		settingsValidationProcessor: createSettingValidationProcessor(chainSpecific),
+		healthValidationProcessor:   createHealthValidationProcessor(chainSpecific, conf.Options),
+		lowerBoundsService:          createLowerBoundsService(chainSpecific, conf.Options),
 	}, nil
 }
 
@@ -160,7 +164,7 @@ func NewBaseUpstreamWithParams(
 	apiConnectors []connectors.ApiConnector,
 	headProcessor *blocks.HeadProcessor,
 	blockProcessor blocks.BlockProcessor,
-	settingValidationProcessor *validations.SettingsValidationProcessor,
+	settingValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult],
 	state *utils.Atomic[protocol.UpstreamState],
 	upstreamIndexHex string,
 	upConfig *config.Upstream,
@@ -196,7 +200,7 @@ func (u *BaseUpstream) GetChain() chains.Chain {
 func (u *BaseUpstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
 		if u.settingsValidationProcessor != nil && !*u.upConfig.Options.DisableValidation && !*u.upConfig.Options.DisableSettingsValidation {
-			result := u.settingsValidationProcessor.ValidateUpstreamSettings()
+			result := u.settingsValidationProcessor.Validate()
 			switch result {
 			case validations.FatalSettingError:
 				log.Error().Msgf("failed to start upstream '%s' due to invalid upstream settings", u.id)
@@ -234,6 +238,9 @@ func (u *BaseUpstream) PartialStop() {
 	u.upstreamCtx.processorsLifecycle.Stop()
 	if u.blockProcessor != nil {
 		u.blockProcessor.Stop()
+	}
+	if u.lowerBoundsService != nil {
+		u.lowerBoundsService.Stop()
 	}
 	u.headProcessor.Stop()
 }
@@ -282,11 +289,59 @@ func (u *BaseUpstream) GetHashIndex() string {
 
 func (u *BaseUpstream) start(ctx context.Context) {
 	go u.headProcessor.Start()
-	if u.blockProcessor != nil {
-		go u.blockProcessor.Start()
+
+	go u.validateUpstreamHealth(ctx)
+	go u.processLowerBounds(ctx)
+	go u.processBlocks(ctx)
+}
+
+func (u *BaseUpstream) processLowerBounds(ctx context.Context) {
+	if u.lowerBoundsService == nil {
+		return
 	}
 
-	go u.processBlocks(ctx)
+	go u.lowerBoundsService.Start()
+
+	go func() {
+		boundSub := u.lowerBoundsService.Subscribe(fmt.Sprintf("%s_lower_bounds", u.id))
+		defer boundSub.Unsubscribe()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info().Msgf("stopping lower bounds processing of upstream '%s'", u.id)
+				return
+			case bound, ok := <-boundSub.Events:
+				if ok {
+					u.publishUpstreamStateEvent(&protocol.LowerBoundUpstreamStateEvent{Data: bound})
+				}
+			}
+		}
+	}()
+}
+
+func (u *BaseUpstream) validateUpstreamHealth(ctx context.Context) {
+	if u.healthValidationProcessor == nil {
+		u.publishUpstreamStateEvent(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
+		return
+	}
+
+	u.validateHealth()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Msgf("stopping health validations of upstream '%s'", u.id)
+			return
+		case <-time.After(u.upConfig.Options.ValidationInterval):
+			u.validateHealth()
+		}
+	}
+}
+
+func (u *BaseUpstream) validateHealth() {
+	availabilityStatus := u.healthValidationProcessor.Validate()
+	log.Debug().Msgf("availability status of upstream '%s' - %s", u.id, availabilityStatus)
+
+	u.publishUpstreamStateEvent(&protocol.StatusUpstreamStateEvent{Status: availabilityStatus})
 }
 
 func (u *BaseUpstream) validateUpstreamSettings(ctx context.Context, currentValidationState validations.ValidationSettingResult) {
@@ -297,7 +352,7 @@ func (u *BaseUpstream) validateUpstreamSettings(ctx context.Context, currentVali
 				log.Info().Msgf("stopping settings validations of upstream '%s'", u.id)
 				return
 			case <-time.After(u.upConfig.Options.ValidationInterval):
-				validationResult := u.settingsValidationProcessor.ValidateUpstreamSettings()
+				validationResult := u.settingsValidationProcessor.Validate()
 				switch validationResult {
 				case validations.FatalSettingError:
 					if currentValidationState == validations.SettingsError || currentValidationState == validations.Valid {
@@ -335,6 +390,7 @@ func (u *BaseUpstream) publishUpstreamStateEvent(event protocol.AbstractUpstream
 func (u *BaseUpstream) processBlocks(ctx context.Context) {
 	var blockChan chan blocks.BlockEvent
 	if u.blockProcessor != nil {
+		go u.blockProcessor.Start()
 		blockSub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.id))
 		defer blockSub.Unsubscribe()
 		blockChan = blockSub.Events
@@ -361,133 +417,5 @@ func (u *BaseUpstream) processBlocks(ctx context.Context) {
 				blocksMetric.WithLabelValues(u.id, block.BlockType.String(), u.chain.String()).Set(float64(block.BlockData.Height))
 			}
 		}
-	}
-}
-
-func createConnector(
-	ctx context.Context,
-	upId string,
-	configuredChain *chains.ConfiguredChain,
-	connectorConfig *config.ApiConnectorConfig,
-	torProxyUrl string,
-) (connectors.ApiConnector, error) {
-	switch connectorConfig.Type {
-	case config.JsonRpc:
-		return connectors.NewHttpConnector(connectorConfig, protocol.JsonRpcConnector, torProxyUrl)
-	case config.Ws:
-		connection, err := ws.NewJsonRpcWsConnection(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec, connectorConfig, torProxyUrl)
-		if err != nil {
-			return nil, err
-		}
-		return connectors.NewWsConnector(connection), nil
-	case config.Rest:
-		return connectors.NewHttpConnector(connectorConfig, protocol.RestConnector, torProxyUrl)
-	default:
-		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
-	}
-}
-
-func createSettingValidationProcessor(chainSpecific specific.ChainSpecific) *validations.SettingsValidationProcessor {
-	validators := chainSpecific.SettingsValidators()
-	if len(validators) == 0 {
-		return nil
-	}
-	return validations.NewSettingsValidationProcessor(validators)
-}
-
-func createBlockProcessor(
-	ctx context.Context,
-	upConfig *config.Upstream,
-	connector connectors.ApiConnector,
-	chainSpecific specific.ChainSpecific,
-	blockchainType chains.BlockchainType,
-) blocks.BlockProcessor {
-	switch blockchainType {
-	case chains.Ethereum:
-		return blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, chainSpecific)
-	default:
-		return nil
-	}
-}
-
-func getChainSpecific(
-	conf *config.Upstream,
-	upstreamConnectorsInfo *connectorsInfo,
-	configuredChain *chains.ConfiguredChain,
-) specific.ChainSpecific {
-	//TODO: there might be a few protocols a chain can work with, so it will be necessary to implement all of them
-	switch configuredChain.Type {
-	case chains.Ethereum:
-		return specific.NewEvmChainSpecific(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, conf.Options)
-	case chains.Aztec:
-		return specific.NewAztecChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
-	case chains.Solana:
-		return specific.NewSolanaChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector, conf.Options.InternalTimeout)
-	default:
-		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
-	}
-}
-
-func getUpstreamVendor(connectors []*config.ApiConnectorConfig) UpstreamVendor {
-	urls := lo.Map(connectors, func(item *config.ApiConnectorConfig, index int) string {
-		return item.Url
-	})
-	return DetectUpstreamVendor(urls)
-}
-
-func createUpstreamConnectors(
-	ctx context.Context,
-	conf *config.Upstream,
-	configuredChain *chains.ConfiguredChain,
-	tracker dimensions.DimensionTracker,
-	statsService stats.StatsService,
-	executor failsafe.Executor[protocol.ResponseHolder],
-	torProxyUrl string,
-) (*connectorsInfo, mapset.Set[protocol.Cap], error) {
-	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
-	apiConnectors := make([]connectors.ApiConnector, 0)
-	var headConnector connectors.ApiConnector
-	var internalRequestConnector connectors.ApiConnector
-
-	for _, connectorConfig := range conf.Connectors {
-		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
-		if err != nil {
-			return nil, nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
-		}
-		hooks := []protocol.ResponseReceivedHook{
-			dimensions.NewDimensionHook(tracker),
-			stats.NewStatsHook(statsService),
-		}
-		apiConnector = connectors.NewObserverConnector(configuredChain.Chain, conf.Id, apiConnector, hooks, executor)
-		if connectorConfig.Type == conf.HeadConnector {
-			headConnector = apiConnector
-		}
-		if connectorConfig.Type == conf.GetBestConnector() {
-			internalRequestConnector = apiConnector
-		}
-		if apiConnector.GetType() == protocol.WsConnector {
-			caps.Add(protocol.WsCap)
-		}
-		apiConnectors = append(apiConnectors, apiConnector)
-	}
-
-	return newConnectorInfo(headConnector, internalRequestConnector, apiConnectors), caps, nil
-}
-
-type connectorsInfo struct {
-	headConnector            connectors.ApiConnector
-	internalRequestConnector connectors.ApiConnector
-	allConnectors            []connectors.ApiConnector
-}
-
-func newConnectorInfo(
-	headConnector,
-	internalRequestConnector connectors.ApiConnector,
-	allConnectors []connectors.ApiConnector,
-) *connectorsInfo {
-	return &connectorsInfo{
-		headConnector:            headConnector,
-		internalRequestConnector: internalRequestConnector,
-		allConnectors:            allConnectors,
 	}
 }

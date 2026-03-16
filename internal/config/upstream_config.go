@@ -54,11 +54,13 @@ func (u *Upstream) GetBestConnector() ApiConnectorType {
 }
 
 type UpstreamOptions struct {
-	InternalTimeout           time.Duration `yaml:"internal-timeout"`
-	ValidationInterval        time.Duration `yaml:"validation-interval"`
-	DisableValidation         *bool         `yaml:"disable-validation"`
-	DisableSettingsValidation *bool         `yaml:"disable-settings-validation"`
-	DisableChainValidation    *bool         `yaml:"disable-chain-validation"`
+	InternalTimeout             time.Duration `yaml:"internal-timeout"`
+	ValidationInterval          time.Duration `yaml:"validation-interval"`
+	DisableValidation           *bool         `yaml:"disable-validation"`
+	DisableSettingsValidation   *bool         `yaml:"disable-settings-validation"`
+	DisableChainValidation      *bool         `yaml:"disable-chain-validation"`
+	DisableHealthValidation     *bool         `yaml:"disable-health-validation"`
+	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
 }
 
 type ChainDefaults struct {

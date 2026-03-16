@@ -1,6 +1,9 @@
 package protocol
 
-import "github.com/drpcorg/nodecore/pkg/blockchain"
+import (
+	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/utils"
+)
 
 type Block struct {
 	BlockData *BlockData
@@ -45,4 +48,62 @@ func NewBlockWithHeights(height, slot uint64) *Block {
 	return &Block{
 		BlockData: &BlockData{Height: height, Slot: slot},
 	}
+}
+
+type BlockInfo struct {
+	blocks *utils.CMap[BlockType, *BlockData]
+}
+
+func NewBlockInfo() *BlockInfo {
+	return &BlockInfo{
+		blocks: utils.NewCMap[BlockType, *BlockData](),
+	}
+}
+
+func (b *BlockInfo) GetBlocks() map[BlockType]*BlockData {
+	blocks := make(map[BlockType]*BlockData, 6)
+
+	b.blocks.Range(func(key BlockType, val *BlockData) bool {
+		blocks[key] = val
+		return true
+	})
+
+	return blocks
+}
+
+func (b *BlockInfo) AddBlock(data *BlockData, blockType BlockType) {
+	b.blocks.Store(blockType, data)
+}
+
+func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
+	block, ok := b.blocks.Load(blockType)
+	if !ok {
+		return &BlockData{}
+	}
+	return block
+}
+
+type LowerBoundInfo struct {
+	lowerBounds *utils.CMap[LowerBoundType, LowerBoundData]
+}
+
+func NewLowerBoundInfo() *LowerBoundInfo {
+	return &LowerBoundInfo{
+		lowerBounds: utils.NewCMap[LowerBoundType, LowerBoundData](),
+	}
+}
+
+func (l *LowerBoundInfo) AddLowerBound(data LowerBoundData) {
+	l.lowerBounds.Store(data.Type, data)
+}
+
+func (l *LowerBoundInfo) GetAllBounds() []LowerBoundData {
+	bounds := make([]LowerBoundData, 0)
+
+	l.lowerBounds.Range(func(key LowerBoundType, val LowerBoundData) bool {
+		bounds = append(bounds, val)
+		return true
+	})
+
+	return bounds
 }

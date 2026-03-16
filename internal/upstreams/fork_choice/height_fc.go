@@ -27,17 +27,19 @@ func (h *HeightForkChoice) Choose(upstreamId string, event *protocol.StateUpstre
 			return true, h.max
 		}
 		return false, h.max
-	} else {
+	}
+	if _, ok := h.heights[upstreamId]; ok {
 		delete(h.heights, upstreamId)
 
 		currentMaxHeight := h.maxHeight()
 		if currentMaxHeight == h.max {
 			return false, h.max
-		} else {
-			h.max = currentMaxHeight
-			return true, h.max
 		}
+
+		h.max = currentMaxHeight
+		return true, h.max
 	}
+	return false, h.max
 }
 
 func (h *HeightForkChoice) maxHeight() uint64 {

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,11 +90,13 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			},
 		},
 		Options: &config.UpstreamOptions{
-			InternalTimeout:           5 * time.Second,
-			ValidationInterval:        30 * time.Second,
-			DisableValidation:         lo.ToPtr(false),
-			DisableSettingsValidation: lo.ToPtr(false),
-			DisableChainValidation:    lo.ToPtr(false),
+			InternalTimeout:             5 * time.Second,
+			ValidationInterval:          30 * time.Second,
+			DisableValidation:           new(false),
+			DisableSettingsValidation:   new(false),
+			DisableChainValidation:      new(false),
+			DisableHealthValidation:     new(false),
+			DisableLowerBoundsDetection: new(true),
 		},
 	}
 
@@ -127,11 +128,13 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			},
 		},
 		Options: &config.UpstreamOptions{
-			InternalTimeout:           5 * time.Second,
-			ValidationInterval:        30 * time.Second,
-			DisableValidation:         lo.ToPtr(false),
-			DisableSettingsValidation: lo.ToPtr(false),
-			DisableChainValidation:    lo.ToPtr(false),
+			InternalTimeout:             5 * time.Second,
+			ValidationInterval:          30 * time.Second,
+			DisableValidation:           new(false),
+			DisableSettingsValidation:   new(false),
+			DisableChainValidation:      new(false),
+			DisableHealthValidation:     new(false),
+			DisableLowerBoundsDetection: new(true),
 		},
 	}
 
@@ -163,11 +166,13 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			},
 		},
 		Options: &config.UpstreamOptions{
-			InternalTimeout:           5 * time.Second,
-			ValidationInterval:        30 * time.Second,
-			DisableValidation:         lo.ToPtr(false),
-			DisableSettingsValidation: lo.ToPtr(false),
-			DisableChainValidation:    lo.ToPtr(false),
+			InternalTimeout:             5 * time.Second,
+			ValidationInterval:          30 * time.Second,
+			DisableValidation:           new(false),
+			DisableSettingsValidation:   new(false),
+			DisableChainValidation:      new(false),
+			DisableHealthValidation:     new(false),
+			DisableLowerBoundsDetection: new(true),
 		},
 	}
 
@@ -203,11 +208,13 @@ func TestSetChainsDefault(t *testing.T) {
 						},
 					},
 					Options: &config.UpstreamOptions{
-						InternalTimeout:           5 * time.Second,
-						ValidationInterval:        30 * time.Second,
-						DisableValidation:         lo.ToPtr(false),
-						DisableSettingsValidation: lo.ToPtr(false),
-						DisableChainValidation:    lo.ToPtr(false),
+						InternalTimeout:             5 * time.Second,
+						ValidationInterval:          30 * time.Second,
+						DisableValidation:           new(false),
+						DisableSettingsValidation:   new(false),
+						DisableChainValidation:      new(false),
+						DisableHealthValidation:     new(false),
+						DisableLowerBoundsDetection: new(true),
 					},
 				},
 			},

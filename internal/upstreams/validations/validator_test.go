@@ -30,9 +30,9 @@ func TestSettingsValidationProcessorMultipleValidators(t *testing.T) {
 	)
 
 	processor := validations.NewSettingsValidationProcessor(
-		[]validations.SettingsValidator{validResultValidator, settingsErrorResultValidator, fatalErrorResultValidator},
+		[]validations.Validator[validations.ValidationSettingResult]{validResultValidator, settingsErrorResultValidator, fatalErrorResultValidator},
 	)
-	actual := processor.ValidateUpstreamSettings()
+	actual := processor.Validate()
 
 	conn1.AssertExpectations(t)
 	conn2.AssertExpectations(t)

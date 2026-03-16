@@ -6,7 +6,6 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
@@ -105,34 +104,11 @@ func TestDefaultUpstreamState(t *testing.T) {
 		Status:          protocol.Unavailable,
 		UpstreamMethods: mocks.NewMethodsMock(),
 		BlockInfo:       protocol.NewBlockInfo(),
+		LowerBoundsInfo: protocol.NewLowerBoundInfo(),
 		Caps:            caps,
 		HeadData:        &protocol.BlockData{},
 		UpstreamIndex:   "55",
 	}
 
 	assert.Equal(t, expectedState, defaultUpState)
-}
-
-func TestBlockInfo(t *testing.T) {
-	blockInfo := protocol.NewBlockInfo()
-	blockData := &protocol.BlockData{Height: uint64(75), Hash: blockchain.NewHashIdFromString("0x2345")}
-	blockData2 := &protocol.BlockData{Height: uint64(86), Hash: blockchain.NewHashIdFromString("0x2345"), Slot: uint64(25)}
-	assert.NotNil(t, blockInfo)
-
-	blockInfo.AddBlock(blockData, protocol.FinalizedBlock)
-
-	receivedBlockData := blockInfo.GetBlock(protocol.FinalizedBlock)
-	assert.Equal(t, blockData, receivedBlockData)
-
-	blockInfo.AddBlock(blockData2, protocol.FinalizedBlock)
-
-	receivedBlockData = blockInfo.GetBlock(protocol.FinalizedBlock)
-	assert.Equal(t, blockData2, receivedBlockData)
-
-	blocks := blockInfo.GetBlocks()
-	expectedBlocks := map[protocol.BlockType]*protocol.BlockData{
-		protocol.FinalizedBlock: blockData2,
-	}
-	assert.Len(t, blocks, 1)
-	assert.Equal(t, expectedBlocks, blocks)
 }

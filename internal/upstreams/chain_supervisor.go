@@ -25,7 +25,7 @@ var availabilityMetric = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "availability_status",
-		Help:      "Current availability status of the upstream: 0 = available, 1 = unavailable",
+		Help:      "Current availability status of the upstream: 1 = available, 2 = immature, 3 = syncing, 4 = unavailable",
 	},
 	[]string{"chain", "upstream"},
 )
@@ -45,10 +45,11 @@ type ChainSupervisor struct {
 }
 
 type ChainSupervisorState struct {
-	Status   protocol.AvailabilityStatus
-	HeadData ChainHeadData
-	Methods  methods.Methods
-	Blocks   map[protocol.BlockType]*protocol.BlockData
+	Status      protocol.AvailabilityStatus
+	HeadData    ChainHeadData
+	Methods     methods.Methods
+	Blocks      map[protocol.BlockType]*protocol.BlockData
+	LowerBounds map[protocol.LowerBoundType]protocol.LowerBoundData
 }
 
 type ChainHeadData struct {
@@ -67,9 +68,10 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 	state := utils.NewAtomic[ChainSupervisorState]()
 	state.Store(
 		ChainSupervisorState{
-			Status:   protocol.Available,
-			Blocks:   make(map[protocol.BlockType]*protocol.BlockData),
-			HeadData: NewChainHeadData(0, ""),
+			Status:      protocol.Available,
+			Blocks:      make(map[protocol.BlockType]*protocol.BlockData),
+			LowerBounds: make(map[protocol.LowerBoundType]protocol.LowerBoundData),
+			HeadData:    NewChainHeadData(0, ""),
 		},
 	)
 
@@ -191,6 +193,7 @@ func (c *ChainSupervisor) updateState(upstreamId string, upstreamState *protocol
 	state.Status = c.processUpstreamStatuses()
 	state.Methods = c.processUpstreamMethods(availableUpstreams)
 	state.Blocks = c.processUpstreamBlocks(availableUpstreams)
+	state.LowerBounds = c.processLowerBounds(availableUpstreams)
 
 	c.state.Store(state)
 
@@ -234,6 +237,25 @@ func (c *ChainSupervisor) processUpstreamMethods(availableStates []*protocol.Ups
 	})
 
 	return methods.NewChainMethods(delegates)
+}
+
+func (c *ChainSupervisor) processLowerBounds(availableStates []*protocol.UpstreamState) map[protocol.LowerBoundType]protocol.LowerBoundData {
+	bounds := make(map[protocol.LowerBoundType]protocol.LowerBoundData)
+
+	for _, upsState := range availableStates {
+		if upsState.LowerBoundsInfo == nil {
+			continue
+		}
+		upBounds := upsState.LowerBoundsInfo.GetAllBounds()
+		for _, bound := range upBounds {
+			currentBound, ok := bounds[bound.Type]
+			if !ok || bound.Bound < currentBound.Bound {
+				bounds[bound.Type] = bound
+			}
+		}
+	}
+
+	return bounds
 }
 
 func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
@@ -295,10 +317,21 @@ func (c *ChainSupervisor) monitor() {
 
 		return true
 	})
+	boundsSlice := lo.MapToSlice(state.LowerBounds, func(key protocol.LowerBoundType, val protocol.LowerBoundData) string {
+		return fmt.Sprintf("%s=%d", key, val.Bound)
+	})
+	bounds := strings.Join(boundsSlice, ", ")
 
 	upstreamStatuses, weakUpstreams := c.getStatuses()
 
-	log.Info().Msgf("State of %s: height=%s, statuses=[%s], weak=[%s]", strings.ToUpper(c.Chain.String()), height, upstreamStatuses, weakUpstreams)
+	log.Info().Msgf(
+		"State of %s: height=%s, statuses=[%s], bounds=[%s], weak=[%s]",
+		strings.ToUpper(c.Chain.String()),
+		height,
+		upstreamStatuses,
+		bounds,
+		weakUpstreams,
+	)
 }
 
 func (c *ChainSupervisor) getStatuses() (string, string) {
