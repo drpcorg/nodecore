@@ -5,6 +5,7 @@ import (
 	"maps"
 	"math"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -174,9 +175,9 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 
 				configuredChain := &ConfiguredChain{
 					GrpcId:     chain.GrpcId,
-					ChainId:    chain.ChainId,
+					ChainId:    strings.ToLower(chain.ChainId),
 					ShortNames: chain.ShortNames,
-					NetVersion: netVersion,
+					NetVersion: strings.ToLower(netVersion),
 					Type:       protocol.Type,
 					Settings:   settings,
 					Chain:      network,
