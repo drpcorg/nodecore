@@ -13,6 +13,8 @@ import (
 
 const maxBounds = 3
 
+type zero = protocol.LowerBoundData
+
 type LowerBounds struct {
 	averageSpeed float64
 
@@ -111,8 +113,7 @@ func (lb *LowerBounds) PredictNextBoundAtSpecificTime(boundType protocol.LowerBo
 func (lb *LowerBounds) GetLastBound(boundType protocol.LowerBoundType) (protocol.LowerBoundData, bool) {
 	coeffs, ok := lb.lowerBounds.Load(boundType)
 	if !ok {
-		var zero protocol.LowerBoundData
-		return zero, false
+		return zero{}, false
 	}
 
 	return coeffs.getLastBound(), true

@@ -61,7 +61,7 @@ func NewBlockInfo() *BlockInfo {
 }
 
 func (b *BlockInfo) GetBlocks() map[BlockType]*BlockData {
-	blocks := map[BlockType]*BlockData{}
+	blocks := make(map[BlockType]*BlockData, 6)
 
 	b.blocks.Range(func(key BlockType, val *BlockData) bool {
 		blocks[key] = val
