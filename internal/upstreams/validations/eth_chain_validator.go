@@ -2,6 +2,7 @@ package validations
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -49,7 +50,7 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 			logger.Warn().Err(err).Msgf("failed to get chainId of upstream '%s'", c.upstreamId)
 			return err
 		}
-		chainId = result
+		chainId = strings.ToLower(result)
 		return nil
 	})
 
@@ -59,7 +60,7 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 			logger.Warn().Err(err).Msgf("failed to get netVersion of upstream '%s'", c.upstreamId)
 			return err
 		}
-		netVersion = result
+		netVersion = strings.ToLower(result)
 		return nil
 	})
 
