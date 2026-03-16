@@ -27,53 +27,63 @@ func NewLowerBounds(averageSpeed float64) *LowerBounds {
 }
 
 func (lb *LowerBounds) UpdateBound(newBound protocol.LowerBoundData) {
-	if coeffs, ok := lb.lowerBounds.Load(newBound.Type); ok {
-		lastBound := coeffs.getLastBound()
-
-		// we add only bounds with different timestamps
-		if newBound.Timestamp == lastBound.Timestamp {
-			return
-		}
-
-		if newBound.Bound == 1 {
-			// fully archival node, no need to accumulate bounds and calculate coeffs
-			coeffs.updateCoeffs(0.0, 1.0)
-			coeffs.clearBounds()
-			coeffs.addBound(newBound)
-		} else if newBound.Bound < lastBound.Bound || (newBound.Bound-lastBound.Bound) >= 100000 {
-			coeffs.updateCoeffs(lb.averageSpeed, lb.calculateB(newBound))
-			coeffs.clearBounds()
-			coeffs.addBound(newBound)
-		} else {
-			// accumulate up to maxBounds and preserve this size
-			if coeffs.boundsSize() == maxBounds {
-				coeffs.removeFirst()
-			}
-			coeffs.addBound(newBound)
-
-			if coeffs.boundsSize() < maxBounds {
-				// until we accumulate enough bounds, use average speed
-				coeffs.updateCoeffs(lb.averageSpeed, lb.calculateB(newBound))
-			} else {
-				// having maxBounds, use linear regression
-				coeffs.train(lb.averageSpeed)
-			}
-		}
-	} else {
-		// add new bound if it hasn't existed yet
-		coeffs = NewLowerBoundCoeffs()
-		coeffs.addBound(newBound)
-
-		if newBound.Bound == 1 {
-			// fully archival node
-			coeffs.updateCoeffs(0.0, 1.0)
-		} else {
-			// otherwise calculate coeffs based on average speed
-			coeffs.updateCoeffs(lb.averageSpeed, lb.calculateB(newBound))
-		}
-
-		lb.lowerBounds.Store(newBound.Type, coeffs)
+	coeffs, ok := lb.lowerBounds.Load(newBound.Type)
+	if !ok {
+		lb.initBound(newBound)
+		return
 	}
+
+	lastBound := coeffs.getLastBound()
+	if newBound.Timestamp == lastBound.Timestamp {
+		return
+	}
+
+	switch {
+	case newBound.Bound == 1:
+		lb.resetBound(coeffs, newBound, 0.0, 1.0)
+
+	case newBound.Bound < lastBound.Bound || newBound.Bound-lastBound.Bound >= 100000:
+		lb.resetBound(coeffs, newBound, lb.averageSpeed, lb.calculateB(newBound))
+
+	default:
+		lb.appendBound(coeffs, newBound)
+		if coeffs.boundsSize() < maxBounds {
+			coeffs.updateCoeffs(lb.averageSpeed, lb.calculateB(newBound))
+		} else {
+			coeffs.train(lb.averageSpeed)
+		}
+	}
+}
+
+func (lb *LowerBounds) initBound(newBound protocol.LowerBoundData) {
+	coeffs := NewLowerBoundCoeffs()
+	coeffs.addBound(newBound)
+
+	if newBound.Bound == 1 {
+		coeffs.updateCoeffs(0.0, 1.0)
+	} else {
+		coeffs.updateCoeffs(lb.averageSpeed, lb.calculateB(newBound))
+	}
+
+	lb.lowerBounds.Store(newBound.Type, coeffs)
+}
+
+func (lb *LowerBounds) resetBound(
+	coeffs *LowerBoundCoeffs,
+	newBound protocol.LowerBoundData,
+	a float64,
+	b float64,
+) {
+	coeffs.updateCoeffs(a, b)
+	coeffs.clearBounds()
+	coeffs.addBound(newBound)
+}
+
+func (lb *LowerBounds) appendBound(coeffs *LowerBoundCoeffs, newBound protocol.LowerBoundData) {
+	if coeffs.boundsSize() == maxBounds {
+		coeffs.removeFirst()
+	}
+	coeffs.addBound(newBound)
 }
 
 func (lb *LowerBounds) PredictNextBound(boundType protocol.LowerBoundType, timeOffsetSeconds int64) int64 {

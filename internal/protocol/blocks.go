@@ -1,7 +1,6 @@
 package protocol
 
 import (
-	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/utils"
 )
@@ -85,19 +84,26 @@ func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
 }
 
 type LowerBoundInfo struct {
-	lowerBounds mapset.Set[LowerBoundData]
+	lowerBounds *utils.CMap[LowerBoundType, LowerBoundData]
 }
 
 func NewLowerBoundInfo() *LowerBoundInfo {
 	return &LowerBoundInfo{
-		lowerBounds: mapset.NewSet[LowerBoundData](),
+		lowerBounds: utils.NewCMap[LowerBoundType, LowerBoundData](),
 	}
 }
 
 func (l *LowerBoundInfo) AddLowerBound(data LowerBoundData) {
-	l.lowerBounds.Add(data)
+	l.lowerBounds.Store(data.Type, data)
 }
 
 func (l *LowerBoundInfo) GetAllBounds() []LowerBoundData {
-	return l.lowerBounds.ToSlice()
+	bounds := make([]LowerBoundData, 0)
+
+	l.lowerBounds.Range(func(key LowerBoundType, val LowerBoundData) bool {
+		bounds = append(bounds, val)
+		return true
+	})
+
+	return bounds
 }

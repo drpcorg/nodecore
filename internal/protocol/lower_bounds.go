@@ -8,7 +8,7 @@ import (
 type LowerBoundType int
 
 const (
-	UnknownBound LowerBoundType = iota
+	UnknownBound LowerBoundType = iota + 1
 	SlotBound
 	StateBound
 	ReceiptsBound

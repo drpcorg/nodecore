@@ -13,6 +13,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+const period = 3 * time.Minute
+
 type SolanaLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -50,7 +52,7 @@ func (s *SolanaLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
 }
 
 func (s *SolanaLowerBoundDetector) Period() time.Duration {
-	return 3 * time.Minute
+	return period
 }
 
 func (s *SolanaLowerBoundDetector) getFirstAvailableBlock() (int64, error) {

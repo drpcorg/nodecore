@@ -10,6 +10,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var errSolanaValidation = errors.New("status is not ok")
+
 type SolanaHealthValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -19,7 +21,7 @@ type SolanaHealthValidator struct {
 func (s *SolanaHealthValidator) Validate() protocol.AvailabilityStatus {
 	err := s.getHealth()
 	if err != nil {
-		log.Warn().Err(err).Msgf("solana upstream '%s' health validation failed", s.upstreamId)
+		log.Error().Err(err).Msgf("solana upstream '%s' health validation failed", s.upstreamId)
 		return protocol.Unavailable
 	}
 	return protocol.Available
@@ -47,7 +49,7 @@ func (s *SolanaHealthValidator) getHealth() error {
 	if result == "ok" {
 		return nil
 	}
-	return errors.New("status is not ok")
+	return errSolanaValidation
 }
 
 func NewSolanaHealthValidator(

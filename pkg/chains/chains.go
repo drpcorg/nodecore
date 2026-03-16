@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
 )
@@ -158,6 +159,9 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 			err = yaml.Unmarshal(out, &settings)
 			if err != nil {
 				return nil, nil, err
+			}
+			if settings.ExpectedBlockTime == 0 {
+				log.Panic().Msgf("expected block time of chain %s is zero", chain.ShortNames[0])
 			}
 
 			if network, ok := chainsMap[chain.ShortNames[0]]; ok {

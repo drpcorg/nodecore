@@ -10,7 +10,7 @@ import (
 type ValidationSettingResult int
 
 const (
-	Valid ValidationSettingResult = iota
+	Valid ValidationSettingResult = iota + 1
 	SettingsError
 	FatalSettingError
 )

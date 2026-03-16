@@ -59,7 +59,7 @@ func createSettingValidationProcessor(chainSpecific specific.ChainSpecific) *val
 }
 
 func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) *validations.ValidationProcessor[protocol.AvailabilityStatus] {
-	if *options.DisableValidation && *options.DisableHealthValidation {
+	if *options.DisableValidation || *options.DisableHealthValidation {
 		return nil
 	}
 	validators := chainSpecific.HealthValidators()

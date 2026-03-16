@@ -94,7 +94,7 @@ func (c *ChainSupervisor) Start() {
 			select {
 			case <-c.ctx.Done():
 				return
-			case <-time.After(5 * time.Second):
+			case <-time.After(30 * time.Second):
 			}
 
 			c.monitor()
@@ -243,13 +243,14 @@ func (c *ChainSupervisor) processLowerBounds(availableStates []*protocol.Upstrea
 	bounds := make(map[protocol.LowerBoundType]protocol.LowerBoundData)
 
 	for _, upsState := range availableStates {
-		if upsState.LowerBoundsInfo != nil {
-			upBounds := upsState.LowerBoundsInfo.GetAllBounds()
-			for _, bound := range upBounds {
-				currentBound, ok := bounds[bound.Type]
-				if !ok || bound.Bound < currentBound.Bound {
-					bounds[bound.Type] = bound
-				}
+		if upsState.LowerBoundsInfo == nil {
+			continue
+		}
+		upBounds := upsState.LowerBoundsInfo.GetAllBounds()
+		for _, bound := range upBounds {
+			currentBound, ok := bounds[bound.Type]
+			if !ok || bound.Bound < currentBound.Bound {
+				bounds[bound.Type] = bound
 			}
 		}
 	}

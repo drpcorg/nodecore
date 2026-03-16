@@ -199,7 +199,7 @@ type ResponseHolderWrapper struct {
 type AvailabilityStatus int
 
 const (
-	Available AvailabilityStatus = iota
+	Available AvailabilityStatus = iota + 1
 	Immature
 	Syncing
 	Unavailable

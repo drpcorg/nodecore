@@ -119,7 +119,7 @@ func (b *BaseLowerBoundService) processBounds(detector LowerBoundDetector, bound
 	bounds, err := detector.DetectLowerBound()
 	if err != nil {
 		log.
-			Warn().
+			Error().
 			Err(err).
 			Msgf("couldn't detect lower bounds %s for upstream '%s'", detector.SupportedTypes(), b.upstreamId)
 		return
