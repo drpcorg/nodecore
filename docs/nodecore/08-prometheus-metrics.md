@@ -301,7 +301,7 @@ This document describes all Prometheus metrics exposed by dSheltie (NodeCore).
 
 **Type:** Gauge
 
-**Description:** Current availability status of the upstream. Values: 0 = available, 1 = unavailable.
+**Description:** Current availability status of the upstream. Values: 1 = available, 2 = immature, 3 = syncing, 4 = unavailable.
 
 **Labels:**
 

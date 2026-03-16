@@ -25,7 +25,7 @@ var availabilityMetric = prometheus.NewGaugeVec(
 		Namespace: config.AppName,
 		Subsystem: "upstream",
 		Name:      "availability_status",
-		Help:      "Current availability status of the upstream: 0 = available, 1 = unavailable",
+		Help:      "Current availability status of the upstream: 1 = available, 2 = immature, 3 = syncing, 4 = unavailable",
 	},
 	[]string{"chain", "upstream"},
 )
