@@ -60,7 +60,7 @@ func handleWebsocket(
 		wsConnectionsMetric.WithLabelValues(chain).Dec()
 		err = conn.Close()
 		if err != nil {
-			log.Warn().Err(err).Msg("couldn't close a client websocket connection")
+			log.Error().Err(err).Msg("couldn't close a client websocket connection")
 		}
 	}()
 

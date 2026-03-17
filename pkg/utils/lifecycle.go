@@ -37,7 +37,7 @@ func (l *BaseLifecycle) Start(f func(ctx context.Context) error) {
 		l.cancelFunc.Store(cancel)
 		err := f(newCtx)
 		if err != nil {
-			log.Warn().Err(err).Msgf("failed to start lifecycle '%s'", l.name)
+			log.Error().Err(err).Msgf("failed to start lifecycle '%s'", l.name)
 			l.running.Store(false)
 		}
 	} else {

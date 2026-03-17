@@ -124,7 +124,7 @@ func (a *App) Start() {
 	if a.appConfig.ServerConfig.PyroscopeConfig.Enabled {
 		err := pyroscope.InitPyroscope(fmt.Sprintf("%s-namespace", config.AppName), config.AppName, a.appConfig.ServerConfig.PyroscopeConfig)
 		if err != nil {
-			log.Warn().Err(err).Msg("error during pyroscope initialization")
+			log.Error().Err(err).Msg("error during pyroscope initialization")
 		}
 	}
 

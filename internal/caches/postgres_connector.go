@@ -132,7 +132,7 @@ func (p *PostgresConnector) removeExpired() {
 
 		err := p.removeItems()
 		if err != nil {
-			log.Warn().Err(err).Msg("couldn't remove expired items")
+			log.Error().Err(err).Msg("couldn't remove expired items")
 		}
 	}
 }

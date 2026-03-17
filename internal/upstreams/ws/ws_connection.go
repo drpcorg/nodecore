@@ -257,7 +257,7 @@ func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string 
 func (w *JsonRpcWsConnection) connect() error {
 	conn, err := w.connectFunc()
 	if err != nil {
-		log.Warn().Err(err).Msgf("couldn't connect to %s, trying to reconnect", w.endpoint)
+		log.Error().Err(err).Msgf("couldn't connect to %s, trying to reconnect", w.endpoint)
 		return err
 	} else {
 		if w.connection.Load() != nil {
@@ -315,7 +315,7 @@ func (w *JsonRpcWsConnection) processMessages() {
 	for {
 		_, message, err := w.connection.Load().ReadMessage()
 		if err != nil {
-			log.Warn().Err(err).Msgf("couldn't read message from %s, trying to reconnect", w.endpoint)
+			log.Error().Err(err).Msgf("couldn't read message from %s, trying to reconnect", w.endpoint)
 			w.reconnect()
 			break
 		}
@@ -384,7 +384,7 @@ func (w *JsonRpcWsConnection) completeAll() {
 	err := w.connection.Load().Close()
 	w.connClosed.Store(true)
 	if err != nil {
-		log.Warn().Err(err).Msg("couldn't close a ws connection")
+		log.Error().Err(err).Msg("couldn't close a ws connection")
 	}
 	w.requests.Range(func(key string, val *reqOp) bool {
 		w.requests.Delete(key)
@@ -405,15 +405,15 @@ func (w *JsonRpcWsConnection) unsubscribe(op *reqOp) {
 			params := []interface{}{subId}
 			unsubReq, err := protocol.NewInternalUpstreamJsonRpcRequest(unsubMethod, params)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, subId)
+				log.Error().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, subId)
 			} else {
 				body, err := unsubReq.Body()
 				if err != nil {
-					log.Warn().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, subId)
+					log.Error().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, subId)
 				} else {
 					err = w.writeMessage(body)
 					if err != nil {
-						log.Warn().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, subId)
+						log.Error().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, w.upId, subId)
 					} else {
 						log.Info().Msgf("sub %s of upstream %s has been successfully stopped", subId, w.upId)
 					}

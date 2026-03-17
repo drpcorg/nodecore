@@ -1,0 +1,190 @@
+package event_processors
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/rs/zerolog/log"
+)
+
+type BlockUpdateData interface {
+	data()
+}
+
+type HeadUpdateData struct {
+	height uint64
+	slot   uint64
+}
+
+func (u *HeadUpdateData) data() {}
+
+func NewHeadUpdateData(height, slot uint64) *HeadUpdateData {
+	return &HeadUpdateData{
+		height: height,
+		slot:   slot,
+	}
+}
+
+type BaseBlockUpdateData struct {
+	block     *protocol.BlockData
+	blockType protocol.BlockType
+}
+
+func (b *BaseBlockUpdateData) data() {}
+
+func NewBaseBlockUpdateData(block *protocol.BlockData, blockType protocol.BlockType) *BaseBlockUpdateData {
+	return &BaseBlockUpdateData{
+		block:     block,
+		blockType: blockType,
+	}
+}
+
+type BlockEventProcessor interface {
+	UpstreamStateEventProcessor
+
+	UpdateBlock(data BlockUpdateData)
+}
+
+type HeadEventProcessor struct {
+	upstreamId    string
+	lifecycle     *utils.BaseLifecycle
+	headProcessor blocks.HeadProcessor
+	emitter       Emitter
+}
+
+func (h *HeadEventProcessor) SetEmitter(emitter Emitter) {
+	h.emitter = emitter
+}
+
+func (h *HeadEventProcessor) Type() EventProcessorType {
+	return HeadEventProcessorType
+}
+
+func (h *HeadEventProcessor) Start() {
+	h.lifecycle.Start(func(ctx context.Context) error {
+		go h.headProcessor.Start()
+
+		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
+		defer headSub.Unsubscribe()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
+				return nil
+			case head, ok := <-headSub.Events:
+				if ok {
+					h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
+				}
+			}
+		}
+	})
+}
+
+func (h *HeadEventProcessor) Stop() {
+	h.lifecycle.Stop()
+	h.headProcessor.Stop()
+}
+
+func (h *HeadEventProcessor) Running() bool {
+	return h.lifecycle.Running()
+}
+
+func (h *HeadEventProcessor) UpdateBlock(data BlockUpdateData) {
+	if headData, ok := data.(*HeadUpdateData); ok {
+		h.headProcessor.UpdateHead(headData.height, headData.slot)
+	} else {
+		log.Warn().Msgf("HeadEventProcessor got unsupported BlockUpdateData type: %T", data)
+	}
+}
+
+func NewHeadEventProcessor(
+	ctx context.Context,
+	upstreamId string,
+	headProcessor blocks.HeadProcessor,
+) *HeadEventProcessor {
+	if headProcessor == nil {
+		return nil
+	}
+
+	return &HeadEventProcessor{
+		upstreamId:    upstreamId,
+		lifecycle:     utils.NewBaseLifecycle(fmt.Sprintf("%s_head_event_processor", upstreamId), ctx),
+		headProcessor: headProcessor,
+	}
+}
+
+type BaseBlockEventProcessor struct {
+	upstreamId     string
+	lifecycle      *utils.BaseLifecycle
+	blockProcessor blocks.BlockProcessor
+	emitter        Emitter
+}
+
+func (b *BaseBlockEventProcessor) SetEmitter(emitter Emitter) {
+	b.emitter = emitter
+}
+
+func (b *BaseBlockEventProcessor) Type() EventProcessorType {
+	return BlockEventProcessorType
+}
+
+func (b *BaseBlockEventProcessor) Start() {
+	b.lifecycle.Start(func(ctx context.Context) error {
+		go b.blockProcessor.Start()
+
+		blockSub := b.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", b.upstreamId))
+		defer blockSub.Unsubscribe()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info().Msgf("stopping block events of upstream '%s'", b.upstreamId)
+				return nil
+			case block, ok := <-blockSub.Events:
+				if ok {
+					b.emitter(&protocol.BlockUpstreamStateEvent{BlockData: block.BlockData, BlockType: block.BlockType})
+				}
+			}
+		}
+	})
+}
+
+func (b *BaseBlockEventProcessor) Stop() {
+	b.lifecycle.Stop()
+	b.blockProcessor.Stop()
+}
+
+func (b *BaseBlockEventProcessor) Running() bool {
+	return b.lifecycle.Running()
+}
+
+func (b *BaseBlockEventProcessor) UpdateBlock(data BlockUpdateData) {
+	if blockUpdateData, ok := data.(*BaseBlockUpdateData); ok {
+		b.blockProcessor.UpdateBlock(blockUpdateData.block, blockUpdateData.blockType)
+	} else {
+		log.Warn().Msgf("BaseBlockEventProcessor got unsupported BlockUpdateData type: %T", data)
+	}
+}
+
+func NewBaseBlockEventProcessor(
+	ctx context.Context,
+	upstreamId string,
+	blockProcessor blocks.BlockProcessor,
+) *BaseBlockEventProcessor {
+	if blockProcessor == nil {
+		return nil
+	}
+
+	return &BaseBlockEventProcessor{
+		lifecycle:      utils.NewBaseLifecycle(fmt.Sprintf("%s_block_event_processor", upstreamId), ctx),
+		upstreamId:     upstreamId,
+		blockProcessor: blockProcessor,
+	}
+}
+
+var _ BlockEventProcessor = (*BaseBlockEventProcessor)(nil)
+var _ BlockEventProcessor = (*HeadEventProcessor)(nil)

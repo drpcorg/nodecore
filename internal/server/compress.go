@@ -96,7 +96,7 @@ func GzipWithConfig(config GzipConfig) echo.MiddlewareFunc {
 					}
 					err := w.Close()
 					if err != nil {
-						log.Warn().Err(err).Msg("couldn't close writer")
+						log.Error().Err(err).Msg("couldn't close writer")
 					}
 					pool.Put(w)
 				}()
@@ -123,7 +123,7 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 func (w *gzipResponseWriter) Flush() {
 	err := w.Writer.(*gzip.Writer).Flush()
 	if err != nil {
-		log.Warn().Err(err).Msg("couldn't flush")
+		log.Error().Err(err).Msg("couldn't flush")
 	}
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()

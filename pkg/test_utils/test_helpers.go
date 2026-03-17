@@ -13,12 +13,11 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
-	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
-	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -145,12 +144,10 @@ func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervis
 }
 
 func TestEvmUpstream(
-	ctx context.Context,
 	connector connectors.ApiConnector,
 	upConfig *config.Upstream,
-	blockProcessor blocks.BlockProcessor,
-	settingValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult],
 	upstreamMethods methods.Methods,
+	processorAggregator *event_processors.UpstreamProcessorAggregator,
 ) *upstreams.BaseUpstream {
 	index := "00012"
 	upState := utils.NewAtomic[protocol.UpstreamState]()
@@ -165,16 +162,15 @@ func TestEvmUpstream(
 	)
 
 	return upstreams.NewBaseUpstreamWithParams(
-		context.Background(),
 		"id",
 		chains.ETHEREUM,
 		[]connectors.ApiConnector{connector},
-		blocks.NewHeadProcessor(ctx, upConfig, connector, NewEvmChainSpecific(connector)),
-		blockProcessor,
-		settingValidationProcessor,
-		upState,
-		index,
 		upConfig,
+		index,
+		upState,
+		processorAggregator,
+		nil,
+		nil,
 	)
 }
 

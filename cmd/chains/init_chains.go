@@ -76,7 +76,7 @@ func main() {
 	defer func() {
 		err = f.Close()
 		if err != nil {
-			log.Warn().Err(err).Msg("couldn't close chains_data.go")
+			log.Error().Err(err).Msg("couldn't close chains_data.go")
 		}
 	}()
 

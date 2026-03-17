@@ -30,22 +30,26 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 			case *protocol.StatusUpstreamStateEvent:
 				state.Status = stateEvent.Status
 			case *protocol.FatalErrorUpstreamStateEvent:
+				log.Warn().Msgf("upstream '%s' settings are invalid, it will be stopped", u.id)
 				eventType = &protocol.RemoveUpstreamEvent{}
 				validUpstream = false
 				u.publishUpstreamEvent(state, eventType)
 			case *protocol.ValidUpstreamStateEvent:
+				log.Warn().Msgf("upstream '%s' settings are valid", u.id)
 				eventType = &protocol.ValidUpstreamEvent{}
 				validUpstream = true
 			case *protocol.HeadUpstreamStateEvent:
 				state.HeadData = stateEvent.HeadData
+				headsMetric.WithLabelValues(u.chain.String(), u.id).Set(float64(stateEvent.HeadData.Height))
 			case *protocol.BlockUpstreamStateEvent:
 				state.BlockInfo.AddBlock(stateEvent.BlockData, stateEvent.BlockType)
+				blocksMetric.WithLabelValues(u.id, stateEvent.BlockType.String(), u.chain.String()).Set(float64(stateEvent.BlockData.Height))
 			case *protocol.BanMethodUpstreamStateEvent:
 				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.upConfig.Methods.EnableMethods, stateEvent.Method) {
 					continue
 				}
 				time.AfterFunc(u.upConfig.Methods.BanDuration, func() {
-					u.publishUpstreamStateEvent(&protocol.UnbanMethodUpstreamStateEvent{Method: stateEvent.Method})
+					u.emitter(&protocol.UnbanMethodUpstreamStateEvent{Method: stateEvent.Method})
 				})
 				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Add(stateEvent.Method)

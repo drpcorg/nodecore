@@ -12,7 +12,7 @@ import (
 func CloseBodyReader(ctx context.Context, bodyReader io.ReadCloser) {
 	err := bodyReader.Close()
 	if err != nil {
-		zerolog.Ctx(ctx).Warn().Err(err).Msg("couldn't close a body reader")
+		zerolog.Ctx(ctx).Error().Err(err).Msg("couldn't close a body reader")
 	}
 }
 

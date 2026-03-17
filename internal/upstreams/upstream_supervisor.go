@@ -96,18 +96,9 @@ func (u *BaseUpstreamSupervisor) StartUpstreams() {
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := NewBaseUpstream(
-				u.ctx,
-				upConfig,
-				u.tracker,
-				u.statsService,
-				upstreamConnectorExecutor,
-				upstreamIndex,
-				u.rateLimitBudgetRegistry,
-				u.torProxyUrl,
-			)
+			up, err := CreateUpstream(u.ctx, upConfig, u.tracker, u.statsService, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry, u.torProxyUrl)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
+				log.Error().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
 			}
 			up.Start()

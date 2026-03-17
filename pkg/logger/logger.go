@@ -17,7 +17,7 @@ func init() {
 		var err error
 		level, err = zerolog.ParseLevel(logLevel)
 		if err != nil {
-			log.Warn().Err(err).Msgf("invalid log level '%s', seting 'info' level", logLevel)
+			log.Error().Err(err).Msgf("invalid log level '%s', seting 'info' level", logLevel)
 		}
 	}
 
@@ -31,7 +31,6 @@ func init() {
 			log.Warn().Msgf("invalid log format '%s', setting 'console' format", logFormat)
 		}
 	}
-
 
 	if enableJsonLogs {
 		log.Logger = zerolog.New(os.Stdout).
