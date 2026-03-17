@@ -98,7 +98,7 @@ func NewBaseSettingsEventProcessor(
 	currentValidationState.Store(validations.UnknownResult)
 
 	return &BaseSettingsEventProcessor{
-		lifecycle:              utils.NewBaseLifecycle(fmt.Sprintf("%s_settigs_event_processor", upstreamId), ctx),
+		lifecycle:              utils.NewBaseLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
 		validationInterval:     options.ValidationInterval,
 		validator:              validator,
 		upstreamId:             upstreamId,

@@ -17,7 +17,7 @@ func init() {
 		var err error
 		level, err = zerolog.ParseLevel(logLevel)
 		if err != nil {
-			log.Error().Err(err).Msgf("invalid log level '%s', seting 'info' level", logLevel)
+			log.Error().Err(err).Msgf("invalid log level '%s', setting 'info' level", logLevel)
 		}
 	}
 

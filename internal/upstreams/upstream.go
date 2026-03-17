@@ -151,7 +151,7 @@ func NewBaseUpstreamWithParams(
 		upstreamCtx:         newUpstreamCtx(cancel, mainLifecycle),
 		upstreamState:       upState,
 		apiConnectors:       apiConnectors,
-		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
+		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
 		upstreamIndexHex:    index,
 		upConfig:            upConfig,
 		processorAggregator: processorAggregator,

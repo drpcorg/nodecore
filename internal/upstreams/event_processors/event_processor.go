@@ -37,7 +37,7 @@ func (u *UpstreamProcessorAggregator) SetEmitter(emitter Emitter) {
 
 func (u *UpstreamProcessorAggregator) UpdateHead(data BlockUpdateData) {
 	if processor, ok := u.eventProcessors[HeadEventProcessorType]; ok {
-		if headProcessor, ok := processor.(*HeadEventProcessor); ok {
+		if headProcessor, ok := processor.(BlockEventProcessor); ok {
 			headProcessor.UpdateBlock(data)
 		}
 	}
@@ -45,7 +45,7 @@ func (u *UpstreamProcessorAggregator) UpdateHead(data BlockUpdateData) {
 
 func (u *UpstreamProcessorAggregator) UpdateBlock(data BlockUpdateData) {
 	if processor, ok := u.eventProcessors[BlockEventProcessorType]; ok {
-		if blockProcessor, ok := processor.(*BaseBlockEventProcessor); ok {
+		if blockProcessor, ok := processor.(BlockEventProcessor); ok {
 			blockProcessor.UpdateBlock(data)
 		}
 	}
