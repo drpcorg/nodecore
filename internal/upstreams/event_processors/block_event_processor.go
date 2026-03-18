@@ -29,13 +29,13 @@ func NewHeadUpdateData(height, slot uint64) *HeadUpdateData {
 }
 
 type BaseBlockUpdateData struct {
-	block     *protocol.BlockData
+	block     protocol.Block
 	blockType protocol.BlockType
 }
 
 func (b *BaseBlockUpdateData) data() {}
 
-func NewBaseBlockUpdateData(block *protocol.BlockData, blockType protocol.BlockType) *BaseBlockUpdateData {
+func NewBaseBlockUpdateData(block protocol.Block, blockType protocol.BlockType) *BaseBlockUpdateData {
 	return &BaseBlockUpdateData{
 		block:     block,
 		blockType: blockType,
@@ -146,7 +146,7 @@ func (b *BaseBlockEventProcessor) Start() {
 				return nil
 			case block, ok := <-blockSub.Events:
 				if ok {
-					b.emitter(&protocol.BlockUpstreamStateEvent{BlockData: block.BlockData, BlockType: block.BlockType})
+					b.emitter(&protocol.BlockUpstreamStateEvent{Block: block.Block, BlockType: block.BlockType})
 				}
 			}
 		}

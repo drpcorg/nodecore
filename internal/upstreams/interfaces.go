@@ -33,6 +33,6 @@ type Upstream interface {
 	GetHashIndex() string
 
 	UpdateHead(height, slot uint64)
-	UpdateBlock(block *protocol.BlockData, blockType protocol.BlockType)
+	UpdateBlock(block protocol.Block, blockType protocol.BlockType)
 	BanMethod(method string)
 }

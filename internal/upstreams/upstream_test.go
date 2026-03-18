@@ -75,7 +75,7 @@ func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	upstream.Start()
 	_ = nextUpstreamEvent(t, sub)
 
-	headData := protocol.NewBlockDataWithHeight(123)
+	headData := protocol.NewBlockWithHeight(123)
 	emit(&protocol.HeadUpstreamStateEvent{HeadData: headData})
 
 	event := nextUpstreamEvent(t, sub)
@@ -100,8 +100,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
 	upstream.Start()
 	_ = nextUpstreamEvent(t, sub)
 
-	blockData := protocol.NewBlockDataWithHeight(456)
-	emit(&protocol.BlockUpstreamStateEvent{BlockData: blockData, BlockType: protocol.FinalizedBlock})
+	blockData := protocol.NewBlockWithHeight(456)
+	emit(&protocol.BlockUpstreamStateEvent{Block: blockData, BlockType: protocol.FinalizedBlock})
 
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
@@ -267,7 +267,7 @@ func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
 
 func TestBaseUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
-	blockData := protocol.NewBlockData(uint64(1002), 0, blockchain.EmptyHash, blockchain.EmptyHash)
+	blockData := protocol.NewBlock(uint64(1002), 0, blockchain.EmptyHash, blockchain.EmptyHash)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
 	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "id", blockProcessor)

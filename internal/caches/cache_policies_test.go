@@ -31,7 +31,7 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -61,7 +61,7 @@ func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -148,11 +148,11 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet("eth_superTest"))
 
 	blockInfo1 := protocol.NewBlockInfo()
-	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
+	blockInfo1.AddBlock(protocol.NewBlockWithHeight(1000), protocol.FinalizedBlock)
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methodsMock, blockInfo1))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -343,11 +343,11 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	blockInfo1 := protocol.NewBlockInfo()
-	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
+	blockInfo1.AddBlock(protocol.NewBlockWithHeight(1000), protocol.FinalizedBlock)
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methodsMock, blockInfo1))
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()

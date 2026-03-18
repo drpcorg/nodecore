@@ -38,7 +38,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 	event, ok := <-sub.Events
 
 	expected := blocks.BlockEvent{
-		BlockData: &protocol.BlockData{
+		Block: protocol.Block{
 			Height:     uint64(69195275),
 			Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 			ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
@@ -51,12 +51,12 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 	assert.Equal(t, expected, event)
 	assert.True(t, processor.DisabledBlocks().IsEmpty())
 
-	processor.UpdateBlock(protocol.NewBlockDataWithHeight(79195275), protocol.FinalizedBlock)
+	processor.UpdateBlock(protocol.NewBlockWithHeight(79195275), protocol.FinalizedBlock)
 
 	event, ok = <-sub.Events
 
 	expected = blocks.BlockEvent{
-		BlockData: &protocol.BlockData{
+		Block: protocol.Block{
 			Height: uint64(79195275),
 		},
 		BlockType: protocol.FinalizedBlock,

@@ -61,7 +61,7 @@ func TestHeadEventProcessorRunningInitiallyFalse(t *testing.T) {
 func TestBaseBlockEventProcessorUpdateBlockForwardsData(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
 	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)
-	blockData := protocol.NewBlockDataWithHeight(42)
+	blockData := protocol.NewBlockWithHeight(42)
 
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
@@ -94,7 +94,7 @@ func TestHeadEventProcessorUpdateBlockIgnoresUnsupportedData(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
 	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", headProcessor)
 
-	processor.UpdateBlock(event_processors.NewBaseBlockUpdateData(protocol.NewBlockDataWithHeight(55), protocol.FinalizedBlock))
+	processor.UpdateBlock(event_processors.NewBaseBlockUpdateData(protocol.NewBlockWithHeight(55), protocol.FinalizedBlock))
 
 	headProcessor.AssertNotCalled(t, "UpdateHead", mock.Anything, mock.Anything)
 }
@@ -117,10 +117,10 @@ func TestBaseBlockEventProcessorStartEmitsEvents(t *testing.T) {
 
 	go processor.Start()
 
-	blockData := protocol.NewBlockDataWithHeight(101)
+	blockData := protocol.NewBlockWithHeight(101)
 
 	require.Eventually(t, func() bool {
-		blockProcessor.Publish(blocks.BlockEvent{BlockData: blockData, BlockType: protocol.FinalizedBlock})
+		blockProcessor.Publish(blocks.BlockEvent{Block: blockData, BlockType: protocol.FinalizedBlock})
 
 		select {
 		case event := <-events:
@@ -128,7 +128,7 @@ func TestBaseBlockEventProcessorStartEmitsEvents(t *testing.T) {
 			if !ok {
 				return false
 			}
-			return blockEvent.BlockData == blockData && blockEvent.BlockType == protocol.FinalizedBlock
+			return blockEvent.Block.Equals(blockData) && blockEvent.BlockType == protocol.FinalizedBlock
 		default:
 			return false
 		}
@@ -156,7 +156,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 
 	go processor.Start()
 
-	headData := protocol.NewBlockDataWithHeight(202)
+	headData := protocol.NewBlockWithHeight(202)
 
 	require.Eventually(t, func() bool {
 		headProcessor.Publish(blocks.HeadEvent{HeadData: headData})
@@ -167,7 +167,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 			if !ok {
 				return false
 			}
-			return headEvent.HeadData == headData
+			return headEvent.HeadData.Equals(headData)
 		default:
 			return false
 		}

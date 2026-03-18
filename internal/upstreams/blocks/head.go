@@ -15,9 +15,9 @@ import (
 
 type Head interface {
 	utils.Lifecycle
-	HeadsChan() chan *protocol.Block
+	HeadsChan() chan protocol.Block
 	OnNoHeadUpdates()
-	GetCurrentBlock() *protocol.Block
+	GetCurrentBlock() protocol.Block
 	UpdateHead(newHead protocol.Block)
 }
 
@@ -29,7 +29,7 @@ type RpcHead struct {
 	internalTimeout time.Duration
 	upstreamId      string
 	pollInProgress  atomic.Bool
-	headsChan       chan *protocol.Block
+	headsChan       chan protocol.Block
 }
 
 func (r *RpcHead) Running() bool {
@@ -61,7 +61,7 @@ func newRpcHead(
 		pollInterval:    pollInterval,
 		upstreamId:      upstreamId,
 		pollInProgress:  atomic.Bool{},
-		headsChan:       make(chan *protocol.Block),
+		headsChan:       make(chan protocol.Block),
 		internalTimeout: internalTimeout,
 	}
 
@@ -82,12 +82,12 @@ func (r *RpcHead) Start() {
 	})
 }
 
-func (r *RpcHead) GetCurrentBlock() *protocol.Block {
+func (r *RpcHead) GetCurrentBlock() protocol.Block {
 	block := r.block.Load()
-	return &block
+	return block
 }
 
-func (r *RpcHead) HeadsChan() chan *protocol.Block {
+func (r *RpcHead) HeadsChan() chan protocol.Block {
 	return r.headsChan
 }
 
@@ -106,7 +106,7 @@ func (r *RpcHead) poll() {
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't get the latest block of upstream %s", r.upstreamId)
 		} else {
-			r.block.Store(*block)
+			r.block.Store(block)
 			r.headsChan <- block
 		}
 	}
@@ -118,7 +118,7 @@ type SubscriptionHead struct {
 	chainSpecific   specific.ChainSpecific
 	headConnector   connectors.ApiConnector
 	upstreamId      string
-	headsChan       chan *protocol.Block
+	headsChan       chan protocol.Block
 	internalTimeout time.Duration
 }
 
@@ -137,9 +137,9 @@ func (w *SubscriptionHead) UpdateHead(newHead protocol.Block) {
 
 var _ Head = (*SubscriptionHead)(nil)
 
-func (w *SubscriptionHead) GetCurrentBlock() *protocol.Block {
+func (w *SubscriptionHead) GetCurrentBlock() protocol.Block {
 	block := w.block.Load()
-	return &block
+	return block
 }
 
 func (w *SubscriptionHead) Start() {
@@ -175,7 +175,7 @@ func (w *SubscriptionHead) Start() {
 						log.Error().Err(err).Msgf("couldn't parse a message from heads subscription of upstream %s", w.upstreamId)
 						return nil
 					}
-					w.block.Store(*block)
+					w.block.Store(block)
 					w.headsChan <- block
 				}
 			case <-ctx.Done():
@@ -185,7 +185,7 @@ func (w *SubscriptionHead) Start() {
 	})
 }
 
-func (w *SubscriptionHead) HeadsChan() chan *protocol.Block {
+func (w *SubscriptionHead) HeadsChan() chan protocol.Block {
 	return w.headsChan
 }
 
@@ -203,7 +203,7 @@ func (w *SubscriptionHead) getLatestBlock() {
 		log.Error().Err(err).Msgf("couldn't get the latest block of upstream %s", w.upstreamId)
 		return
 	}
-	w.block.Store(*block)
+	w.block.Store(block)
 	w.headsChan <- block
 }
 
@@ -221,7 +221,7 @@ func newWsHead(
 		headConnector:   headConnector,
 		internalTimeout: internalTimeout,
 		block:           utils.NewAtomic[protocol.Block](),
-		headsChan:       make(chan *protocol.Block),
+		headsChan:       make(chan protocol.Block),
 	}
 
 	return &head

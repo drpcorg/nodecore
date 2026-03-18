@@ -43,7 +43,7 @@ func TestRpcHead(t *testing.T) {
 	sub := headProcessor.Subscribe("test")
 
 	event, ok := <-sub.Events
-	expected := &protocol.BlockData{
+	expected := protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
@@ -52,18 +52,18 @@ func TestRpcHead(t *testing.T) {
 	connector.AssertExpectations(t)
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
-	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	headProcessor.UpdateHead(79195275, 0)
 
 	event, ok = <-sub.Events
-	expected = &protocol.BlockData{
+	expected = protocol.Block{
 		Height: uint64(79195275),
 	}
 
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
-	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	headProcessor.UpdateHead(5555, 0)
 	go func() {
@@ -122,17 +122,17 @@ func TestWsHead(t *testing.T) {
 	sub := headProcessor.Subscribe("test")
 
 	event, ok := <-sub.Events
-	expected := &protocol.BlockData{
+	expected := protocol.Block{
 		Height:     uint64(69195274),
 		Hash:       blockchain.NewHashIdFromString("0x2eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d12"),
 		ParentHash: blockchain.NewHashIdFromString("0x3eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d13"),
 	}
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
-	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	event, ok = <-sub.Events
-	expected = &protocol.BlockData{
+	expected = protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
@@ -140,18 +140,18 @@ func TestWsHead(t *testing.T) {
 
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
-	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	headProcessor.UpdateHead(79195275, 0)
 
 	event, ok = <-sub.Events
-	expected = &protocol.BlockData{
+	expected = protocol.Block{
 		Height: uint64(79195275),
 	}
 
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
-	assert.Equal(t, expected, headProcessor.GetCurrentBlock().BlockData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	headProcessor.UpdateHead(5555, 0)
 	go func() {

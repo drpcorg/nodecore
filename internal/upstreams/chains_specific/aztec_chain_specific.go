@@ -29,41 +29,41 @@ func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[
 	return nil
 }
 
-func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{"latest"})
 	if err != nil {
-		return nil, err
+		return protocol.ZeroBlock{}, err
 	}
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
-		return nil, response.GetError()
+		return protocol.ZeroBlock{}, response.GetError()
 	}
 
 	return a.ParseBlock(response.ResponseResult())
 }
 
-func (a *AztecChainSpecificObject) GetFinalizedBlock(_ context.Context) (*protocol.Block, error) {
-	return nil, nil
+func (a *AztecChainSpecificObject) GetFinalizedBlock(_ context.Context) (protocol.Block, error) {
+	return protocol.ZeroBlock{}, nil
 }
 
-func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block, error) {
+func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
 	block := AztecBlock{}
 	err := sonic.Unmarshal(blockBytes, &block)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse the aztec block, reason - %s", err.Error())
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the aztec block, reason - %s", err.Error())
 	}
 
 	height := block.Header.GlobalVariables.BlockNumber
 	if height == 0 {
-		return nil, fmt.Errorf("couldn't parse the aztec block, got '%s'", string(blockBytes))
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the aztec block, got '%s'", string(blockBytes))
 	}
 
 	return protocol.NewBlock(height, 0, blockchain.NewHashIdFromString(block.BlockHash), blockchain.EmptyHash), nil
 }
 
-func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (*protocol.Block, error) {
-	return nil, fmt.Errorf("aztec does not support websocket subscriptions")
+func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+	return protocol.ZeroBlock{}, fmt.Errorf("aztec does not support websocket subscriptions")
 }
 
 func (a *AztecChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {

@@ -51,7 +51,7 @@ func TestUpstreamProcessorAggregatorUpdateHead_ForwardsData(t *testing.T) {
 
 func TestUpstreamProcessorAggregatorUpdateBlock_ForwardsData(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
-	blockData := protocol.NewBlockDataWithHeight(66)
+	blockData := protocol.NewBlockWithHeight(66)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
 	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)

@@ -106,7 +106,7 @@ func TestDefaultUpstreamState(t *testing.T) {
 		BlockInfo:       protocol.NewBlockInfo(),
 		LowerBoundsInfo: protocol.NewLowerBoundInfo(),
 		Caps:            caps,
-		HeadData:        &protocol.BlockData{},
+		HeadData:        protocol.ZeroBlock{},
 		UpstreamIndex:   "55",
 	}
 

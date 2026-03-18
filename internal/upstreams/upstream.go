@@ -239,7 +239,7 @@ func (u *BaseUpstream) UpdateHead(height, slot uint64) {
 	u.processorAggregator.UpdateHead(event_processors.NewHeadUpdateData(height, slot))
 }
 
-func (u *BaseUpstream) UpdateBlock(block *protocol.BlockData, blockType protocol.BlockType) {
+func (u *BaseUpstream) UpdateBlock(block protocol.Block, blockType protocol.BlockType) {
 	u.processorAggregator.UpdateBlock(event_processors.NewBaseBlockUpdateData(block, blockType))
 }
 
