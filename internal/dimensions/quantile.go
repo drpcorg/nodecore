@@ -24,7 +24,7 @@ func (q *quantileTracker) add(value float64) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if err := q.sketch.Add(value); err != nil {
-		log.Warn().Err(err).Msgf("couldn't add a value %f to a quantile tracker", value)
+		log.Error().Err(err).Msgf("couldn't add a value %f to a quantile tracker", value)
 	}
 }
 

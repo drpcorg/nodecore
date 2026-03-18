@@ -2,7 +2,7 @@ package upstreams_test
 
 import (
 	"context"
-	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,436 +10,446 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
-	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
-	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-func TestUpstreamHeadEvent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+var loadMethodSpecsOnce sync.Once
 
-	connector := mocks.NewConnectorMock()
-	bodyLatest := []byte(`{
-	  "jsonrpc": "2.0",
-	  "result": {
-		"number": "0x41fd60b",
-		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
-		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
-	  }
-	}`)
-	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
-	responseLatest := protocol.NewHttpUpstreamResponse("1", bodyLatest, 200, protocol.JsonRpc)
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
-		Return(responseLatest)
+func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
-	}
+	t.Cleanup(upstream.Stop)
 
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, nil, mocks.NewMethodsMock())
-	go upstream.Start()
+	upstream.Start()
 
-	sub := upstream.Subscribe("name")
-
-	checkFunc := func(blockData *protocol.BlockData) {
-		event, ok := <-sub.Events
-		state := protocol.UpstreamState{
-			Status:          protocol.Available,
-			HeadData:        blockData,
-			BlockInfo:       protocol.NewBlockInfo(),
-			LowerBoundsInfo: protocol.NewLowerBoundInfo(),
-			UpstreamMethods: mocks.NewMethodsMock(),
-			Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
-			UpstreamIndex:   "00012",
-		}
-		expected := protocol.UpstreamEvent{
-			Id:    "id",
-			Chain: chains.ETHEREUM,
-			EventType: &protocol.StateUpstreamEvent{
-				State: &state,
-			},
-		}
-
-		assert.True(t, ok)
-		assert.Equal(t, expected, event)
-		assert.Equal(t, state, upstream.GetUpstreamState())
-	}
-
-	blockData := protocol.NewBlockData(
-		69195275,
-		0,
-		blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
-		blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
 	)
-	checkFunc(protocol.NewBlockData(0, 0, blockchain.EmptyHash, blockchain.EmptyHash))
-	checkFunc(blockData)
-	upstream.UpdateHead(79195275, 0)
-	checkFunc(protocol.NewBlockData(79195275, 0, blockchain.EmptyHash, blockchain.EmptyHash))
-	connector.AssertExpectations(t)
+	expectedState.Status = protocol.Available
 
+	assert.Equal(t, "id", upstream.GetId())
+	assert.Equal(t, chains.ETHEREUM, upstream.GetChain())
+	assert.Equal(t, "00012", upstream.GetHashIndex())
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Unavailable})
+	event = nextUpstreamEvent(t, sub)
+	expectedState.Status = protocol.Unavailable
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestUpstreamBlockEvent(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func TestBaseUpstreamStop_StopsRunningLifecycle(t *testing.T) {
+	upstream, _, sub := newTestBaseUpstream(t, nil, nil, nil)
 
-	connector := mocks.NewConnectorMock()
-	bodyFinalized := []byte(`{
-	 "jsonrpc": "2.0",
-	 "result": {
-		"number": "0x345",
-		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
-		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
-	 }
-	}`)
-	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
-	responseLatest := protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
-		Return(responseLatest)
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
+	require.True(t, upstream.Running())
 
-	requestFinalized, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"finalized", false})
-	responseFinalized := protocol.NewHttpUpstreamResponse("1", bodyFinalized, 200, protocol.JsonRpc)
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestFinalized))).
-		Return(responseFinalized)
+	upstream.Stop()
 
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
-	}
+	assert.False(t, upstream.Running())
+}
 
-	blockProcessor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, blockProcessor, nil, mocks.NewMethodsMock())
-	go upstream.Start()
+	t.Cleanup(upstream.Stop)
 
-	sub := upstream.Subscribe("name")
-	event, ok := <-sub.Events
-	assert.True(t, ok)
-	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
-	assert.True(t, ok)
-	assert.Equal(t, protocol.Available, eventType.State.Status)
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
 
-	checkFunc := func(blockData *protocol.BlockData) {
-		event, ok := <-sub.Events
-		blockInfo := protocol.NewBlockInfo()
-		blockInfo.AddBlock(
-			blockData,
-			protocol.FinalizedBlock,
-		)
-		state := protocol.UpstreamState{
-			Status:          protocol.Available,
-			HeadData:        &protocol.BlockData{},
-			BlockInfo:       blockInfo,
-			LowerBoundsInfo: protocol.NewLowerBoundInfo(),
-			UpstreamMethods: mocks.NewMethodsMock(),
-			Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
-			UpstreamIndex:   "00012",
-		}
-		expected := protocol.UpstreamEvent{
-			Id:    "id",
-			Chain: chains.ETHEREUM,
-			EventType: &protocol.StateUpstreamEvent{
-				State: &state,
-			},
-		}
+	headData := protocol.NewBlockDataWithHeight(123)
+	emit(&protocol.HeadUpstreamStateEvent{HeadData: headData})
 
-		assert.True(t, ok)
-		assert.EqualExportedValues(t, expected, event)
-		assert.EqualExportedValues(t, state, upstream.GetUpstreamState())
-
-		eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
-		assert.True(t, ok)
-		assert.Equal(t, state.BlockInfo.GetBlocks(), eventType.State.BlockInfo.GetBlocks())
-		assert.Equal(t, state.BlockInfo.GetBlocks(), upstream.GetUpstreamState().BlockInfo.GetBlocks())
-	}
-
-	blockData := protocol.NewBlockData(
-		837,
-		0,
-		blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
-		blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
 	)
-	checkFunc(blockData)
-	upstream.UpdateBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
-	checkFunc(protocol.NewBlockData(1000, 0, blockchain.EmptyHash, blockchain.EmptyHash))
-
-	time.Sleep(15 * time.Millisecond)
-
-	connector.AssertExpectations(t)
+	expectedState.Status = protocol.Available
+	expectedState.HeadData = headData
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestUpstreamMethodEvents(t *testing.T) {
-	err := specs.NewMethodSpecLoader().Load()
-	assert.NoError(t, err)
+func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	t.Cleanup(upstream.Stop)
 
-	connector := mocks.NewConnectorMock()
-	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
-	responseLatest := protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
-		Return(responseLatest)
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
 
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Methods: &config.MethodsConfig{
-			BanDuration: 20 * time.Millisecond,
-		},
-		Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
-	}
+	blockData := protocol.NewBlockDataWithHeight(456)
+	emit(&protocol.BlockUpstreamStateEvent{BlockData: blockData, BlockType: protocol.FinalizedBlock})
 
-	upstreamMethods, err := methods.NewUpstreamMethods("eth", &config.MethodsConfig{})
-	assert.NoError(t, err)
-
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, nil, upstreamMethods)
-	go upstream.Start()
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		upstream.BanMethod("eth_call")
-		time.Sleep(10 * time.Millisecond)
-		upstream.BanMethod("eth_getLogs")
-	}()
-
-	sub := upstream.Subscribe("name")
-	event, ok := <-sub.Events
-	assert.True(t, ok)
-	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
-	assert.True(t, ok)
-	assert.Equal(t, protocol.Available, eventType.State.Status)
-
-	upstreamMethods, _ = methods.NewUpstreamMethods("eth", &config.MethodsConfig{DisableMethods: []string{"eth_call"}})
-	checkMethods(t, upstream, sub, upstreamMethods)
-	upstreamMethods, _ = methods.NewUpstreamMethods("eth", &config.MethodsConfig{DisableMethods: []string{"eth_call", "eth_getLogs"}})
-	checkMethods(t, upstream, sub, upstreamMethods)
-	upstreamMethods, _ = methods.NewUpstreamMethods("eth", &config.MethodsConfig{DisableMethods: []string{"eth_getLogs"}})
-	checkMethods(t, upstream, sub, upstreamMethods)
-	upstreamMethods, _ = methods.NewUpstreamMethods("eth", &config.MethodsConfig{})
-	checkMethods(t, upstream, sub, upstreamMethods)
-}
-
-func TestUpstreamMethodEventsPreserveMethodFromConfig(t *testing.T) {
-	err := specs.NewMethodSpecLoader().Load()
-	assert.NoError(t, err)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	connector := mocks.NewConnectorMock()
-	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
-	responseLatest := protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
-		Return(responseLatest)
-
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Methods: &config.MethodsConfig{
-			BanDuration:    20 * time.Millisecond,
-			EnableMethods:  []string{"test", "test2", "test3"},
-			DisableMethods: []string{"test4", "test5"},
-		},
-		Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
-	}
-
-	upstreamMethods, err := methods.NewUpstreamMethods("eth", &config.MethodsConfig{})
-	assert.NoError(t, err)
-
-	upstream := test_utils.TestEvmUpstream(ctx, connector, upConfig, nil, nil, upstreamMethods)
-	go upstream.Start()
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		upstream.BanMethod("eth_call")
-		time.Sleep(10 * time.Millisecond)
-		upstream.BanMethod("test3")
-	}()
-
-	sub := upstream.Subscribe("name")
-	event, ok := <-sub.Events
-	assert.True(t, ok)
-	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
-	assert.True(t, ok)
-	assert.Equal(t, protocol.Available, eventType.State.Status)
-
-	upstreamMethods, _ = methods.NewUpstreamMethods(
-		"eth",
-		&config.MethodsConfig{
-			DisableMethods: []string{"eth_call", "test4", "test5"},
-			EnableMethods:  []string{"test", "test2", "test3"},
-		},
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
 	)
-	checkMethods(t, upstream, sub, upstreamMethods)
-	upstreamMethods, _ = methods.NewUpstreamMethods(
-		"eth",
-		&config.MethodsConfig{
-			DisableMethods: []string{"test4", "test5"},
-			EnableMethods:  []string{"test", "test2", "test3"},
-		},
+	expectedState.Status = protocol.Available
+	expectedState.BlockInfo.AddBlock(blockData, protocol.FinalizedBlock)
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
+
+	bound := protocol.LowerBoundData{Type: protocol.SlotBound, Bound: 789, Timestamp: time.Now().Unix()}
+	emit(&protocol.LowerBoundUpstreamStateEvent{Data: bound})
+
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
 	)
-	checkMethods(t, upstream, sub, upstreamMethods)
+	expectedState.Status = protocol.Available
+	expectedState.LowerBoundsInfo.AddLowerBound(bound)
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func checkMethods(
-	t *testing.T,
-	upstream *upstreams.BaseUpstream,
-	sub *utils.Subscription[protocol.UpstreamEvent],
-	upstreamMethods *methods.UpstreamMethods,
-) {
-	event, ok := <-sub.Events
-	state := protocol.UpstreamState{
-		Status:          protocol.Available,
-		HeadData:        &protocol.BlockData{},
-		BlockInfo:       protocol.NewBlockInfo(),
-		LowerBoundsInfo: protocol.NewLowerBoundInfo(),
-		UpstreamMethods: upstreamMethods,
-		Caps:            mapset.NewThreadUnsafeSet[protocol.Cap](),
-		UpstreamIndex:   "00012",
-	}
-	expected := protocol.UpstreamEvent{
-		Id:    "id",
-		Chain: chains.ETHEREUM,
-		EventType: &protocol.StateUpstreamEvent{
-			State: &state,
-		},
-	}
+func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
-	assert.True(t, ok)
-	assert.EqualExportedValues(t, expected, event)
-	assert.EqualExportedValues(t, state, upstream.GetUpstreamState())
+	t.Cleanup(upstream.Stop)
 
-	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
-	assert.True(t, ok)
-	assert.True(t, state.UpstreamMethods.GetSupportedMethods().Equal(eventType.State.UpstreamMethods.GetSupportedMethods()))
-	assert.True(t, state.UpstreamMethods.GetSupportedMethods().Equal(upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()))
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
+
+	emit(&protocol.FatalErrorUpstreamStateEvent{})
+	event := nextUpstreamEvent(t, sub)
+	_, ok := event.EventType.(*protocol.RemoveUpstreamEvent)
+	require.True(t, ok)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Unavailable})
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, protocol.Available, upstream.GetUpstreamState().Status)
+
+	emit(&protocol.ValidUpstreamStateEvent{})
+	event = nextUpstreamEvent(t, sub)
+	_, ok = event.EventType.(*protocol.ValidUpstreamEvent)
+	require.True(t, ok)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Unavailable})
+	event = nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Unavailable
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestUpstreamFatalErrorOnStart(t *testing.T) {
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Options: &config.UpstreamOptions{
-			InternalTimeout:           5 * time.Second,
-			DisableValidation:         lo.ToPtr(false),
-			DisableSettingsValidation: lo.ToPtr(false),
-			DisableChainValidation:    lo.ToPtr(false),
-		},
-	}
-	connector := mocks.NewConnectorMock()
+func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
+	loadMethodSpecs(t)
+
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, _, sub := newTestBaseUpstream(t, upConfig, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+	initialEvent := nextUpstreamEvent(t, sub)
+	expectedInitialState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, upConfig.Methods),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedInitialState.Status = protocol.Available
+	assertStateEventMatches(t, initialEvent, expectedInitialState)
+
+	upstream.BanMethod("eth_call")
+
+	event := nextUpstreamEvent(t, sub)
+	expectedBannedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, &config.MethodsConfig{
+			BanDuration:    upConfig.Methods.BanDuration,
+			EnableMethods:  upConfig.Methods.EnableMethods,
+			DisableMethods: []string{"eth_call"},
+		}),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedBannedState.Status = protocol.Available
+	assertStateEventMatches(t, event, expectedBannedState)
+	assertUpstreamStateMatches(t, expectedBannedState, upstream.GetUpstreamState())
+
+	event = nextUpstreamEvent(t, sub)
+	assertStateEventMatches(t, event, expectedInitialState)
+	assertUpstreamStateMatches(t, expectedInitialState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
+	loadMethodSpecs(t)
+
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"eth_call"},
+	})
+	upstream, _, sub := newTestBaseUpstream(t, upConfig, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
+
+	upstream.BanMethod("eth_call")
+
+	assertNoUpstreamEvent(t, sub)
+	assert.True(t, upstream.GetUpstreamState().UpstreamMethods.HasMethod("eth_call"))
+}
+
+func TestBaseUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
+	httpConnector := mocks.NewConnectorMockWithType(protocol.JsonRpcConnector)
+	wsConnector := mocks.NewConnectorMockWithType(protocol.WsConnector)
+
+	upstream, _, _ := newTestBaseUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
+
+	assert.Same(t, httpConnector, upstream.GetConnector(protocol.JsonRpcConnector))
+	assert.Same(t, wsConnector, upstream.GetConnector(protocol.WsConnector))
+	assert.Nil(t, upstream.GetConnector(protocol.RestConnector))
+}
+
+func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
+	headProcessor := mocks.NewHeadProcessorMock()
+	headProcessor.On("UpdateHead", uint64(100), uint64(7)).Once()
+
+	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "id", headProcessor)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headEventProcessor})
+	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
+
+	upstream.UpdateHead(100, 7)
+
+	headProcessor.AssertExpectations(t)
+}
+
+func TestBaseUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
+	blockProcessor := mocks.NewBlockProcessorMock()
+	blockData := protocol.NewBlockData(uint64(1002), 0, blockchain.EmptyHash, blockchain.EmptyHash)
+	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
+
+	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "id", blockProcessor)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{blockEventProcessor})
+	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
+
+	upstream.UpdateBlock(blockData, protocol.FinalizedBlock)
+
+	blockProcessor.AssertExpectations(t)
+}
+
+func TestBaseUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
-	validator.On("Validate").Return(validations.FatalSettingError)
+	validator.On("Validate").Return(validations.FatalSettingError).Once()
 
-	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator})
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+		context.Background(),
+		"id",
+		testUpstreamOptions(),
+		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
+	)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
+	upstream, _, _ := newTestBaseUpstream(t, upConfig, nil, aggregator)
 
-	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
 	upstream.Start()
 
 	assert.False(t, upstream.Running())
-	assert.False(t, upstream.PartialRunning())
+	validator.AssertExpectations(t)
 }
 
-func TestUpstreamSettingErrorPartialStart(t *testing.T) {
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Options: &config.UpstreamOptions{
-			InternalTimeout:           5 * time.Second,
-			ValidationInterval:        30 * time.Second,
-			DisableValidation:         lo.ToPtr(false),
-			DisableSettingsValidation: lo.ToPtr(false),
-			DisableChainValidation:    lo.ToPtr(false),
-		},
-	}
-	connector := mocks.NewConnectorMock()
+func TestBaseUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.SettingsError)
 
-	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator})
+	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+		context.Background(),
+		"id",
+		testUpstreamOptions(),
+		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
+	)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
+	upstream, _, sub := newTestBaseUpstream(t, nil, nil, aggregator)
 
-	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
+	t.Cleanup(upstream.Stop)
+
 	upstream.Start()
 
 	assert.True(t, upstream.Running())
-	assert.False(t, upstream.PartialRunning())
+	assertNoUpstreamEvent(t, sub)
 }
 
-func TestUpstreamValidationEvents(t *testing.T) {
-	upConfig := &config.Upstream{
-		Id:           "id",
-		PollInterval: 50 * time.Millisecond,
-		Options: &config.UpstreamOptions{
-			InternalTimeout:           5 * time.Second,
-			ValidationInterval:        10 * time.Millisecond,
-			DisableValidation:         lo.ToPtr(false),
-			DisableSettingsValidation: lo.ToPtr(false),
-			DisableChainValidation:    lo.ToPtr(false),
-		},
+func newTestBaseUpstream(
+	t *testing.T,
+	upConfig *config.Upstream,
+	connectorMocks []*mocks.ConnectorMock,
+	aggregator *event_processors.UpstreamProcessorAggregator,
+) (*upstreams.BaseUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
+	t.Helper()
+	loadMethodSpecs(t)
+
+	if upConfig == nil {
+		upConfig = newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	}
+	if connectorMocks == nil {
+		connectorMocks = []*mocks.ConnectorMock{mocks.NewConnectorMock()}
 	}
 
-	connector := mocks.NewConnectorMock()
-	requestLatest, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, []any{"latest", false})
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(requestLatest))).
-		Return(protocol.NewTotalFailureFromErr("id", errors.New("err"), protocol.JsonRpc))
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods)
+	require.NoError(t, err)
 
-	validator := mocks.NewSettingsValidatorMock()
-	validator.On("Validate").Return(validations.SettingsError).Once()
-	validator.On("Validate").Return(validations.Valid).Once()
-	validator.On("Validate").Return(validations.Valid).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Once()
+	state := utils.NewAtomic[protocol.UpstreamState]()
+	state.Store(protocol.DefaultUpstreamState(
+		upstreamMethods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	))
 
-	settingsValidationProcessor := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator})
+	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 100)
+	emitter := func(event protocol.AbstractUpstreamStateEvent) {
+		stateChan <- event
+	}
+	var stateEmitter event_processors.Emitter = emitter
 
-	upstream := test_utils.TestEvmUpstream(context.Background(), connector, upConfig, nil, settingsValidationProcessor, mocks.NewMethodsMock())
-	upstream.Start()
+	apiConnectors := make([]connectors.ApiConnector, 0, len(connectorMocks))
+	for _, connector := range connectorMocks {
+		apiConnectors = append(apiConnectors, connector)
+	}
 
-	assert.True(t, upstream.Running())
-	assert.False(t, upstream.PartialRunning())
+	upstream := upstreams.NewBaseUpstreamWithParams(
+		"id",
+		chains.ETHEREUM,
+		apiConnectors,
+		upConfig,
+		"00012",
+		state,
+		aggregator,
+		&stateChan,
+		&stateEmitter,
+	)
 
-	sub := upstream.Subscribe("name")
-	event, ok := <-sub.Events
-	assert.True(t, ok)
+	sub := upstream.Subscribe(t.Name())
 
-	_, ok = event.EventType.(*protocol.ValidUpstreamEvent)
-	assert.True(t, ok)
-	upstream.Resume()
-	assert.True(t, upstream.Running())
-	assert.True(t, upstream.PartialRunning())
+	return upstream, emitter, sub
+}
 
-	event, ok = <-sub.Events
-	assert.True(t, ok)
-	eventType, ok := event.EventType.(*protocol.StateUpstreamEvent)
-	assert.True(t, ok)
-	assert.Equal(t, protocol.Available, eventType.State.Status)
+func newUpstreamConfig(methodsConfig *config.MethodsConfig) *config.Upstream {
+	if methodsConfig == nil {
+		methodsConfig = &config.MethodsConfig{BanDuration: 20 * time.Millisecond}
+	}
 
-	event, ok = <-sub.Events
-	assert.True(t, ok)
+	return &config.Upstream{
+		Id:      "id",
+		Methods: methodsConfig,
+		Options: testUpstreamOptions(),
+	}
+}
 
-	_, ok = event.EventType.(*protocol.RemoveUpstreamEvent)
-	assert.True(t, ok)
-	upstream.PartialStop()
-	assert.True(t, upstream.Running())
-	assert.False(t, upstream.PartialRunning())
+func nextUpstreamEvent(t *testing.T, sub *utils.Subscription[protocol.UpstreamEvent]) protocol.UpstreamEvent {
+	t.Helper()
 
-	upstream.Stop()
-	assert.False(t, upstream.Running())
-	assert.False(t, upstream.PartialRunning())
+	select {
+	case event := <-sub.Events:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for upstream event")
+		return protocol.UpstreamEvent{}
+	}
+}
+
+func assertStateEventMatches(t *testing.T, event protocol.UpstreamEvent, expected protocol.UpstreamState) {
+	t.Helper()
+
+	stateEvent, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	require.True(t, ok)
+	assertUpstreamStateMatches(t, expected, *stateEvent.State)
+}
+
+func assertUpstreamStateMatches(t *testing.T, expected, actual protocol.UpstreamState) {
+	t.Helper()
+
+	assert.Equal(t, expected.Status, actual.Status)
+	assert.Equal(t, expected.HeadData, actual.HeadData)
+	assert.Equal(t, expected.UpstreamIndex, actual.UpstreamIndex)
+	assert.Equal(t, expected.RateLimiterBudget, actual.RateLimiterBudget)
+	assert.Equal(t, expected.AutoTuneRateLimiter, actual.AutoTuneRateLimiter)
+	assert.Equal(t, expected.BlockInfo.GetBlocks(), actual.BlockInfo.GetBlocks())
+	assert.ElementsMatch(t, expected.LowerBoundsInfo.GetAllBounds(), actual.LowerBoundsInfo.GetAllBounds())
+	assert.True(t, expected.Caps.Equal(actual.Caps))
+	assert.True(t, expected.UpstreamMethods.GetSupportedMethods().Equal(actual.UpstreamMethods.GetSupportedMethods()))
+}
+
+func assertNoUpstreamEvent(t *testing.T, sub *utils.Subscription[protocol.UpstreamEvent]) {
+	t.Helper()
+
+	select {
+	case event := <-sub.Events:
+		t.Fatalf("unexpected upstream event: %#v", event)
+	case <-time.After(60 * time.Millisecond):
+	}
+}
+
+func loadMethodSpecs(t *testing.T) {
+	t.Helper()
+
+	loadMethodSpecsOnce.Do(func() {
+		err := specs.NewMethodSpecLoader().Load()
+		require.NoError(t, err)
+	})
+}
+
+func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) methods.Methods {
+	t.Helper()
+	loadMethodSpecs(t)
+
+	if methodsConfig == nil {
+		methodsConfig = &config.MethodsConfig{}
+	}
+
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig)
+	require.NoError(t, err)
+	return upstreamMethods
 }

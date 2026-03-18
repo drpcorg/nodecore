@@ -4,25 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/ratelimiter"
-	"github.com/drpcorg/nodecore/internal/stats"
-	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
-	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/failsafe-go/failsafe-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -52,16 +44,14 @@ func init() {
 }
 
 type upstreamCtx struct {
-	cancelFunc          context.CancelFunc
-	mainLifecycle       *utils.BaseLifecycle
-	processorsLifecycle *utils.BaseLifecycle
+	cancelFunc    context.CancelFunc
+	mainLifecycle *utils.BaseLifecycle
 }
 
-func newUpstreamCtx(cancelFunc context.CancelFunc, mainLifecycle, processorsLifecycle *utils.BaseLifecycle) *upstreamCtx {
+func newUpstreamCtx(cancelFunc context.CancelFunc, mainLifecycle *utils.BaseLifecycle) *upstreamCtx {
 	return &upstreamCtx{
-		cancelFunc:          cancelFunc,
-		mainLifecycle:       mainLifecycle,
-		processorsLifecycle: processorsLifecycle,
+		cancelFunc:    cancelFunc,
+		mainLifecycle: mainLifecycle,
 	}
 }
 
@@ -73,119 +63,100 @@ type BaseUpstream struct {
 	subManager       *utils.SubscriptionManager[protocol.UpstreamEvent]
 	upstreamState    *utils.Atomic[protocol.UpstreamState]
 	stateChan        chan protocol.AbstractUpstreamStateEvent
-	chainSpecific    specific.ChainSpecific
 	upstreamIndexHex string
 	upConfig         *config.Upstream
 	upstreamCtx      *upstreamCtx
+	emitter          event_processors.Emitter
 
-	headProcessor               *blocks.HeadProcessor
-	blockProcessor              blocks.BlockProcessor
-	settingsValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult]
-	healthValidationProcessor   *validations.ValidationProcessor[protocol.AvailabilityStatus]
-	lowerBoundsService          lower_bounds.LowerBoundProcessor
+	processorAggregator *event_processors.UpstreamProcessorAggregator
 }
 
 var _ Upstream = (*BaseUpstream)(nil)
 
 func NewBaseUpstream(
 	ctx context.Context,
+	cancelFunc context.CancelFunc,
 	conf *config.Upstream,
-	tracker dimensions.DimensionTracker,
-	statsService stats.StatsService,
-	executor failsafe.Executor[protocol.ResponseHolder],
+	configuredChain *chains.ConfiguredChain,
 	upstreamIndex int,
-	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
-	torProxyUrl string,
+	creationData *upstreamCreationData,
+	processorAggregator *event_processors.UpstreamProcessorAggregator,
 ) (*BaseUpstream, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	configuredChain := chains.GetChain(conf.ChainName)
-
-	upstreamConnectorsInfo, caps, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	chainSpecific := getChainSpecific(ctx, conf, upstreamConnectorsInfo, configuredChain)
-
-	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
 	upstreamIndexHex := fmt.Sprintf("%05x", upstreamIndex)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	var rt *ratelimiter.RateLimitBudget
-	if conf.RateLimit != nil {
-		rt = ratelimiter.NewRateLimitBudget(&config.RateLimitBudget{
-			Name:   "inplace",
-			Config: conf.RateLimit,
-		}, ratelimiter.NewRateLimitMemoryEngine())
-	} else if conf.RateLimitBudget != "" {
-		rateLimitBudget, ok := rateLimitBudgetRegistry.Get(conf.RateLimitBudget)
-		if !ok {
-			zerolog.Ctx(ctx).Panic().Msgf("rate limit budget %s not found", conf.RateLimitBudget)
-		}
-		rt = rateLimitBudget
+	upState.Store(
+		protocol.DefaultUpstreamState(
+			creationData.upstreamMethods,
+			creationData.caps,
+			upstreamIndexHex,
+			creationData.rt,
+			creationData.autoTune,
+		),
+	)
+	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 100)
+	emitter := func(event protocol.AbstractUpstreamStateEvent) {
+		stateChan <- event
 	}
-	var autoTuneRateLimiter *ratelimiter.UpstreamAutoTune
-	if conf.RateLimitAutoTune != nil && conf.RateLimitAutoTune.Enabled {
-		autoTuneRateLimiter = ratelimiter.NewUpstreamAutoTune(ctx, conf.Id, conf.RateLimitAutoTune)
-	}
-	upState.Store(protocol.DefaultUpstreamState(upstreamMethods, caps, upstreamIndexHex, rt, autoTuneRateLimiter))
+	processorAggregator.SetEmitter(emitter)
 
 	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
-	processorsLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_processors_upstream", conf.Id), ctx)
 	return &BaseUpstream{
-		id:               conf.Id,
-		chain:            configuredChain.Chain,
-		vendorType:       getUpstreamVendor(conf.Connectors),
-		apiConnectors:    upstreamConnectorsInfo.allConnectors,
-		upstreamCtx:      newUpstreamCtx(cancel, mainLifecycle, processorsLifecycle),
-		upstreamState:    upState,
-		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
-		stateChan:        make(chan protocol.AbstractUpstreamStateEvent, 100),
-		chainSpecific:    chainSpecific,
-		upstreamIndexHex: upstreamIndexHex,
-		upConfig:         conf,
-
-		headProcessor:               blocks.NewHeadProcessor(ctx, conf, upstreamConnectorsInfo.headConnector, chainSpecific),
-		blockProcessor:              createBlockProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain.Type),
-		settingsValidationProcessor: createSettingValidationProcessor(chainSpecific),
-		healthValidationProcessor:   createHealthValidationProcessor(chainSpecific, conf.Options),
-		lowerBoundsService:          createLowerBoundsService(chainSpecific, conf.Options),
+		id:                  conf.Id,
+		chain:               configuredChain.Chain,
+		vendorType:          getUpstreamVendor(conf.Connectors),
+		apiConnectors:       creationData.upstreamConnectorsInfo.allConnectors,
+		upstreamCtx:         newUpstreamCtx(cancelFunc, mainLifecycle),
+		upstreamState:       upState,
+		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
+		upstreamIndexHex:    upstreamIndexHex,
+		upConfig:            conf,
+		processorAggregator: processorAggregator,
+		stateChan:           stateChan,
+		emitter:             emitter,
 	}, nil
 }
 
 func NewBaseUpstreamWithParams(
-	ctx context.Context,
 	id string,
 	chain chains.Chain,
 	apiConnectors []connectors.ApiConnector,
-	headProcessor *blocks.HeadProcessor,
-	blockProcessor blocks.BlockProcessor,
-	settingValidationProcessor *validations.ValidationProcessor[validations.ValidationSettingResult],
-	state *utils.Atomic[protocol.UpstreamState],
-	upstreamIndexHex string,
 	upConfig *config.Upstream,
+	index string,
+	upState *utils.Atomic[protocol.UpstreamState],
+	processorAggregator *event_processors.UpstreamProcessorAggregator,
+	stateChan *chan protocol.AbstractUpstreamStateEvent,
+	emitter *event_processors.Emitter,
 ) *BaseUpstream {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if stateChan == nil {
+		stateChan = new(make(chan protocol.AbstractUpstreamStateEvent, 100))
+	}
+	if emitter == nil {
+		var f event_processors.Emitter = func(event protocol.AbstractUpstreamStateEvent) {
+			*stateChan <- event
+		}
+		emitter = &f
+	}
+	if processorAggregator == nil {
+		processorAggregator = &event_processors.UpstreamProcessorAggregator{}
+	}
+	processorAggregator.SetEmitter(*emitter)
 
 	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", id), ctx)
-	processorsLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_processors_upstream", id), ctx)
 	return &BaseUpstream{
-		id:                          id,
-		chain:                       chain,
-		upstreamCtx:                 newUpstreamCtx(cancel, mainLifecycle, processorsLifecycle),
-		upstreamState:               state,
-		apiConnectors:               apiConnectors,
-		headProcessor:               headProcessor,
-		blockProcessor:              blockProcessor,
-		subManager:                  utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", "id")),
-		stateChan:                   make(chan protocol.AbstractUpstreamStateEvent, 100),
-		upstreamIndexHex:            upstreamIndexHex,
-		upConfig:                    upConfig,
-		settingsValidationProcessor: settingValidationProcessor,
+		id:                  id,
+		chain:               chain,
+		upstreamCtx:         newUpstreamCtx(cancel, mainLifecycle),
+		upstreamState:       upState,
+		apiConnectors:       apiConnectors,
+		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
+		upstreamIndexHex:    index,
+		upConfig:            upConfig,
+		processorAggregator: processorAggregator,
+		stateChan:           *stateChan,
+		emitter:             *emitter,
 	}
 }
 
@@ -199,21 +170,24 @@ func (u *BaseUpstream) GetChain() chains.Chain {
 
 func (u *BaseUpstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
-		if u.settingsValidationProcessor != nil && !*u.upConfig.Options.DisableValidation && !*u.upConfig.Options.DisableSettingsValidation {
-			result := u.settingsValidationProcessor.Validate()
+		result, ok := u.processorAggregator.ValidateSettings()
+		if !ok {
+			u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
+			u.Resume()
+		} else {
 			switch result {
 			case validations.FatalSettingError:
 				log.Error().Msgf("failed to start upstream '%s' due to invalid upstream settings", u.id)
 				return errors.New("invalid upstream settings")
 			case validations.SettingsError:
 				log.Warn().Msgf("non fatal settings error of upstream '%s', keep validating...", u.id)
-				go u.validateUpstreamSettings(ctx, validations.SettingsError)
+				u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
 			case validations.Valid:
-				go u.validateUpstreamSettings(ctx, validations.Valid)
+				u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
 				u.Resume()
+			case validations.UnknownResult:
+				log.Debug().Msgf("upstream '%s' has unknown result of settings validation, skipping", u.id)
 			}
-		} else {
-			u.Resume()
 		}
 		go u.processStateEvents(ctx)
 		return nil
@@ -223,6 +197,7 @@ func (u *BaseUpstream) Start() {
 func (u *BaseUpstream) Stop() {
 	u.upstreamCtx.mainLifecycle.Stop()
 	u.upstreamCtx.cancelFunc()
+	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
 	u.PartialStop()
 }
 
@@ -230,26 +205,22 @@ func (u *BaseUpstream) Running() bool {
 	return u.upstreamCtx.mainLifecycle.Running()
 }
 
-func (u *BaseUpstream) PartialRunning() bool {
-	return u.upstreamCtx.processorsLifecycle.Running()
-}
-
 func (u *BaseUpstream) PartialStop() {
-	u.upstreamCtx.processorsLifecycle.Stop()
-	if u.blockProcessor != nil {
-		u.blockProcessor.Stop()
-	}
-	if u.lowerBoundsService != nil {
-		u.lowerBoundsService.Stop()
-	}
-	u.headProcessor.Stop()
+	u.processorAggregator.StopProcessor(event_processors.BlockEventProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.HealthValidatorProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.LowerBoundEventProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
 }
 
 func (u *BaseUpstream) Resume() {
-	u.upstreamCtx.processorsLifecycle.Start(func(ctx context.Context) error {
-		u.start(ctx)
-		return nil
-	})
+	u.processorAggregator.StartProcessor(event_processors.HeadEventProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.BlockEventProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.HealthValidatorProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.LowerBoundEventProcessorType)
+
+	if u.processorAggregator.IsHealthProcessorDisabled() {
+		u.emitter(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
+	}
 }
 
 func (u *BaseUpstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
@@ -265,15 +236,15 @@ func (u *BaseUpstream) GetVendorType() UpstreamVendor {
 }
 
 func (u *BaseUpstream) UpdateHead(height, slot uint64) {
-	u.headProcessor.UpdateHead(height, slot)
+	u.processorAggregator.UpdateHead(event_processors.NewHeadUpdateData(height, slot))
 }
 
 func (u *BaseUpstream) UpdateBlock(block *protocol.BlockData, blockType protocol.BlockType) {
-	u.blockProcessor.UpdateBlock(block, blockType)
+	u.processorAggregator.UpdateBlock(event_processors.NewBaseBlockUpdateData(block, blockType))
 }
 
 func (u *BaseUpstream) BanMethod(method string) {
-	u.publishUpstreamStateEvent(&protocol.BanMethodUpstreamStateEvent{Method: method})
+	u.emitter(&protocol.BanMethodUpstreamStateEvent{Method: method})
 }
 
 func (u *BaseUpstream) GetConnector(connectorType protocol.ApiConnectorType) connectors.ApiConnector {
@@ -287,93 +258,6 @@ func (u *BaseUpstream) GetHashIndex() string {
 	return u.upstreamIndexHex
 }
 
-func (u *BaseUpstream) start(ctx context.Context) {
-	go u.headProcessor.Start()
-
-	go u.validateUpstreamHealth(ctx)
-	go u.processLowerBounds(ctx)
-	go u.processBlocks(ctx)
-}
-
-func (u *BaseUpstream) processLowerBounds(ctx context.Context) {
-	if u.lowerBoundsService == nil {
-		return
-	}
-
-	go u.lowerBoundsService.Start()
-
-	go func() {
-		boundSub := u.lowerBoundsService.Subscribe(fmt.Sprintf("%s_lower_bounds", u.id))
-		defer boundSub.Unsubscribe()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping lower bounds processing of upstream '%s'", u.id)
-				return
-			case bound, ok := <-boundSub.Events:
-				if ok {
-					u.publishUpstreamStateEvent(&protocol.LowerBoundUpstreamStateEvent{Data: bound})
-				}
-			}
-		}
-	}()
-}
-
-func (u *BaseUpstream) validateUpstreamHealth(ctx context.Context) {
-	if u.healthValidationProcessor == nil {
-		u.publishUpstreamStateEvent(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
-		return
-	}
-
-	u.validateHealth()
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info().Msgf("stopping health validations of upstream '%s'", u.id)
-			return
-		case <-time.After(u.upConfig.Options.ValidationInterval):
-			u.validateHealth()
-		}
-	}
-}
-
-func (u *BaseUpstream) validateHealth() {
-	availabilityStatus := u.healthValidationProcessor.Validate()
-	log.Debug().Msgf("availability status of upstream '%s' - %s", u.id, availabilityStatus)
-
-	u.publishUpstreamStateEvent(&protocol.StatusUpstreamStateEvent{Status: availabilityStatus})
-}
-
-func (u *BaseUpstream) validateUpstreamSettings(ctx context.Context, currentValidationState validations.ValidationSettingResult) {
-	if !*u.upConfig.Options.DisableValidation && !*u.upConfig.Options.DisableSettingsValidation {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping settings validations of upstream '%s'", u.id)
-				return
-			case <-time.After(u.upConfig.Options.ValidationInterval):
-				validationResult := u.settingsValidationProcessor.Validate()
-				switch validationResult {
-				case validations.FatalSettingError:
-					if currentValidationState == validations.SettingsError || currentValidationState == validations.Valid {
-						log.Warn().Msgf("upstream '%s' settings are invalid, it will be stopped", u.id)
-						u.publishUpstreamStateEvent(&protocol.FatalErrorUpstreamStateEvent{})
-						currentValidationState = validations.FatalSettingError
-					}
-				case validations.SettingsError:
-					log.Debug().Msg("keep validating...")
-				case validations.Valid:
-					if currentValidationState == validations.SettingsError || currentValidationState == validations.FatalSettingError {
-						log.Warn().Msgf("upstream '%s' settings are valid", u.id)
-						u.publishUpstreamStateEvent(&protocol.ValidUpstreamStateEvent{})
-						currentValidationState = validations.Valid
-					}
-				}
-			}
-		}
-	}
-}
-
 func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) methods.Methods {
 	newConfig := &config.MethodsConfig{
 		EnableMethods:  u.upConfig.Methods.EnableMethods,
@@ -381,41 +265,4 @@ func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) meth
 	}
 	newMethods, _ := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(u.chain), newConfig)
 	return newMethods
-}
-
-func (u *BaseUpstream) publishUpstreamStateEvent(event protocol.AbstractUpstreamStateEvent) {
-	u.stateChan <- event
-}
-
-func (u *BaseUpstream) processBlocks(ctx context.Context) {
-	var blockChan chan blocks.BlockEvent
-	if u.blockProcessor != nil {
-		go u.blockProcessor.Start()
-		blockSub := u.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", u.id))
-		defer blockSub.Unsubscribe()
-		blockChan = blockSub.Events
-	} else {
-		blockChan = make(chan blocks.BlockEvent)
-	}
-
-	headSub := u.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", u.id))
-	defer headSub.Unsubscribe()
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info().Msgf("stopping block processing of upstream '%s'", u.id)
-			return
-		case head, ok := <-headSub.Events:
-			if ok {
-				u.publishUpstreamStateEvent(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
-				headsMetric.WithLabelValues(u.chain.String(), u.id).Set(float64(head.HeadData.Height))
-			}
-		case block, ok := <-blockChan:
-			if ok {
-				u.publishUpstreamStateEvent(&protocol.BlockUpstreamStateEvent{BlockData: block.BlockData, BlockType: block.BlockType})
-				blocksMetric.WithLabelValues(u.id, block.BlockType.String(), u.chain.String()).Set(float64(block.BlockData.Height))
-			}
-		}
-	}
 }

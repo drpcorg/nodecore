@@ -127,7 +127,7 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 					}
 				}
 			}
-			log.Warn().Err(err).Msgf("couldn't detect finalized block of upstream %s", b.upConfig.Id)
+			log.Error().Err(err).Msgf("couldn't detect finalized block of upstream %s", b.upConfig.Id)
 		} else {
 			b.blocks[blockType] = block.BlockData
 			b.subManager.Publish(BlockEvent{BlockData: block.BlockData, BlockType: blockType})

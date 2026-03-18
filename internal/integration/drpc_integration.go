@@ -68,7 +68,7 @@ func (d *DrpcIntegrationClient) processKeys(ownerId, apiToken string, keyEvents 
 	currentKeys, _ := d.ownerKeys.LoadOrStore(ownerId, map[string]*drpc.DrpcKey{})
 	ownerKeys, err := d.getOwnerKeys(ownerId, apiToken)
 	if err != nil {
-		log.Warn().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
+		log.Error().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
 		return
 	}
 

@@ -37,7 +37,7 @@ func TestRpcHead(t *testing.T) {
 		PollInterval: 10 * time.Millisecond,
 		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
-	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))
 	go headProcessor.Start()
 
 	sub := headProcessor.Subscribe("test")
@@ -116,7 +116,7 @@ func TestWsHead(t *testing.T) {
 		PollInterval: 10 * time.Millisecond,
 		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
 	}
-	headProcessor := blocks.NewHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	go headProcessor.Start()
 
 	sub := headProcessor.Subscribe("test")

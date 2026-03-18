@@ -35,7 +35,7 @@ func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoun
 	detectors := []lower_bounds.LowerBoundDetector{
 		lower_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.internalTimeout, s.connector),
 	}
-	return lower_bounds.NewBaseLowerBoundService(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewBaseLowerBoundProcessor(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (s *SolanaChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

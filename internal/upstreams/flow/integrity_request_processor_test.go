@@ -65,7 +65,7 @@ func TestIntegrityRequestProcessorNotHandledIfRespWithErr(t *testing.T) {
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewConnectorMock()
 	ctx := context.Background()
-	upstream := test_utils.TestEvmUpstream(context.Background(), apiConnector, upConfig(), nil, nil, mocks.NewMethodsMock())
+	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
 	responseHolder := protocol.NewTotalFailure(request, protocol.RequestTimeoutError())
 	processor := NewRequestProcessorMock()

@@ -22,7 +22,6 @@ type Upstream interface {
 	PartialStop()
 	Stop()
 	Running() bool
-	PartialRunning() bool
 
 	Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent]
 

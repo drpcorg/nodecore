@@ -175,12 +175,12 @@ func (m *Method) Modify(ctx context.Context, data any, newV any) []byte {
 	iter := m.modifyParser.code.Run(data, newV)
 	modifiedValue, err := m.jqParse(iter)
 	if err != nil {
-		log.Warn().Err(err).Msgf("couldn't parse tag of method %s", m.Name)
+		log.Error().Err(err).Msgf("couldn't parse tag of method %s", m.Name)
 		return nil
 	}
 	modifiedData, err := sonic.Marshal(modifiedValue)
 	if err != nil {
-		log.Warn().Err(err).Msgf("couldn't marshall a modified body %v of method %s", modifiedValue, m.Name)
+		log.Error().Err(err).Msgf("couldn't marshall a modified body %v of method %s", modifiedValue, m.Name)
 		return nil
 	}
 	return modifiedData
@@ -194,7 +194,7 @@ func parseTag(ctx context.Context, name string, returnType ParserReturnType, par
 			var num rpc.BlockNumber
 			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &num)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
+				log.Error().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
 				return nil
 			}
 			return &BlockNumberParam{BlockNumber: num}
@@ -202,7 +202,7 @@ func parseTag(ctx context.Context, name string, returnType ParserReturnType, par
 			var blockNumberOrHash rpc.BlockNumberOrHash
 			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param)), &blockNumberOrHash)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumberOrHash %s", name)
+				log.Error().Err(err).Msgf("couldn't parse tag of method to BlockNumberOrHash %s", name)
 				return nil
 			}
 			if blockNumberOrHash.BlockHash != nil {
@@ -224,14 +224,14 @@ func parseTag(ctx context.Context, name string, returnType ParserReturnType, par
 		if param["from"] != nil {
 			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param["from"])), &from)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
+				log.Error().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
 				return nil
 			}
 		}
 		if param["to"] != nil {
 			err := sonic.Unmarshal([]byte(fmt.Sprintf(`"%s"`, param["to"])), &to)
 			if err != nil {
-				log.Warn().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
+				log.Error().Err(err).Msgf("couldn't parse tag of method to BlockNumber %s", name)
 				return nil
 			}
 		}
@@ -248,7 +248,7 @@ func (m *Method) Parse(ctx context.Context, data any) MethodParam {
 	iter := m.parser.query.Run(data)
 	methodParam, err := m.jqParse(iter)
 	if err != nil {
-		log.Warn().Err(err).Msgf("couldn't parse tag of method %s", m.Name)
+		log.Error().Err(err).Msgf("couldn't parse tag of method %s", m.Name)
 		return nil
 	}
 	switch param := methodParam.(type) {

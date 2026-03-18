@@ -89,7 +89,7 @@ func (c *CachePolicy) Store(
 		}
 	}
 	if err := c.connector.Store(context.Background(), getCacheKey(chain, request.RequestHash()), string(response), c.ttl); err != nil {
-		log.Warn().Err(err).Msgf("connector %s of policy %s couldn't cache request %s", c.connector.Id(), c.id, request.Method())
+		log.Error().Err(err).Msgf("connector %s of policy %s couldn't cache request %s", c.connector.Id(), c.id, request.Method())
 		return false
 	}
 	return true

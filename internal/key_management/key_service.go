@@ -44,7 +44,7 @@ func NewBaseKeyServiceWithRetryInterval(
 		}
 		keyEvents, err := integrationClient.InitKeys(keyCfg.Id, keyCfg.GetSpecificKeyConfig())
 		if err != nil {
-			log.Warn().Err(err).Msgf("cound't init external %s keys with id '%s'", integrationClient.Type(), keyCfg.Id)
+			log.Error().Err(err).Msgf("couldn't init external %s keys with id '%s'", integrationClient.Type(), keyCfg.Id)
 		} else {
 			if keyEvents != nil {
 				log.Info().Msgf("%s keys with id '%s' will be processed", integrationClient.Type(), keyCfg.Id)

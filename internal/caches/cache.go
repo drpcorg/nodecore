@@ -40,7 +40,7 @@ func (i *InMemoryConnector) Initialize() error {
 func NewInMemoryConnector(id string, config *config.MemoryCacheConnectorConfig) (*InMemoryConnector, error) {
 	cache, err := lru.New[string, cacheItem](config.MaxItems)
 	if err != nil {
-		log.Warn().Err(err).Msgf("couldn't create a memory cache connector with id %s", id)
+		log.Error().Err(err).Msgf("couldn't create a memory cache connector with id %s", id)
 		return nil, fmt.Errorf("couldn't create a memory cache connector with id %s, reason - %s", id, err.Error())
 	}
 

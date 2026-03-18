@@ -13,6 +13,7 @@ const (
 	Valid ValidationSettingResult = iota + 1
 	SettingsError
 	FatalSettingError
+	UnknownResult
 )
 
 type Validator[R any] interface {

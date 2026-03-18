@@ -13,6 +13,7 @@ var methodPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`method ([A-Za-z0-9_]+) does not exist/is not available`),
 	regexp.MustCompile(`([A-Za-z0-9_]+) found but the containing module is disabled`),
 	regexp.MustCompile(`[Mm]ethod not found`),
+	regexp.MustCompile(`[Mm]ethod is not available`),
 	regexp.MustCompile(`The method ([A-Za-z0-9_]+) is not available`),
 }
 

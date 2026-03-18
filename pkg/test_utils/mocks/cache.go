@@ -1,0 +1,78 @@
+package mocks
+
+import (
+	"context"
+	"time"
+
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/stretchr/testify/mock"
+)
+
+type CacheProcessorMock struct {
+	mock.Mock
+}
+
+func (c *CacheProcessorMock) Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte) {
+	c.Called(ctx, chain, request, response)
+}
+
+func (c *CacheProcessorMock) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
+	args := c.Called(ctx, chain, request)
+	return args.Get(0).([]byte), args.Get(1).(bool)
+}
+
+func NewCacheProcessorMock() *CacheProcessorMock {
+	return &CacheProcessorMock{}
+}
+
+type CacheConnectorMock struct {
+	mock.Mock
+}
+
+func NewCacheConnectorMock() *CacheConnectorMock {
+	return &CacheConnectorMock{}
+}
+
+func (c *CacheConnectorMock) Id() string {
+	args := c.Called()
+	return args.Get(0).(string)
+}
+
+func (c *CacheConnectorMock) Store(ctx context.Context, key string, object string, ttl time.Duration) error {
+	args := c.Called(ctx, key, object, ttl)
+	return args.Error(0)
+}
+
+func (c *CacheConnectorMock) Receive(ctx context.Context, key string) ([]byte, error) {
+	args := c.Called(ctx, key)
+	return args.Get(0).([]byte), args.Error(1)
+}
+
+func (c *CacheConnectorMock) Initialize() error {
+	args := c.Called()
+	return args.Error(0)
+}
+
+type DelayedConnector struct {
+	sleep time.Duration
+	CacheConnectorMock
+}
+
+func NewDelayedConnector(sleep time.Duration) *DelayedConnector {
+	return &DelayedConnector{sleep: sleep}
+}
+
+func (d *DelayedConnector) Id() string {
+	return d.CacheConnectorMock.Id()
+}
+
+func (d *DelayedConnector) Store(ctx context.Context, key string, object string, ttl time.Duration) error {
+	time.Sleep(d.sleep)
+	return d.CacheConnectorMock.Store(ctx, key, object, ttl)
+}
+
+func (d *DelayedConnector) Receive(ctx context.Context, key string) ([]byte, error) {
+	time.Sleep(d.sleep)
+	return d.CacheConnectorMock.Receive(ctx, key)
+}
