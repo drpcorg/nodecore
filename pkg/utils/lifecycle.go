@@ -46,8 +46,10 @@ func (l *BaseLifecycle) Start(f func(ctx context.Context) error) {
 }
 
 func (l *BaseLifecycle) Stop() {
-	if l.running.CompareAndSwap(true, false) && l.cancelFunc.Load() != nil {
-		l.cancelFunc.Load()()
+	if l.running.CompareAndSwap(true, false) {
+		if l.cancelFunc.Load() != nil {
+			l.cancelFunc.Load()()
+		}
 	} else {
 		log.Info().Msgf("lifecycle '%s' is already stopped", l.name)
 	}
