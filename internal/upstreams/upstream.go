@@ -186,7 +186,7 @@ func (u *BaseUpstream) Start() {
 				u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
 				u.Resume()
 			case validations.UnknownResult:
-				// skip
+				log.Debug().Msgf("upstream '%s' has unknown result of settings validation, skipping", u.id)
 			}
 		}
 		go u.processStateEvents(ctx)

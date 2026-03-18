@@ -35,7 +35,7 @@ func assertNoLowerBound(t *testing.T, ch <-chan protocol.LowerBoundData, timeout
 	}
 }
 
-func startService(t *testing.T, service *lower_bounds.BaseLowerBoundService) chan struct{} {
+func startService(t *testing.T, service *lower_bounds.BaseLowerBoundProcessor) chan struct{} {
 	t.Helper()
 
 	done := make(chan struct{})
@@ -48,7 +48,7 @@ func startService(t *testing.T, service *lower_bounds.BaseLowerBoundService) cha
 	return done
 }
 
-func stopService(t *testing.T, service *lower_bounds.BaseLowerBoundService, done chan struct{}) {
+func stopService(t *testing.T, service *lower_bounds.BaseLowerBoundProcessor, done chan struct{}) {
 	t.Helper()
 
 	service.Stop()
@@ -60,14 +60,14 @@ func stopService(t *testing.T, service *lower_bounds.BaseLowerBoundService, done
 }
 
 func TestNewBaseLowerBoundServiceWithDelayDefaults(t *testing.T) {
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
 
 	assert.False(t, service.Running())
 	assert.Equal(t, int64(0), service.PredictLowerBound(protocol.StateBound, 0))
 }
 
 func TestBaseLowerBoundServiceSubscribeReturnsSubscription(t *testing.T) {
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
 
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
@@ -83,7 +83,7 @@ func TestBaseLowerBoundServiceUsesCustomInitialDelay(t *testing.T) {
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, 80*time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, 80*time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -107,7 +107,7 @@ func TestBaseLowerBoundServicePublishesBoundsAndPredictsThem(t *testing.T) {
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -134,7 +134,7 @@ func TestBaseLowerBoundServicePredictLowerBoundUsesOffset(t *testing.T) {
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 1, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 1, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -159,7 +159,7 @@ func TestBaseLowerBoundServiceIgnoresDetectorErrorAndPublishesOnRetry(t *testing
 	detector.On("SupportedTypes").Return([]protocol.LowerBoundType{protocol.StateBound}).Maybe()
 	detector.On("Period").Return(20 * time.Millisecond).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -184,7 +184,7 @@ func TestBaseLowerBoundServiceIgnoresLowerBoundThatMovesBackwards(t *testing.T) 
 	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData(nil), nil).Maybe()
 	detector.On("Period").Return(20 * time.Millisecond).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -210,7 +210,7 @@ func TestBaseLowerBoundServiceAcceptsArchivalBoundOne(t *testing.T) {
 	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData(nil), nil).Maybe()
 	detector.On("Period").Return(20 * time.Millisecond).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -239,7 +239,7 @@ func TestBaseLowerBoundServicePublishesBoundsFromMultipleDetectors(t *testing.T)
 	}, nil).Once()
 	d2.On("Period").Return(time.Hour).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{d1, d2})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{d1, d2})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -267,7 +267,7 @@ func TestBaseLowerBoundServiceStopStopsLifecycle(t *testing.T) {
 	}, nil).Maybe()
 	detector.On("Period").Return(time.Hour).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 
 	done := startService(t, service)
 	stopService(t, service, done)
@@ -277,7 +277,7 @@ func TestBaseLowerBoundServiceStopStopsLifecycle(t *testing.T) {
 }
 
 func TestBaseLowerBoundServiceWithNoDetectorsStartsAndStops(t *testing.T) {
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
 
 	done := startService(t, service)
 	stopService(t, service, done)
@@ -292,7 +292,7 @@ func TestBaseLowerBoundServiceSecondStartDoesNotDuplicatePublishing(t *testing.T
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
 
-	service := lower_bounds.NewBaseLowerBoundServiceWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 

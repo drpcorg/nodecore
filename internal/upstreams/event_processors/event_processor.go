@@ -53,7 +53,7 @@ func (u *UpstreamProcessorAggregator) UpdateBlock(data BlockUpdateData) {
 
 func (u *UpstreamProcessorAggregator) ValidateSettings() (validations.ValidationSettingResult, bool) {
 	if processor, ok := u.eventProcessors[SettingsValidatorProcessorType]; ok {
-		if settingsProcessor, ok := processor.(*BaseSettingsEventProcessor); ok {
+		if settingsProcessor, ok := processor.(SettingsEventProcessor); ok {
 			return settingsProcessor.Validate(), true
 		}
 	}
@@ -70,9 +70,7 @@ func (u *UpstreamProcessorAggregator) StartProcessor(processorType EventProcesso
 
 func (u *UpstreamProcessorAggregator) StopProcessor(processorType EventProcessorType) {
 	if processor, ok := u.eventProcessors[processorType]; ok {
-		go func() {
-			processor.Stop()
-		}()
+		processor.Stop()
 	}
 }
 
