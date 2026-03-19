@@ -72,6 +72,7 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 			Blocks:      make(map[protocol.BlockType]protocol.Block),
 			LowerBounds: make(map[protocol.LowerBoundType]protocol.LowerBoundData),
 			HeadData:    NewChainHeadData(protocol.ZeroBlock{}, ""),
+			Methods:     methods.NewChainMethods(nil),
 		},
 	)
 
@@ -82,7 +83,7 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 		fc:             fc,
 		eventsChan:     make(chan protocol.UpstreamEvent, 100),
 		upstreamStates: utils.NewCMap[string, *protocol.UpstreamState](),
-		state:          utils.NewAtomic[ChainSupervisorState](),
+		state:          state,
 	}
 }
 
