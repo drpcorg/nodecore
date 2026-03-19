@@ -5,34 +5,34 @@ import (
 )
 
 type HeightForkChoice struct {
-	heights map[string]uint64
-	max     uint64
+	heads map[string]protocol.Block
+	max   protocol.Block
 }
 
 func NewHeightForkChoice() *HeightForkChoice {
 	return &HeightForkChoice{
-		heights: make(map[string]uint64),
+		heads: make(map[string]protocol.Block),
 	}
 }
 
 var _ ForkChoice = (*HeightForkChoice)(nil)
 
-func (h *HeightForkChoice) Choose(upstreamId string, event *protocol.StateUpstreamEvent) (bool, uint64) {
+func (h *HeightForkChoice) Choose(upstreamId string, event *protocol.StateUpstreamEvent) (bool, protocol.Block) {
 	if event.State.Status == protocol.Available {
-		h.heights[upstreamId] = event.State.HeadData.Height
+		h.heads[upstreamId] = event.State.HeadData
 
 		currentMaxHeight := h.maxHeight()
-		if currentMaxHeight > h.max {
+		if currentMaxHeight.CompareWithHeight(h.max) == 1 {
 			h.max = currentMaxHeight
 			return true, h.max
 		}
 		return false, h.max
 	}
-	if _, ok := h.heights[upstreamId]; ok {
-		delete(h.heights, upstreamId)
+	if _, ok := h.heads[upstreamId]; ok {
+		delete(h.heads, upstreamId)
 
 		currentMaxHeight := h.maxHeight()
-		if currentMaxHeight == h.max {
+		if currentMaxHeight.CompareWithHeight(h.max) == 0 {
 			return false, h.max
 		}
 
@@ -42,11 +42,11 @@ func (h *HeightForkChoice) Choose(upstreamId string, event *protocol.StateUpstre
 	return false, h.max
 }
 
-func (h *HeightForkChoice) maxHeight() uint64 {
-	var currentMaxHeight uint64
-	for _, height := range h.heights {
-		if height > currentMaxHeight {
-			currentMaxHeight = height
+func (h *HeightForkChoice) maxHeight() protocol.Block {
+	var currentMaxHeight protocol.Block
+	for _, head := range h.heads {
+		if head.CompareWithHeight(currentMaxHeight) == 1 {
+			currentMaxHeight = head
 		}
 	}
 	return currentMaxHeight

@@ -42,8 +42,8 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 				state.HeadData = stateEvent.HeadData
 				headsMetric.WithLabelValues(u.chain.String(), u.id).Set(float64(stateEvent.HeadData.Height))
 			case *protocol.BlockUpstreamStateEvent:
-				state.BlockInfo.AddBlock(stateEvent.BlockData, stateEvent.BlockType)
-				blocksMetric.WithLabelValues(u.id, stateEvent.BlockType.String(), u.chain.String()).Set(float64(stateEvent.BlockData.Height))
+				state.BlockInfo.AddBlock(stateEvent.Block, stateEvent.BlockType)
+				blocksMetric.WithLabelValues(u.id, stateEvent.BlockType.String(), u.chain.String()).Set(float64(stateEvent.Block.Height))
 			case *protocol.BanMethodUpstreamStateEvent:
 				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.upConfig.Methods.EnableMethods, stateEvent.Method) {
 					continue

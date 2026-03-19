@@ -382,7 +382,7 @@ func TestBaseHealthEventProcessorStopStopsLifecycle(t *testing.T) {
 
 	require.NotNil(t, processor)
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
-	validator.On("Validate").Return(protocol.Available).Once()
+	validator.On("Validate").Return(protocol.Available).Maybe()
 
 	go processor.Start()
 

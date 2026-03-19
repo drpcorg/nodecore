@@ -67,13 +67,13 @@ func TestEvmParseSubBLock(t *testing.T) {
 	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(body)
 	assert.Nil(t, err)
 
-	expected := &protocol.BlockData{
+	expected := protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
 	}
 
-	assert.Equal(t, expected, block.BlockData)
+	assert.Equal(t, expected, block)
 }
 
 func TestEvmGetLatestBlock(t *testing.T) {
@@ -96,12 +96,12 @@ func TestEvmGetLatestBlock(t *testing.T) {
 
 	connector.AssertExpectations(t)
 
-	expected := &protocol.BlockData{
+	expected := protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
 	}
-	assert.Equal(t, expected, block.BlockData)
+	assert.Equal(t, expected, block)
 }
 
 func TestEvmGetLatestBlockWithError(t *testing.T) {
@@ -114,7 +114,7 @@ func TestEvmGetLatestBlockWithError(t *testing.T) {
 	block, err := test_utils.NewEvmChainSpecific(connector).GetLatestBlock(ctx)
 
 	connector.AssertExpectations(t)
-	assert.Nil(t, block)
+	assert.True(t, block.IsFullEmpty())
 
 	var upErr *protocol.ResponseError
 	ok := errors.As(err, &upErr)

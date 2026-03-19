@@ -38,7 +38,7 @@ func (m *BlockProcessorMock) Subscribe(name string) *utils.Subscription[blocks.B
 	return m.subManager.Subscribe(name)
 }
 
-func (m *BlockProcessorMock) UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType) {
+func (m *BlockProcessorMock) UpdateBlock(blockData protocol.Block, blockType protocol.BlockType) {
 	m.Called(blockData, blockType)
 }
 
@@ -79,12 +79,12 @@ func (m *HeadProcessorMock) Running() bool {
 	return args.Bool(0)
 }
 
-func (m *HeadProcessorMock) GetCurrentBlock() *protocol.Block {
+func (m *HeadProcessorMock) GetCurrentBlock() protocol.Block {
 	args := m.Called()
 	if args.Get(0) == nil {
-		return nil
+		return protocol.ZeroBlock{}
 	}
-	return args.Get(0).(*protocol.Block)
+	return args.Get(0).(protocol.Block)
 }
 
 func (m *HeadProcessorMock) UpdateHead(height, slot uint64) {

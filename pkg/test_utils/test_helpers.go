@@ -94,8 +94,8 @@ func PolicyConfigFinalized(chain, method, connector, maxSize, ttl string, cacheE
 	}
 }
 
-func CreateEvent(id string, status protocol.AvailabilityStatus, height uint64, methods methods.Methods) protocol.UpstreamEvent {
-	return CreateEventWithBlockData(id, status, height, methods, nil)
+func CreateEvent(id string, status protocol.AvailabilityStatus, head protocol.Block, methods methods.Methods) protocol.UpstreamEvent {
+	return CreateEventWithBlockData(id, status, head, methods, nil)
 }
 
 func CreateRemoveEvent(id string) protocol.UpstreamEvent {
@@ -108,7 +108,7 @@ func CreateRemoveEvent(id string) protocol.UpstreamEvent {
 func CreateEventWithBlockData(
 	id string,
 	status protocol.AvailabilityStatus,
-	height uint64,
+	head protocol.Block,
 	methods methods.Methods,
 	blockInfo *protocol.BlockInfo,
 ) protocol.UpstreamEvent {
@@ -116,10 +116,8 @@ func CreateEventWithBlockData(
 		Id: id,
 		EventType: &protocol.StateUpstreamEvent{
 			State: &protocol.UpstreamState{
-				Status: status,
-				HeadData: &protocol.BlockData{
-					Height: height,
-				},
+				Status:          status,
+				HeadData:        head,
 				UpstreamMethods: methods,
 				BlockInfo:       blockInfo,
 			},
@@ -134,7 +132,7 @@ func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervis
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(CreateEvent("id", protocol.Available, 100, methodsMock))
+	chainSupervisor.Publish(CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
 	time.Sleep(20 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -216,7 +214,7 @@ func createEvent(
 		EventType: &protocol.StateUpstreamEvent{
 			State: &protocol.UpstreamState{
 				Status: status,
-				HeadData: &protocol.BlockData{
+				HeadData: protocol.Block{
 					Height: height,
 				},
 				UpstreamMethods: methods,

@@ -1,31 +1,44 @@
 package protocol
 
 import (
+	"cmp"
+	"reflect"
+
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
-type Block struct {
-	BlockData *BlockData
-}
+type ZeroBlock = Block
 
-type BlockData struct {
+type Block struct {
 	Height     uint64
 	Slot       uint64
 	Hash       blockchain.HashId
 	ParentHash blockchain.HashId
 }
 
-func (b *BlockData) IsEmpty() bool {
+func (b Block) Equals(other Block) bool {
+	return reflect.DeepEqual(b, other)
+}
+
+func (b Block) CompareWithHeight(other Block) int {
+	return cmp.Compare(b.Height, other.Height)
+}
+
+func (b Block) IsEmptyByHeight() bool {
+	return b.Height == 0 && len(b.Hash) == 0 && len(b.ParentHash) == 0
+}
+
+func (b Block) IsFullEmpty() bool {
 	return b.Height == 0 && b.Slot == 0 && len(b.Hash) == 0 && len(b.ParentHash) == 0
 }
 
-func NewBlockDataWithHeight(height uint64) *BlockData {
-	return &BlockData{Height: height}
+func NewBlockWithHeight(height uint64) Block {
+	return Block{Height: height}
 }
 
-func NewBlockData(height, slot uint64, hash, parentHash blockchain.HashId) *BlockData {
-	return &BlockData{
+func NewBlock(height, slot uint64, hash, parentHash blockchain.HashId) Block {
+	return Block{
 		Height:     height,
 		Slot:       slot,
 		Hash:       hash,
@@ -33,37 +46,26 @@ func NewBlockData(height, slot uint64, hash, parentHash blockchain.HashId) *Bloc
 	}
 }
 
-func NewBlock(height, slot uint64, hash, parentHash blockchain.HashId) *Block {
-	return &Block{
-		BlockData: &BlockData{
-			Height:     height,
-			Slot:       slot,
-			Hash:       hash,
-			ParentHash: parentHash,
-		},
-	}
-}
-
-func NewBlockWithHeights(height, slot uint64) *Block {
-	return &Block{
-		BlockData: &BlockData{Height: height, Slot: slot},
+func NewBlockWithHeights(height, slot uint64) Block {
+	return Block{
+		Height: height, Slot: slot,
 	}
 }
 
 type BlockInfo struct {
-	blocks *utils.CMap[BlockType, *BlockData]
+	blocks *utils.CMap[BlockType, Block]
 }
 
 func NewBlockInfo() *BlockInfo {
 	return &BlockInfo{
-		blocks: utils.NewCMap[BlockType, *BlockData](),
+		blocks: utils.NewCMap[BlockType, Block](),
 	}
 }
 
-func (b *BlockInfo) GetBlocks() map[BlockType]*BlockData {
-	blocks := make(map[BlockType]*BlockData, 6)
+func (b *BlockInfo) GetBlocks() map[BlockType]Block {
+	blocks := make(map[BlockType]Block, 6)
 
-	b.blocks.Range(func(key BlockType, val *BlockData) bool {
+	b.blocks.Range(func(key BlockType, val Block) bool {
 		blocks[key] = val
 		return true
 	})
@@ -71,14 +73,14 @@ func (b *BlockInfo) GetBlocks() map[BlockType]*BlockData {
 	return blocks
 }
 
-func (b *BlockInfo) AddBlock(data *BlockData, blockType BlockType) {
+func (b *BlockInfo) AddBlock(data Block, blockType BlockType) {
 	b.blocks.Store(blockType, data)
 }
 
-func (b *BlockInfo) GetBlock(blockType BlockType) *BlockData {
+func (b *BlockInfo) GetBlock(blockType BlockType) Block {
 	block, ok := b.blocks.Load(blockType)
 	if !ok {
-		return &BlockData{}
+		return Block{}
 	}
 	return block
 }

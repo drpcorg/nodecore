@@ -48,16 +48,16 @@ type ChainSupervisorState struct {
 	Status      protocol.AvailabilityStatus
 	HeadData    ChainHeadData
 	Methods     methods.Methods
-	Blocks      map[protocol.BlockType]*protocol.BlockData
+	Blocks      map[protocol.BlockType]protocol.Block
 	LowerBounds map[protocol.LowerBoundType]protocol.LowerBoundData
 }
 
 type ChainHeadData struct {
-	Head       uint64
+	Head       protocol.Block
 	UpstreamId string
 }
 
-func NewChainHeadData(head uint64, upstreamId string) ChainHeadData {
+func NewChainHeadData(head protocol.Block, upstreamId string) ChainHeadData {
 	return ChainHeadData{
 		Head:       head,
 		UpstreamId: upstreamId,
@@ -69,9 +69,10 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 	state.Store(
 		ChainSupervisorState{
 			Status:      protocol.Available,
-			Blocks:      make(map[protocol.BlockType]*protocol.BlockData),
+			Blocks:      make(map[protocol.BlockType]protocol.Block),
 			LowerBounds: make(map[protocol.LowerBoundType]protocol.LowerBoundData),
-			HeadData:    NewChainHeadData(0, ""),
+			HeadData:    NewChainHeadData(protocol.ZeroBlock{}, ""),
+			Methods:     methods.NewChainMethods(nil),
 		},
 	)
 
@@ -82,7 +83,7 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 		fc:             fc,
 		eventsChan:     make(chan protocol.UpstreamEvent, 100),
 		upstreamStates: utils.NewCMap[string, *protocol.UpstreamState](),
-		state:          utils.NewAtomic[ChainSupervisorState](),
+		state:          state,
 	}
 }
 
@@ -182,13 +183,13 @@ func (c *ChainSupervisor) updateState(upstreamId string, upstreamState *protocol
 	// it's necessary to merge states only from available upstreams
 	availableUpstreams := c.availableUpstreams()
 
-	if upstreamState != nil && upstreamState.State.HeadData != nil {
-		updated, headHeight := c.fc.Choose(upstreamId, upstreamState)
+	if upstreamState != nil && !upstreamState.State.HeadData.IsEmptyByHeight() {
+		updated, head := c.fc.Choose(upstreamId, upstreamState)
 		if updated {
-			state.HeadData = NewChainHeadData(headHeight, upstreamId)
+			state.HeadData = NewChainHeadData(head, upstreamId)
 		}
 	} else if upstreamState != nil {
-		state.HeadData = NewChainHeadData(0, upstreamId)
+		state.HeadData = NewChainHeadData(protocol.ZeroBlock{}, upstreamId)
 	}
 	state.Status = c.processUpstreamStatuses()
 	state.Methods = c.processUpstreamMethods(availableUpstreams)
@@ -205,7 +206,7 @@ func (c *ChainSupervisor) calculateLags() {
 		state := c.state.Load()
 
 		c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
-			headLag := state.HeadData.Head - val.HeadData.Height
+			headLag := state.HeadData.Head.Height - val.HeadData.Height
 			finalizationBlock, ok := state.Blocks[protocol.FinalizedBlock]
 			finalizationLag := uint64(0)
 			if ok {
@@ -270,8 +271,8 @@ func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus 
 	return status
 }
 
-func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]*protocol.BlockData {
-	blocks := map[protocol.BlockType]*protocol.BlockData{}
+func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]protocol.Block {
+	blocks := make(map[protocol.BlockType]protocol.Block, len(availableStates))
 
 	for _, upState := range availableStates {
 		if upState.BlockInfo != nil {
@@ -291,7 +292,7 @@ func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.Upst
 	return blocks
 }
 
-func compareBlocks(blockType protocol.BlockType, currentBlock, newBlock *protocol.BlockData) *protocol.BlockData {
+func compareBlocks(blockType protocol.BlockType, currentBlock, newBlock protocol.Block) protocol.Block {
 	switch blockType {
 	case protocol.FinalizedBlock:
 		if newBlock.Height > currentBlock.Height {
@@ -305,8 +306,8 @@ func (c *ChainSupervisor) monitor() {
 	state := c.state.Load()
 
 	var height string
-	if state.HeadData.Head > 0 {
-		height = fmt.Sprintf("%d", state.HeadData.Head)
+	if state.HeadData.Head.Height > 0 {
+		height = fmt.Sprintf("%d", state.HeadData.Head.Height)
 	} else {
 		height = "?"
 	}

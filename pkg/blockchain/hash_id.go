@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"bytes"
 	"encoding/hex"
 	"strings"
 )
@@ -56,4 +57,8 @@ func (h HashId) ToHex() string {
 
 func (h HashId) ToHexWithPrefix() string {
 	return "0x" + h.ToHex()
+}
+
+func (h HashId) Equals(hash HashId) bool {
+	return bytes.Equal(h, hash)
 }

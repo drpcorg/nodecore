@@ -101,7 +101,7 @@ func (e *EthBlockNumberIntegrityHandler) HandleResponse(
 		return false, nil, nil
 	}
 
-	chainHead := chainSupervisor.GetChainState().HeadData.Head
+	chainHead := chainSupervisor.GetChainState().HeadData.Head.Height
 	if responseBlockNumber >= chainHead {
 		return false, nil, NewHeadBlock(responseBlockNumber)
 	}
@@ -158,7 +158,7 @@ func (e *EthGetBlockByNumberIntegrityHandler) HandleResponse(
 	if blockNumberParam != nil {
 		switch blockNumberParam.BlockNumber {
 		case rpc.LatestBlockNumber:
-			if responseBlockNumber >= chainHead {
+			if responseBlockNumber >= chainHead.Height {
 				return false, nil, NewHeadBlock(responseBlockNumber)
 			}
 			filterF := func(upId string, state *protocol.UpstreamState) bool {
@@ -175,7 +175,7 @@ func (e *EthGetBlockByNumberIntegrityHandler) HandleResponse(
 			}
 			return true, chainSupervisor.GetSortedUpstreamIds(filterF, sortFinalizationHeightFunc), nil
 		default:
-			if responseBlockNumber >= chainHead {
+			if responseBlockNumber >= chainHead.Height {
 				return false, nil, NewHeadBlock(responseBlockNumber)
 			}
 		}

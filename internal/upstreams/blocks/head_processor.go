@@ -17,14 +17,14 @@ import (
 type HeadProcessor interface {
 	utils.Lifecycle
 
-	GetCurrentBlock() *protocol.Block
+	GetCurrentBlock() protocol.Block
 	UpdateHead(height, slot uint64)
 
 	Subscribe(name string) *utils.Subscription[HeadEvent]
 }
 
 type HeadEvent struct {
-	HeadData *protocol.BlockData
+	HeadData protocol.Block
 }
 
 type BaseHeadProcessor struct {
@@ -34,7 +34,7 @@ type BaseHeadProcessor struct {
 	lastUpdate           *utils.Atomic[time.Time]
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
-	manualHeadChan       chan *protocol.Block
+	manualHeadChan       chan protocol.Block
 }
 
 func NewBaseHeadProcessor(
@@ -62,7 +62,7 @@ func NewBaseHeadProcessor(
 	return &BaseHeadProcessor{
 		upstreamId:           upConfig.Id,
 		head:                 head,
-		manualHeadChan:       make(chan *protocol.Block, 100),
+		manualHeadChan:       make(chan protocol.Block, 100),
 		lifecycle:            utils.NewBaseLifecycle(name, ctx),
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
@@ -70,7 +70,7 @@ func NewBaseHeadProcessor(
 	}
 }
 
-func (h *BaseHeadProcessor) GetCurrentBlock() *protocol.Block {
+func (h *BaseHeadProcessor) GetCurrentBlock() protocol.Block {
 	return h.head.GetCurrentBlock()
 }
 
@@ -98,16 +98,16 @@ func (h *BaseHeadProcessor) Start() {
 				return nil
 			case block, ok := <-h.head.HeadsChan():
 				if ok {
-					log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.BlockData.Height)
+					log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
 					h.lastUpdate.Store(time.Now())
-					h.subManager.Publish(HeadEvent{HeadData: block.BlockData})
+					h.subManager.Publish(HeadEvent{HeadData: block})
 				}
 			case manualBlock := <-h.manualHeadChan:
-				if manualBlock.BlockData.Height > h.head.GetCurrentBlock().BlockData.Height {
-					log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.BlockData.Height)
+				if manualBlock.Height > h.head.GetCurrentBlock().Height {
+					log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.Height)
 					h.lastUpdate.Store(time.Now())
-					h.head.UpdateHead(*manualBlock)
-					h.subManager.Publish(HeadEvent{HeadData: manualBlock.BlockData})
+					h.head.UpdateHead(manualBlock)
+					h.subManager.Publish(HeadEvent{HeadData: manualBlock})
 				}
 			}
 			timeout.Reset(h.headNoUpdatesTimeout)

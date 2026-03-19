@@ -22,7 +22,7 @@ var sortHeadHeightFunc = func(entry1 lo.Tuple2[string, *protocol.UpstreamState],
 }
 
 var filterHeadFunc = func(currentHead uint64, state *protocol.UpstreamState) bool {
-	return state.HeadData != nil && state.HeadData.Height > currentHead
+	return !state.HeadData.IsEmptyByHeight() && state.HeadData.Height > currentHead
 }
 
 var sortFinalizationHeightFunc = func(entry1 lo.Tuple2[string, *protocol.UpstreamState], entry2 lo.Tuple2[string, *protocol.UpstreamState]) int {
@@ -30,7 +30,7 @@ var sortFinalizationHeightFunc = func(entry1 lo.Tuple2[string, *protocol.Upstrea
 }
 
 var filterFinalizationFunc = func(currentFinalization uint64, state *protocol.UpstreamState) bool {
-	return state.BlockInfo != nil && state.BlockInfo.GetBlock(protocol.FinalizedBlock) != nil && state.BlockInfo.GetBlock(protocol.FinalizedBlock).Height > currentFinalization
+	return state.BlockInfo != nil && state.BlockInfo.GetBlock(protocol.FinalizedBlock).Height > currentFinalization
 }
 
 func (i *IntegrityRequestProcessor) ProcessRequest(
@@ -122,7 +122,7 @@ func (i *IntegrityRequestProcessor) updateBlocks(upstreamId string, integrityBlo
 		case *HeadBlock:
 			responseUpstream.UpdateHead(block.number, 0)
 		case *FinalizedBlock:
-			responseUpstream.UpdateBlock(protocol.NewBlockDataWithHeight(block.number), protocol.FinalizedBlock)
+			responseUpstream.UpdateBlock(protocol.NewBlockWithHeight(block.number), protocol.FinalizedBlock)
 		}
 	}
 }

@@ -48,30 +48,30 @@ func (s *SolanaChainSpecificObject) SettingsValidators() []validations.Validator
 	return nil
 }
 
-func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
+func (s *SolanaChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
 	return s.getEpochInfo(ctx)
 }
 
-func (s *SolanaChainSpecificObject) GetFinalizedBlock(_ context.Context) (*protocol.Block, error) {
+func (s *SolanaChainSpecificObject) GetFinalizedBlock(_ context.Context) (protocol.Block, error) {
 	// TODO: implement get block/slot with finalized commitment
-	return nil, nil
+	return protocol.ZeroBlock{}, nil
 }
 
-func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block, error) {
+func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
 	epochInfo := SolanaEpochInfo{}
 	err := sonic.Unmarshal(blockBytes, &epochInfo)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse the solana block, reason - %s", err.Error())
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the solana block, reason - %s", err.Error())
 	}
 
 	return createNewSolanaBlock(epochInfo.BlockHeight, epochInfo.AbsoluteSlot), nil
 }
 
-func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
+func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
 	slotEvent := SolanaSlotEvent{}
 	err := sonic.Unmarshal(blockBytes, &slotEvent)
 	if err != nil {
-		return nil, err
+		return protocol.ZeroBlock{}, err
 	}
 	lastSlot, _ := s.lastCheckedSlots.Load(s.upstreamId)
 	lastHeight, _ := s.lastKnownHeights.Load(s.upstreamId)
@@ -94,7 +94,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*
 			log.Err(err).Msgf("couldn't get the epoch info for upstream %s, using the estimated height %d, slot %d", s.upstreamId, height, slotEvent.Slot)
 			return createNewSolanaBlock(height, slotEvent.Slot), nil
 		}
-		return createNewSolanaBlock(block.BlockData.Height, block.BlockData.Slot), nil
+		return createNewSolanaBlock(block.Height, block.Slot), nil
 	}
 	return createNewSolanaBlock(estimatedHeight, slotEvent.Slot), nil
 }
@@ -122,24 +122,24 @@ func NewSolanaChainSpecificObject(
 	}
 }
 
-func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (*protocol.Block, error) {
+func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.Block, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", nil)
 	if err != nil {
-		return nil, err
+		return protocol.ZeroBlock{}, err
 	}
 	response := s.connector.SendRequest(ctx, request)
 	if response.HasError() {
-		return nil, response.GetError()
+		return protocol.ZeroBlock{}, response.GetError()
 	}
 	block, err := s.ParseBlock(response.ResponseResult())
 	if err != nil {
-		return nil, err
+		return protocol.ZeroBlock{}, err
 	}
 
-	s.lastKnownHeights.Store(s.upstreamId, block.BlockData.Height)
-	s.lastCheckedSlots.Store(s.upstreamId, block.BlockData.Slot)
+	s.lastKnownHeights.Store(s.upstreamId, block.Height)
+	s.lastCheckedSlots.Store(s.upstreamId, block.Slot)
 
 	return block, nil
 }
@@ -156,7 +156,7 @@ func SyntheticHashes(slot uint64, parentSlot uint64) (blockchain.HashId, blockch
 	return syntheticHash, syntheticParentHash
 }
 
-func createNewSolanaBlock(height uint64, slot uint64) *protocol.Block {
+func createNewSolanaBlock(height uint64, slot uint64) protocol.Block {
 	hash, parentHash := SyntheticHashes(slot, slot-1)
 	return protocol.NewBlock(height, slot, hash, parentHash)
 }

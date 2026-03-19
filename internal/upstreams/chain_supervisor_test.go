@@ -11,11 +11,25 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	upmethods "github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
+
+const (
+	eventuallyWait = time.Second
+	eventuallyTick = 10 * time.Millisecond
+)
+
+func assertEventuallyEqual(t *testing.T, expected any, actual func() any) {
+	t.Helper()
+
+	assert.Eventually(t, func() bool {
+		return assert.ObjectsAreEqual(expected, actual())
+	}, eventuallyWait, eventuallyTick)
+}
 
 func createEventWithLowerBounds(
 	id string,
@@ -34,7 +48,7 @@ func createEventWithLowerBounds(
 		EventType: &protocol.StateUpstreamEvent{
 			State: &protocol.UpstreamState{
 				Status: status,
-				HeadData: &protocol.BlockData{
+				HeadData: protocol.Block{
 					Height: height,
 				},
 				UpstreamMethods: methods,
@@ -51,21 +65,21 @@ func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().HeadData.Head)
+	head := protocol.NewBlock(100, 0, blockchain.NewHashIdFromString("123"), blockchain.NewHashIdFromString("125"))
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, head, methodsMock))
+	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Available, 95, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().HeadData.Head)
+	head1 := protocol.NewBlock(100, 0, blockchain.NewHashIdFromString("123"), blockchain.NewHashIdFromString("125"))
+	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Available, head1, methodsMock))
+	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id3", protocol.Unavailable, 500, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(100), chainSupervisor.GetChainState().HeadData.Head)
+	head2 := protocol.NewBlock(500, 0, blockchain.NewHashIdFromString("127"), blockchain.NewHashIdFromString("129"))
+	chainSupervisor.Publish(test_utils.CreateEvent("id3", protocol.Unavailable, head2, methodsMock))
+	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 1000, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().HeadData.Head)
+	head3 := protocol.NewBlock(500, 0, blockchain.NewHashIdFromString("1271"), blockchain.NewHashIdFromString("1291"))
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, head3, methodsMock))
+	assertEventuallyEqual(t, head3, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 }
 
 func TestChainSupervisorTrackLags(t *testing.T) {
@@ -77,27 +91,26 @@ func TestChainSupervisorTrackLags(t *testing.T) {
 	go chainSupervisor.Start()
 
 	blockInfo1 := protocol.NewBlockInfo()
-	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(600), protocol.FinalizedBlock)
+	blockInfo1.AddBlock(protocol.NewBlockWithHeight(600), protocol.FinalizedBlock)
 	blockInfo2 := protocol.NewBlockInfo()
-	blockInfo2.AddBlock(protocol.NewBlockDataWithHeight(700), protocol.FinalizedBlock)
+	blockInfo2.AddBlock(protocol.NewBlockWithHeight(700), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id1", protocol.Available, 100, methodsMock, blockInfo1))
-	time.Sleep(20 * time.Millisecond)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id1", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
+	assert.Eventually(t, func() bool {
+		chainDims1 := tracker.GetChainDimensions(chains.ARBITRUM, "id1")
+		return chainDims1.GetHeadLag() == 0 && chainDims1.GetFinalizationLag() == 0
+	}, eventuallyWait, eventuallyTick)
 
-	chainDims1 := tracker.GetChainDimensions(chains.ARBITRUM, "id1")
-	assert.Equal(t, uint64(0), chainDims1.GetHeadLag())
-	assert.Equal(t, uint64(0), chainDims1.GetFinalizationLag())
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id2", protocol.Available, protocol.NewBlockWithHeight(300), methodsMock, blockInfo2))
+	assert.Eventually(t, func() bool {
+		chainDims1 := tracker.GetChainDimensions(chains.ARBITRUM, "id1")
+		chainDims2 := tracker.GetChainDimensions(chains.ARBITRUM, "id2")
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id2", protocol.Available, 300, methodsMock, blockInfo2))
-	time.Sleep(20 * time.Millisecond)
-
-	chainDims1 = tracker.GetChainDimensions(chains.ARBITRUM, "id1")
-	chainDims2 := tracker.GetChainDimensions(chains.ARBITRUM, "id2")
-
-	assert.Equal(t, uint64(0), chainDims2.GetHeadLag())
-	assert.Equal(t, uint64(0), chainDims2.GetFinalizationLag())
-	assert.Equal(t, uint64(200), chainDims1.GetHeadLag())
-	assert.Equal(t, uint64(100), chainDims1.GetFinalizationLag())
+		return chainDims2.GetHeadLag() == 0 &&
+			chainDims2.GetFinalizationLag() == 0 &&
+			chainDims1.GetHeadLag() == 200 &&
+			chainDims1.GetFinalizationLag() == 100
+	}, eventuallyWait, eventuallyTick)
 }
 
 func TestChainSupervisorUpdateStatus(t *testing.T) {
@@ -107,21 +120,17 @@ func TestChainSupervisorUpdateStatus(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, protocol.Available, chainSupervisor.GetChainState().Status)
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
+	assertEventuallyEqual(t, protocol.Available, func() any { return chainSupervisor.GetChainState().Status })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Unavailable, 95, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, protocol.Available, chainSupervisor.GetChainState().Status)
+	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Unavailable, protocol.NewBlockWithHeight(95), methodsMock))
+	assertEventuallyEqual(t, protocol.Available, func() any { return chainSupervisor.GetChainState().Status })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Unavailable, 500, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, protocol.Unavailable, chainSupervisor.GetChainState().Status)
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Unavailable, protocol.NewBlockWithHeight(500), methodsMock))
+	assertEventuallyEqual(t, protocol.Unavailable, func() any { return chainSupervisor.GetChainState().Status })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id12", protocol.Available, 95, methodsMock))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, protocol.Available, chainSupervisor.GetChainState().Status)
+	chainSupervisor.Publish(test_utils.CreateEvent("id12", protocol.Available, protocol.NewBlockWithHeight(95), methodsMock))
+	assertEventuallyEqual(t, protocol.Available, func() any { return chainSupervisor.GetChainState().Status })
 }
 
 func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
@@ -135,21 +144,17 @@ func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methods1))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, mapset.NewThreadUnsafeSet[string]("test1"), chainSupervisor.GetChainState().Methods.GetSupportedMethods())
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methods1))
+	assertEventuallyEqual(t, mapset.NewThreadUnsafeSet[string]("test1"), func() any { return chainSupervisor.GetChainState().Methods.GetSupportedMethods() })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id2", protocol.Available, 100, methods2))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, mapset.NewThreadUnsafeSet[string]("test1", "test2"), chainSupervisor.GetChainState().Methods.GetSupportedMethods())
+	chainSupervisor.Publish(test_utils.CreateEvent("id2", protocol.Available, protocol.NewBlockWithHeight(100), methods2))
+	assertEventuallyEqual(t, mapset.NewThreadUnsafeSet[string]("test1", "test2"), func() any { return chainSupervisor.GetChainState().Methods.GetSupportedMethods() })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Available, 100, methods3))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, mapset.NewThreadUnsafeSet[string]("test1", "test2", "test5"), chainSupervisor.GetChainState().Methods.GetSupportedMethods())
+	chainSupervisor.Publish(test_utils.CreateEvent("id1", protocol.Available, protocol.NewBlockWithHeight(100), methods3))
+	assertEventuallyEqual(t, mapset.NewThreadUnsafeSet[string]("test1", "test2", "test5"), func() any { return chainSupervisor.GetChainState().Methods.GetSupportedMethods() })
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Unavailable, 100, methods1))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, mapset.NewThreadUnsafeSet[string]("test2", "test5"), chainSupervisor.GetChainState().Methods.GetSupportedMethods())
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Unavailable, protocol.NewBlockWithHeight(100), methods1))
+	assertEventuallyEqual(t, mapset.NewThreadUnsafeSet[string]("test2", "test5"), func() any { return chainSupervisor.GetChainState().Methods.GetSupportedMethods() })
 }
 
 func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
@@ -158,41 +163,35 @@ func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
 	blockInfo1 := protocol.NewBlockInfo()
-	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(1000), protocol.FinalizedBlock)
+	blockInfo1.AddBlock(protocol.NewBlockWithHeight(1000), protocol.FinalizedBlock)
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methods, blockInfo1))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(1000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methods, blockInfo1))
+	assertEventuallyEqual(t, uint64(1000), func() any { return chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height })
 
-	blockInfo1.AddBlock(protocol.NewBlockDataWithHeight(2000), protocol.FinalizedBlock)
+	blockInfo1.AddBlock(protocol.NewBlockWithHeight(2000), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, 100, methods, blockInfo1))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(2000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methods, blockInfo1))
+	assertEventuallyEqual(t, uint64(2000), func() any { return chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height })
 
 	blockInfo2 := protocol.NewBlockInfo()
-	blockInfo2.AddBlock(protocol.NewBlockDataWithHeight(500), protocol.FinalizedBlock)
+	blockInfo2.AddBlock(protocol.NewBlockWithHeight(500), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id1", protocol.Available, 100, methods, blockInfo2))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(2000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id1", protocol.Available, protocol.NewBlockWithHeight(100), methods, blockInfo2))
+	assertEventuallyEqual(t, uint64(2000), func() any { return chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height })
 
 	blockInfo3 := protocol.NewBlockInfo()
-	blockInfo3.AddBlock(protocol.NewBlockDataWithHeight(50000), protocol.FinalizedBlock)
+	blockInfo3.AddBlock(protocol.NewBlockWithHeight(50000), protocol.FinalizedBlock)
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id5", protocol.Available, 100, methods, blockInfo3))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(50000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id5", protocol.Available, protocol.NewBlockWithHeight(100), methods, blockInfo3))
+	assertEventuallyEqual(t, uint64(50000), func() any { return chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height })
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id5", protocol.Unavailable, 100, methods, blockInfo3))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(2000), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id5", protocol.Unavailable, protocol.NewBlockWithHeight(100), methods, blockInfo3))
+	assertEventuallyEqual(t, uint64(2000), func() any { return chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height })
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Unavailable, 100, methods, blockInfo3))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, uint64(500), chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height)
+	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Unavailable, protocol.NewBlockWithHeight(100), methods, blockInfo3))
+	assertEventuallyEqual(t, uint64(500), func() any { return chainSupervisor.GetChainState().Blocks[protocol.FinalizedBlock].Height })
 }
 
 func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
@@ -202,15 +201,15 @@ func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, 100, methods))
-	time.Sleep(20 * time.Millisecond)
-
-	assert.True(t, chainSupervisor.GetUpstreamState("id") != nil)
+	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methods))
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetUpstreamState("id") != nil
+	}, eventuallyWait, eventuallyTick)
 
 	chainSupervisor.Publish(test_utils.CreateRemoveEvent("id"))
-	time.Sleep(20 * time.Millisecond)
-
-	assert.Nil(t, chainSupervisor.GetUpstreamState("id"))
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetUpstreamState("id") == nil
+	}, eventuallyWait, eventuallyTick)
 }
 
 func TestChainSupervisorLowerBoundsInitialStateIsEmpty(t *testing.T) {
@@ -230,12 +229,10 @@ func TestChainSupervisorLowerBoundsSingleAvailableUpstream(t *testing.T) {
 	stateBound := protocol.NewLowerBoundData(450, 1000, protocol.StateBound)
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id", protocol.Available, 100, methods, slotBound, stateBound))
-	time.Sleep(20 * time.Millisecond)
-
-	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
 		protocol.SlotBound:  slotBound,
 		protocol.StateBound: stateBound,
-	}, chainSupervisor.GetChainState().LowerBounds)
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 }
 
 func TestChainSupervisorLowerBoundsUseMinimumBoundPerTypeAcrossAvailableUpstreams(t *testing.T) {
@@ -252,10 +249,10 @@ func TestChainSupervisorLowerBoundsUseMinimumBoundPerTypeAcrossAvailableUpstream
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Available, 100, methods, slotBound1, stateBound1))
 	chainSupervisor.Publish(createEventWithLowerBounds("id2", protocol.Available, 110, methods, slotBound2, stateBound2))
-	time.Sleep(20 * time.Millisecond)
-
-	assert.Equal(t, slotBound2, chainSupervisor.GetChainState().LowerBounds[protocol.SlotBound])
-	assert.Equal(t, stateBound1, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.SlotBound:  slotBound2,
+		protocol.StateBound: stateBound1,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 }
 
 func TestChainSupervisorLowerBoundsIgnoreUnavailableUpstreams(t *testing.T) {
@@ -270,11 +267,9 @@ func TestChainSupervisorLowerBoundsIgnoreUnavailableUpstreams(t *testing.T) {
 
 	chainSupervisor.Publish(createEventWithLowerBounds("available", protocol.Available, 100, methods, availableBound))
 	chainSupervisor.Publish(createEventWithLowerBounds("unavailable", protocol.Unavailable, 100, methods, unavailableBetterBound))
-	time.Sleep(20 * time.Millisecond)
-
-	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
 		protocol.StateBound: availableBound,
-	}, chainSupervisor.GetChainState().LowerBounds)
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 }
 
 func TestChainSupervisorLowerBoundsIgnoreUpstreamsWithoutLowerBoundsInfo(t *testing.T) {
@@ -286,12 +281,10 @@ func TestChainSupervisorLowerBoundsIgnoreUpstreamsWithoutLowerBoundsInfo(t *test
 
 	bound := protocol.NewLowerBoundData(300, 1000, protocol.StateBound)
 	chainSupervisor.Publish(createEventWithLowerBounds("with-bounds", protocol.Available, 100, methods, bound))
-	chainSupervisor.Publish(test_utils.CreateEvent("without-bounds", protocol.Available, 100, methods))
-	time.Sleep(20 * time.Millisecond)
-
-	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+	chainSupervisor.Publish(test_utils.CreateEvent("without-bounds", protocol.Available, protocol.NewBlockWithHeight(100), methods))
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
 		protocol.StateBound: bound,
-	}, chainSupervisor.GetChainState().LowerBounds)
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 }
 
 func TestChainSupervisorLowerBoundsUpdateExistingUpstreamState(t *testing.T) {
@@ -305,12 +298,14 @@ func TestChainSupervisorLowerBoundsUpdateExistingUpstreamState(t *testing.T) {
 	updatedBound := protocol.NewLowerBoundData(200, 1010, protocol.StateBound)
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id", protocol.Available, 100, methods, initialBound))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, initialBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: initialBound,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id", protocol.Available, 120, methods, updatedBound))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, updatedBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: updatedBound,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 }
 
 func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamBecomesUnavailable(t *testing.T) {
@@ -325,14 +320,14 @@ func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamBecomesUnavailable(t *te
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Available, 100, methods, lowerBound))
 	chainSupervisor.Publish(createEventWithLowerBounds("id2", protocol.Available, 100, methods, higherBound))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, lowerBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: lowerBound,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Unavailable, 100, methods, lowerBound))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
 		protocol.StateBound: higherBound,
-	}, chainSupervisor.GetChainState().LowerBounds)
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 }
 
 func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
@@ -347,16 +342,17 @@ func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
 
 	chainSupervisor.Publish(createEventWithLowerBounds("id1", protocol.Available, 100, methods, lowerBound))
 	chainSupervisor.Publish(createEventWithLowerBounds("id2", protocol.Available, 100, methods, higherBound))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, lowerBound, chainSupervisor.GetChainState().LowerBounds[protocol.StateBound])
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.StateBound: lowerBound,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 
 	chainSupervisor.Publish(test_utils.CreateRemoveEvent("id1"))
-	time.Sleep(20 * time.Millisecond)
-	assert.Equal(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
 		protocol.StateBound: higherBound,
-	}, chainSupervisor.GetChainState().LowerBounds)
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
 
 	chainSupervisor.Publish(test_utils.CreateRemoveEvent("id2"))
-	time.Sleep(20 * time.Millisecond)
-	assert.Empty(t, chainSupervisor.GetChainState().LowerBounds)
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{}, func() any {
+		return chainSupervisor.GetChainState().LowerBounds
+	})
 }

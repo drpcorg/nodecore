@@ -30,12 +30,12 @@ var ethErrorsToDisable = []string{
 type BlockProcessor interface {
 	utils.Lifecycle
 	Subscribe(name string) *utils.Subscription[BlockEvent]
-	UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType)
+	UpdateBlock(blockData protocol.Block, blockType protocol.BlockType)
 	DisabledBlocks() mapset.Set[protocol.BlockType]
 }
 
 type BlockEvent struct {
-	BlockData *protocol.BlockData
+	Block     protocol.Block
 	BlockType protocol.BlockType
 }
 
@@ -46,7 +46,7 @@ type EthLikeBlockProcessor struct {
 	subManager       *utils.SubscriptionManager[BlockEvent]
 	disableDetection mapset.Set[protocol.BlockType]
 	manualBlockChan  chan *BlockEvent
-	blocks           map[protocol.BlockType]*protocol.BlockData
+	blocks           map[protocol.BlockType]protocol.Block
 	lifecycle        *utils.BaseLifecycle
 	internalTimeout  time.Duration
 }
@@ -74,14 +74,14 @@ func NewEthLikeBlockProcessor(
 		disableDetection: mapset.NewSet[protocol.BlockType](),
 		manualBlockChan:  make(chan *BlockEvent, 100),
 		subManager:       utils.NewSubscriptionManager[BlockEvent](name),
-		blocks:           make(map[protocol.BlockType]*protocol.BlockData),
+		blocks:           make(map[protocol.BlockType]protocol.Block),
 		lifecycle:        utils.NewBaseLifecycle(name, ctx),
 		internalTimeout:  upConfig.Options.InternalTimeout,
 	}
 }
 
-func (b *EthLikeBlockProcessor) UpdateBlock(blockData *protocol.BlockData, blockType protocol.BlockType) {
-	b.manualBlockChan <- &BlockEvent{BlockData: blockData, BlockType: blockType}
+func (b *EthLikeBlockProcessor) UpdateBlock(blockData protocol.Block, blockType protocol.BlockType) {
+	b.manualBlockChan <- &BlockEvent{Block: blockData, BlockType: blockType}
 }
 
 func (b *EthLikeBlockProcessor) Subscribe(name string) *utils.Subscription[BlockEvent] {
@@ -101,7 +101,7 @@ func (b *EthLikeBlockProcessor) Start() {
 				return nil
 			case event := <-b.manualBlockChan:
 				currentBlock, ok := b.blocks[event.BlockType]
-				if !ok || event.BlockData.Height > currentBlock.Height {
+				if !ok || event.Block.Height > currentBlock.Height {
 					b.subManager.Publish(*event)
 				}
 			case <-time.After(b.upConfig.PollInterval):
@@ -129,8 +129,8 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 			}
 			log.Error().Err(err).Msgf("couldn't detect finalized block of upstream %s", b.upConfig.Id)
 		} else {
-			b.blocks[blockType] = block.BlockData
-			b.subManager.Publish(BlockEvent{BlockData: block.BlockData, BlockType: blockType})
+			b.blocks[blockType] = block
+			b.subManager.Publish(BlockEvent{Block: block, BlockType: blockType})
 		}
 	}
 }

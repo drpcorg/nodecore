@@ -256,7 +256,7 @@ const (
 
 type UpstreamState struct {
 	Status          AvailabilityStatus
-	HeadData        *BlockData
+	HeadData        Block
 	UpstreamMethods methods.Methods
 	Caps            mapset.Set[Cap]
 	UpstreamIndex   string
@@ -275,7 +275,7 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap],
 		BlockInfo:           NewBlockInfo(),
 		LowerBoundsInfo:     NewLowerBoundInfo(),
 		Caps:                caps,
-		HeadData:            &BlockData{},
+		HeadData:            ZeroBlock{},
 		UpstreamIndex:       upstreamIndex,
 		RateLimiterBudget:   rt,
 		AutoTuneRateLimiter: autoTuneRateLimiter,
@@ -308,13 +308,13 @@ type ValidUpstreamStateEvent struct{}
 func (f *ValidUpstreamStateEvent) event() {}
 
 type HeadUpstreamStateEvent struct {
-	HeadData *BlockData
+	HeadData Block
 }
 
 func (h *HeadUpstreamStateEvent) event() {}
 
 type BlockUpstreamStateEvent struct {
-	BlockData *BlockData
+	Block     Block
 	BlockType BlockType
 }
 

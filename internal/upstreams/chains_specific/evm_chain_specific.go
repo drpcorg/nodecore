@@ -16,11 +16,11 @@ import (
 )
 
 type ChainSpecific interface {
-	GetLatestBlock(ctx context.Context) (*protocol.Block, error)
-	GetFinalizedBlock(context.Context) (*protocol.Block, error)
+	GetLatestBlock(ctx context.Context) (protocol.Block, error)
+	GetFinalizedBlock(context.Context) (protocol.Block, error)
 
-	ParseBlock([]byte) (*protocol.Block, error)
-	ParseSubscriptionBlock(data []byte) (*protocol.Block, error)
+	ParseBlock([]byte) (protocol.Block, error)
+	ParseSubscriptionBlock(data []byte) (protocol.Block, error)
 
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 
@@ -55,26 +55,26 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	return settingsValidators
 }
 
-func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
 	return e.getBlockByTag(ctx, e.connector, rpc.LatestBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
 	return e.getBlockByTag(ctx, e.connector, rpc.FinalizedBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
 	return e.ParseBlock(blockBytes)
 }
 
-func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
 	evmBlock := EvmBlock{}
 	err := sonic.Unmarshal(blockBytes, &evmBlock)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't parse the evm block, reason - %s", err.Error())
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the evm block, reason - %s", err.Error())
 	}
 	if evmBlock.Height == nil {
-		return nil, fmt.Errorf("couldn't parse the evm block, got '%s'", string(blockBytes))
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the evm block, got '%s'", string(blockBytes))
 	}
 
 	return protocol.NewBlock(
@@ -103,20 +103,20 @@ func NewEvmChainSpecific(
 	}
 }
 
-func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector connectors.ApiConnector, blockTag rpc.BlockNumber) (*protocol.Block, error) {
+func (e *EvmChainSpecificObject) getBlockByTag(ctx context.Context, connector connectors.ApiConnector, blockTag rpc.BlockNumber) (protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByNumber", []interface{}{blockTag, false})
 	if err != nil {
-		return nil, err
+		return protocol.ZeroBlock{}, err
 	}
 
 	response := connector.SendRequest(ctx, request)
 	if response.HasError() {
-		return nil, response.GetError()
+		return protocol.ZeroBlock{}, response.GetError()
 	}
 
 	parsedBlock, err := e.ParseBlock(response.ResponseResult())
 	if err != nil {
-		return nil, err
+		return protocol.ZeroBlock{}, err
 	}
 	return parsedBlock, nil
 }
