@@ -96,7 +96,7 @@ func (r *RatingRegistry) calculateRating() {
 			upDataArr := make([]map[string]interface{}, 0)
 
 			for _, upstreamId := range chSupervisor.GetUpstreamIds() {
-				dims := r.tracker.GetAllDimensions(chSupervisor.Chain, upstreamId, method)
+				dims := r.tracker.GetAllDimensions(chSupervisor.GetChain(), upstreamId, method)
 				upDataArr = append(upDataArr, getUpstreamData(upstreamId, method, dims))
 			}
 
@@ -127,7 +127,7 @@ func (r *RatingRegistry) calculateRating() {
 					log.Error().Msg("there must be 'scores' field in the return value from the score function")
 					return
 				}
-				err = r.processScores(scoresAsObjects, chSupervisor.Chain, method)
+				err = r.processScores(scoresAsObjects, chSupervisor.GetChain(), method)
 				if err != nil {
 					log.Error().Msg(err.Error())
 					return
@@ -145,11 +145,11 @@ func (r *RatingRegistry) calculateRating() {
 
 				methodUpstreams.Store(method, sortedUpstreams)
 			} else {
-				log.Debug().Msgf("no upstreams to calculate their rating, chain %s", chSupervisor.Chain)
+				log.Debug().Msgf("no upstreams to calculate their rating, chain %s", chSupervisor.GetChain())
 			}
 		}
 
-		newSortedUpstreams.Store(chSupervisor.Chain, methodUpstreams)
+		newSortedUpstreams.Store(chSupervisor.GetChain(), methodUpstreams)
 	}
 
 	r.sortedUpstreams.Store(newSortedUpstreams)

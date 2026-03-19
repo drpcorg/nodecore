@@ -45,7 +45,7 @@ func TestRatingStrategyGetBestByLatency(t *testing.T) {
 
 	additionalMatchers := []flow.Matcher{flow.NewUpstreamIndexMatcher("index")}
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	upSupervisor.On("GetChainSupervisors").Return([]*upstreams.ChainSupervisor{chSup})
+	upSupervisor.On("GetChainSupervisors").Return([]upstreams.ChainSupervisor{chSup})
 
 	tracker := dimensions.NewBaseDimensionTracker()
 	dims1 := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id1", "eth_getBalance")
@@ -93,7 +93,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 	tests := []struct {
 		name             string
 		method           string
-		publishEventFunc func(chSup *upstreams.ChainSupervisor)
+		publishEventFunc func(chSup upstreams.ChainSupervisor)
 		requestFunc      func(method string) protocol.RequestHolder
 		expectedErr      error
 	}{
@@ -103,7 +103,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			requestFunc: func(method string) protocol.RequestHolder {
 				return nil
 			},
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 			},
 			expectedErr: protocol.NoAvailableUpstreamsError(),
 		},
@@ -114,7 +114,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 				request, _ := protocol.NewInternalUpstreamJsonRpcRequest(method, nil)
 				return request
 			},
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Unavailable, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			expectedErr: protocol.NoAvailableUpstreamsError(),
@@ -126,7 +126,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 				request, _ := protocol.NewInternalUpstreamJsonRpcRequest(method, nil)
 				return request
 			},
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			expectedErr: protocol.NotSupportedMethodError("test"),
@@ -138,7 +138,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 				request := protocol.NewUpstreamJsonRpcRequest("id", []byte("1"), "eth_getBalance", nil, true, nil)
 				return request
 			},
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			expectedErr: protocol.NotSupportedMethodError("eth_getBalance"),
@@ -174,14 +174,14 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 	tests := []struct {
 		name             string
 		method           string
-		publishEventFunc func(chSup *upstreams.ChainSupervisor)
+		publishEventFunc func(chSup upstreams.ChainSupervisor)
 		requestFunc      func(method string) protocol.RequestHolder
 		expectedErr      error
 	}{
 		{
 			name:   "no available upstreams if no events",
 			method: "eth_getBalance",
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 			},
 			requestFunc: func(method string) protocol.RequestHolder {
 				return nil
@@ -191,7 +191,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 		{
 			name:   "no available sub method",
 			method: "eth_getBalance",
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			requestFunc: func(method string) protocol.RequestHolder {
@@ -203,7 +203,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 		{
 			name:   "no available upstreams",
 			method: "eth_getBalance",
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Unavailable, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			requestFunc: func(method string) protocol.RequestHolder {
@@ -215,7 +215,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 		{
 			name:   "no supported method",
 			method: "test",
-			publishEventFunc: func(chSup *upstreams.ChainSupervisor) {
+			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			requestFunc: func(method string) protocol.RequestHolder {

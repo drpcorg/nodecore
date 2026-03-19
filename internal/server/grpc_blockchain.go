@@ -186,7 +186,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 	}
 }
 
-func (s *GrpcBlockchainService) resolveChain(chainRef dshackle.ChainRef) (*chains.ConfiguredChain, *upstreams.ChainSupervisor) {
+func (s *GrpcBlockchainService) resolveChain(chainRef dshackle.ChainRef) (*chains.ConfiguredChain, upstreams.ChainSupervisor) {
 	configuredChain := chains.GetChainByGrpcId(int(chainRef))
 	if configuredChain == nil || configuredChain.Chain < 0 {
 		return nil, nil
@@ -199,7 +199,7 @@ func (s *GrpcBlockchainService) resolveChain(chainRef dshackle.ChainRef) (*chain
 
 func (s *GrpcBlockchainService) buildNativeCallRequests(
 	request *dshackle.NativeCallRequest,
-	chainSupervisor *upstreams.ChainSupervisor,
+	chainSupervisor upstreams.ChainSupervisor,
 ) ([]protocol.RequestHolder, []*dshackle.NativeCallReplyItem) {
 	requests := make([]protocol.RequestHolder, 0, len(request.GetItems()))
 	preResponses := make([]*dshackle.NativeCallReplyItem, 0)
@@ -472,7 +472,7 @@ func parseCallItemID(requestID string) uint32 {
 
 func mapNativeSubscribeMethod(
 	methodSpecName string,
-	chainSupervisor *upstreams.ChainSupervisor,
+	chainSupervisor upstreams.ChainSupervisor,
 	requestedMethod string,
 	payload []byte,
 ) (string, []byte, error) {
@@ -499,7 +499,7 @@ func normalizeNativeSubscribePayload(requestedMethod string, payload []byte) (st
 	return requestedMethod, payload, nil
 }
 
-func supportsEthSubscribeFallback(methodSpecName string, chainSupervisor *upstreams.ChainSupervisor) bool {
+func supportsEthSubscribeFallback(methodSpecName string, chainSupervisor upstreams.ChainSupervisor) bool {
 	ethSubscribeSupported := specs.IsSubscribeMethod(methodSpecName, "eth_subscribe")
 	if !ethSubscribeSupported && chainSupervisor != nil {
 		ethSubscribeSupported = chainSupervisor.GetMethod("eth_subscribe") != nil

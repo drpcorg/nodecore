@@ -24,14 +24,14 @@ import (
 )
 
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	specMethod := specs.MethodWithSettings("eth_superTest", &specs.MethodSettings{Cacheable: lo.ToPtr(false)}, nil)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -55,13 +55,13 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 }
 
 func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -143,7 +143,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 		},
 	}
 
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet("eth_superTest"))
 
@@ -152,7 +152,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -338,7 +338,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
 	method := specs.MethodWithSettings("eth_call", &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
 
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -347,7 +347,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
 	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
