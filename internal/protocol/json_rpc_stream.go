@@ -61,7 +61,7 @@ func (c *CloseReader) Read(p []byte) (n int, err error) {
 		// so that's necessary to delegate it
 		closeErr := c.readerToClose.Close()
 		if closeErr != nil {
-			zerolog.Ctx(c.ctx).Warn().Err(closeErr).Msg("couldn't close a body reader during streaming")
+			zerolog.Ctx(c.ctx).Error().Err(closeErr).Msg("couldn't close a body reader during streaming")
 		}
 	}
 

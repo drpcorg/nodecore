@@ -166,7 +166,7 @@ func (w *SubscriptionHead) Start() {
 					return nil
 				}
 				if message.Error != nil {
-					log.Warn().Err(message.Error).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
+					log.Error().Err(message.Error).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
 					return nil
 				}
 				if message.Type == protocol.Ws {

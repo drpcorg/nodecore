@@ -31,7 +31,7 @@ func NewBaseLifecycle(name string, parentCtx context.Context) *BaseLifecycle {
 func (l *BaseLifecycle) Start(f func(ctx context.Context) error) {
 	if l.running.CompareAndSwap(false, true) {
 		if l.parentCtx.Err() != nil {
-			log.Warn().Err(l.parentCtx.Err()).Msg("parent context is closed")
+			log.Error().Err(l.parentCtx.Err()).Msgf("parent context of '%s' is closed", l.name)
 		}
 		newCtx, cancel := context.WithCancel(l.parentCtx)
 		l.cancelFunc.Store(cancel)

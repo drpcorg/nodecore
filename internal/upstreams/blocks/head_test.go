@@ -2,6 +2,7 @@ package blocks_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -76,20 +77,12 @@ func TestRpcHead(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestWsHead(t *testing.T) {
+func TestWsHeadSubscribe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	reqConnector := mocks.NewConnectorMock()
-	bodyLastBlock := []byte(`{
-	  "jsonrpc": "2.0",
-	  "result": {
-		"number": "0x41FD60A",
-		"hash": "0x2eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d12",
-		"parentHash": "0x3eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d13"
-	  }
-	}`)
-	responseLastBlock := protocol.NewHttpUpstreamResponse("1", bodyLastBlock, 200, protocol.JsonRpc)
+	responseLastBlock := protocol.NewTotalFailureFromErr("1", errors.New("err"), protocol.JsonRpc)
 	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
 
 	connector := mocks.NewWsConnectorMock()
@@ -123,16 +116,6 @@ func TestWsHead(t *testing.T) {
 
 	event, ok := <-sub.Events
 	expected := protocol.Block{
-		Height:     uint64(69195274),
-		Hash:       blockchain.NewHashIdFromString("0x2eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d12"),
-		ParentHash: blockchain.NewHashIdFromString("0x3eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d13"),
-	}
-	assert.True(t, ok)
-	assert.Equal(t, expected, event.HeadData)
-	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
-
-	event, ok = <-sub.Events
-	expected = protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
@@ -142,27 +125,86 @@ func TestWsHead(t *testing.T) {
 	assert.Equal(t, expected, event.HeadData)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
+	connector.AssertExpectations(t)
+	reqConnector.AssertExpectations(t)
+}
+
+func TestWsHeadManualUpdate(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	reqConnector := mocks.NewConnectorMock()
+	responseLastBlock := protocol.NewTotalFailureFromErr("1", errors.New("err"), protocol.JsonRpc)
+	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
+
+	connector := mocks.NewWsConnectorMock()
+	connector.On("Subscribe", mock.Anything, mock.Anything).Return(nil, errors.New("err")).Maybe()
+
+	upConfig := config.Upstream{
+		ChainName:    "ethereum",
+		Id:           "id",
+		PollInterval: 10 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
+	}
+
+	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	go headProcessor.Start()
+
 	headProcessor.UpdateHead(79195275, 0)
 
-	event, ok = <-sub.Events
-	expected = protocol.Block{
+	sub := headProcessor.Subscribe("test")
+
+	event, ok := <-sub.Events
+	expected := protocol.Block{
 		Height: uint64(79195275),
 	}
 
 	assert.True(t, ok)
 	assert.Equal(t, expected, event.HeadData)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
+}
 
-	headProcessor.UpdateHead(5555, 0)
-	go func() {
-		time.Sleep(5 * time.Millisecond)
-		sub.Unsubscribe()
-	}()
+func TestWsHeadGetLastBlock(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	_, ok = <-sub.Events
+	reqConnector := mocks.NewConnectorMock()
+	bodyLastBlock := []byte(`{
+	  "jsonrpc": "2.0",
+	  "result": {
+		"number": "0x41FD60A",
+		"hash": "0x2eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d12",
+		"parentHash": "0x3eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d13"
+	  }
+	}`)
+	responseLastBlock := protocol.NewHttpUpstreamResponse("1", bodyLastBlock, 200, protocol.JsonRpc)
+	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
 
-	assert.False(t, ok)
+	connector := mocks.NewWsConnectorMock()
+	connector.On("Subscribe", mock.Anything, mock.Anything).Return(nil, errors.New("err")).Maybe()
 
-	connector.AssertExpectations(t)
+	upConfig := config.Upstream{
+		ChainName:    "ethereum",
+		Id:           "id",
+		PollInterval: 10 * time.Millisecond,
+		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
+	}
+
+	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	go headProcessor.Start()
+
+	sub := headProcessor.Subscribe("test")
+
+	event, ok := <-sub.Events
+	expected := protocol.Block{
+		Height:     uint64(69195274),
+		Hash:       blockchain.NewHashIdFromString("0x2eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d12"),
+		ParentHash: blockchain.NewHashIdFromString("0x3eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d13"),
+	}
+	assert.True(t, ok)
+	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
+
 	reqConnector.AssertExpectations(t)
+	connector.AssertExpectations(t)
 }
