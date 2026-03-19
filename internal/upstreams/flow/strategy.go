@@ -21,7 +21,7 @@ type UpstreamStrategy interface {
 
 type SpecificOrderUpstreamStrategy struct {
 	upstreamIds       []string
-	chainSupervisor   *upstreams.ChainSupervisor
+	chainSupervisor   upstreams.ChainSupervisor
 	selectedUpstreams mapset.Set[string]
 	mu                sync.Mutex
 }
@@ -39,7 +39,7 @@ func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestH
 	return "", selectionError(currentReason)
 }
 
-func NewSpecificOrderUpstreamStrategy(upstreamIds []string, chainSupervisor *upstreams.ChainSupervisor) *SpecificOrderUpstreamStrategy {
+func NewSpecificOrderUpstreamStrategy(upstreamIds []string, chainSupervisor upstreams.ChainSupervisor) *SpecificOrderUpstreamStrategy {
 	return &SpecificOrderUpstreamStrategy{
 		upstreamIds:       upstreamIds,
 		chainSupervisor:   chainSupervisor,
@@ -50,7 +50,7 @@ func NewSpecificOrderUpstreamStrategy(upstreamIds []string, chainSupervisor *ups
 var _ UpstreamStrategy = (*SpecificOrderUpstreamStrategy)(nil)
 
 type RatingStrategy struct {
-	chainSupervisor    *upstreams.ChainSupervisor
+	chainSupervisor    upstreams.ChainSupervisor
 	selectedUpstreams  mapset.Set[string]
 	ups                []string
 	additionalMatchers []Matcher
@@ -61,7 +61,7 @@ func NewRatingStrategy(
 	chain chains.Chain,
 	method string,
 	additionalMatchers []Matcher,
-	chainSupervisor *upstreams.ChainSupervisor,
+	chainSupervisor upstreams.ChainSupervisor,
 	registry *rating.RatingRegistry,
 ) *RatingStrategy {
 	ups := registry.GetSortedUpstreams(chain, method)
@@ -92,11 +92,11 @@ var index = atomic.Uint64{}
 
 type BaseStrategy struct {
 	selectedUpstreams mapset.Set[string]
-	chainSupervisor   *upstreams.ChainSupervisor
+	chainSupervisor   upstreams.ChainSupervisor
 	mu                sync.Mutex
 }
 
-func NewBaseStrategy(chainSupervisor *upstreams.ChainSupervisor) *BaseStrategy {
+func NewBaseStrategy(chainSupervisor upstreams.ChainSupervisor) *BaseStrategy {
 	return &BaseStrategy{
 		selectedUpstreams: mapset.NewThreadUnsafeSet[string](),
 		chainSupervisor:   chainSupervisor,
@@ -124,7 +124,7 @@ func filterUpstreams(
 	mu *sync.Mutex,
 	request protocol.RequestHolder,
 	upstreamIds []string,
-	chainSupervisor *upstreams.ChainSupervisor,
+	chainSupervisor upstreams.ChainSupervisor,
 	selectedUpstreams mapset.Set[string],
 	additionalMatchers []Matcher,
 ) (string, MatchResponse) {

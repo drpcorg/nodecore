@@ -51,7 +51,7 @@ type IntegrityHandler interface {
 	//IntegrityBlock – an object used to update chain state manually (e.g., replacing the tracked head block or finalization data) when necessary.
 	HandleResponse(
 		ctx context.Context,
-		chainSupervisor *upstreams.ChainSupervisor,
+		chainSupervisor upstreams.ChainSupervisor,
 		request protocol.RequestHolder,
 		currentResponse *protocol.ResponseHolderWrapper,
 	) (bool, []string, IntegrityBlock)
@@ -65,7 +65,7 @@ func (n *NoopIntegrityHandler) CanBeProcessed(_ context.Context, _ protocol.Requ
 
 func (n *NoopIntegrityHandler) HandleResponse(
 	_ context.Context,
-	_ *upstreams.ChainSupervisor,
+	_ upstreams.ChainSupervisor,
 	_ protocol.RequestHolder,
 	_ *protocol.ResponseHolderWrapper,
 ) (bool, []string, IntegrityBlock) {
@@ -87,7 +87,7 @@ func (e *EthBlockNumberIntegrityHandler) CanBeProcessed(_ context.Context, req p
 
 func (e *EthBlockNumberIntegrityHandler) HandleResponse(
 	ctx context.Context,
-	chainSupervisor *upstreams.ChainSupervisor,
+	chainSupervisor upstreams.ChainSupervisor,
 	_ protocol.RequestHolder,
 	currentResponse *protocol.ResponseHolderWrapper,
 ) (bool, []string, IntegrityBlock) {
@@ -127,7 +127,7 @@ func (e *EthGetBlockByNumberIntegrityHandler) CanBeProcessed(_ context.Context, 
 
 func (e *EthGetBlockByNumberIntegrityHandler) HandleResponse(
 	ctx context.Context,
-	chainSupervisor *upstreams.ChainSupervisor,
+	chainSupervisor upstreams.ChainSupervisor,
 	request protocol.RequestHolder,
 	currentResponse *protocol.ResponseHolderWrapper,
 ) (bool, []string, IntegrityBlock) {

@@ -55,19 +55,19 @@ func NewUpstreamSupervisorMock() *UpstreamSupervisorMock {
 	return &UpstreamSupervisorMock{}
 }
 
-func (u *UpstreamSupervisorMock) GetChainSupervisors() []*upstreams.ChainSupervisor {
+func (u *UpstreamSupervisorMock) GetChainSupervisors() []upstreams.ChainSupervisor {
 	args := u.Called()
 
-	return args.Get(0).([]*upstreams.ChainSupervisor)
+	return args.Get(0).([]upstreams.ChainSupervisor)
 }
 
-func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) *upstreams.ChainSupervisor {
+func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) upstreams.ChainSupervisor {
 	args := u.Called(chain)
 	if args.Get(0) == nil {
 		return nil
 	}
 
-	return args.Get(0).(*upstreams.ChainSupervisor)
+	return args.Get(0).(upstreams.ChainSupervisor)
 }
 
 func (u *UpstreamSupervisorMock) GetUpstream(id string) upstreams.Upstream {

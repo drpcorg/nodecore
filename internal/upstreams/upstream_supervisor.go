@@ -19,7 +19,7 @@ import (
 
 type BaseUpstreamSupervisor struct {
 	ctx                     context.Context
-	chainSupervisors        *utils.CMap[chains.Chain, *ChainSupervisor]
+	chainSupervisors        *utils.CMap[chains.Chain, ChainSupervisor]
 	upstreams               *utils.CMap[string, Upstream]
 	eventsChan              chan protocol.UpstreamEvent
 	upstreamsConfig         *config.UpstreamConfig
@@ -42,7 +42,7 @@ func NewBaseUpstreamSupervisor(
 	return &BaseUpstreamSupervisor{
 		ctx:                     ctx,
 		upstreams:               utils.NewCMap[string, Upstream](),
-		chainSupervisors:        utils.NewCMap[chains.Chain, *ChainSupervisor](),
+		chainSupervisors:        utils.NewCMap[chains.Chain, ChainSupervisor](),
 		eventsChan:              make(chan protocol.UpstreamEvent, 100),
 		upstreamsConfig:         upstreamsConfig,
 		tracker:                 tracker,
@@ -54,9 +54,9 @@ func NewBaseUpstreamSupervisor(
 	}
 }
 
-func (u *BaseUpstreamSupervisor) GetChainSupervisors() []*ChainSupervisor {
-	result := make([]*ChainSupervisor, 0)
-	u.chainSupervisors.Range(func(key chains.Chain, val *ChainSupervisor) bool {
+func (u *BaseUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
+	result := make([]ChainSupervisor, 0)
+	u.chainSupervisors.Range(func(key chains.Chain, val ChainSupervisor) bool {
 		result = append(result, val)
 		return true
 	})
@@ -64,7 +64,7 @@ func (u *BaseUpstreamSupervisor) GetChainSupervisors() []*ChainSupervisor {
 	return result
 }
 
-func (u *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) *ChainSupervisor {
+func (u *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) ChainSupervisor {
 	if c, ok := u.chainSupervisors.Load(chain); ok {
 		return c
 	}
@@ -152,7 +152,7 @@ func (u *BaseUpstreamSupervisor) processEvents() {
 			return
 		case event, ok := <-u.eventsChan:
 			if ok {
-				chainSupervisor, exists := u.chainSupervisors.LoadOrStore(event.Chain, NewChainSupervisor(u.ctx, event.Chain, choice.NewHeightForkChoice(), u.tracker))
+				chainSupervisor, exists := u.chainSupervisors.LoadOrStore(event.Chain, NewBaseChainSupervisor(u.ctx, event.Chain, choice.NewHeightForkChoice(), u.tracker))
 
 				if !exists {
 					chainSupervisor.Start()
@@ -171,7 +171,7 @@ func (u *BaseUpstreamSupervisor) processEvents() {
 					}
 				}
 
-				chainSupervisor.Publish(event)
+				chainSupervisor.PublishUpstreamEvent(event)
 			}
 		}
 	}

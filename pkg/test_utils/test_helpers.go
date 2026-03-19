@@ -126,13 +126,13 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
 
-	chainSupervisor.Publish(CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
+	chainSupervisor.PublishUpstreamEvent(CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
 	time.Sleep(20 * time.Millisecond)
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -180,20 +180,20 @@ func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnect
 	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, 5*time.Second)
 }
 
-func CreateChainSupervisor() *upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+func CreateChainSupervisor() upstreams.ChainSupervisor {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 
 	go chainSupervisor.Start()
 
 	return chainSupervisor
 }
 
-func PublishEvent(chainSupervisor *upstreams.ChainSupervisor, upId string, status protocol.AvailabilityStatus, caps mapset.Set[protocol.Cap]) {
+func PublishEvent(chainSupervisor upstreams.ChainSupervisor, upId string, status protocol.AvailabilityStatus, caps mapset.Set[protocol.Cap]) {
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getBalance"))
 	methodsMock.On("HasMethod", "eth_getBalance").Return(true)
 	methodsMock.On("HasMethod", "test").Return(false)
-	chainSupervisor.Publish(createEvent(upId, status, 100, methodsMock, caps, "index"))
+	chainSupervisor.PublishUpstreamEvent(createEvent(upId, status, 100, methodsMock, caps, "index"))
 	time.Sleep(10 * time.Millisecond)
 }
 

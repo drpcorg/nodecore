@@ -34,7 +34,7 @@ func init() {
 	prometheus.MustRegister(availabilityMetric)
 }
 
-type ChainSupervisor struct {
+type BaseChainSupervisor struct {
 	ctx            context.Context
 	Chain          chains.Chain
 	fc             choice.ForkChoice
@@ -64,7 +64,7 @@ func NewChainHeadData(head protocol.Block, upstreamId string) ChainHeadData {
 	}
 }
 
-func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker dimensions.DimensionTracker) *ChainSupervisor {
+func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker dimensions.DimensionTracker) *BaseChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
 	state.Store(
 		ChainSupervisorState{
@@ -76,7 +76,7 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 		},
 	)
 
-	return &ChainSupervisor{
+	return &BaseChainSupervisor{
 		ctx:            ctx,
 		tracker:        tracker,
 		Chain:          chain,
@@ -87,7 +87,11 @@ func NewChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkC
 	}
 }
 
-func (c *ChainSupervisor) Start() {
+func (c *BaseChainSupervisor) GetChain() chains.Chain {
+	return c.Chain
+}
+
+func (c *BaseChainSupervisor) Start() {
 	go c.processEvents()
 
 	go func() {
@@ -103,36 +107,33 @@ func (c *ChainSupervisor) Start() {
 	}()
 }
 
-func (c *ChainSupervisor) GetChainState() ChainSupervisorState {
+func (c *BaseChainSupervisor) GetChainState() ChainSupervisorState {
 	return c.state.Load()
 }
 
-func (c *ChainSupervisor) GetMethod(methodName string) *specs.Method {
+func (c *BaseChainSupervisor) GetMethod(methodName string) *specs.Method {
 	return c.GetChainState().Methods.GetMethod(methodName)
 }
 
-func (c *ChainSupervisor) GetMethods() []string {
+func (c *BaseChainSupervisor) GetMethods() []string {
 	if c.GetChainState().Methods == nil {
 		return nil
 	}
 	return c.GetChainState().Methods.GetSupportedMethods().ToSlice()
 }
 
-func (c *ChainSupervisor) Publish(event protocol.UpstreamEvent) {
+func (c *BaseChainSupervisor) PublishUpstreamEvent(event protocol.UpstreamEvent) {
 	c.eventsChan <- event
 }
 
-func (c *ChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
+func (c *BaseChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
 	if s, ok := c.upstreamStates.Load(upstreamId); ok {
 		return s
 	}
 	return nil
 }
 
-func (c *ChainSupervisor) GetSortedUpstreamIds(
-	filterFunc func(id string, state *protocol.UpstreamState) bool,
-	sortFunc func(entry1, entry2 lo.Tuple2[string, *protocol.UpstreamState]) int,
-) []string {
+func (c *BaseChainSupervisor) GetSortedUpstreamIds(filterFunc FilterUpstream, sortFunc SortUpstream) []string {
 	entries := make([]lo.Tuple2[string, *protocol.UpstreamState], 0)
 	c.upstreamStates.Range(func(upId string, state *protocol.UpstreamState) bool {
 		if filterFunc(upId, state) {
@@ -147,7 +148,7 @@ func (c *ChainSupervisor) GetSortedUpstreamIds(
 	})
 }
 
-func (c *ChainSupervisor) GetUpstreamIds() []string {
+func (c *BaseChainSupervisor) GetUpstreamIds() []string {
 	ids := make([]string, 0)
 	c.upstreamStates.Range(func(upId string, _ *protocol.UpstreamState) bool {
 		ids = append(ids, upId)
@@ -157,7 +158,7 @@ func (c *ChainSupervisor) GetUpstreamIds() []string {
 	return ids
 }
 
-func (c *ChainSupervisor) processEvents() {
+func (c *BaseChainSupervisor) processEvents() {
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -178,7 +179,7 @@ func (c *ChainSupervisor) processEvents() {
 	}
 }
 
-func (c *ChainSupervisor) updateState(upstreamId string, upstreamState *protocol.StateUpstreamEvent) {
+func (c *BaseChainSupervisor) updateState(upstreamId string, upstreamState *protocol.StateUpstreamEvent) {
 	state := c.state.Load()
 	// it's necessary to merge states only from available upstreams
 	availableUpstreams := c.availableUpstreams()
@@ -201,7 +202,7 @@ func (c *ChainSupervisor) updateState(upstreamId string, upstreamState *protocol
 	c.calculateLags()
 }
 
-func (c *ChainSupervisor) calculateLags() {
+func (c *BaseChainSupervisor) calculateLags() {
 	if c.tracker != nil {
 		state := c.state.Load()
 
@@ -219,7 +220,7 @@ func (c *ChainSupervisor) calculateLags() {
 	}
 }
 
-func (c *ChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
+func (c *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	states := make([]*protocol.UpstreamState, 0)
 
 	c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
@@ -232,7 +233,7 @@ func (c *ChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	return states
 }
 
-func (c *ChainSupervisor) processUpstreamMethods(availableStates []*protocol.UpstreamState) methods.Methods {
+func (c *BaseChainSupervisor) processUpstreamMethods(availableStates []*protocol.UpstreamState) methods.Methods {
 	delegates := lo.Map(availableStates, func(item *protocol.UpstreamState, index int) methods.Methods {
 		return item.UpstreamMethods
 	})
@@ -240,7 +241,7 @@ func (c *ChainSupervisor) processUpstreamMethods(availableStates []*protocol.Ups
 	return methods.NewChainMethods(delegates)
 }
 
-func (c *ChainSupervisor) processLowerBounds(availableStates []*protocol.UpstreamState) map[protocol.LowerBoundType]protocol.LowerBoundData {
+func (c *BaseChainSupervisor) processLowerBounds(availableStates []*protocol.UpstreamState) map[protocol.LowerBoundType]protocol.LowerBoundData {
 	bounds := make(map[protocol.LowerBoundType]protocol.LowerBoundData)
 
 	for _, upsState := range availableStates {
@@ -259,7 +260,7 @@ func (c *ChainSupervisor) processLowerBounds(availableStates []*protocol.Upstrea
 	return bounds
 }
 
-func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
+func (c *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
 	var status = protocol.Unavailable
 	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
 		if upState.Status < status {
@@ -271,7 +272,7 @@ func (c *ChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus 
 	return status
 }
 
-func (c *ChainSupervisor) processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]protocol.Block {
+func (c *BaseChainSupervisor) processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]protocol.Block {
 	blocks := make(map[protocol.BlockType]protocol.Block, len(availableStates))
 
 	for _, upState := range availableStates {
@@ -302,7 +303,7 @@ func compareBlocks(blockType protocol.BlockType, currentBlock, newBlock protocol
 	return currentBlock
 }
 
-func (c *ChainSupervisor) monitor() {
+func (c *BaseChainSupervisor) monitor() {
 	state := c.state.Load()
 
 	var height string
@@ -335,7 +336,7 @@ func (c *ChainSupervisor) monitor() {
 	)
 }
 
-func (c *ChainSupervisor) getStatuses() (string, string) {
+func (c *BaseChainSupervisor) getStatuses() (string, string) {
 	statuses := make(map[protocol.AvailabilityStatus]int)
 	weakUpstreams := make([]string, 0)
 	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
@@ -357,3 +358,5 @@ func (c *ChainSupervisor) getStatuses() (string, string) {
 
 	return strings.Join(statusPairs, ", "), strings.Join(weakUpstreams, ", ")
 }
+
+var _ ChainSupervisor = (*BaseChainSupervisor)(nil)
