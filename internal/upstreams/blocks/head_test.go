@@ -150,9 +150,8 @@ func TestWsHeadManualUpdate(t *testing.T) {
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	go headProcessor.Start()
 
-	headProcessor.UpdateHead(79195275, 0)
-
 	sub := headProcessor.Subscribe("test")
+	headProcessor.UpdateHead(79195275, 0)
 
 	event, ok := <-sub.Events
 	expected := protocol.Block{
