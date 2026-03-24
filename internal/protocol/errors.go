@@ -9,6 +9,7 @@ const (
 	NoAvailableUpstreams
 	WrongChain
 	CtxErrorCode
+	WsTotalFailure
 	ClientErrorCode         = 400
 	AuthErrorCode           = 403
 	RequestTimeout          = 408
@@ -123,5 +124,12 @@ func WrongChainError(chain string) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("chain %s is not supported", chain),
 		Code:    WrongChain,
+	}
+}
+
+func WsTotalFailureError() *ResponseError {
+	return &ResponseError{
+		Message: "websocket total failure",
+		Code:    WsTotalFailure,
 	}
 }

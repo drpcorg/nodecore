@@ -19,8 +19,8 @@ func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
 	options := &config.UpstreamOptions{
 		InternalTimeout: time.Second,
 	}
-	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
-	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
@@ -41,8 +41,8 @@ func TestChainValidatorNetVersionErrorThenSettingErrorResult(t *testing.T) {
 	options := &config.UpstreamOptions{
 		InternalTimeout: time.Second,
 	}
-	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
-	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
@@ -63,8 +63,8 @@ func TestChainValidatorWrongChainSettingsThenFatalErrorResult(t *testing.T) {
 	options := &config.UpstreamOptions{
 		InternalTimeout: time.Second,
 	}
-	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
-	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
@@ -85,8 +85,8 @@ func TestChainValidatorValidResult(t *testing.T) {
 	options := &config.UpstreamOptions{
 		InternalTimeout: time.Second,
 	}
-	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
-	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).

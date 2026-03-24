@@ -5,6 +5,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -45,6 +46,14 @@ func NewConnectorMockWithType(connectorType protocol.ApiConnectorType) *Connecto
 	return &ConnectorMock{connectorType: connectorType}
 }
 
+func (c *ConnectorMock) SubscribeStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
+	args := c.Called(name)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*utils.Subscription[protocol.SubscribeConnectorState])
+}
+
 func (c *ConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	args := c.Called(ctx, request)
 	return args.Get(0).(protocol.ResponseHolder)
@@ -52,6 +61,19 @@ func (c *ConnectorMock) SendRequest(ctx context.Context, request protocol.Reques
 
 func (c *ConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
+}
+
+func (c *ConnectorMock) Start() {
+	c.Called()
+}
+
+func (c *ConnectorMock) Stop() {
+	c.Called()
+}
+
+func (c *ConnectorMock) Running() bool {
+	args := c.Called()
+	return args.Bool(0)
 }
 
 func (c *ConnectorMock) GetType() protocol.ApiConnectorType {
@@ -64,6 +86,27 @@ type WsConnectorMock struct {
 
 func NewWsConnectorMock() *WsConnectorMock {
 	return &WsConnectorMock{}
+}
+
+func (c *WsConnectorMock) Start() {
+	c.Called()
+}
+
+func (c *WsConnectorMock) Stop() {
+	c.Called()
+}
+
+func (c *WsConnectorMock) Running() bool {
+	args := c.Called()
+	return args.Bool(0)
+}
+
+func (c *WsConnectorMock) SubscribeStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
+	args := c.Called(name)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*utils.Subscription[protocol.SubscribeConnectorState])
 }
 
 func (c *WsConnectorMock) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {

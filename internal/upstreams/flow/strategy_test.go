@@ -27,7 +27,7 @@ func TestRatingStrategyWithUpstreamIndexMatcherNotExist(t *testing.T) {
 	ratingRegistry := rating.NewRatingRegistry(upSupervisor, nil, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName, CalculationInterval: 1 * time.Minute})
 
 	additionalMatchers := []flow.Matcher{flow.NewUpstreamIndexMatcher("notExist")}
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
 	ratingStrategy := flow.NewRatingStrategy(chains.ARBITRUM, "eth_getBalance", additionalMatchers, chSup, ratingRegistry)
 
 	_, err := ratingStrategy.SelectUpstream(request)
@@ -63,7 +63,7 @@ func TestRatingStrategyGetBestByLatency(t *testing.T) {
 	go ratingRegistry.Start()
 	time.Sleep(10 * time.Millisecond)
 
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
 	ratingStrategy := flow.NewRatingStrategy(chains.ARBITRUM, "eth_getBalance", additionalMatchers, chSup, ratingRegistry)
 
 	upSupervisor.AssertExpectations(t)
@@ -111,7 +111,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			name:   "no available upstreams",
 			method: "eth_getBalance",
 			requestFunc: func(method string) protocol.RequestHolder {
-				request, _ := protocol.NewInternalUpstreamJsonRpcRequest(method, nil)
+				request, _ := protocol.NewInternalUpstreamJsonRpcRequest(method, nil, chains.ARBITRUM)
 				return request
 			},
 			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
@@ -123,7 +123,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			name:   "no available method",
 			method: "test",
 			requestFunc: func(method string) protocol.RequestHolder {
-				request, _ := protocol.NewInternalUpstreamJsonRpcRequest(method, nil)
+				request, _ := protocol.NewInternalUpstreamJsonRpcRequest(method, nil, chains.ARBITRUM)
 				return request
 			},
 			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
@@ -207,7 +207,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Unavailable, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			requestFunc: func(method string) protocol.RequestHolder {
-				request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil)
+				request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
 				return request
 			},
 			expectedErr: protocol.NoAvailableUpstreamsError(),
@@ -219,7 +219,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			requestFunc: func(method string) protocol.RequestHolder {
-				request, _ := protocol.NewInternalUpstreamJsonRpcRequest("test", nil)
+				request, _ := protocol.NewInternalUpstreamJsonRpcRequest("test", nil, chains.ARBITRUM)
 				return request
 			},
 			expectedErr: protocol.NotSupportedMethodError("test"),
@@ -258,7 +258,7 @@ func TestBaseStrategyGetUpstreams(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 	test_utils.PublishEvent(chSup, "id2", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
 	baseStrategy := flow.NewBaseStrategy(chSup)
 
 	upId, err := baseStrategy.SelectUpstream(request)

@@ -89,7 +89,7 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 }
 
 func (c *ChainValidator) getChainId(ctx context.Context) (string, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, c.chain.Chain)
 	if err != nil {
 		return "", err
 	}
@@ -103,7 +103,7 @@ func (c *ChainValidator) getChainId(ctx context.Context) (string, error) {
 }
 
 func (c *ChainValidator) getNetVersion(ctx context.Context) (string, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, c.chain.Chain)
 	if err != nil {
 		return "", err
 	}

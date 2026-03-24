@@ -69,7 +69,7 @@ func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("polygon", "*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil, chains.POLYGON)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 

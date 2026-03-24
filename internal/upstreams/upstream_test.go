@@ -142,6 +142,55 @@ func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
+func TestBaseUpstreamProcessStateEvents_AddsWsCapOnConnected(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
+
+	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
+
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_RemovesWsCapOnDisconnected(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+	_ = nextUpstreamEvent(t, sub)
+
+	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
+	_ = nextUpstreamEvent(t, sub)
+
+	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected})
+
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
 func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
@@ -331,9 +380,6 @@ func newTestBaseUpstream(
 
 	if upConfig == nil {
 		upConfig = newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
-	}
-	if connectorMocks == nil {
-		connectorMocks = []*mocks.ConnectorMock{mocks.NewConnectorMock()}
 	}
 
 	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods)

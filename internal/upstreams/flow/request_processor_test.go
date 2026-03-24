@@ -55,6 +55,7 @@ func TestSubscriptionRequestProcessorAndCantSubscribeThenError(t *testing.T) {
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("Subscribe", mock.Anything, request).Return(nil, err)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
 
 	processor.ProcessRequest(context.Background(), strategy, request)
 
@@ -88,6 +89,7 @@ func TestSubscriptionRequestProcessorAndCancelCtxThenNothing(t *testing.T) {
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan), nil)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
 
 	response := processor.ProcessRequest(ctx, strategy, request)
 
@@ -121,6 +123,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan), nil)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
 
 	response := processor.ProcessRequest(ctx, strategy, request)
 
@@ -159,6 +162,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan), nil)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
 
 	response := processor.ProcessRequest(ctx, strategy, request)
 

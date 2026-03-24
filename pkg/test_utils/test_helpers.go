@@ -38,7 +38,7 @@ func BuildLocalKeyConfig(key string, allowedIps []string, methods *config.AuthMe
 
 func NewUpstreamRequest(t *testing.T, method string, params any) protocol.RequestHolder {
 	t.Helper()
-	req, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params)
+	req, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params, chains.ETHEREUM)
 	if err != nil {
 		t.Fatalf("failed to build UpstreamJsonRpcRequest: %v", err)
 	}

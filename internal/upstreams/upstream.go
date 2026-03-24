@@ -88,7 +88,7 @@ func NewBaseUpstream(
 	upState.Store(
 		protocol.DefaultUpstreamState(
 			creationData.upstreamMethods,
-			creationData.caps,
+			mapset.NewThreadUnsafeSet[protocol.Cap](),
 			upstreamIndexHex,
 			creationData.rt,
 			creationData.autoTune,
@@ -170,6 +170,8 @@ func (u *BaseUpstream) GetChain() chains.Chain {
 
 func (u *BaseUpstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
+		u.startConnectors(ctx)
+
 		result, ok := u.processorAggregator.ValidateSettings()
 		if !ok {
 			u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
@@ -199,6 +201,10 @@ func (u *BaseUpstream) Stop() {
 	u.upstreamCtx.cancelFunc()
 	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
 	u.PartialStop()
+
+	for _, connector := range u.apiConnectors {
+		connector.Stop()
+	}
 }
 
 func (u *BaseUpstream) Running() bool {
@@ -265,4 +271,28 @@ func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) meth
 	}
 	newMethods, _ := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(u.chain), newConfig)
 	return newMethods
+}
+
+func (u *BaseUpstream) startConnectors(ctx context.Context) {
+	for _, connector := range u.apiConnectors {
+		connector.Start()
+		go func(conn connectors.ApiConnector) {
+			stateSubscription := conn.SubscribeStates(fmt.Sprintf("%s_%s_sub_states", u.id, conn.GetType()))
+			if stateSubscription == nil {
+				return
+			}
+			defer stateSubscription.Unsubscribe()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case event, okEvent := <-stateSubscription.Events:
+					if okEvent {
+						u.emitter(&protocol.SubscribeUpstreamStateEvent{State: event})
+					}
+				}
+			}
+		}(connector)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,7 @@ func TestGenerateRequestHashWithParams(t *testing.T) {
 }
 
 func TestNotRequestHashForInternalJsonRpcRequest(t *testing.T) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", []byte(`"params"`))
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", []byte(`"params"`), chains.ETHEREUM)
 
 	assert.Nil(t, err)
 	assert.Empty(t, request.RequestHash())
