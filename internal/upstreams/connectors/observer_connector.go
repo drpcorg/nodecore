@@ -7,6 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 )
 
@@ -32,6 +33,10 @@ func NewObserverConnector(
 		executor:              executor,
 		responseReceivedHooks: responseReceivedHooks,
 	}
+}
+
+func (o *ObserverConnector) SubscribeStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
+	return o.delegate.SubscribeStates(name)
 }
 
 func (o *ObserverConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
@@ -68,6 +73,18 @@ func (o *ObserverConnector) Subscribe(ctx context.Context, holder protocol.Reque
 
 func (o *ObserverConnector) GetType() protocol.ApiConnectorType {
 	return o.delegate.GetType()
+}
+
+func (o *ObserverConnector) Start() {
+	o.delegate.Start()
+}
+
+func (o *ObserverConnector) Stop() {
+	o.delegate.Stop()
+}
+
+func (o *ObserverConnector) Running() bool {
+	return o.delegate.Running()
 }
 
 func (o *ObserverConnector) sendRequest(

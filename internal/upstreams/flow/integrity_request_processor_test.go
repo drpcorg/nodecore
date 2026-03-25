@@ -18,7 +18,7 @@ func TestIntegrityRequestProcessorAnyMethodNoProcessed(t *testing.T) {
 	strategy := mocks.NewMockStrategy()
 	processor := NewRequestProcessorMock()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("any", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("any", nil, chains.ARBITRUM)
 	ctx := context.Background()
 	integrityProcessor := flow.NewIntegrityRequestProcessor(chains.ARBITRUM, upSupervisor, processor)
 
@@ -38,7 +38,7 @@ func TestIntegrityRequestProcessorNotHandledIfErr(t *testing.T) {
 	strategy := mocks.NewMockStrategy()
 	processor := NewRequestProcessorMock()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ARBITRUM)
 	ctx := context.Background()
 	integrityProcessor := flow.NewIntegrityRequestProcessor(chains.ARBITRUM, upSupervisor, processor)
 
@@ -66,7 +66,7 @@ func TestIntegrityRequestProcessorNotHandledIfRespWithErr(t *testing.T) {
 	apiConnector := mocks.NewConnectorMock()
 	ctx := context.Background()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ARBITRUM)
 	responseHolder := protocol.NewTotalFailure(request, protocol.RequestTimeoutError())
 	processor := NewRequestProcessorMock()
 	integrityProcessor := flow.NewIntegrityRequestProcessor(chains.ARBITRUM, upSupervisor, processor)

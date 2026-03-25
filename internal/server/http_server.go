@@ -25,6 +25,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
@@ -153,7 +154,12 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 		}
 
 		if c.Request().Header.Get("Upgrade") == "websocket" {
-			handleWebsocket(reqCtx, c, chain, authPayload, appCtx)
+			conn, err := upgrader.Upgrade(c.Response().Writer, c.Request(), nil)
+			if err != nil {
+				log.Error().Err(err).Msg("couldn't upgrade http to ws")
+				return err
+			}
+			HandleWebsocket(reqCtx, conn, chain, authPayload, appCtx)
 			return nil
 		}
 		err = handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)

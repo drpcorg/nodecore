@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/jarcoal/httpmock"
 	"github.com/stretchr/testify/assert"
@@ -60,7 +61,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 				Url: "http://localhost:8080",
 			}
 			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
-			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 			r := connector.SendRequest(context.Background(), req)
 
@@ -122,7 +123,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 				Url: "http://localhost:8080",
 			}
 			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
-			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 			r := connector.SendRequest(context.Background(), req)
 
@@ -148,7 +149,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 		Url: "http://localhost:8080",
 	}
 	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
-	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil)
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 	r := connector.SendRequest(context.Background(), req)
 
@@ -229,4 +230,15 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	assert.False(t, r.HasStream())
 	assert.True(t, r.HasError())
 	assert.Equal(t, &protocol.ResponseError{Message: "0x11", Code: -32000}, r.GetError())
+}
+
+func TestHttpConnectorSubscribeStates(t *testing.T) {
+	cfg := &config.ApiConnectorConfig{
+		Url: "http://localhost:8080",
+	}
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, protocol.JsonRpcConnector, "")
+
+	sub := connector.SubscribeStates("name")
+
+	assert.Nil(t, sub)
 }

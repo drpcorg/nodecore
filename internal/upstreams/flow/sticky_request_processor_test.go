@@ -17,7 +17,7 @@ import (
 
 func TestNotStickyRequestThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil, chains.POLYGON)
 	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 	result := processor.ProcessRequest(context.Background(), nil, request)
 

@@ -538,12 +538,12 @@ func NewReplyError(id string, responseError *ResponseError, responseType Request
 }
 
 func NewTotalFailureFromErr(id string, err error, responseType RequestType) *ReplyError {
-	var respErr *ResponseError
-	if errors.As(err, &respErr) {
+	if respErr, ok := errors.AsType[*ResponseError](err); ok {
 		return &ReplyError{
 			id:            id,
 			responseError: respErr,
 			responseType:  responseType,
+			ErrorKind:     TotalFailure,
 		}
 	}
 	return NewReplyError(id, ServerErrorWithCause(err), responseType, TotalFailure)

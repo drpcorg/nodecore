@@ -25,6 +25,13 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 			var eventType protocol.UpstreamEventType = &protocol.StateUpstreamEvent{State: &state}
 
 			switch stateEvent := event.(type) {
+			case *protocol.SubscribeUpstreamStateEvent:
+				switch stateEvent.State {
+				case protocol.WsConnected:
+					state.Caps.Add(protocol.WsCap)
+				case protocol.WsDisconnected:
+					state.Caps.Remove(protocol.WsCap)
+				}
 			case *protocol.LowerBoundUpstreamStateEvent:
 				state.LowerBoundsInfo.AddLowerBound(stateEvent.Data)
 			case *protocol.StatusUpstreamStateEvent:

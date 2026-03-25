@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -50,6 +52,15 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		var stateChan chan protocol.SubscribeConnectorState
+		connectorStatesSub := wsConn.SubscribeStates(
+			fmt.Sprintf("%s_%s_request_%s_%d", upstream.GetId(), request.Method(), request.Id(), time.Now().UnixNano()),
+		)
+		if connectorStatesSub != nil {
+			stateChan = connectorStatesSub.Events
+			defer connectorStatesSub.Unsubscribe()
+		}
+
 		subResp, err := wsConn.Subscribe(execCtx, request)
 		if err != nil {
 			response = &protocol.ResponseHolderWrapper{
@@ -63,6 +74,17 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 		for {
 			select {
+			case state, ok := <-stateChan:
+				if ok {
+					if state == protocol.WsDisconnected {
+						responses <- &protocol.ResponseHolderWrapper{
+							UpstreamId: upstreamId,
+							RequestId:  request.Id(),
+							Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.WsTotalFailureError(), request.RequestType()),
+						}
+						return
+					}
+				}
 			case r, ok := <-subResp.ResponseChan():
 				if ok {
 					var subResponse protocol.ResponseHolder

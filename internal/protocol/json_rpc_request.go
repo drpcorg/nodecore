@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog"
 )
@@ -41,31 +42,35 @@ func NewUpstreamJsonRpcRequestWithSpecMethod(method string, params any, specMeth
 	}, nil
 }
 
-func NewInternalUpstreamJsonRpcRequest(method string, params any) (*UpstreamJsonRpcRequest, error) {
+func NewInternalUpstreamJsonRpcRequest(method string, params any, chain chains.Chain) (*UpstreamJsonRpcRequest, error) {
 	requestParams, err := sonic.Marshal(params)
 	if err != nil {
 		return nil, err
 	}
+	specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChain(chain), method)
 	return &UpstreamJsonRpcRequest{
 		id:              "1",
 		method:          method,
 		realId:          []byte(`"1"`),
 		requestParams:   requestParams,
+		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
 	}, nil
 }
 
-func NewInternalSubUpstreamJsonRpcRequest(method string, params any) (*UpstreamJsonRpcRequest, error) {
+func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chains.Chain) (*UpstreamJsonRpcRequest, error) {
 	requestParams, err := sonic.Marshal(params)
 	if err != nil {
 		return nil, err
 	}
+	specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChain(chain), method)
 	return &UpstreamJsonRpcRequest{
 		id:              "1",
 		method:          method,
 		realId:          []byte(`"1"`),
 		requestParams:   requestParams,
 		isSub:           true,
+		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(true).WithRequestKind(InternalSubscription).WithMethod(method),
 	}, nil
 }

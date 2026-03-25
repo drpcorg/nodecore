@@ -8,6 +8,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 	"github.com/rs/zerolog/log"
@@ -59,7 +60,7 @@ func (s *SolanaLowerBoundDetector) getFirstAvailableBlock() (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getFirstAvailableBlock", nil)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getFirstAvailableBlock", nil, chains.SOLANA)
 	if err != nil {
 		return 0, err
 	}
@@ -84,7 +85,7 @@ func (s *SolanaLowerBoundDetector) getBlock(number int64) (int64, error) {
 		"transactionDetails":             "none",
 		"maxSupportedTransactionVersion": 0,
 	}
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlock", []interface{}{number, params})
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlock", []interface{}{number, params}, chains.SOLANA)
 	if err != nil {
 		return 0, err
 	}

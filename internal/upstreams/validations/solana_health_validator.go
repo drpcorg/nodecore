@@ -7,6 +7,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 )
 
@@ -31,7 +32,7 @@ func (s *SolanaHealthValidator) getHealth() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getHealth", nil)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getHealth", nil, chains.SOLANA)
 	if err != nil {
 		return err
 	}

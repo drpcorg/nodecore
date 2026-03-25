@@ -20,6 +20,13 @@ type ResponseReceivedHook interface {
 	OnResponseReceived(ctx context.Context, request RequestHolder, respWrapper *ResponseHolderWrapper)
 }
 
+type SubscribeConnectorState int
+
+const (
+	WsDisconnected SubscribeConnectorState = iota
+	WsConnected
+)
+
 type ResultType int
 
 const (
@@ -281,54 +288,3 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap],
 		AutoTuneRateLimiter: autoTuneRateLimiter,
 	}
 }
-
-type AbstractUpstreamStateEvent interface {
-	event()
-}
-
-type LowerBoundUpstreamStateEvent struct {
-	Data LowerBoundData
-}
-
-func (l *LowerBoundUpstreamStateEvent) event() {
-}
-
-type StatusUpstreamStateEvent struct {
-	Status AvailabilityStatus
-}
-
-func (s *StatusUpstreamStateEvent) event() {}
-
-type FatalErrorUpstreamStateEvent struct{}
-
-func (f *FatalErrorUpstreamStateEvent) event() {}
-
-type ValidUpstreamStateEvent struct{}
-
-func (f *ValidUpstreamStateEvent) event() {}
-
-type HeadUpstreamStateEvent struct {
-	HeadData Block
-}
-
-func (h *HeadUpstreamStateEvent) event() {}
-
-type BlockUpstreamStateEvent struct {
-	Block     Block
-	BlockType BlockType
-}
-
-func (f *BlockUpstreamStateEvent) event() {
-}
-
-type BanMethodUpstreamStateEvent struct {
-	Method string
-}
-
-func (f *BanMethodUpstreamStateEvent) event() {}
-
-type UnbanMethodUpstreamStateEvent struct {
-	Method string
-}
-
-func (f *UnbanMethodUpstreamStateEvent) event() {}

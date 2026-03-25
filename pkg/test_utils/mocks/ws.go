@@ -4,35 +4,53 @@ import (
 	"context"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/mock"
 )
 
-type WsConnectionMock struct {
+type WsProcessorMock struct {
 	mock.Mock
 }
 
-func (w *WsConnectionMock) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
-	args := w.Called(ctx, upstreamRequest)
-	var response *protocol.WsResponse
-	if args.Get(0) == nil {
-		response = nil
-	} else {
-		response = args.Get(0).(*protocol.WsResponse)
-	}
-	return response, args.Error(1)
+func NewWsProcessorMock() *WsProcessorMock {
+	return &WsProcessorMock{}
 }
 
-func (w *WsConnectionMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
-	args := w.Called(ctx, upstreamRequest)
-	var responses chan *protocol.WsResponse
-	if args.Get(0) == nil {
-		responses = nil
-	} else {
-		responses = args.Get(0).(chan *protocol.WsResponse)
-	}
-	return responses, args.Error(1)
+func (w *WsProcessorMock) Start() {
+	w.Called()
 }
 
-func NewWsConnectionMock() *WsConnectionMock {
-	return &WsConnectionMock{}
+func (w *WsProcessorMock) Stop() {
+	w.Called()
+}
+
+func (w *WsProcessorMock) Running() bool {
+	args := w.Called()
+	return args.Get(0).(bool)
+}
+
+func (w *WsProcessorMock) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
+	args := w.Called(ctx, upstreamRequest)
+	var resp *protocol.WsResponse
+	if args.Get(0) != nil {
+		resp = args.Get(0).(*protocol.WsResponse)
+	}
+	return resp, args.Error(1)
+}
+
+func (w *WsProcessorMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+	args := w.Called(ctx, upstreamRequest)
+	var ch chan *protocol.WsResponse
+	if args.Get(0) != nil {
+		ch = args.Get(0).(chan *protocol.WsResponse)
+	}
+	return ch, args.Error(1)
+}
+
+func (w *WsProcessorMock) SubscribeWsStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
+	args := w.Called(name)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*utils.Subscription[protocol.SubscribeConnectorState])
 }

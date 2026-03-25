@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
 type AztecChainSpecificObject struct {
@@ -30,7 +31,7 @@ func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[
 }
 
 func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{"latest"})
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{"latest"}, chains.AZTEC_MAINNET)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}

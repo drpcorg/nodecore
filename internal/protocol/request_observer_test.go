@@ -70,7 +70,7 @@ func TestInternalRequests(t *testing.T) {
 		{
 			name: "internal unary",
 			request: func() protocol.RequestHolder {
-				req, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil)
+				req, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil, chains.ETHEREUM)
 				return req
 			},
 			expectedReqKind: protocol.InternalUnary,
@@ -78,7 +78,7 @@ func TestInternalRequests(t *testing.T) {
 		{
 			name: "internal sub",
 			request: func() protocol.RequestHolder {
-				req, _ := protocol.NewInternalSubUpstreamJsonRpcRequest("method", nil)
+				req, _ := protocol.NewInternalSubUpstreamJsonRpcRequest("method", nil, chains.ETHEREUM)
 				return req
 			},
 			expectedReqKind: protocol.InternalSubscription,

@@ -75,6 +75,13 @@ func (m *Method) IsLocal() bool {
 	return m.local
 }
 
+func (m *Method) IsSubscribe() bool {
+	if m.Subscription == nil {
+		return false
+	}
+	return m.Subscription.IsSubscribe
+}
+
 func fromMethodData(methodData *MethodData) (*Method, error) {
 	var parser *jqParser
 	if methodData.TagParser != nil {

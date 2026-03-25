@@ -29,8 +29,6 @@ type HttpConnector struct {
 	torProxyUrl       string
 }
 
-var _ ApiConnector = (*HttpConnector)(nil)
-
 func NewHttpConnectorWithDefaultClient(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType protocol.ApiConnectorType,
@@ -92,6 +90,20 @@ func NewHttpConnector(
 		additionalHeaders: connectorConfig.Headers,
 		torProxyUrl:       torProxyUrl,
 	}, nil
+}
+
+func (h *HttpConnector) Start() {
+}
+
+func (h *HttpConnector) Stop() {
+}
+
+func (h *HttpConnector) Running() bool {
+	return true
+}
+
+func (h *HttpConnector) SubscribeStates(_ string) *utils.Subscription[protocol.SubscribeConnectorState] {
+	return nil
 }
 
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
@@ -198,3 +210,5 @@ func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, s
 
 	return url, httpMethod, nil
 }
+
+var _ ApiConnector = (*HttpConnector)(nil)

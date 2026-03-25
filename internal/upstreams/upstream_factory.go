@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -26,7 +25,6 @@ import (
 
 type upstreamCreationData struct {
 	upstreamConnectorsInfo *connectorsInfo
-	caps                   mapset.Set[protocol.Cap]
 	upstreamMethods        *methods.UpstreamMethods
 	rt                     *ratelimiter.RateLimitBudget
 	autoTune               *ratelimiter.UpstreamAutoTune
@@ -45,7 +43,7 @@ func CreateUpstream(
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
 
-	upstreamConnectorsInfo, caps, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
+	upstreamConnectorsInfo, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -62,7 +60,6 @@ func CreateUpstream(
 
 	creationData := &upstreamCreationData{
 		upstreamConnectorsInfo: upstreamConnectorsInfo,
-		caps:                   caps,
 		upstreamMethods:        upstreamMethods,
 		rt:                     rt,
 		autoTune:               autoTune,
@@ -124,11 +121,22 @@ func createConnector(
 	case config.JsonRpc:
 		return connectors.NewHttpConnector(connectorConfig, protocol.JsonRpcConnector, torProxyUrl)
 	case config.Ws:
-		connection, err := ws.NewJsonRpcWsConnection(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec, connectorConfig, torProxyUrl)
+		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
+		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
+		reqRegistry := ws.NewBaseRequestRegistry(configuredChain.Chain, upId, configuredChain.MethodSpec)
+		wsProcessor, err := ws.NewBaseWsProcessor(
+			ctx,
+			upId,
+			connectorConfig.Url,
+			dialWsService,
+			reqRegistry,
+			ws.NewWebsocketSession(),
+			jsonRpcWsProtocol,
+		)
 		if err != nil {
 			return nil, err
 		}
-		return connectors.NewWsConnector(connection), nil
+		return connectors.NewWsConnector(wsProcessor), nil
 	case config.Rest:
 		return connectors.NewHttpConnector(connectorConfig, protocol.RestConnector, torProxyUrl)
 	default:
@@ -214,8 +222,7 @@ func createUpstreamConnectors(
 	statsService stats.StatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	torProxyUrl string,
-) (*connectorsInfo, mapset.Set[protocol.Cap], error) {
-	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
+) (*connectorsInfo, error) {
 	apiConnectors := make([]connectors.ApiConnector, 0)
 	var headConnector connectors.ApiConnector
 	var internalRequestConnector connectors.ApiConnector
@@ -223,7 +230,7 @@ func createUpstreamConnectors(
 	for _, connectorConfig := range conf.Connectors {
 		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
 		if err != nil {
-			return nil, nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
+			return nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
 		}
 		hooks := []protocol.ResponseReceivedHook{
 			dimensions.NewDimensionHook(tracker),
@@ -236,13 +243,10 @@ func createUpstreamConnectors(
 		if connectorConfig.Type == conf.GetBestConnector() {
 			internalRequestConnector = apiConnector
 		}
-		if apiConnector.GetType() == protocol.WsConnector {
-			caps.Add(protocol.WsCap)
-		}
 		apiConnectors = append(apiConnectors, apiConnector)
 	}
 
-	return newConnectorInfo(headConnector, internalRequestConnector, apiConnectors), caps, nil
+	return newConnectorInfo(headConnector, internalRequestConnector, apiConnectors), nil
 }
 
 type connectorsInfo struct {

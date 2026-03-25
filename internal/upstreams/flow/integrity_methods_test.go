@@ -66,7 +66,7 @@ func TestHandlersProcessed(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			req, _ := protocol.NewInternalUpstreamJsonRpcRequest(test.method, nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest(test.method, nil, chains.ETHEREUM)
 			result := test.handler.CanBeProcessed(context.Background(), req)
 			assert.Equal(te, test.result, result)
 		})
@@ -94,7 +94,7 @@ func TestEthBlockNumberIntegrityHandlerNotHandledIfError(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			respErr := protocol.NoAvailableUpstreamsError()
-			req, _ := protocol.NewInternalUpstreamJsonRpcRequest(test.method, nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest(test.method, nil, chains.ETHEREUM)
 			response := protocol.NewPartialFailure(req, respErr)
 			respWrapper := &protocol.ResponseHolderWrapper{Response: response}
 
@@ -107,7 +107,7 @@ func TestEthBlockNumberIntegrityHandlerNotHandledIfError(t *testing.T) {
 }
 
 func TestEthBlockNumberIntegrityHandlerNotHandledIfCantParseNumber(t *testing.T) {
-	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte("false"), protocol.JsonRpc)
 	respWrapper := &protocol.ResponseHolderWrapper{Response: response}
 	handler := flow.NewEthBlockNumberIntegrityHandler()
@@ -124,7 +124,7 @@ func TestEthBlockNumberIntegrityHandlerResponseBlockIsGreaterThanHead(t *testing
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
-	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`"0x1111"`), protocol.JsonRpc)
 	respWrapper := &protocol.ResponseHolderWrapper{Response: response}
 	handler := flow.NewEthBlockNumberIntegrityHandler()
@@ -144,7 +144,7 @@ func TestEthBlockNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("25", protocol.Available, protocol.NewBlockWithHeight(150), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
-	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`"0x5"`), protocol.JsonRpc)
 	respWrapper := &protocol.ResponseHolderWrapper{Response: response, UpstreamId: "22"}
 	handler := flow.NewEthBlockNumberIntegrityHandler()
@@ -161,7 +161,7 @@ func TestEthBlockNumberIntegrityHandlerNoUpstreams(t *testing.T) {
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(100), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
-	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil)
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
 	response := protocol.NewSimpleHttpUpstreamResponse("22", []byte(`"0x5"`), protocol.JsonRpc)
 	respWrapper := &protocol.ResponseHolderWrapper{Response: response, UpstreamId: "22"}
 	handler := flow.NewEthBlockNumberIntegrityHandler()
@@ -193,7 +193,7 @@ func TestEthGetBlockByNumberIntegrityHandlerNumberFieldErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, nil)
+			req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthGetBlockByNumber, nil, chains.ETHEREUM)
 			response := protocol.NewSimpleHttpUpstreamResponse("22", test.body, protocol.JsonRpc)
 			respWrapper := &protocol.ResponseHolderWrapper{Response: response, UpstreamId: "22"}
 			handler := flow.NewEthGetBlockByNumberIntegrityHandler()

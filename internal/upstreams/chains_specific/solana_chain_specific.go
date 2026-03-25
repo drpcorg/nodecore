@@ -100,7 +100,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (p
 }
 
 func (s *SolanaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalSubUpstreamJsonRpcRequest("slotSubscribe", nil)
+	return protocol.NewInternalSubUpstreamJsonRpcRequest("slotSubscribe", nil, chains.SOLANA)
 }
 
 func NewSolanaChainSpecificObject(
@@ -125,7 +125,7 @@ func NewSolanaChainSpecificObject(
 func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.Block, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", nil)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", nil, chains.SOLANA)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
