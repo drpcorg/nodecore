@@ -1,5 +1,7 @@
 package protocol
 
+import "github.com/samber/lo"
+
 type AbstractUpstreamStateEvent interface {
 	event()
 }
@@ -56,3 +58,9 @@ type SubscribeUpstreamStateEvent struct {
 }
 
 func (s *SubscribeUpstreamStateEvent) event() {}
+
+type LabelsUpstreamStateEvent struct {
+	Labels lo.Tuple2[string, string]
+}
+
+func (l *LabelsUpstreamStateEvent) event() {}

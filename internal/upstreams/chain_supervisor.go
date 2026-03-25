@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ type ChainSupervisorState struct {
 	Methods     methods.Methods
 	Blocks      map[protocol.BlockType]protocol.Block
 	LowerBounds map[protocol.LowerBoundType]protocol.LowerBoundData
+	ChainLabels []AggregatedLabels
 }
 
 type ChainHeadData struct {
@@ -61,6 +63,18 @@ func NewChainHeadData(head protocol.Block, upstreamId string) ChainHeadData {
 	return ChainHeadData{
 		Head:       head,
 		UpstreamId: upstreamId,
+	}
+}
+
+type AggregatedLabels struct {
+	Amount int
+	Labels map[string]string
+}
+
+func NewAggregatedLabels(amount int, labels map[string]string) AggregatedLabels {
+	return AggregatedLabels{
+		Amount: amount,
+		Labels: labels,
 	}
 }
 
@@ -196,6 +210,7 @@ func (c *BaseChainSupervisor) updateState(upstreamId string, upstreamState *prot
 	state.Methods = c.processUpstreamMethods(availableUpstreams)
 	state.Blocks = c.processUpstreamBlocks(availableUpstreams)
 	state.LowerBounds = c.processLowerBounds(availableUpstreams)
+	state.ChainLabels = c.processLabels(availableUpstreams)
 
 	c.state.Store(state)
 
@@ -231,6 +246,30 @@ func (c *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	})
 
 	return states
+}
+
+func (c *BaseChainSupervisor) processLabels(availableUpstreams []*protocol.UpstreamState) []AggregatedLabels {
+	allLabels := make([]AggregatedLabels, 0)
+
+	for _, upState := range availableUpstreams {
+		if upState.Labels == nil {
+			continue
+		}
+		upLabels := upState.Labels.GetAllLabels()
+		if len(upLabels) == 0 {
+			continue
+		}
+
+		_, idx, ok := lo.FindIndexOf(allLabels, func(item AggregatedLabels) bool {
+			return maps.Equal(upLabels, item.Labels)
+		})
+		if !ok {
+			allLabels = append(allLabels, NewAggregatedLabels(1, upLabels))
+		} else {
+			allLabels[idx].Amount++
+		}
+	}
+	return allLabels
 }
 
 func (c *BaseChainSupervisor) processUpstreamMethods(availableStates []*protocol.UpstreamState) methods.Methods {

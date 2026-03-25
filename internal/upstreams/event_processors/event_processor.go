@@ -14,6 +14,7 @@ const (
 	LowerBoundEventProcessorType
 	HealthValidatorProcessorType
 	SettingsValidatorProcessorType
+	LabelsProcessorType
 )
 
 type UpstreamStateEventProcessor interface {

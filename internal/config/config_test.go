@@ -245,6 +245,7 @@ func TestReadFullConfig(t *testing.T) {
 						DisableChainValidation:      new(false),
 						DisableHealthValidation:     new(false),
 						DisableLowerBoundsDetection: new(true),
+						DisableLabelsDetection:      new(true),
 					},
 				},
 				{
@@ -284,6 +285,7 @@ func TestReadFullConfig(t *testing.T) {
 						DisableChainValidation:      new(false),
 						DisableHealthValidation:     new(false),
 						DisableLowerBoundsDetection: new(true),
+						DisableLabelsDetection:      new(true),
 					},
 				},
 			},

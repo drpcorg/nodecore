@@ -105,6 +105,7 @@ func TestDefaultUpstreamState(t *testing.T) {
 		UpstreamMethods: mocks.NewMethodsMock(),
 		BlockInfo:       protocol.NewBlockInfo(),
 		LowerBoundsInfo: protocol.NewLowerBoundInfo(),
+		Labels:          protocol.NewLabels(),
 		Caps:            caps,
 		HeadData:        protocol.ZeroBlock{},
 		UpstreamIndex:   "55",

@@ -9,6 +9,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -25,10 +26,19 @@ type SolanaChainSpecificObject struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	internalTimeout time.Duration
+	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
 
 	lastKnownHeights *utils.CMap[string, uint64]
 	lastCheckedSlots *utils.CMap[string, uint64]
+}
+
+func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	labelsDetectors := []labels.LabelsDetector{
+		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, labels.NewSolanaClientLabelsDetector(), s.internalTimeout),
+	}
+
+	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
 }
 
 func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -108,7 +118,7 @@ func NewSolanaChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
-	internalTimeout time.Duration,
+	internalTimeout, labelsDelay time.Duration,
 ) *SolanaChainSpecificObject {
 	return &SolanaChainSpecificObject{
 		ctx:             ctx,
@@ -116,6 +126,7 @@ func NewSolanaChainSpecificObject(
 		connector:       connector,
 		internalTimeout: internalTimeout,
 		configuredChain: configuredChain,
+		labelsDelay:     labelsDelay,
 
 		lastKnownHeights: utils.NewCMap[string, uint64](),
 		lastCheckedSlots: utils.NewCMap[string, uint64](),

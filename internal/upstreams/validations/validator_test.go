@@ -15,6 +15,38 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func TestNewSettingsValidationProcessorReturnsNilWhenValidatorsAreNil(t *testing.T) {
+	processor := validations.NewSettingsValidationProcessor(nil)
+
+	assert.Nil(t, processor)
+}
+
+func TestNewSettingsValidationProcessorReturnsProcessorWhenValidatorsAreProvided(t *testing.T) {
+	validator := mocks.NewSettingsValidatorMock()
+
+	processor := validations.NewSettingsValidationProcessor(
+		[]validations.Validator[validations.ValidationSettingResult]{validator},
+	)
+
+	assert.NotNil(t, processor)
+}
+
+func TestNewHealthValidationProcessorReturnsNilWhenValidatorsAreNil(t *testing.T) {
+	processor := validations.NewHealthValidationProcessor(nil)
+
+	assert.Nil(t, processor)
+}
+
+func TestNewHealthValidationProcessorReturnsProcessorWhenValidatorsAreProvided(t *testing.T) {
+	validator := mocks.NewHealthValidatorMock()
+
+	processor := validations.NewHealthValidationProcessor(
+		[]validations.Validator[protocol.AvailabilityStatus]{validator},
+	)
+
+	assert.NotNil(t, processor)
+}
+
 func TestSettingsValidationProcessorMultipleValidators(t *testing.T) {
 	conn1, validResultValidator := getTestChainValidator(
 		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),

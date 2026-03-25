@@ -216,6 +216,7 @@ func (u *BaseUpstream) PartialStop() {
 	u.processorAggregator.StopProcessor(event_processors.HealthValidatorProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.LabelsProcessorType)
 }
 
 func (u *BaseUpstream) Resume() {
@@ -223,6 +224,7 @@ func (u *BaseUpstream) Resume() {
 	u.processorAggregator.StartProcessor(event_processors.BlockEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.HealthValidatorProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LowerBoundEventProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.LabelsProcessorType)
 
 	if u.processorAggregator.IsHealthProcessorDisabled() {
 		u.emitter(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})

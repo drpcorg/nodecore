@@ -177,7 +177,7 @@ func NewEvmChainSpecific(connector connectors.ApiConnector) *specific.EvmChainSp
 }
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
-	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, 5*time.Second)
+	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, 5*time.Second, 10*time.Second)
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {

@@ -83,6 +83,10 @@ func NewBaseLowerBoundProcessorWithDelay(
 	initialDelay time.Duration,
 	lowerBoundsDetectors []LowerBoundDetector,
 ) *BaseLowerBoundProcessor {
+	if len(lowerBoundsDetectors) == 0 {
+		return nil
+	}
+
 	name := fmt.Sprintf("%s_lower_bound_service", upstreamId)
 	return &BaseLowerBoundProcessor{
 		upstreamId:           upstreamId,

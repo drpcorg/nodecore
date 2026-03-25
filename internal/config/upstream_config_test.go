@@ -97,6 +97,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			DisableChainValidation:      new(false),
 			DisableHealthValidation:     new(false),
 			DisableLowerBoundsDetection: new(true),
+			DisableLabelsDetection:      new(true),
 		},
 	}
 
@@ -135,6 +136,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			DisableChainValidation:      new(false),
 			DisableHealthValidation:     new(false),
 			DisableLowerBoundsDetection: new(true),
+			DisableLabelsDetection:      new(true),
 		},
 	}
 
@@ -173,6 +175,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			DisableChainValidation:      new(false),
 			DisableHealthValidation:     new(false),
 			DisableLowerBoundsDetection: new(true),
+			DisableLabelsDetection:      new(true),
 		},
 	}
 
@@ -215,6 +218,7 @@ func TestSetChainsDefault(t *testing.T) {
 						DisableChainValidation:      new(false),
 						DisableHealthValidation:     new(false),
 						DisableLowerBoundsDetection: new(true),
+						DisableLabelsDetection:      new(true),
 					},
 				},
 			},
@@ -370,4 +374,38 @@ func TestUpstreamOptionsDisableFlagsRead(t *testing.T) {
 	assert.True(t, *reqUp.Options.DisableValidation)
 	assert.True(t, *reqUp.Options.DisableSettingsValidation)
 	assert.True(t, *reqUp.Options.DisableChainValidation)
+}
+
+func TestUpstreamOptionsAllDisableFlagsRead(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-all-disable-flags.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	assert.Equal(t, 5*time.Second, reqUp.Options.InternalTimeout)
+	assert.Equal(t, 30*time.Second, reqUp.Options.ValidationInterval)
+	assert.True(t, *reqUp.Options.DisableValidation)
+	assert.True(t, *reqUp.Options.DisableSettingsValidation)
+	assert.True(t, *reqUp.Options.DisableChainValidation)
+	assert.True(t, *reqUp.Options.DisableHealthValidation)
+	assert.False(t, *reqUp.Options.DisableLowerBoundsDetection)
+	assert.False(t, *reqUp.Options.DisableLabelsDetection)
+}
+
+func TestUpstreamOptionsDefaultsFromChainCommonOptions(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-defaults-from-chain-common.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	assert.Equal(t, 15*time.Second, reqUp.Options.InternalTimeout)
+	assert.Equal(t, time.Minute, reqUp.Options.ValidationInterval)
+	assert.True(t, *reqUp.Options.DisableValidation)
+	assert.True(t, *reqUp.Options.DisableSettingsValidation)
+	assert.True(t, *reqUp.Options.DisableChainValidation)
+	assert.True(t, *reqUp.Options.DisableHealthValidation)
+	assert.False(t, *reqUp.Options.DisableLowerBoundsDetection)
+	assert.False(t, *reqUp.Options.DisableLabelsDetection)
 }

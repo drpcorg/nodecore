@@ -13,6 +13,7 @@ import (
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
@@ -72,6 +73,7 @@ func CreateUpstream(
 			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
 			CreateHealthEventProcessor(ctx, conf, chainSpecific),
 			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
+			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
 		},
 	)
 
@@ -167,6 +169,13 @@ func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, optio
 	return validations.NewHealthValidationProcessor(validators)
 }
 
+func createLabelsProcessor(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) labels.LabelsProcessor {
+	if *options.DisableLabelsDetection {
+		return nil
+	}
+	return chainSpecific.LabelsProcessor()
+}
+
 func createBlockProcessor(
 	ctx context.Context,
 	upConfig *config.Upstream,
@@ -201,6 +210,7 @@ func getChainSpecific(
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			conf.Options.InternalTimeout,
+			conf.Options.ValidationInterval*5,
 		)
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))

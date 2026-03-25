@@ -1,0 +1,18 @@
+upstream-config:
+  chain-defaults:
+    ethereum:
+      options:
+        internal-timeout: 15s
+        validation-interval: 1m
+        disable-validation: true
+        disable-settings-validation: true
+        disable-chain-validation: true
+        disable-health-validation: true
+        disable-lower-bounds-detection: false
+        disable-labels-detection: false
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
