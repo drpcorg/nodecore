@@ -33,11 +33,11 @@ func assertEventuallyEqual(t *testing.T, expected any, actual func() any) {
 	}, eventuallyWait, eventuallyTick)
 }
 
-func assertEventuallyElementsMatch[T any](t *testing.T, expected []T, actual func() []T) {
+func assertEventuallyElementsMatch(t *testing.T, expected []upstreams.AggregatedLabels, actual func() []upstreams.AggregatedLabels) {
 	t.Helper()
 
 	assert.Eventually(t, func() bool {
-		return assert.ObjectsAreEqual(canonicalAggregatedLabels(any(expected).([]upstreams.AggregatedLabels)), canonicalAggregatedLabels(any(actual()).([]upstreams.AggregatedLabels)))
+		return assert.ObjectsAreEqual(canonicalAggregatedLabels(expected), canonicalAggregatedLabels(actual()))
 	}, eventuallyWait, eventuallyTick)
 }
 

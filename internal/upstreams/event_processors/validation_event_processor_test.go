@@ -109,7 +109,7 @@ func TestBaseSettingsEventProcessorStartFollowsCurrentValidationStateTransitions
 	validator.On("Validate").Return(validations.FatalSettingError).Once()
 	validator.On("Validate").Return(validations.FatalSettingError).Maybe()
 
-	go processor.Start()
+	processor.Start()
 	defer processor.Stop()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
@@ -190,7 +190,7 @@ func TestBaseSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *test
 			validator.On("Validate").Return(tt.result).Once()
 			validator.On("Validate").Return(tt.result).Maybe()
 
-			go processor.Start()
+			processor.Start()
 			defer processor.Stop()
 
 			require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
@@ -231,7 +231,7 @@ func TestBaseSettingsEventProcessorStartEmitsFatalErrorAfterValidState(t *testin
 	validator.On("Validate").Return(validations.FatalSettingError).Once()
 	validator.On("Validate").Return(validations.FatalSettingError).Maybe()
 
-	go processor.Start()
+	processor.Start()
 	defer processor.Stop()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
@@ -348,7 +348,7 @@ func TestBaseHealthEventProcessorStartEmitsStatusEvents(t *testing.T) {
 
 	validator.On("Validate").Return(protocol.Syncing).Once()
 
-	go processor.Start()
+	processor.Start()
 	defer processor.Stop()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
@@ -384,7 +384,7 @@ func TestBaseHealthEventProcessorStopStopsLifecycle(t *testing.T) {
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
 	validator.On("Validate").Return(protocol.Available).Maybe()
 
-	go processor.Start()
+	processor.Start()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 

@@ -34,19 +34,22 @@ func (b *BaseLowerBoundEventProcessor) Start() {
 		go b.lowerBoundProcessor.Start()
 
 		boundSub := b.lowerBoundProcessor.Subscribe(fmt.Sprintf("%s_lower_bounds", b.upstreamId))
-		defer boundSub.Unsubscribe()
 
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping lower bounds events of upstream '%s'", b.upstreamId)
-				return nil
-			case bound, ok := <-boundSub.Events:
-				if ok {
-					b.emitter(&protocol.LowerBoundUpstreamStateEvent{Data: bound})
+		go func() {
+			defer boundSub.Unsubscribe()
+			for {
+				select {
+				case <-ctx.Done():
+					log.Info().Msgf("stopping lower bounds events of upstream '%s'", b.upstreamId)
+				case bound, ok := <-boundSub.Events:
+					if ok {
+						b.emitter(&protocol.LowerBoundUpstreamStateEvent{Data: bound})
+					}
 				}
 			}
-		}
+		}()
+
+		return nil
 	})
 }
 

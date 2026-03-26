@@ -115,7 +115,7 @@ func TestBaseBlockEventProcessorStartEmitsEvents(t *testing.T) {
 		events <- event
 	})
 
-	go processor.Start()
+	processor.Start()
 
 	blockData := protocol.NewBlockWithHeight(101)
 
@@ -154,7 +154,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 		events <- event
 	})
 
-	go processor.Start()
+	processor.Start()
 
 	headData := protocol.NewBlockWithHeight(202)
 
@@ -190,7 +190,7 @@ func TestBaseBlockEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
 
-	go processor.Start()
+	processor.Start()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 
@@ -214,7 +214,7 @@ func TestHeadEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
 
-	go processor.Start()
+	processor.Start()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 

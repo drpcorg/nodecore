@@ -68,19 +68,22 @@ func (h *HeadEventProcessor) Start() {
 		go h.headProcessor.Start()
 
 		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
-		defer headSub.Unsubscribe()
 
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
-				return nil
-			case head, ok := <-headSub.Events:
-				if ok {
-					h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
+		go func() {
+			defer headSub.Unsubscribe()
+			for {
+				select {
+				case <-ctx.Done():
+					log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
+				case head, ok := <-headSub.Events:
+					if ok {
+						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
+					}
 				}
 			}
-		}
+		}()
+
+		return nil
 	})
 }
 
@@ -137,19 +140,23 @@ func (b *BaseBlockEventProcessor) Start() {
 		go b.blockProcessor.Start()
 
 		blockSub := b.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", b.upstreamId))
-		defer blockSub.Unsubscribe()
 
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping block events of upstream '%s'", b.upstreamId)
-				return nil
-			case block, ok := <-blockSub.Events:
-				if ok {
-					b.emitter(&protocol.BlockUpstreamStateEvent{Block: block.Block, BlockType: block.BlockType})
+		go func() {
+			defer blockSub.Unsubscribe()
+			for {
+				select {
+				case <-ctx.Done():
+					log.Info().Msgf("stopping block events of upstream '%s'", b.upstreamId)
+					return
+				case block, ok := <-blockSub.Events:
+					if ok {
+						b.emitter(&protocol.BlockUpstreamStateEvent{Block: block.Block, BlockType: block.BlockType})
+					}
 				}
 			}
-		}
+		}()
+
+		return nil
 	})
 }
 

@@ -88,6 +88,7 @@ func (b *BaseLabelsProcessor) detectLabels(ctx context.Context, detector LabelsD
 	labelsChan := make(chan lo.Tuple2[string, string], 10)
 
 	go func() {
+		defer close(labelsChan)
 		detectLabelsAndSend(detector, labelsChan)
 
 		for {

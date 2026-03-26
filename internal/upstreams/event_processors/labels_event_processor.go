@@ -21,10 +21,10 @@ func (l *LabelsEventProcessor) Start() {
 	l.lifecycle.Start(func(ctx context.Context) error {
 		go l.labelsProcessor.Start()
 
-		go func() {
-			labelsSub := l.labelsProcessor.Subscribe(fmt.Sprintf("%s_labels", l.upstreamId))
-			defer labelsSub.Unsubscribe()
+		labelsSub := l.labelsProcessor.Subscribe(fmt.Sprintf("%s_labels", l.upstreamId))
 
+		go func() {
+			defer labelsSub.Unsubscribe()
 			for {
 				select {
 				case <-ctx.Done():

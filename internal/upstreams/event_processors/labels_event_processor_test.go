@@ -52,7 +52,7 @@ func TestLabelsEventProcessorStartEmitsLabelEvents(t *testing.T) {
 		events <- event
 	})
 
-	go processor.Start()
+	processor.Start()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 
@@ -86,7 +86,7 @@ func TestLabelsEventProcessorStopStopsLifecycleAndDelegatesStop(t *testing.T) {
 	require.NotNil(t, processor)
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
 
-	go processor.Start()
+	processor.Start()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 

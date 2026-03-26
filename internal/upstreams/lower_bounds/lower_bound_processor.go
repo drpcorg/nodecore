@@ -102,6 +102,7 @@ func (b *BaseLowerBoundProcessor) detectLowerBound(ctx context.Context, detector
 	boundsChan := make(chan protocol.LowerBoundData, 10)
 
 	go func() {
+		defer close(boundsChan)
 		// delay detection the first bound
 		time.Sleep(b.initialDelay)
 		b.processBounds(detector, boundsChan)

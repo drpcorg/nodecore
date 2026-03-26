@@ -50,7 +50,7 @@ func TestBaseLowerBoundEventProcessorStartEmitsEvents(t *testing.T) {
 		events <- event
 	})
 
-	go processor.Start()
+	processor.Start()
 
 	data := protocol.NewLowerBoundData(123, 456, protocol.BlockBound)
 
@@ -86,7 +86,7 @@ func TestBaseLowerBoundEventProcessorStopStopsUnderlyingProcessor(t *testing.T) 
 
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
 
-	go processor.Start()
+	processor.Start()
 
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 
