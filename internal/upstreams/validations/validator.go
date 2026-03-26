@@ -34,6 +34,10 @@ type ValidationProcessor[R any] struct {
 }
 
 func NewSettingsValidationProcessor(validators []Validator[ValidationSettingResult]) *ValidationProcessor[ValidationSettingResult] {
+	if validators == nil {
+		return nil
+	}
+
 	return &ValidationProcessor[ValidationSettingResult]{
 		validators: validators,
 		reduce: func(results []ValidationSettingResult) ValidationSettingResult {
@@ -43,6 +47,10 @@ func NewSettingsValidationProcessor(validators []Validator[ValidationSettingResu
 }
 
 func NewHealthValidationProcessor(validators []Validator[protocol.AvailabilityStatus]) *ValidationProcessor[protocol.AvailabilityStatus] {
+	if validators == nil {
+		return nil
+	}
+
 	return &ValidationProcessor[protocol.AvailabilityStatus]{
 		validators: validators,
 		reduce: func(statuses []protocol.AvailabilityStatus) protocol.AvailabilityStatus {

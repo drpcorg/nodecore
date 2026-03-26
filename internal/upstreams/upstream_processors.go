@@ -87,3 +87,19 @@ func CreateBlockEventProcessor(
 	}
 	return eventProcessor
 }
+
+func CreateLabelsEventProcessor(
+	ctx context.Context,
+	conf *config.Upstream,
+	chainSpecific specific.ChainSpecific,
+) event_processors.UpstreamStateEventProcessor {
+	labelsProcessor := createLabelsProcessor(chainSpecific, conf.Options)
+	if labelsProcessor == nil {
+		return nil
+	}
+	eventProcessor := event_processors.NewLabelsEventProcessor(ctx, conf.Id, labelsProcessor)
+	if eventProcessor == nil {
+		return nil
+	}
+	return eventProcessor
+}

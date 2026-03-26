@@ -7,6 +7,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -16,6 +17,10 @@ import (
 type AztecChainSpecificObject struct {
 	upstreamId string
 	connector  connectors.ApiConnector
+}
+
+func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	return nil
 }
 
 func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

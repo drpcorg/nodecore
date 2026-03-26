@@ -60,14 +60,34 @@ func stopService(t *testing.T, service *lower_bounds.BaseLowerBoundProcessor, do
 }
 
 func TestNewBaseLowerBoundServiceWithDelayDefaults(t *testing.T) {
-	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
+	detector := mocks.NewLowerBoundDetectorMock()
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(
+		context.Background(),
+		"up-1",
+		0,
+		time.Millisecond,
+		[]lower_bounds.LowerBoundDetector{detector},
+	)
 
 	assert.False(t, service.Running())
 	assert.Equal(t, int64(0), service.PredictLowerBound(protocol.StateBound, 0))
 }
 
-func TestBaseLowerBoundServiceSubscribeReturnsSubscription(t *testing.T) {
+func TestNewBaseLowerBoundServiceWithDelayReturnsNilWhenNoDetectorsProvided(t *testing.T) {
 	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
+
+	assert.Nil(t, service)
+}
+
+func TestBaseLowerBoundServiceSubscribeReturnsSubscription(t *testing.T) {
+	detector := mocks.NewLowerBoundDetectorMock()
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(
+		context.Background(),
+		"up-1",
+		0,
+		time.Millisecond,
+		[]lower_bounds.LowerBoundDetector{detector},
+	)
 
 	sub := service.Subscribe("sub-1")
 	defer sub.Unsubscribe()
@@ -274,15 +294,6 @@ func TestBaseLowerBoundServiceStopStopsLifecycle(t *testing.T) {
 
 	assert.False(t, service.Running())
 	detector.AssertExpectations(t)
-}
-
-func TestBaseLowerBoundServiceWithNoDetectorsStartsAndStops(t *testing.T) {
-	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, nil)
-
-	done := startService(t, service)
-	stopService(t, service, done)
-
-	assert.False(t, service.Running())
 }
 
 func TestBaseLowerBoundServiceSecondStartDoesNotDuplicatePublishing(t *testing.T) {

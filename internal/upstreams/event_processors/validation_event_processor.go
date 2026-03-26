@@ -42,30 +42,32 @@ func (b *BaseSettingsEventProcessor) SetEmitter(emitter Emitter) {
 
 func (b *BaseSettingsEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping settings validations events of upstream '%s'", b.upstreamId)
-				return nil
-			case <-time.After(b.validationInterval):
-				currentValidationState := b.currentValidationState.Load()
-				validationResult := b.Validate()
-				switch validationResult {
-				case validations.FatalSettingError:
-					if currentValidationState == validations.SettingsError || currentValidationState == validations.Valid {
-						b.emitter(&protocol.FatalErrorUpstreamStateEvent{})
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					log.Info().Msgf("stopping settings validations events of upstream '%s'", b.upstreamId)
+				case <-time.After(b.validationInterval):
+					currentValidationState := b.currentValidationState.Load()
+					validationResult := b.Validate()
+					switch validationResult {
+					case validations.FatalSettingError:
+						if currentValidationState == validations.SettingsError || currentValidationState == validations.Valid {
+							b.emitter(&protocol.FatalErrorUpstreamStateEvent{})
+						}
+					case validations.SettingsError:
+						log.Debug().Msg("keep validating...")
+					case validations.Valid:
+						if currentValidationState == validations.SettingsError || currentValidationState == validations.FatalSettingError {
+							b.emitter(&protocol.ValidUpstreamStateEvent{})
+						}
+					case validations.UnknownResult:
+						// skip
 					}
-				case validations.SettingsError:
-					log.Debug().Msg("keep validating...")
-				case validations.Valid:
-					if currentValidationState == validations.SettingsError || currentValidationState == validations.FatalSettingError {
-						b.emitter(&protocol.ValidUpstreamStateEvent{})
-					}
-				case validations.UnknownResult:
-					// skip
 				}
 			}
-		}
+		}()
+		return nil
 	})
 }
 
@@ -128,16 +130,19 @@ func (b *BaseHealthEventProcessor) SetEmitter(emitter Emitter) {
 
 func (b *BaseHealthEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		b.validateHealth()
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info().Msgf("stopping health validations events of upstream '%s'", b.upstreamId)
-				return nil
-			case <-time.After(b.validationInterval):
-				b.validateHealth()
+		go func() {
+			b.validateHealth()
+			for {
+				select {
+				case <-ctx.Done():
+					log.Info().Msgf("stopping health validations events of upstream '%s'", b.upstreamId)
+				case <-time.After(b.validationInterval):
+					b.validateHealth()
+				}
 			}
-		}
+		}()
+
+		return nil
 	})
 }
 

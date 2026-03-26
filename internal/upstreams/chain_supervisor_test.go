@@ -2,6 +2,8 @@ package upstreams_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -31,6 +33,35 @@ func assertEventuallyEqual(t *testing.T, expected any, actual func() any) {
 	}, eventuallyWait, eventuallyTick)
 }
 
+func assertEventuallyElementsMatch(t *testing.T, expected []upstreams.AggregatedLabels, actual func() []upstreams.AggregatedLabels) {
+	t.Helper()
+
+	assert.Eventually(t, func() bool {
+		return assert.ObjectsAreEqual(canonicalAggregatedLabels(expected), canonicalAggregatedLabels(actual()))
+	}, eventuallyWait, eventuallyTick)
+}
+
+func canonicalAggregatedLabels(labels []upstreams.AggregatedLabels) []string {
+	canonical := make([]string, 0, len(labels))
+	for _, item := range labels {
+		keys := make([]string, 0, len(item.Labels))
+		for key := range item.Labels {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+
+		parts := make([]string, 0, len(keys))
+		for _, key := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%s", key, item.Labels[key]))
+		}
+
+		canonical = append(canonical, fmt.Sprintf("%d|%v", item.Amount, parts))
+	}
+
+	slices.Sort(canonical)
+	return canonical
+}
+
 func createEventWithLowerBounds(
 	id string,
 	status protocol.AvailabilityStatus,
@@ -53,6 +84,33 @@ func createEventWithLowerBounds(
 				},
 				UpstreamMethods: methods,
 				LowerBoundsInfo: lowerBoundsInfo,
+			},
+		},
+	}
+}
+
+func createEventWithLabels(
+	id string,
+	status protocol.AvailabilityStatus,
+	height uint64,
+	methods upmethods.Methods,
+	labels map[string]string,
+) protocol.UpstreamEvent {
+	labelsInfo := protocol.NewLabels()
+	for key, value := range labels {
+		labelsInfo.AddLabel(key, value)
+	}
+
+	return protocol.UpstreamEvent{
+		Id: id,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &protocol.UpstreamState{
+				Status: status,
+				HeadData: protocol.Block{
+					Height: height,
+				},
+				UpstreamMethods: methods,
+				Labels:          labelsInfo,
 			},
 		},
 	}
@@ -354,5 +412,154 @@ func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id2"))
 	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{}, func() any {
 		return chainSupervisor.GetChainState().LowerBounds
+	})
+}
+
+func TestChainSupervisorLabelsInitialStateIsEmpty(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+
+	assert.Empty(t, chainSupervisor.GetChainState().ChainLabels)
+}
+
+func TestChainSupervisorLabelsSingleAvailableUpstream(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id", protocol.Available, 100, methods, map[string]string{
+		"client_type":    "solana",
+		"client_version": "1.18.23",
+	}))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, map[string]string{
+			"client_type":    "solana",
+			"client_version": "1.18.23",
+		}),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+}
+
+func TestChainSupervisorLabelsAggregateIdenticalLabelsAcrossAvailableUpstreams(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	commonLabels := map[string]string{
+		"client_type":    "solana",
+		"client_version": "1.18.23",
+	}
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id1", protocol.Available, 100, methods, commonLabels))
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id2", protocol.Available, 120, methods, commonLabels))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(2, commonLabels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+}
+
+func TestChainSupervisorLabelsIgnoreUnavailableUpstreams(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	availableLabels := map[string]string{
+		"client_type": "solana",
+	}
+	unavailableLabels := map[string]string{
+		"client_type": "agave",
+	}
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("available", protocol.Available, 100, methods, availableLabels))
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("unavailable", protocol.Unavailable, 100, methods, unavailableLabels))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, availableLabels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+}
+
+func TestChainSupervisorLabelsIgnoreUpstreamsWithoutLabels(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	labels := map[string]string{
+		"client_type": "solana",
+	}
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("with-labels", protocol.Available, 100, methods, labels))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("without-labels", protocol.Available, protocol.NewBlockWithHeight(100), methods))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, labels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+}
+
+func TestChainSupervisorLabelsRecomputeWhenUpstreamBecomesUnavailable(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	firstLabels := map[string]string{
+		"client_type": "solana",
+	}
+	secondLabels := map[string]string{
+		"client_type": "agave",
+	}
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id1", protocol.Available, 100, methods, firstLabels))
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id2", protocol.Available, 100, methods, secondLabels))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, firstLabels),
+		upstreams.NewAggregatedLabels(1, secondLabels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id1", protocol.Unavailable, 100, methods, firstLabels))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, secondLabels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+}
+
+func TestChainSupervisorLabelsRecomputeWhenUpstreamRemoved(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	firstLabels := map[string]string{
+		"client_type": "solana",
+	}
+	secondLabels := map[string]string{
+		"client_type": "agave",
+	}
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id1", protocol.Available, 100, methods, firstLabels))
+	chainSupervisor.PublishUpstreamEvent(createEventWithLabels("id2", protocol.Available, 100, methods, secondLabels))
+
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, firstLabels),
+		upstreams.NewAggregatedLabels(1, secondLabels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id1"))
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{
+		upstreams.NewAggregatedLabels(1, secondLabels),
+	}, func() []upstreams.AggregatedLabels { return chainSupervisor.GetChainState().ChainLabels })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id2"))
+	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{}, func() []upstreams.AggregatedLabels {
+		return chainSupervisor.GetChainState().ChainLabels
 	})
 }

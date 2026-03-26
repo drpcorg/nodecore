@@ -61,6 +61,7 @@ type UpstreamOptions struct {
 	DisableChainValidation      *bool         `yaml:"disable-chain-validation"`
 	DisableHealthValidation     *bool         `yaml:"disable-health-validation"`
 	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
+	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
 }
 
 type ChainDefaults struct {

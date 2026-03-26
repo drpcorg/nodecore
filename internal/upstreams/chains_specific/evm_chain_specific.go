@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -28,6 +29,7 @@ type ChainSpecific interface {
 	SettingsValidators() []validations.Validator[validations.ValidationSettingResult]
 
 	LowerBoundProcessor() lower_bounds.LowerBoundProcessor
+	LabelsProcessor() labels.LabelsProcessor
 }
 
 type EvmChainSpecificObject struct {
@@ -35,6 +37,10 @@ type EvmChainSpecificObject struct {
 	connector  connectors.ApiConnector
 	chain      *chains.ConfiguredChain
 	options    *config.UpstreamOptions
+}
+
+func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	return nil
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

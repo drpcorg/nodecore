@@ -356,6 +356,13 @@ func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults) {
 		}
 		o.DisableLowerBoundsDetection = &value
 	}
+	if o.DisableLabelsDetection == nil {
+		value := true
+		if defaults != nil && defaults.Options != nil && defaults.Options.DisableLabelsDetection != nil {
+			value = *defaults.Options.DisableLabelsDetection
+		}
+		o.DisableLabelsDetection = &value
+	}
 }
 
 func (m *MethodsConfig) setDefaults() {

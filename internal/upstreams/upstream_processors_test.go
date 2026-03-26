@@ -50,7 +50,7 @@ func TestCreateHealthEventProcessor_ReturnsNilWhenValidationDisabled(t *testing.
 		Options: testUpstreamOptions(withDisableValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout)
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -63,7 +63,7 @@ func TestCreateHealthEventProcessor_ReturnsNilWhenHealthValidationDisabled(t *te
 		Options: testUpstreamOptions(withDisableHealthValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout)
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -76,7 +76,7 @@ func TestCreateHealthEventProcessor_ReturnsHealthProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout)
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -158,7 +158,7 @@ func TestCreateLowerBoundsEventProcessor_ReturnsNilWhenDisabled(t *testing.T) {
 		Options: testUpstreamOptions(withDisableLowerBoundsDetection(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout)
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -171,7 +171,7 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout)
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -180,13 +180,54 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessor(t *testing.T) {
 	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
+func TestCreateLabelsEventProcessor_ReturnsNilWithoutProcessor(t *testing.T) {
+	conf := &config.Upstream{
+		Id:      "upstream-id",
+		Options: testUpstreamOptions(),
+	}
+	connector := mocks.NewConnectorMock()
+	chainSpecific := specific.NewEvmChainSpecific(conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.Options)
+
+	processor := upstreams.CreateLabelsEventProcessor(context.Background(), conf, chainSpecific)
+
+	assert.Nil(t, processor)
+}
+
+func TestCreateLabelsEventProcessor_ReturnsNilWhenDisabled(t *testing.T) {
+	conf := &config.Upstream{
+		Id:      "upstream-id",
+		Options: testUpstreamOptions(withDisableLabelsDetection(true)),
+	}
+	connector := mocks.NewConnectorMock()
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
+
+	processor := upstreams.CreateLabelsEventProcessor(context.Background(), conf, chainSpecific)
+
+	assert.Nil(t, processor)
+}
+
+func TestCreateLabelsEventProcessor_ReturnsProcessor(t *testing.T) {
+	conf := &config.Upstream{
+		Id:      "upstream-id",
+		Options: testUpstreamOptions(),
+	}
+	connector := mocks.NewConnectorMock()
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
+
+	processor := upstreams.CreateLabelsEventProcessor(context.Background(), conf, chainSpecific)
+
+	assert.NotNil(t, processor)
+	assert.IsType(t, &event_processors.LabelsEventProcessor{}, processor)
+	assert.Equal(t, event_processors.LabelsProcessorType, processor.Type())
+}
+
 func TestCreateBlockEventProcessor_ReturnsNilForUnsupportedBlockchain(t *testing.T) {
 	conf := &config.Upstream{
 		Id:      "upstream-id",
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout)
+	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
 	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, connector, chainSpecific, chains.Solana)
 
@@ -219,6 +260,7 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *config.UpstreamOpt
 		DisableChainValidation:      new(false),
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(false),
+		DisableLabelsDetection:      new(false),
 	}
 
 	for _, mutate := range mutators {
@@ -255,5 +297,11 @@ func withDisableHealthValidation(v bool) upstreamOptionsMutator {
 func withDisableLowerBoundsDetection(v bool) upstreamOptionsMutator {
 	return func(options *config.UpstreamOptions) {
 		options.DisableLowerBoundsDetection = new(v)
+	}
+}
+
+func withDisableLabelsDetection(v bool) upstreamOptionsMutator {
+	return func(options *config.UpstreamOptions) {
+		options.DisableLabelsDetection = new(v)
 	}
 }

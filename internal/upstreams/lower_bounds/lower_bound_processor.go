@@ -83,6 +83,10 @@ func NewBaseLowerBoundProcessorWithDelay(
 	initialDelay time.Duration,
 	lowerBoundsDetectors []LowerBoundDetector,
 ) *BaseLowerBoundProcessor {
+	if len(lowerBoundsDetectors) == 0 {
+		return nil
+	}
+
 	name := fmt.Sprintf("%s_lower_bound_service", upstreamId)
 	return &BaseLowerBoundProcessor{
 		upstreamId:           upstreamId,
@@ -98,6 +102,7 @@ func (b *BaseLowerBoundProcessor) detectLowerBound(ctx context.Context, detector
 	boundsChan := make(chan protocol.LowerBoundData, 10)
 
 	go func() {
+		defer close(boundsChan)
 		// delay detection the first bound
 		time.Sleep(b.initialDelay)
 		b.processBounds(detector, boundsChan)

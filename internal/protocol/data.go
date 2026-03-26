@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/errors_config"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type ResponseReceivedHook interface {
@@ -273,6 +274,7 @@ type UpstreamState struct {
 
 	BlockInfo       *BlockInfo
 	LowerBoundsInfo *LowerBoundInfo
+	Labels          *Labels
 }
 
 func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string, rt *ratelimiter.RateLimitBudget, autoTuneRateLimiter *ratelimiter.UpstreamAutoTune) UpstreamState {
@@ -281,10 +283,36 @@ func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap],
 		UpstreamMethods:     upstreamMethods,
 		BlockInfo:           NewBlockInfo(),
 		LowerBoundsInfo:     NewLowerBoundInfo(),
+		Labels:              NewLabels(),
 		Caps:                caps,
 		HeadData:            ZeroBlock{},
 		UpstreamIndex:       upstreamIndex,
 		RateLimiterBudget:   rt,
 		AutoTuneRateLimiter: autoTuneRateLimiter,
 	}
+}
+
+type Labels struct {
+	labels *utils.CMap[string, string]
+}
+
+func NewLabels() *Labels {
+	return &Labels{
+		labels: utils.NewCMap[string, string](),
+	}
+}
+
+func (l *Labels) AddLabel(key, value string) {
+	l.labels.Store(key, value)
+}
+
+func (l *Labels) GetAllLabels() map[string]string {
+	labels := make(map[string]string, 10)
+
+	l.labels.Range(func(k, v string) bool {
+		labels[k] = v
+		return true
+	})
+
+	return labels
 }

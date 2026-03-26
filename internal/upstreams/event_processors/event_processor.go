@@ -14,6 +14,7 @@ const (
 	LowerBoundEventProcessorType
 	HealthValidatorProcessorType
 	SettingsValidatorProcessorType
+	LabelsProcessorType
 )
 
 type UpstreamStateEventProcessor interface {
@@ -62,9 +63,7 @@ func (u *UpstreamProcessorAggregator) ValidateSettings() (validations.Validation
 
 func (u *UpstreamProcessorAggregator) StartProcessor(processorType EventProcessorType) {
 	if processor, ok := u.eventProcessors[processorType]; ok {
-		go func() {
-			processor.Start()
-		}()
+		processor.Start()
 	}
 }
 
