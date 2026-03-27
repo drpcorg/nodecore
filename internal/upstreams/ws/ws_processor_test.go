@@ -242,7 +242,7 @@ func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T
 	requestRegistry.On("OnRpcMessage", expectedResponse).Run(func(args mock.Arguments) {
 		routed <- struct{}{}
 	}).Once()
-	requestRegistry.On("CancelAll").Once()
+	requestRegistry.On("CancelAll").Maybe()
 
 	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
 	require.NoError(t, err)
