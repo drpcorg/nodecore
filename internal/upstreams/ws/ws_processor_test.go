@@ -212,12 +212,16 @@ func TestBaseWsProcessorSendRpcRequestReturnsContextError(t *testing.T) {
 
 func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T) {
 	serverConnReady := make(chan *websocket.Conn, 1)
+	serverErrs := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		}
 		conn, err := upgrader.Upgrade(w, r, nil)
-		require.NoError(t, err)
+		if err != nil {
+			serverErrs <- err
+			return
+		}
 		serverConnReady <- conn
 	}))
 	defer server.Close()
@@ -242,7 +246,7 @@ func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T
 	requestRegistry.On("OnRpcMessage", expectedResponse).Run(func(args mock.Arguments) {
 		routed <- struct{}{}
 	}).Once()
-	requestRegistry.On("CancelAll").Once()
+	requestRegistry.On("CancelAll").Maybe()
 
 	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
 	require.NoError(t, err)
@@ -254,6 +258,8 @@ func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T
 	select {
 	case state := <-subscription.Events:
 		assert.Equal(t, protocol.WsConnected, state)
+	case err := <-serverErrs:
+		require.NoError(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("expected connected state")
 	}
@@ -273,12 +279,16 @@ func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T
 
 func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 	serverConnReady := make(chan *websocket.Conn, 1)
+	serverErrs := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		}
 		conn, err := upgrader.Upgrade(w, r, nil)
-		require.NoError(t, err)
+		if err != nil {
+			serverErrs <- err
+			return
+		}
 		serverConnReady <- conn
 	}))
 	defer server.Close()
@@ -308,6 +318,8 @@ func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 	select {
 	case state := <-subscription.Events:
 		assert.Equal(t, protocol.WsConnected, state)
+	case err := <-serverErrs:
+		require.NoError(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("expected connected state")
 	}

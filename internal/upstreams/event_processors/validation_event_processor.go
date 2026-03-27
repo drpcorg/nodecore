@@ -47,6 +47,7 @@ func (b *BaseSettingsEventProcessor) Start() {
 				select {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping settings validations events of upstream '%s'", b.upstreamId)
+					return
 				case <-time.After(b.validationInterval):
 					currentValidationState := b.currentValidationState.Load()
 					validationResult := b.Validate()
@@ -136,6 +137,7 @@ func (b *BaseHealthEventProcessor) Start() {
 				select {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping health validations events of upstream '%s'", b.upstreamId)
+					return
 				case <-time.After(b.validationInterval):
 					b.validateHealth()
 				}

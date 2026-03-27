@@ -101,6 +101,7 @@ func newTestWebsocketConnection(
 
 	messageChan := make(chan []byte, 1)
 	errorChan := make(chan error, 1)
+	upgradeErrChan := make(chan error, 1)
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
@@ -109,7 +110,10 @@ func newTestWebsocketConnection(
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
-		require.NoError(t, err)
+		if err != nil {
+			upgradeErrChan <- err
+			return
+		}
 
 		go func() {
 			defer func() {
@@ -130,6 +134,11 @@ func newTestWebsocketConnection(
 	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
 	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
+	select {
+	case err := <-upgradeErrChan:
+		require.NoError(t, err)
+	default:
+	}
 
 	closeFunc := func() {
 		_ = clientConn.Close()
