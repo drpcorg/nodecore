@@ -41,6 +41,7 @@ func (b *BaseLowerBoundEventProcessor) Start() {
 				select {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping lower bounds events of upstream '%s'", b.upstreamId)
+					return
 				case bound, ok := <-boundSub.Events:
 					if ok {
 						b.emitter(&protocol.LowerBoundUpstreamStateEvent{Data: bound})

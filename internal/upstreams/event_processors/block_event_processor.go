@@ -75,6 +75,7 @@ func (h *HeadEventProcessor) Start() {
 				select {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
+					return
 				case head, ok := <-headSub.Events:
 					if ok {
 						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
