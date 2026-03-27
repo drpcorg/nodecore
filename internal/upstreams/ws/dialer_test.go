@@ -17,6 +17,7 @@ import (
 
 func TestDefaultDialWsServiceNewConnectFunc(t *testing.T) {
 	headerChan := make(chan http.Header, 1)
+	serverErrs := make(chan error, 1)
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
@@ -27,12 +28,17 @@ func TestDefaultDialWsServiceNewConnectFunc(t *testing.T) {
 		headerChan <- r.Header.Clone()
 
 		conn, err := upgrader.Upgrade(w, r, nil)
-		require.NoError(t, err)
+		if err != nil {
+			serverErrs <- err
+			return
+		}
 		defer func() {
 			_ = conn.Close()
 		}()
 
-		require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(`ok`)))
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(`ok`)); err != nil {
+			serverErrs <- err
+		}
 	}))
 	defer server.Close()
 
@@ -58,6 +64,8 @@ func TestDefaultDialWsServiceNewConnectFunc(t *testing.T) {
 	select {
 	case header := <-headerChan:
 		assert.Equal(t, "header-value", header.Get("X-Test-Header"))
+	case err := <-serverErrs:
+		require.NoError(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("expected websocket request headers")
 	}
