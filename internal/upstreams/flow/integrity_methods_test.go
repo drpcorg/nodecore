@@ -121,7 +121,7 @@ func TestEthBlockNumberIntegrityHandlerNotHandledIfCantParseNumber(t *testing.T)
 func TestEthBlockNumberIntegrityHandlerResponseBlockIsGreaterThanHead(t *testing.T) {
 	chainSupervisor, newMethods := createChainSupervisor()
 	go chainSupervisor.Start()
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
@@ -138,10 +138,10 @@ func TestEthBlockNumberIntegrityHandlerResponseBlockIsGreaterThanHead(t *testing
 func TestEthBlockNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 	chainSupervisor, newMethods := createChainSupervisor()
 	go chainSupervisor.Start()
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(5), newMethods))
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("100", protocol.Available, protocol.NewBlockWithHeight(4), newMethods))
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("23", protocol.Available, protocol.NewBlockWithHeight(108), newMethods))
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("25", protocol.Available, protocol.NewBlockWithHeight(150), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(5), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("100", protocol.Available, protocol.NewBlockWithHeight(4), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("23", protocol.Available, protocol.NewBlockWithHeight(108), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("25", protocol.Available, protocol.NewBlockWithHeight(150), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
@@ -158,7 +158,7 @@ func TestEthBlockNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 func TestEthBlockNumberIntegrityHandlerNoUpstreams(t *testing.T) {
 	chainSupervisor, newMethods := createChainSupervisor()
 	go chainSupervisor.Start()
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(100), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(100), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ETHEREUM)
@@ -257,7 +257,7 @@ func TestEthGetBlockByNumberIntegrityHandlerLatestResponseBlockIsGreaterThanHead
 			chainSupervisor, newMethods := createChainSupervisor()
 			go chainSupervisor.Start()
 			for _, event := range test.events(newMethods) {
-				chainSupervisor.PublishUpstreamEvent(event)
+				publishEventWithHead(chainSupervisor, event)
 			}
 			time.Sleep(10 * time.Millisecond)
 
@@ -324,7 +324,7 @@ func TestEthGetBlockByNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 			chainSupervisor, newMethods := createChainSupervisor()
 			go chainSupervisor.Start()
 			for _, event := range test.evens(newMethods) {
-				chainSupervisor.PublishUpstreamEvent(event)
+				publishEventWithHead(chainSupervisor, event)
 			}
 			time.Sleep(10 * time.Millisecond)
 
@@ -349,9 +349,9 @@ func TestEthGetBlockByNumberIntegrityHandlerNumberTag(t *testing.T) {
 
 	chainSupervisor, newMethods := createChainSupervisor()
 	go chainSupervisor.Start()
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(5), newMethods))
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("23", protocol.Available, protocol.NewBlockWithHeight(108), newMethods))
-	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("25", protocol.Available, protocol.NewBlockWithHeight(150), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("22", protocol.Available, protocol.NewBlockWithHeight(5), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("23", protocol.Available, protocol.NewBlockWithHeight(108), newMethods))
+	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("25", protocol.Available, protocol.NewBlockWithHeight(150), newMethods))
 	time.Sleep(10 * time.Millisecond)
 
 	req, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod(specs.EthBlockNumber, []any{"0x1555", false}, spec)
@@ -371,4 +371,21 @@ func createChainSupervisor() (upstreams.ChainSupervisor, methods.Methods) {
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
 	return chainSupervisor, methodsMock
+}
+
+func publishEventWithHead(chainSupervisor upstreams.ChainSupervisor, event protocol.UpstreamEvent) {
+	chainSupervisor.PublishUpstreamEvent(event)
+
+	stateEvent, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	if !ok || stateEvent.State == nil || stateEvent.State.HeadData.IsEmptyByHeight() {
+		return
+	}
+
+	chainSupervisor.PublishUpstreamEvent(protocol.UpstreamEvent{
+		Id: event.Id,
+		EventType: &protocol.HeadUpstreamEvent{
+			Status: stateEvent.State.Status,
+			Head:   stateEvent.State.HeadData,
+		},
+	})
 }

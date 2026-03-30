@@ -19,6 +19,7 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,8 +32,6 @@ func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-
-	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
 		mustNewUpstreamMethods(t, nil),
 		mapset.NewThreadUnsafeSet[protocol.Cap](),
@@ -45,21 +44,19 @@ func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.
 	assert.Equal(t, "id", upstream.GetId())
 	assert.Equal(t, chains.ETHEREUM, upstream.GetChain())
 	assert.Equal(t, "00012", upstream.GetHashIndex())
-	assertStateEventMatches(t, event, expectedState)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Unavailable})
-	event = nextUpstreamEvent(t, sub)
+	event := nextUpstreamEvent(t, sub)
 	expectedState.Status = protocol.Unavailable
 	assertStateEventMatches(t, event, expectedState)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
 func TestBaseUpstreamStop_StopsRunningLifecycle(t *testing.T) {
-	upstream, _, sub := newTestBaseUpstream(t, nil, nil, nil)
+	upstream, _, _ := newTestBaseUpstream(t, nil, nil, nil)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 	require.True(t, upstream.Running())
 
 	upstream.Stop()
@@ -73,7 +70,6 @@ func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	headData := protocol.NewBlockWithHeight(123)
 	emit(&protocol.HeadUpstreamStateEvent{HeadData: headData})
@@ -88,7 +84,7 @@ func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	)
 	expectedState.Status = protocol.Available
 	expectedState.HeadData = headData
-	assertStateEventMatches(t, event, expectedState)
+	assertHeadEventMatches(t, event, expectedState)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
@@ -98,7 +94,6 @@ func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	blockData := protocol.NewBlockWithHeight(456)
 	emit(&protocol.BlockUpstreamStateEvent{Block: blockData, BlockType: protocol.FinalizedBlock})
@@ -117,13 +112,40 @@ func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	blockData := protocol.NewBlockWithHeight(456)
+	blockEvent := &protocol.BlockUpstreamStateEvent{Block: blockData, BlockType: protocol.FinalizedBlock}
+
+	emit(blockEvent)
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	expectedState.BlockInfo.AddBlock(blockData, protocol.FinalizedBlock)
+	assertStateEventMatches(t, event, expectedState)
+
+	emit(blockEvent)
+	assertNoUpstreamEvent(t, sub)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
 func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	bound := protocol.LowerBoundData{Type: protocol.SlotBound, Bound: 789, Timestamp: time.Now().Unix()}
 	emit(&protocol.LowerBoundUpstreamStateEvent{Data: bound})
@@ -142,13 +164,142 @@ func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	bound := protocol.LowerBoundData{Type: protocol.SlotBound, Bound: 789, Timestamp: time.Now().Unix()}
+	boundEvent := &protocol.LowerBoundUpstreamStateEvent{Data: bound}
+
+	emit(boundEvent)
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	expectedState.LowerBoundsInfo.AddLowerBound(bound)
+	assertStateEventMatches(t, event, expectedState)
+
+	emit(boundEvent)
+	assertNoUpstreamEvent(t, sub)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	emit(&protocol.LabelsUpstreamStateEvent{Labels: lo.T2("region", "us-east-1")})
+
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	expectedState.Labels.AddLabel("region", "us-east-1")
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
+
+	assertNoUpstreamEvent(t, sub)
+
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	labelEvent := &protocol.LabelsUpstreamStateEvent{Labels: lo.T2("region", "us-east-1")}
+
+	emit(labelEvent)
+	event := nextUpstreamEvent(t, sub)
+
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	expectedState.Labels.AddLabel("region", "us-east-1")
+	assertStateEventMatches(t, event, expectedState)
+
+	emit(labelEvent)
+	assertNoUpstreamEvent(t, sub)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	headData := protocol.NewBlockWithHeight(123)
+	headEvent := &protocol.HeadUpstreamStateEvent{HeadData: headData}
+
+	emit(headEvent)
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	expectedState.HeadData = headData
+	assertHeadEventMatches(t, event, expectedState)
+
+	emit(headEvent)
+	event = nextUpstreamEvent(t, sub)
+	assertHeadEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
 func TestBaseUpstreamProcessStateEvents_AddsWsCapOnConnected(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
 
@@ -165,13 +316,38 @@ func TestBaseUpstreamProcessStateEvents_AddsWsCapOnConnected(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsConnectedState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	wsConnectedEvent := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected}
+
+	emit(wsConnectedEvent)
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertStateEventMatches(t, event, expectedState)
+
+	emit(wsConnectedEvent)
+	assertNoUpstreamEvent(t, sub)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
 func TestBaseUpstreamProcessStateEvents_RemovesWsCapOnDisconnected(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
 	_ = nextUpstreamEvent(t, sub)
@@ -191,13 +367,40 @@ func TestBaseUpstreamProcessStateEvents_RemovesWsCapOnDisconnected(t *testing.T)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsDisconnectedState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
+	_ = nextUpstreamEvent(t, sub)
+
+	wsDisconnectedEvent := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected}
+	emit(wsDisconnectedEvent)
+	event := nextUpstreamEvent(t, sub)
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertStateEventMatches(t, event, expectedState)
+
+	emit(wsDisconnectedEvent)
+	assertNoUpstreamEvent(t, sub)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
 func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	emit(&protocol.FatalErrorUpstreamStateEvent{})
 	event := nextUpstreamEvent(t, sub)
@@ -227,6 +430,84 @@ func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *t
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	emit(&protocol.FatalErrorUpstreamStateEvent{})
+	event := nextUpstreamEvent(t, sub)
+	_, ok := event.EventType.(*protocol.RemoveUpstreamEvent)
+	require.True(t, ok)
+
+	emit(&protocol.FatalErrorUpstreamStateEvent{})
+	assertNoUpstreamEvent(t, sub)
+
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	emit(&protocol.ValidUpstreamStateEvent{})
+	assertNoUpstreamEvent(t, sub)
+
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+
+	t.Cleanup(upstream.Stop)
+
+	upstream.Start()
+
+	emit(&protocol.FatalErrorUpstreamStateEvent{})
+	event := nextUpstreamEvent(t, sub)
+	_, ok := event.EventType.(*protocol.RemoveUpstreamEvent)
+	require.True(t, ok)
+
+	emit(&protocol.ValidUpstreamStateEvent{})
+	event = nextUpstreamEvent(t, sub)
+	_, ok = event.EventType.(*protocol.ValidUpstreamEvent)
+	require.True(t, ok)
+
+	emit(&protocol.ValidUpstreamStateEvent{})
+	assertNoUpstreamEvent(t, sub)
+
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, nil),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
 func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 	loadMethodSpecs(t)
 
@@ -236,7 +517,6 @@ func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	initialEvent := nextUpstreamEvent(t, sub)
 	expectedInitialState := protocol.DefaultUpstreamState(
 		mustNewUpstreamMethods(t, upConfig.Methods),
 		mapset.NewThreadUnsafeSet[protocol.Cap](),
@@ -245,7 +525,7 @@ func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 		nil,
 	)
 	expectedInitialState.Status = protocol.Available
-	assertStateEventMatches(t, initialEvent, expectedInitialState)
+	assertUpstreamStateMatches(t, expectedInitialState, upstream.GetUpstreamState())
 
 	upstream.BanMethod("eth_call")
 
@@ -282,7 +562,6 @@ func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 	t.Cleanup(upstream.Stop)
 
 	upstream.Start()
-	_ = nextUpstreamEvent(t, sub)
 
 	upstream.BanMethod("eth_call")
 
@@ -305,7 +584,7 @@ func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
 	headProcessor.On("UpdateHead", uint64(100), uint64(7)).Once()
 
-	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "id", headProcessor)
+	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "id", chains.ETHEREUM, headProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headEventProcessor})
 	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
 
@@ -319,7 +598,7 @@ func TestBaseUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
 	blockData := protocol.NewBlock(uint64(1002), 0, blockchain.EmptyHash, blockchain.EmptyHash)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
-	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "id", blockProcessor)
+	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "id", chains.ETHEREUM, blockProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{blockEventProcessor})
 	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
 
@@ -454,6 +733,15 @@ func assertStateEventMatches(t *testing.T, event protocol.UpstreamEvent, expecte
 	assertUpstreamStateMatches(t, expected, *stateEvent.State)
 }
 
+func assertHeadEventMatches(t *testing.T, event protocol.UpstreamEvent, expected protocol.UpstreamState) {
+	t.Helper()
+
+	headEvent, ok := event.EventType.(*protocol.HeadUpstreamEvent)
+	require.True(t, ok)
+	assert.Equal(t, expected.Status, headEvent.Status)
+	assert.True(t, expected.HeadData.Equals(headEvent.Head))
+}
+
 func assertUpstreamStateMatches(t *testing.T, expected, actual protocol.UpstreamState) {
 	t.Helper()
 
@@ -464,6 +752,7 @@ func assertUpstreamStateMatches(t *testing.T, expected, actual protocol.Upstream
 	assert.Equal(t, expected.AutoTuneRateLimiter, actual.AutoTuneRateLimiter)
 	assert.Equal(t, expected.BlockInfo.GetBlocks(), actual.BlockInfo.GetBlocks())
 	assert.ElementsMatch(t, expected.LowerBoundsInfo.GetAllBounds(), actual.LowerBoundsInfo.GetAllBounds())
+	assert.Equal(t, expected.Labels.GetAllLabels(), actual.Labels.GetAllLabels())
 	assert.True(t, expected.Caps.Equal(actual.Caps))
 	assert.True(t, expected.UpstreamMethods.GetSupportedMethods().Equal(actual.UpstreamMethods.GetSupportedMethods()))
 }

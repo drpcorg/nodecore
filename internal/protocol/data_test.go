@@ -101,7 +101,7 @@ func TestDefaultUpstreamState(t *testing.T) {
 	defaultUpState := protocol.DefaultUpstreamState(mocks.NewMethodsMock(), caps, "55", nil, nil)
 
 	expectedState := protocol.UpstreamState{
-		Status:          protocol.Unavailable,
+		Status:          protocol.Available,
 		UpstreamMethods: mocks.NewMethodsMock(),
 		BlockInfo:       protocol.NewBlockInfo(),
 		LowerBoundsInfo: protocol.NewLowerBoundInfo(),
@@ -112,4 +112,70 @@ func TestDefaultUpstreamState(t *testing.T) {
 	}
 
 	assert.Equal(t, expectedState, defaultUpState)
+}
+
+func TestLabelsGetLabel(t *testing.T) {
+	labels := protocol.NewLabels()
+	labels.AddLabel("region", "us-east-1")
+
+	value, ok := labels.GetLabel("region")
+
+	assert.True(t, ok)
+	assert.Equal(t, "us-east-1", value)
+}
+
+func TestLabelsGetLabelMissing(t *testing.T) {
+	labels := protocol.NewLabels()
+
+	value, ok := labels.GetLabel("missing")
+
+	assert.False(t, ok)
+	assert.Empty(t, value)
+}
+
+func TestLabelsAddLabelOverwrite(t *testing.T) {
+	labels := protocol.NewLabels()
+	labels.AddLabel("region", "us-east-1")
+	labels.AddLabel("region", "eu-west-1")
+
+	value, ok := labels.GetLabel("region")
+
+	assert.True(t, ok)
+	assert.Equal(t, "eu-west-1", value)
+}
+
+func TestLabelsGetAllLabels(t *testing.T) {
+	labels := protocol.NewLabels()
+	labels.AddLabel("region", "us-east-1")
+	labels.AddLabel("tier", "archive")
+
+	assert.Equal(t, map[string]string{
+		"region": "us-east-1",
+		"tier":   "archive",
+	}, labels.GetAllLabels())
+}
+
+func TestLabelsCopy(t *testing.T) {
+	labels := protocol.NewLabels()
+	labels.AddLabel("region", "us-east-1")
+
+	copiedLabels := labels.Copy()
+	copiedLabels.AddLabel("tier", "archive")
+	copiedLabels.AddLabel("region", "eu-west-1")
+
+	originalRegion, ok := labels.GetLabel("region")
+	assert.True(t, ok)
+	assert.Equal(t, "us-east-1", originalRegion)
+
+	_, originalHasTier := labels.GetLabel("tier")
+	assert.False(t, originalHasTier)
+
+	copiedRegion, ok := copiedLabels.GetLabel("region")
+	assert.True(t, ok)
+	assert.Equal(t, "eu-west-1", copiedRegion)
+
+	copiedTier, ok := copiedLabels.GetLabel("tier")
+	assert.True(t, ok)
+	assert.Equal(t, "archive", copiedTier)
+	assert.NotSame(t, labels, copiedLabels)
 }

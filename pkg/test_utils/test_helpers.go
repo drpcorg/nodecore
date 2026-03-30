@@ -112,15 +112,21 @@ func CreateEventWithBlockData(
 	methods methods.Methods,
 	blockInfo *protocol.BlockInfo,
 ) protocol.UpstreamEvent {
+	state := protocol.DefaultUpstreamState(
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"",
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = head
+	state.BlockInfo = blockInfo
+
 	return protocol.UpstreamEvent{
 		Id: id,
 		EventType: &protocol.StateUpstreamEvent{
-			State: &protocol.UpstreamState{
-				Status:          status,
-				HeadData:        head,
-				UpstreamMethods: methods,
-				BlockInfo:       blockInfo,
-			},
+			State: &state,
 		},
 	}
 }
@@ -209,18 +215,20 @@ func createEvent(
 	caps mapset.Set[protocol.Cap],
 	upstreamIndex string,
 ) protocol.UpstreamEvent {
+	state := protocol.DefaultUpstreamState(
+		methods,
+		caps,
+		upstreamIndex,
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = protocol.Block{Height: height}
+
 	return protocol.UpstreamEvent{
 		Id: id,
 		EventType: &protocol.StateUpstreamEvent{
-			State: &protocol.UpstreamState{
-				Status: status,
-				HeadData: protocol.Block{
-					Height: height,
-				},
-				UpstreamMethods: methods,
-				Caps:            caps,
-				UpstreamIndex:   upstreamIndex,
-			},
+			State: &state,
 		},
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -15,20 +16,20 @@ import (
 )
 
 func TestNewBaseBlockEventProcessorNilProcessorReturnsNil(t *testing.T) {
-	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", nil)
+	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, nil)
 
 	assert.Nil(t, processor)
 }
 
 func TestNewHeadEventProcessorNilProcessorReturnsNil(t *testing.T) {
-	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", nil)
+	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, nil)
 
 	assert.Nil(t, processor)
 }
 
 func TestBaseBlockEventProcessorType(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
-	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)
+	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
 
 	require.NotNil(t, processor)
 	assert.Equal(t, event_processors.BlockEventProcessorType, processor.Type())
@@ -36,7 +37,7 @@ func TestBaseBlockEventProcessorType(t *testing.T) {
 
 func TestHeadEventProcessorType(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
-	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", headProcessor)
+	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, headProcessor)
 
 	require.NotNil(t, processor)
 	assert.Equal(t, event_processors.HeadEventProcessorType, processor.Type())
@@ -44,7 +45,7 @@ func TestHeadEventProcessorType(t *testing.T) {
 
 func TestBaseBlockEventProcessorRunningInitiallyFalse(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
-	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)
+	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
 
 	require.NotNil(t, processor)
 	assert.False(t, processor.Running())
@@ -52,7 +53,7 @@ func TestBaseBlockEventProcessorRunningInitiallyFalse(t *testing.T) {
 
 func TestHeadEventProcessorRunningInitiallyFalse(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
-	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", headProcessor)
+	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, headProcessor)
 
 	require.NotNil(t, processor)
 	assert.False(t, processor.Running())
@@ -60,7 +61,7 @@ func TestHeadEventProcessorRunningInitiallyFalse(t *testing.T) {
 
 func TestBaseBlockEventProcessorUpdateBlockForwardsData(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
-	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)
+	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
 	blockData := protocol.NewBlockWithHeight(42)
 
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
@@ -72,7 +73,7 @@ func TestBaseBlockEventProcessorUpdateBlockForwardsData(t *testing.T) {
 
 func TestBaseBlockEventProcessorUpdateBlockIgnoresUnsupportedData(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
-	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)
+	processor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
 
 	processor.UpdateBlock(event_processors.NewHeadUpdateData(12, 34))
 
@@ -81,7 +82,7 @@ func TestBaseBlockEventProcessorUpdateBlockIgnoresUnsupportedData(t *testing.T) 
 
 func TestHeadEventProcessorUpdateBlockForwardsData(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
-	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", headProcessor)
+	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, headProcessor)
 
 	headProcessor.On("UpdateHead", uint64(12), uint64(34)).Once()
 
@@ -92,7 +93,7 @@ func TestHeadEventProcessorUpdateBlockForwardsData(t *testing.T) {
 
 func TestHeadEventProcessorUpdateBlockIgnoresUnsupportedData(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
-	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", headProcessor)
+	processor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, headProcessor)
 
 	processor.UpdateBlock(event_processors.NewBaseBlockUpdateData(protocol.NewBlockWithHeight(55), protocol.FinalizedBlock))
 
@@ -104,7 +105,7 @@ func TestBaseBlockEventProcessorStartEmitsEvents(t *testing.T) {
 	defer cancel()
 
 	blockProcessor := mocks.NewBlockProcessorMock()
-	processor := event_processors.NewBaseBlockEventProcessor(ctx, "upstream-1", blockProcessor)
+	processor := event_processors.NewBaseBlockEventProcessor(ctx, "upstream-1", chains.ETHEREUM, blockProcessor)
 	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
 
 	blockProcessor.On("Start").Return()
@@ -143,7 +144,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 	defer cancel()
 
 	headProcessor := mocks.NewHeadProcessorMock()
-	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", headProcessor)
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
 	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
 
 	headProcessor.On("Start").Return()
@@ -182,7 +183,7 @@ func TestBaseBlockEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 	defer cancel()
 
 	blockProcessor := mocks.NewBlockProcessorMock()
-	processor := event_processors.NewBaseBlockEventProcessor(ctx, "upstream-1", blockProcessor)
+	processor := event_processors.NewBaseBlockEventProcessor(ctx, "upstream-1", chains.ETHEREUM, blockProcessor)
 
 	blockProcessor.On("Start").Return()
 	blockProcessor.On("Subscribe", "upstream-1_block_updates")
@@ -206,7 +207,7 @@ func TestHeadEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 	defer cancel()
 
 	headProcessor := mocks.NewHeadProcessorMock()
-	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", headProcessor)
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
 
 	headProcessor.On("Start").Return()
 	headProcessor.On("Subscribe", "upstream-1_head_updates")
