@@ -147,13 +147,11 @@ func TestSubscribeUpstreamStateEvent(t *testing.T) {
 		assert.True(t, event.Same(nextState))
 	})
 
-	t.Run("unexpected state panics in Same", func(t *testing.T) {
+	t.Run("unexpected state returns false in Same", func(t *testing.T) {
 		state := newUpstreamState()
 		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.SubscribeConnectorState(99)}
 
-		assert.Panics(t, func() {
-			event.Same(state)
-		})
+		assert.False(t, event.Same(state))
 	})
 }
 

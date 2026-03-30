@@ -1,8 +1,6 @@
 package protocol
 
 import (
-	"fmt"
-
 	"github.com/samber/lo"
 )
 
@@ -130,7 +128,7 @@ func (s *SubscribeUpstreamStateEvent) Same(state UpstreamState) bool {
 	case WsDisconnected:
 		return !state.Caps.Contains(WsCap)
 	}
-	panic(fmt.Sprintf("unexpected state: %T", s.State))
+	return false
 }
 
 func (s *SubscribeUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
