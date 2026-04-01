@@ -1,8 +1,12 @@
 package stats
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/klauspost/compress/gzip"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,10 +21,12 @@ import (
 
 type BaseStatsService struct {
 	ctx                context.Context
-	enabled            bool
+	enabled            *atomic.Bool
 	integrationClient  integration.IntegrationClient
 	statsDataHolder    *atomic.Pointer[statsDataHolder]
 	statsFlushInterval time.Duration
+
+	outbox StatsOutboxStorer
 
 	wg sync.WaitGroup
 }
@@ -36,7 +42,9 @@ func newStatsDataHolder() *statsDataHolder {
 	}
 }
 
-func (b *BaseStatsService) Start() {
+func (b *BaseStatsService) Start(outbox StatsOutboxStorer) {
+	b.outbox = outbox
+
 	b.wg.Add(1)
 	go b.process()
 }
@@ -58,7 +66,7 @@ func (b *BaseStatsService) Stop(ctx context.Context) error {
 }
 
 func (b *BaseStatsService) AddRequestResults(requestResults []protocol.RequestResult) {
-	if !b.enabled {
+	if !b.enabled.Load() {
 		return
 	}
 	for _, result := range requestResults {
@@ -90,27 +98,125 @@ func (b *BaseStatsService) AddRequestResults(requestResults []protocol.RequestRe
 
 func (b *BaseStatsService) process() {
 	defer b.wg.Done()
-	if !b.enabled {
+
+	if !b.enabled.Load() {
 		return
 	}
-	stop := false
 
-	for !stop {
+	ticker := time.NewTicker(b.statsFlushInterval)
+	defer ticker.Stop()
+
+	outboxFlushTicker := time.NewTicker(b.statsFlushInterval * 2)
+	defer outboxFlushTicker.Stop()
+
+	for {
 		select {
-		case <-time.After(b.statsFlushInterval):
-			log.Debug().Msg("flushing stats...")
+		case <-outboxFlushTicker.C:
+		case <-ticker.C:
+			go b.flush()
 		case <-b.ctx.Done():
-			log.Debug().Msg("stopping stats aggregation, flushing remaining data...")
-			stop = true
+			b.flush()
+			return
 		}
-		currentAggregatedData := b.statsDataHolder.Swap(newStatsDataHolder())
-		// wait until all updates to the old holder are done
-		for currentAggregatedData.counter.Load() != 0 {
-			log.Debug().Msg("waiting for stats aggregation to finish...")
-			time.Sleep(200 * time.Millisecond)
-		}
-		go b.integrationClient.ProcessStatsData(currentAggregatedData.statsAggregatedData)
 	}
+}
+
+func (b *BaseStatsService) flush() {
+	current := b.statsDataHolder.Swap(newStatsDataHolder())
+
+	for current.counter.Load() != 0 {
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	unprocessed, err := b.integrationClient.ProcessStatsData(current.statsAggregatedData)
+	if errors.Is(err, integration.ErrStatsDataCorrupted) {
+		log.Error().Err(err).Msg("stats: cannot marshal data")
+		return
+	}
+	if err == nil {
+		return
+	}
+
+	data, err := compressStats(unprocessed)
+	if err != nil {
+		log.Error().Err(err).Msg("stats: cannot compress data")
+		data = unprocessed
+	}
+
+	b.storeUnprocessed(data)
+}
+
+//func (b *BaseStatsService) flushUnprocessed() {
+//
+//
+//	unprocessed, err := b.integrationClient.ProcessStatsData(current.statsAggregatedData)
+//	if errors.Is(err, integration.ErrStatsDataCorrupted) {
+//		log.Error().Err(err).Msg("stats: cannot marshal data")
+//		return
+//	}
+//	if err == nil {
+//		return
+//	}
+//
+//	data, err := compressStats(unprocessed)
+//	if err != nil {
+//		log.Error().Err(err).Msg("stats: cannot compress data")
+//		data = unprocessed
+//	}
+//
+//	b.storeUnprocessed(data)
+//}
+
+func (b *BaseStatsService) storeUnprocessed(data []byte) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	b.outbox.Store(ctx, chains.Unknown, req, data)
+}
+
+func (b *BaseStatsService) retrieveUnprocessed(req protocol.RequestHolder) ([]byte, bool) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	return b.outbox.Receive(ctx, chains.Unknown, req)
+}
+
+func compressStats(data []byte) ([]byte, error) {
+	var compressed bytes.Buffer
+
+	gzipWriter := gzip.NewWriter(&compressed)
+
+	if _, err := gzipWriter.Write(data); err != nil {
+		return nil, err
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		return nil, err
+	}
+
+	return compressed.Bytes(), nil
+}
+
+func decompressStats(compressed []byte) ([]byte, error) {
+	if len(compressed) == 0 {
+		return nil, nil
+	}
+	if len(compressed) < 2 || compressed[0] != 0x1f || compressed[1] != 0x8b {
+		notCompressed := compressed
+		return notCompressed, nil
+	}
+
+	gzReader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return nil, err
+	}
+	defer gzReader.Close()
+
+	uncompressedData, err := io.ReadAll(gzReader)
+	if err != nil {
+		return nil, err
+	}
+	return uncompressedData, err
 }
 
 func (b *BaseStatsService) extractUnaryRequestKey(requestResult *protocol.UnaryRequestResult) statsdata.StatsKey {
@@ -148,10 +254,12 @@ func NewBaseStatsService(
 	var statsDataHolderPointer atomic.Pointer[statsDataHolder]
 	statsDataHolderPointer.Store(newStatsDataHolder())
 
+	isEnabled := new(atomic.Bool)
+	isEnabled.Store(statsConfig.Enabled)
 	statsService := &BaseStatsService{
 		ctx:                ctx,
 		statsFlushInterval: statsConfig.FlushInterval,
-		enabled:            statsConfig.Enabled,
+		enabled:            isEnabled,
 		integrationClient:  integrationClient,
 		statsDataHolder:    &statsDataHolderPointer,
 	}
@@ -167,10 +275,12 @@ func NewBaseStatsServiceWithIntegrationClient(
 	var statsDataHolderPointer atomic.Pointer[statsDataHolder]
 	statsDataHolderPointer.Store(newStatsDataHolder())
 
+	isEnabled := new(atomic.Bool)
+	isEnabled.Store(statsConfig.Enabled)
 	statsService := &BaseStatsService{
 		ctx:                ctx,
 		statsFlushInterval: statsConfig.FlushInterval,
-		enabled:            statsConfig.Enabled,
+		enabled:            isEnabled,
 		integrationClient:  integrationClient,
 		statsDataHolder:    &statsDataHolderPointer,
 	}

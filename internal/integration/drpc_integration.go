@@ -3,6 +3,9 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/drpcorg/nodecore/internal/stats/api"
+	"google.golang.org/protobuf/proto"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -20,10 +23,51 @@ type DrpcIntegrationClient struct {
 	connector    drpc.DrpcHttpConnector
 	ownerKeys    *utils.CMap[string, map[string]*drpc.DrpcKey]
 	pollInterval time.Duration
+
+	ownerID, apiToken string
 }
 
-func (d *DrpcIntegrationClient) ProcessStatsData(_ *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) {
-	// noop
+type statsData = *utils.CMap[statsdata.StatsKey, statsdata.StatsData]
+
+var ErrStatsDataCorrupted = errors.New("stats data corrupted")
+
+func (d *DrpcIntegrationClient) ProcessStatsData(
+	statsMap statsData) (unprocessed []byte, err error) {
+	if d.ownerID == "" || d.apiToken == "" {
+		return nil, fmt.Errorf("stats: DRPC integration client is not initialized")
+	}
+
+	batch := new(api.StatsBatch)
+	entries := make([]*api.StatsEntry, 0, statsMap.Size())
+
+	statsMap.Range(func(k statsdata.StatsKey, v statsdata.StatsData) bool {
+		data, ok := v.(*statsdata.RequestStatsData)
+		if !ok {
+			return true
+		}
+		entries = append(entries, &api.StatsEntry{
+			Key: &api.StatsKey{
+				Timestamp:  k.Timestamp,
+				UpstreamId: k.UpstreamId,
+				Method:     k.Method,
+				ApiKey:     k.ApiKey,
+				ReqKind:    api.RequestKind(k.ReqKind),
+				RespKind:   api.ResponseKind(k.RespKind),
+				Chain:      int64(k.Chain),
+			},
+			Data: &api.RequestStatsData{RequestAmount: data.GetRequestAmount()},
+		})
+		return true
+	})
+
+	batch.Entries = entries
+
+	bt, err := proto.Marshal(batch)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't marshal batch %w: %w", ErrStatsDataCorrupted, err)
+	}
+
+	return bt, d.connector.UploadStats(bt, d.ownerID, d.apiToken)
 }
 
 func (d *DrpcIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
@@ -49,6 +93,7 @@ func (d *DrpcIntegrationClient) InitKeys(_ string, cfg config.IntegrationKeyConf
 	keyEvents := make(chan keydata.KeyEvent, 100)
 	go d.pollKeys(drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken, keyEvents)
 
+	d.ownerID, d.apiToken = drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken
 	return keyEvents, nil
 }
 

@@ -33,7 +33,8 @@ func (a *Atomic[T]) CompareAndSwap(old T, new T) bool {
 }
 
 type CMap[K any, V any] struct {
-	mp sync.Map
+	mp   sync.Map
+	size atomic.Int64
 }
 
 func NewCMap[K any, V any]() *CMap[K, V] {
@@ -52,6 +53,9 @@ func (mp *CMap[K, V]) Load(key K) (V, bool) {
 
 func (mp *CMap[K, V]) LoadOrStore(key K, val V) (V, bool) {
 	loadedval, loaded := mp.mp.LoadOrStore(key, val)
+	if !loaded {
+		mp.size.Add(1)
+	}
 	return loadedval.(V), loaded
 }
 
@@ -61,6 +65,7 @@ func (mp *CMap[K, V]) LoadAndDelete(key K) (V, bool) {
 	if !loaded {
 		return zero, false
 	}
+	mp.size.Add(-1)
 	return v.(V), loaded
 }
 
@@ -71,13 +76,22 @@ func (mp *CMap[K, V]) Range(f func(key K, val V) bool) {
 }
 
 func (mp *CMap[K, V]) Store(key K, val V) {
-	mp.mp.Store(key, val)
+	_, loaded := mp.mp.LoadOrStore(key, val)
+	if !loaded {
+		mp.size.Add(1)
+	}
 }
 
 func (mp *CMap[K, V]) Delete(key K) {
-	mp.mp.Delete(key)
+	_, loaded := mp.mp.LoadAndDelete(key)
+	if !loaded {
+		return
+	}
+	mp.size.Add(-1)
 }
 
 func (mp *CMap[K, V]) CompareAndSwap(key K, old V, new V) bool {
 	return mp.mp.CompareAndSwap(key, old, new)
 }
+
+func (mp *CMap[K, V]) Size() int64 { return mp.size.Load() }
