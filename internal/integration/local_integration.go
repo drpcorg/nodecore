@@ -18,6 +18,10 @@ func (l *LocalIntegration) ProcessStatsData(_ *utils.CMap[statsdata.StatsKey, st
 	return nil, nil
 }
 
+func (l *LocalIntegration) ProcessStatsDataRaw(data []byte) error {
+	return nil // noop
+}
+
 func (l *LocalIntegration) GetStatsSchema() []statsdata.StatsDims {
 	return []statsdata.StatsDims{statsdata.Chain, statsdata.UpstreamId, statsdata.Method, statsdata.ReqKind, statsdata.RespKind}
 }

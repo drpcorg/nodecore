@@ -113,6 +113,18 @@ func (c *CachePolicy) Receive(ctx context.Context, chain chains.Chain, request p
 	return object, len(object) > 0
 }
 
+func (c *CachePolicy) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return c.connector.OutboxStore(ctx, key, value, ttl)
+}
+
+func (c *CachePolicy) OutboxRemove(ctx context.Context, key string) error {
+	return c.connector.OutboxRemove(ctx, key)
+}
+
+func (c *CachePolicy) OutboxList(ctx context.Context, cursor, limit int64) ([]outboxItem, error) {
+	return c.connector.OutboxList(ctx, cursor, limit)
+}
+
 func mapFinalizationType(finalizationType config.FinalizationType) finalizationType {
 	switch finalizationType {
 	case config.Finalized:

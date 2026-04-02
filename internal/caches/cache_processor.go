@@ -2,6 +2,7 @@ package caches
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -145,4 +146,39 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 	}
 
 	return result, len(result) > 0
+}
+
+func (c *BaseCacheProcessor) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	var errs []error
+	for _, policy := range c.policies {
+		if err := policy.OutboxStore(ctx, key, value, ttl); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (c *BaseCacheProcessor) OutboxRemove(ctx context.Context, key string) error {
+	var errs []error
+	for _, policy := range c.policies {
+		if err := policy.OutboxRemove(ctx, key); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (c *BaseCacheProcessor) OutboxList(
+	ctx context.Context,
+	cursor, limit int64,
+) ([]outboxItem, error) {
+	var errs []error
+	for _, policy := range c.policies {
+		result, err := policy.OutboxList(ctx, cursor, limit)
+		if err == nil {
+			return result, nil
+		}
+		errs = append(errs, err)
+	}
+	return nil, errors.Join(errs...)
 }

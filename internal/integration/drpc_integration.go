@@ -70,6 +70,10 @@ func (d *DrpcIntegrationClient) ProcessStatsData(
 	return bt, d.connector.UploadStats(bt, d.ownerID, d.apiToken)
 }
 
+func (d *DrpcIntegrationClient) ProcessStatsDataRaw(data []byte) error {
+	return d.connector.UploadStats(data, d.ownerID, d.apiToken)
+}
+
 func (d *DrpcIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
 	// could be hardcoded at first
 	// but in the future the scheme could be fetched from the drpc backend

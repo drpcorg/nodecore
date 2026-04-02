@@ -5,9 +5,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"time"
 )
 
 type StatsOutboxStorer interface {
+	OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	OutboxRemove(ctx context.Context, key string) error
+	OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error)
 }
 
 type StatsService interface {
