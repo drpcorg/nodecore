@@ -109,7 +109,7 @@ func (b *BaseStatsService) process() {
 	defer sync.OnceFunc(func() {
 		close(b.doneChan)
 	})()
-	
+
 	if !b.enabled.Load() {
 		return
 	}
@@ -166,23 +166,22 @@ func (b *BaseStatsService) flushUnprocessed() error {
 	if err != nil {
 		return err
 	}
+	if len(stats) == 0 {
+		b.outboxCursor.Store(0)
+		return nil
+	}
 
-	successCounter := 0
 	for _, stat := range stats {
 		err := b.integrationClient.ProcessStatsDataRaw(stat.value)
 		if err != nil {
 			log.Error().Err(err).Msg("stats: cannot store unprocessed data")
 			continue
 		}
-		successCounter++
 		if err := b.outbox.OutboxRemove(ctx, stat.key); err != nil {
 			log.Error().Err(err).Msg("stats: cannot remove outbox data")
 		}
 	}
-	if successCounter == len(stats) {
-		b.outboxCursor.Add(int64(len(stats)))
-	}
-
+	b.outboxCursor.Add(int64(len(stats)))
 	return nil
 }
 
