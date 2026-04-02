@@ -13,6 +13,18 @@ type CacheProcessorMock struct {
 	mock.Mock
 }
 
+func (c *CacheProcessorMock) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return nil
+}
+
+func (c *CacheProcessorMock) OutboxRemove(ctx context.Context, key string) error {
+	return nil
+}
+
+func (c *CacheProcessorMock) OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
+	return []map[string][]byte{}, nil
+}
+
 func (c *CacheProcessorMock) Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte) {
 	c.Called(ctx, chain, request, response)
 }
