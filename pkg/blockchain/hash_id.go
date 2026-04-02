@@ -55,6 +55,10 @@ func (h HashId) ToHex() string {
 	return string(hexHash)
 }
 
+func (h HashId) String() string {
+	return h.ToHex()
+}
+
 func (h HashId) ToHexWithPrefix() string {
 	return "0x" + h.ToHex()
 }

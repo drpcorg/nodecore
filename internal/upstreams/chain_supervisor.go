@@ -3,11 +3,11 @@ package upstreams
 import (
 	"context"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -36,46 +36,16 @@ func init() {
 }
 
 type BaseChainSupervisor struct {
-	ctx            context.Context
-	Chain          chains.Chain
-	fc             choice.ForkChoice
-	state          *utils.Atomic[ChainSupervisorState]
-	eventsChan     chan protocol.UpstreamEvent
-	upstreamStates *utils.CMap[string, *protocol.UpstreamState]
-	tracker        dimensions.DimensionTracker
-}
+	ctx             context.Context
+	chain           chains.Chain
+	fc              choice.ForkChoice
+	state           *utils.Atomic[ChainSupervisorState]
+	eventsChan      chan protocol.UpstreamEvent
+	upstreamStates  *utils.CMap[string, *protocol.UpstreamState]
+	tracker         dimensions.DimensionTracker
+	subChainMethods mapset.Set[string]
 
-type ChainSupervisorState struct {
-	Status      protocol.AvailabilityStatus
-	HeadData    ChainHeadData
-	Methods     methods.Methods
-	Blocks      map[protocol.BlockType]protocol.Block
-	LowerBounds map[protocol.LowerBoundType]protocol.LowerBoundData
-	ChainLabels []AggregatedLabels
-}
-
-type ChainHeadData struct {
-	Head       protocol.Block
-	UpstreamId string
-}
-
-func NewChainHeadData(head protocol.Block, upstreamId string) ChainHeadData {
-	return ChainHeadData{
-		Head:       head,
-		UpstreamId: upstreamId,
-	}
-}
-
-type AggregatedLabels struct {
-	Amount int
-	Labels map[string]string
-}
-
-func NewAggregatedLabels(amount int, labels map[string]string) AggregatedLabels {
-	return AggregatedLabels{
-		Amount: amount,
-		Labels: labels,
-	}
+	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 }
 
 func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker dimensions.DimensionTracker) *BaseChainSupervisor {
@@ -87,69 +57,77 @@ func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.F
 			LowerBounds: make(map[protocol.LowerBoundType]protocol.LowerBoundData),
 			HeadData:    NewChainHeadData(protocol.ZeroBlock{}, ""),
 			Methods:     methods.NewChainMethods(nil),
+			ChainLabels: make([]AggregatedLabels, 0),
+			SubMethods:  mapset.NewThreadUnsafeSet[string](),
 		},
 	)
 
 	return &BaseChainSupervisor{
-		ctx:            ctx,
-		tracker:        tracker,
-		Chain:          chain,
-		fc:             fc,
-		eventsChan:     make(chan protocol.UpstreamEvent, 100),
-		upstreamStates: utils.NewCMap[string, *protocol.UpstreamState](),
-		state:          state,
+		ctx:             ctx,
+		tracker:         tracker,
+		chain:           chain,
+		fc:              fc,
+		eventsChan:      make(chan protocol.UpstreamEvent, 100),
+		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
+		state:           state,
+		subChainMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
+		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
 	}
 }
 
-func (c *BaseChainSupervisor) GetChain() chains.Chain {
-	return c.Chain
+func (b *BaseChainSupervisor) GetChain() chains.Chain {
+	return b.chain
 }
 
-func (c *BaseChainSupervisor) Start() {
-	go c.processEvents()
+func (b *BaseChainSupervisor) Start() {
+	go b.processEvents()
 
 	go func() {
 		for {
 			select {
-			case <-c.ctx.Done():
+			case <-b.ctx.Done():
 				return
 			case <-time.After(30 * time.Second):
 			}
 
-			c.monitor()
+			b.monitor()
 		}
 	}()
 }
 
-func (c *BaseChainSupervisor) GetChainState() ChainSupervisorState {
-	return c.state.Load()
+func (b *BaseChainSupervisor) GetChainState() ChainSupervisorState {
+	return b.state.Load()
 }
 
-func (c *BaseChainSupervisor) GetMethod(methodName string) *specs.Method {
-	return c.GetChainState().Methods.GetMethod(methodName)
+func (b *BaseChainSupervisor) GetMethod(methodName string) *specs.Method {
+	return b.GetChainState().Methods.GetMethod(methodName)
 }
 
-func (c *BaseChainSupervisor) GetMethods() []string {
-	if c.GetChainState().Methods == nil {
+func (b *BaseChainSupervisor) GetMethods() []string {
+	if b.GetChainState().Methods == nil {
 		return nil
 	}
-	return c.GetChainState().Methods.GetSupportedMethods().ToSlice()
+	return b.GetChainState().Methods.GetSupportedMethods().ToSlice()
 }
 
-func (c *BaseChainSupervisor) PublishUpstreamEvent(event protocol.UpstreamEvent) {
-	c.eventsChan <- event
+func (b *BaseChainSupervisor) PublishUpstreamEvent(event protocol.UpstreamEvent) {
+	b.eventsChan <- event
 }
 
-func (c *BaseChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
-	if s, ok := c.upstreamStates.Load(upstreamId); ok {
+func (b *BaseChainSupervisor) SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent] {
+	return b.subStateManager.Subscribe(name)
+}
+
+func (b *BaseChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
+	if s, ok := b.upstreamStates.Load(upstreamId); ok {
 		return s
 	}
 	return nil
 }
 
-func (c *BaseChainSupervisor) GetSortedUpstreamIds(filterFunc FilterUpstream, sortFunc SortUpstream) []string {
+func (b *BaseChainSupervisor) GetSortedUpstreamIds(filterFunc FilterUpstream, sortFunc SortUpstream) []string {
 	entries := make([]lo.Tuple2[string, *protocol.UpstreamState], 0)
-	c.upstreamStates.Range(func(upId string, state *protocol.UpstreamState) bool {
+	b.upstreamStates.Range(func(upId string, state *protocol.UpstreamState) bool {
 		if filterFunc(upId, state) {
 			entries = append(entries, lo.T2(upId, state))
 		}
@@ -162,9 +140,9 @@ func (c *BaseChainSupervisor) GetSortedUpstreamIds(filterFunc FilterUpstream, so
 	})
 }
 
-func (c *BaseChainSupervisor) GetUpstreamIds() []string {
+func (b *BaseChainSupervisor) GetUpstreamIds() []string {
 	ids := make([]string, 0)
-	c.upstreamStates.Range(func(upId string, _ *protocol.UpstreamState) bool {
+	b.upstreamStates.Range(func(upId string, _ *protocol.UpstreamState) bool {
 		ids = append(ids, upId)
 		return true
 	})
@@ -172,73 +150,113 @@ func (c *BaseChainSupervisor) GetUpstreamIds() []string {
 	return ids
 }
 
-func (c *BaseChainSupervisor) processEvents() {
+func (b *BaseChainSupervisor) processEvents() {
 	for {
 		select {
-		case <-c.ctx.Done():
+		case <-b.ctx.Done():
 			return
-		case event, ok := <-c.eventsChan:
+		case event, ok := <-b.eventsChan:
 			if ok {
 				switch eventType := event.EventType.(type) {
 				case *protocol.RemoveUpstreamEvent:
-					c.upstreamStates.Delete(event.Id)
-					c.updateState(event.Id, nil)
+					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
+						upHead := upState.HeadData
+						b.upstreamStates.Delete(event.Id)
+
+						b.updateState()
+						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
+					}
+				case *protocol.HeadUpstreamEvent:
+					b.updateHead(event.Id, eventType)
 				case *protocol.StateUpstreamEvent:
-					availabilityMetric.WithLabelValues(c.Chain.String(), event.Id).Set(float64(eventType.State.Status))
-					c.upstreamStates.Store(event.Id, eventType.State)
-					c.updateState(event.Id, eventType)
+					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
+					b.upstreamStates.Store(event.Id, eventType.State)
+					b.updateState()
 				}
 			}
 		}
 	}
 }
 
-func (c *BaseChainSupervisor) updateState(upstreamId string, upstreamState *protocol.StateUpstreamEvent) {
-	state := c.state.Load()
-	// it's necessary to merge states only from available upstreams
-	availableUpstreams := c.availableUpstreams()
-
-	if upstreamState != nil && !upstreamState.State.HeadData.IsEmptyByHeight() {
-		updated, head := c.fc.Choose(upstreamId, upstreamState)
+func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.HeadUpstreamEvent) {
+	newState := b.state.Load()
+	if headEvent != nil && !headEvent.Head.IsEmptyByHeight() {
+		updated, head := b.fc.Choose(upstreamId, headEvent)
 		if updated {
-			state.HeadData = NewChainHeadData(head, upstreamId)
+			newState.HeadData = NewChainHeadData(head, upstreamId)
+
+			if !newState.HeadData.IsEmpty() {
+				b.subStateManager.Publish(
+					&ChainSupervisorStateWrapperEvent{
+						[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head)},
+					},
+				)
+			}
 		}
-	} else if upstreamState != nil {
-		state.HeadData = NewChainHeadData(protocol.ZeroBlock{}, upstreamId)
+	} else if headEvent != nil {
+		newState.HeadData = NewChainHeadData(protocol.ZeroBlock{}, upstreamId)
 	}
-	state.Status = c.processUpstreamStatuses()
-	state.Methods = c.processUpstreamMethods(availableUpstreams)
-	state.Blocks = c.processUpstreamBlocks(availableUpstreams)
-	state.LowerBounds = c.processLowerBounds(availableUpstreams)
-	state.ChainLabels = c.processLabels(availableUpstreams)
 
-	c.state.Store(state)
-
-	c.calculateLags()
+	b.state.Store(newState)
+	b.calculateHeadLags()
 }
 
-func (c *BaseChainSupervisor) calculateLags() {
-	if c.tracker != nil {
-		state := c.state.Load()
+func (b *BaseChainSupervisor) updateState() {
+	currentState := b.state.Load()
+	newState := b.state.Load()
+	// it's necessary to merge states only from available upstreams
+	availableUpstreams := b.availableUpstreams()
 
-		c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
-			headLag := state.HeadData.Head.Height - val.HeadData.Height
+	newState.Status = b.processUpstreamStatuses()
+	newState.Methods = processUpstreamMethods(availableUpstreams)
+	newState.Blocks = processUpstreamBlocks(availableUpstreams)
+	newState.LowerBounds = processLowerBounds(availableUpstreams)
+	newState.ChainLabels = processLabels(availableUpstreams)
+	newState.SubMethods = b.processSubMethods(availableUpstreams)
+
+	eventWrappers := currentState.Compare(newState)
+	if len(eventWrappers) > 0 {
+		b.subStateManager.Publish(&ChainSupervisorStateWrapperEvent{eventWrappers})
+	}
+
+	b.state.Store(newState)
+	b.calculateFinalizationLags()
+}
+
+func (b *BaseChainSupervisor) calculateFinalizationLags() {
+	if b.tracker != nil {
+		state := b.state.Load()
+
+		b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
 			finalizationBlock, ok := state.Blocks[protocol.FinalizedBlock]
 			finalizationLag := uint64(0)
 			if ok {
 				finalizationLag = finalizationBlock.Height - val.BlockInfo.GetBlock(protocol.FinalizedBlock).Height
 			}
-			c.tracker.GetChainDimensions(c.Chain, key).TrackLags(headLag, finalizationLag)
+			b.tracker.GetChainDimensions(b.chain, key).TrackFinalizationLag(finalizationLag)
 
 			return true
 		})
 	}
 }
 
-func (c *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
+func (b *BaseChainSupervisor) calculateHeadLags() {
+	if b.tracker == nil {
+		return
+	}
+	state := b.state.Load()
+
+	b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
+		headLag := state.HeadData.Head.Height - val.HeadData.Height
+		b.tracker.GetChainDimensions(b.chain, key).TrackHeadLag(headLag)
+		return true
+	})
+}
+
+func (b *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	states := make([]*protocol.UpstreamState, 0)
 
-	c.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
+	b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
 		if val.Status == protocol.Available {
 			states = append(states, val)
 		}
@@ -248,60 +266,19 @@ func (c *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	return states
 }
 
-func (c *BaseChainSupervisor) processLabels(availableUpstreams []*protocol.UpstreamState) []AggregatedLabels {
-	allLabels := make([]AggregatedLabels, 0)
-
+func (b *BaseChainSupervisor) processSubMethods(availableUpstreams []*protocol.UpstreamState) mapset.Set[string] {
 	for _, upState := range availableUpstreams {
-		if upState.Labels == nil {
-			continue
-		}
-		upLabels := upState.Labels.GetAllLabels()
-		if len(upLabels) == 0 {
-			continue
-		}
-
-		_, idx, ok := lo.FindIndexOf(allLabels, func(item AggregatedLabels) bool {
-			return maps.Equal(upLabels, item.Labels)
-		})
-		if !ok {
-			allLabels = append(allLabels, NewAggregatedLabels(1, upLabels))
-		} else {
-			allLabels[idx].Amount++
-		}
-	}
-	return allLabels
-}
-
-func (c *BaseChainSupervisor) processUpstreamMethods(availableStates []*protocol.UpstreamState) methods.Methods {
-	delegates := lo.Map(availableStates, func(item *protocol.UpstreamState, index int) methods.Methods {
-		return item.UpstreamMethods
-	})
-
-	return methods.NewChainMethods(delegates)
-}
-
-func (c *BaseChainSupervisor) processLowerBounds(availableStates []*protocol.UpstreamState) map[protocol.LowerBoundType]protocol.LowerBoundData {
-	bounds := make(map[protocol.LowerBoundType]protocol.LowerBoundData)
-
-	for _, upsState := range availableStates {
-		if upsState.LowerBoundsInfo == nil {
-			continue
-		}
-		upBounds := upsState.LowerBoundsInfo.GetAllBounds()
-		for _, bound := range upBounds {
-			currentBound, ok := bounds[bound.Type]
-			if !ok || bound.Bound < currentBound.Bound {
-				bounds[bound.Type] = bound
-			}
+		if upState.Caps.Contains(protocol.WsCap) {
+			return b.subChainMethods.Clone()
 		}
 	}
 
-	return bounds
+	return mapset.NewThreadUnsafeSet[string]()
 }
 
-func (c *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
+func (b *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
 	var status = protocol.Unavailable
-	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
+	b.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
 		if upState.Status < status {
 			status = upState.Status
 		}
@@ -311,39 +288,8 @@ func (c *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilitySta
 	return status
 }
 
-func (c *BaseChainSupervisor) processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]protocol.Block {
-	blocks := make(map[protocol.BlockType]protocol.Block, len(availableStates))
-
-	for _, upState := range availableStates {
-		if upState.BlockInfo != nil {
-			upBlocks := upState.BlockInfo.GetBlocks()
-
-			for blockType, blockData := range upBlocks {
-				currentBlockData, ok := blocks[blockType]
-				if !ok {
-					blocks[blockType] = blockData
-				} else {
-					blocks[blockType] = compareBlocks(blockType, currentBlockData, blockData)
-				}
-			}
-		}
-	}
-
-	return blocks
-}
-
-func compareBlocks(blockType protocol.BlockType, currentBlock, newBlock protocol.Block) protocol.Block {
-	switch blockType {
-	case protocol.FinalizedBlock:
-		if newBlock.Height > currentBlock.Height {
-			return newBlock
-		}
-	}
-	return currentBlock
-}
-
-func (c *BaseChainSupervisor) monitor() {
-	state := c.state.Load()
+func (b *BaseChainSupervisor) monitor() {
+	state := b.state.Load()
 
 	var height string
 	if state.HeadData.Head.Height > 0 {
@@ -353,7 +299,7 @@ func (c *BaseChainSupervisor) monitor() {
 	}
 
 	statuses := make(map[protocol.AvailabilityStatus]int)
-	c.upstreamStates.Range(func(key string, upState *protocol.UpstreamState) bool {
+	b.upstreamStates.Range(func(key string, upState *protocol.UpstreamState) bool {
 		statuses[upState.Status]++
 
 		return true
@@ -363,11 +309,11 @@ func (c *BaseChainSupervisor) monitor() {
 	})
 	bounds := strings.Join(boundsSlice, ", ")
 
-	upstreamStatuses, weakUpstreams := c.getStatuses()
+	upstreamStatuses, weakUpstreams := b.getStatuses()
 
 	log.Info().Msgf(
 		"State of %s: height=%s, statuses=[%s], bounds=[%s], weak=[%s]",
-		strings.ToUpper(c.Chain.String()),
+		strings.ToUpper(b.chain.String()),
 		height,
 		upstreamStatuses,
 		bounds,
@@ -375,10 +321,10 @@ func (c *BaseChainSupervisor) monitor() {
 	)
 }
 
-func (c *BaseChainSupervisor) getStatuses() (string, string) {
+func (b *BaseChainSupervisor) getStatuses() (string, string) {
 	statuses := make(map[protocol.AvailabilityStatus]int)
 	weakUpstreams := make([]string, 0)
-	c.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
+	b.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
 		statuses[upState.Status]++
 		if upState.Status != protocol.Available {
 			weakUpstreams = append(weakUpstreams, upId)

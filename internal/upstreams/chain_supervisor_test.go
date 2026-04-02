@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,15 +16,20 @@ import (
 	upmethods "github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
 	eventuallyWait = time.Second
 	eventuallyTick = 10 * time.Millisecond
 )
+
+var loadChainSupervisorMethodSpecsOnce sync.Once
 
 func assertEventuallyEqual(t *testing.T, expected any, actual func() any) {
 	t.Helper()
@@ -74,17 +80,21 @@ func createEventWithLowerBounds(
 		lowerBoundsInfo.AddLowerBound(bound)
 	}
 
+	state := protocol.DefaultUpstreamState(
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"",
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = protocol.Block{Height: height}
+	state.LowerBoundsInfo = lowerBoundsInfo
+
 	return protocol.UpstreamEvent{
 		Id: id,
 		EventType: &protocol.StateUpstreamEvent{
-			State: &protocol.UpstreamState{
-				Status: status,
-				HeadData: protocol.Block{
-					Height: height,
-				},
-				UpstreamMethods: methods,
-				LowerBoundsInfo: lowerBoundsInfo,
-			},
+			State: &state,
 		},
 	}
 }
@@ -101,17 +111,70 @@ func createEventWithLabels(
 		labelsInfo.AddLabel(key, value)
 	}
 
+	state := protocol.DefaultUpstreamState(
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"",
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = protocol.Block{Height: height}
+	state.Labels = labelsInfo
+
 	return protocol.UpstreamEvent{
 		Id: id,
 		EventType: &protocol.StateUpstreamEvent{
-			State: &protocol.UpstreamState{
-				Status: status,
-				HeadData: protocol.Block{
-					Height: height,
-				},
-				UpstreamMethods: methods,
-				Labels:          labelsInfo,
-			},
+			State: &state,
+		},
+	}
+}
+
+func publishHeadEvent(
+	chainSupervisor *upstreams.BaseChainSupervisor,
+	id string,
+	status protocol.AvailabilityStatus,
+	head protocol.Block,
+) {
+	chainSupervisor.PublishUpstreamEvent(protocol.UpstreamEvent{
+		Id: id,
+		EventType: &protocol.HeadUpstreamEvent{
+			Status: status,
+			Head:   head,
+		},
+	})
+}
+
+func loadChainSupervisorMethodSpecs(t *testing.T) {
+	t.Helper()
+
+	loadChainSupervisorMethodSpecsOnce.Do(func() {
+		err := specs.NewMethodSpecLoader().Load()
+		require.NoError(t, err)
+	})
+}
+
+func createEventWithCaps(
+	id string,
+	status protocol.AvailabilityStatus,
+	height uint64,
+	methods upmethods.Methods,
+	caps mapset.Set[protocol.Cap],
+) protocol.UpstreamEvent {
+	state := protocol.DefaultUpstreamState(
+		methods,
+		caps,
+		"",
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = protocol.Block{Height: height}
+
+	return protocol.UpstreamEvent{
+		Id: id,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &state,
 		},
 	}
 }
@@ -125,19 +188,90 @@ func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
 
 	head := protocol.NewBlock(100, 0, blockchain.NewHashIdFromString("123"), blockchain.NewHashIdFromString("125"))
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, head, methodsMock))
+	publishHeadEvent(chainSupervisor, "id", protocol.Available, head)
 	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 
 	head1 := protocol.NewBlock(100, 0, blockchain.NewHashIdFromString("123"), blockchain.NewHashIdFromString("125"))
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id1", protocol.Available, head1, methodsMock))
+	publishHeadEvent(chainSupervisor, "id1", protocol.Available, head1)
 	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 
 	head2 := protocol.NewBlock(500, 0, blockchain.NewHashIdFromString("127"), blockchain.NewHashIdFromString("129"))
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id3", protocol.Unavailable, head2, methodsMock))
+	publishHeadEvent(chainSupervisor, "id3", protocol.Unavailable, head2)
 	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
 
 	head3 := protocol.NewBlock(500, 0, blockchain.NewHashIdFromString("1271"), blockchain.NewHashIdFromString("1291"))
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, head3, methodsMock))
+	publishHeadEvent(chainSupervisor, "id", protocol.Available, head3)
 	assertEventuallyEqual(t, head3, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+}
+
+func TestChainSupervisorUpdateHeadDoesNotPublishWrapperForEmptyChosenHead(t *testing.T) {
+	fcMock := mocks.NewMockForkChoice()
+	fcMock.On("Choose", "id", &protocol.HeadUpstreamEvent{
+		Status: protocol.Available,
+		Head:   protocol.NewBlockWithHeight(100),
+	}).Return(true, protocol.ZeroBlock{})
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(
+		context.Background(),
+		chains.ARBITRUM,
+		fcMock,
+		nil,
+	)
+	go chainSupervisor.Start()
+
+	sub := chainSupervisor.SubscribeState(t.Name())
+	publishHeadEvent(chainSupervisor, "id", protocol.Available, protocol.NewBlockWithHeight(100))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().HeadData.IsEmpty()
+	}, eventuallyWait, eventuallyTick)
+
+	assert.Never(t, func() bool {
+		select {
+		case wrapperEvent := <-sub.Events:
+			return len(wrapperEvent.Wrappers) > 0
+		default:
+			return false
+		}
+	}, 100*time.Millisecond, 10*time.Millisecond)
+	fcMock.AssertExpectations(t)
+}
+
+func TestChainSupervisorUpdateHeadPublishesWrapperForNonEmptyChosenHead(t *testing.T) {
+	head := protocol.NewBlockWithHeight(777)
+	fcMock := mocks.NewMockForkChoice()
+	fcMock.On("Choose", "id", &protocol.HeadUpstreamEvent{
+		Status: protocol.Available,
+		Head:   protocol.NewBlockWithHeight(100),
+	}).Return(true, head)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(
+		context.Background(),
+		chains.ARBITRUM,
+		fcMock,
+		nil,
+	)
+	go chainSupervisor.Start()
+
+	sub := chainSupervisor.SubscribeState(t.Name())
+	publishHeadEvent(chainSupervisor, "id", protocol.Available, protocol.NewBlockWithHeight(100))
+
+	assert.Eventually(t, func() bool {
+		select {
+		case wrapperEvent := <-sub.Events:
+			require.Len(t, wrapperEvent.Wrappers, 1)
+			headWrapper, ok := wrapperEvent.Wrappers[0].(*upstreams.HeadWrapper)
+			return ok && headWrapper.Head.Equals(head)
+		default:
+			return false
+		}
+	}, eventuallyWait, eventuallyTick)
+
+	assertEventuallyEqual(t, head, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+	fcMock.AssertExpectations(t)
 }
 
 func TestChainSupervisorTrackLags(t *testing.T) {
@@ -154,12 +288,14 @@ func TestChainSupervisorTrackLags(t *testing.T) {
 	blockInfo2.AddBlock(protocol.NewBlockWithHeight(700), protocol.FinalizedBlock)
 
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEventWithBlockData("id1", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
+	publishHeadEvent(chainSupervisor, "id1", protocol.Available, protocol.NewBlockWithHeight(100))
 	assert.Eventually(t, func() bool {
 		chainDims1 := tracker.GetChainDimensions(chains.ARBITRUM, "id1")
 		return chainDims1.GetHeadLag() == 0 && chainDims1.GetFinalizationLag() == 0
 	}, eventuallyWait, eventuallyTick)
 
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEventWithBlockData("id2", protocol.Available, protocol.NewBlockWithHeight(300), methodsMock, blockInfo2))
+	publishHeadEvent(chainSupervisor, "id2", protocol.Available, protocol.NewBlockWithHeight(300))
 	assert.Eventually(t, func() bool {
 		chainDims1 := tracker.GetChainDimensions(chains.ARBITRUM, "id1")
 		chainDims2 := tracker.GetChainDimensions(chains.ARBITRUM, "id2")
@@ -267,6 +403,152 @@ func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id"))
 	assert.Eventually(t, func() bool {
 		return chainSupervisor.GetUpstreamState("id") == nil
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorRemoveUpstreamRecomputesHead(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	firstHead := protocol.NewBlockWithHeight(100)
+	secondHead := protocol.NewBlockWithHeight(200)
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id1", protocol.Available, firstHead, methods))
+	publishHeadEvent(chainSupervisor, "id1", protocol.Available, firstHead)
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id2", protocol.Available, secondHead, methods))
+	publishHeadEvent(chainSupervisor, "id2", protocol.Available, secondHead)
+	assertEventuallyEqual(t, secondHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id2"))
+	assertEventuallyEqual(t, firstHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id1"))
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().HeadData.IsEmpty()
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorRemoveUpstreamWithoutTrackedHeadDoesNotResetChosenHead(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	chosenHead := protocol.NewBlockWithHeight(100)
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("tracked", protocol.Available, chosenHead, methods))
+	publishHeadEvent(chainSupervisor, "tracked", protocol.Available, chosenHead)
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	// This upstream is present in state, but fork choice never saw a head event for it.
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("state-only", protocol.Available, protocol.NewBlockWithHeight(200), methods))
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("state-only"))
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+}
+
+func TestChainSupervisorGetChainAndUpstreamIds(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id2", protocol.Available, protocol.NewBlockWithHeight(100), methods))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id1", protocol.Available, protocol.NewBlockWithHeight(101), methods))
+
+	assert.Equal(t, chains.ARBITRUM, chainSupervisor.GetChain())
+	assert.Eventually(t, func() bool {
+		return assert.ObjectsAreEqual([]string{"id1", "id2"}, chainSupervisor.GetUpstreamIds())
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorGetSortedUpstreamIds(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("up-1", protocol.Available, protocol.NewBlockWithHeight(100), methods))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("up-2", protocol.Unavailable, protocol.NewBlockWithHeight(300), methods))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("up-3", protocol.Available, protocol.NewBlockWithHeight(200), methods))
+
+	assert.Eventually(t, func() bool {
+		ids := chainSupervisor.GetSortedUpstreamIds(
+			func(_ string, state *protocol.UpstreamState) bool {
+				return state.Status == protocol.Available
+			},
+			func(a, b lo.Tuple2[string, *protocol.UpstreamState]) int {
+				if a.B.HeadData.Height < b.B.HeadData.Height {
+					return -1
+				}
+				if a.B.HeadData.Height > b.B.HeadData.Height {
+					return 1
+				}
+				return 0
+			},
+		)
+
+		return assert.ObjectsAreEqual([]string{"up-1", "up-3"}, ids)
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorProcessSubMethods(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	sub := chainSupervisor.SubscribeState(t.Name())
+	expectedSubMethods := specs.GetSubMethods(chains.GetMethodSpecNameByChain(chains.ETHEREUM))
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Equal(expectedSubMethods)
+	}, eventuallyWait, eventuallyTick)
+
+	var wrapperEvent *upstreams.ChainSupervisorStateWrapperEvent
+	assert.Eventually(t, func() bool {
+		select {
+		case wrapperEvent = <-sub.Events:
+			for _, wrapper := range wrapperEvent.Wrappers {
+				subMethodsWrapper, ok := wrapper.(*upstreams.SubMethodsWrapper)
+				if ok {
+					return assert.ElementsMatch(t, expectedSubMethods.ToSlice(), subMethodsWrapper.SubMethods)
+				}
+			}
+			return false
+		default:
+			return false
+		}
+	}, eventuallyWait, eventuallyTick)
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Unavailable,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Cardinality() == 0
 	}, eventuallyWait, eventuallyTick)
 }
 

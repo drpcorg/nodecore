@@ -121,10 +121,10 @@ func TestLoadSpecMergeMethods(t *testing.T) {
 	assert.NoError(t, err)
 
 	spec1 := specs.GetSpecMethods("another")
-	assert.Equal(t, 4, len(spec1))
+	assert.Equal(t, 5, len(spec1))
 
 	spec2 := specs.GetSpecMethods("test")
-	assert.Equal(t, 5, len(spec2))
+	assert.Equal(t, 6, len(spec2))
 
 	assert.Equal(t, spec1["trace"]["test"], spec2["trace"]["test"])
 

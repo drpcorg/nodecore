@@ -10,6 +10,16 @@ import (
 	"github.com/samber/lo"
 )
 
+type ChainSupervisorEvent interface {
+	chainSupervisorEvent()
+}
+
+type AddChainSupervisorEvent struct {
+	ChainSupervisor ChainSupervisor
+}
+
+func (e *AddChainSupervisorEvent) chainSupervisorEvent() {}
+
 type FilterUpstream func(id string, state *protocol.UpstreamState) bool
 type SortUpstream func(entry1, entry2 lo.Tuple2[string, *protocol.UpstreamState]) int
 
@@ -25,6 +35,7 @@ type ChainSupervisor interface {
 	GetUpstreamIds() []string
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
+	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
 }
 
 type UpstreamSupervisor interface {
@@ -33,6 +44,8 @@ type UpstreamSupervisor interface {
 	GetUpstream(string) Upstream
 	GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper]
 	StartUpstreams()
+
+	SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent]
 }
 
 type Upstream interface {

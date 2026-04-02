@@ -14,34 +14,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
-
-var blocksMetric = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Namespace: config.AppName,
-		Subsystem: "upstream",
-		Name:      "blocks",
-		Help:      "The current block height of a specific block type",
-	},
-	[]string{"upstream", "blockType", "chain"},
-)
-
-var headsMetric = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Namespace: config.AppName,
-		Subsystem: "upstream",
-		Name:      "heads",
-		Help:      "The current head height",
-	},
-	[]string{"chain", "upstream"},
-)
-
-func init() {
-	prometheus.MustRegister(blocksMetric, headsMetric)
-}
 
 type upstreamCtx struct {
 	cancelFunc    context.CancelFunc
@@ -225,10 +200,6 @@ func (u *BaseUpstream) Resume() {
 	u.processorAggregator.StartProcessor(event_processors.HealthValidatorProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LabelsProcessorType)
-
-	if u.processorAggregator.IsHealthProcessorDisabled() {
-		u.emitter(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
-	}
 }
 
 func (u *BaseUpstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {

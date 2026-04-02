@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
@@ -53,6 +54,14 @@ type UpstreamSupervisorMock struct {
 
 func NewUpstreamSupervisorMock() *UpstreamSupervisorMock {
 	return &UpstreamSupervisorMock{}
+}
+
+func (u *UpstreamSupervisorMock) SubscribeChainSupervisor(name string) *utils.Subscription[upstreams.ChainSupervisorEvent] {
+	args := u.Called(name)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(*utils.Subscription[upstreams.ChainSupervisorEvent])
 }
 
 func (u *UpstreamSupervisorMock) GetChainSupervisors() []upstreams.ChainSupervisor {

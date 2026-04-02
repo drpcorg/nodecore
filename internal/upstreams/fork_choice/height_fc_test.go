@@ -9,12 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func getStateEventType(status protocol.AvailabilityStatus, head protocol.Block) *protocol.StateUpstreamEvent {
-	return &protocol.StateUpstreamEvent{
-		State: &protocol.UpstreamState{
-			Status:   status,
-			HeadData: head,
-		},
+func getStateEventType(status protocol.AvailabilityStatus, head protocol.Block) *protocol.HeadUpstreamEvent {
+	return &protocol.HeadUpstreamEvent{
+		Status: status,
+		Head:   head,
 	}
 }
 

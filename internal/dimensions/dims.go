@@ -27,6 +27,20 @@ func (c *ChainDimensions) TrackLags(headLag, finalizationLag uint64) {
 	finalizationLagMetric.WithLabelValues(key.chain.String(), key.upstreamId).Set(float64(finalizationLag))
 }
 
+func (c *ChainDimensions) TrackHeadLag(headLag uint64) {
+	key := c.key.Load()
+	c.headLag.Store(headLag)
+
+	headLagMetric.WithLabelValues(key.chain.String(), key.upstreamId).Set(float64(headLag))
+}
+
+func (c *ChainDimensions) TrackFinalizationLag(finalizationLag uint64) {
+	key := c.key.Load()
+	c.finalizationLag.Store(finalizationLag)
+
+	finalizationLagMetric.WithLabelValues(key.chain.String(), key.upstreamId).Set(float64(finalizationLag))
+}
+
 func newChainDimensions(key chainDimensionKey) *ChainDimensions {
 	chainKey := utils.NewAtomic[chainDimensionKey]()
 	chainKey.Store(key)

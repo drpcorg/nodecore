@@ -24,7 +24,7 @@ func TestCreateHeadEventProcessor_ReturnsHeadProcessor(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	chainSpecific := specific.NewEvmChainSpecific(conf.Id, connector, chains.GetChain(conf.ChainName), conf.Options)
 
-	processor := upstreams.CreateHeadEventProcessor(context.Background(), conf, connector, chainSpecific)
+	processor := upstreams.CreateHeadEventProcessor(context.Background(), conf, connector, chainSpecific, chains.POLYGON)
 
 	assert.NotNil(t, processor)
 	assert.IsType(t, &event_processors.HeadEventProcessor{}, processor)
@@ -229,7 +229,7 @@ func TestCreateBlockEventProcessor_ReturnsNilForUnsupportedBlockchain(t *testing
 	connector := mocks.NewConnectorMock()
 	chainSpecific := specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options.InternalTimeout, conf.Options.ValidationInterval)
 
-	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, connector, chainSpecific, chains.Solana)
+	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, connector, chainSpecific, chains.GetChain(chains.SOLANA.String()))
 
 	assert.Nil(t, processor)
 }
@@ -242,7 +242,7 @@ func TestCreateBlockEventProcessor_ReturnsProcessorForEthereum(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	chainSpecific := specific.NewEvmChainSpecific(conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.Options)
 
-	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, connector, chainSpecific, chains.Ethereum)
+	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, connector, chainSpecific, chains.GetChain(chains.ETHEREUM.String()))
 
 	assert.NotNil(t, processor)
 	assert.IsType(t, &event_processors.BaseBlockEventProcessor{}, processor)

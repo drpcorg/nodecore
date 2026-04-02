@@ -17,9 +17,9 @@ func NewHeightForkChoice() *HeightForkChoice {
 
 var _ ForkChoice = (*HeightForkChoice)(nil)
 
-func (h *HeightForkChoice) Choose(upstreamId string, event *protocol.StateUpstreamEvent) (bool, protocol.Block) {
-	if event.State.Status == protocol.Available {
-		h.heads[upstreamId] = event.State.HeadData
+func (h *HeightForkChoice) Choose(upstreamId string, event *protocol.HeadUpstreamEvent) (bool, protocol.Block) {
+	if event.Status == protocol.Available {
+		h.heads[upstreamId] = event.Head
 
 		currentMaxHeight := h.maxHeight()
 		if currentMaxHeight.CompareWithHeight(h.max) == 1 {
