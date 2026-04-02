@@ -30,6 +30,18 @@ type CacheConnectorMock struct {
 	mock.Mock
 }
 
+func (c *CacheConnectorMock) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return nil
+}
+
+func (c *CacheConnectorMock) OutboxRemove(ctx context.Context, key string) error {
+	return nil
+}
+
+func (c *CacheConnectorMock) OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
+	return nil, nil
+}
+
 func NewCacheConnectorMock() *CacheConnectorMock {
 	return &CacheConnectorMock{}
 }
