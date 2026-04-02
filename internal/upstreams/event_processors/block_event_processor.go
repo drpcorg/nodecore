@@ -93,7 +93,7 @@ func (h *HeadEventProcessor) Type() EventProcessorType {
 
 func (h *HeadEventProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
-		go h.headProcessor.Start()
+		h.headProcessor.Start()
 
 		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
 
@@ -170,7 +170,7 @@ func (b *BaseBlockEventProcessor) Type() EventProcessorType {
 
 func (b *BaseBlockEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		go b.blockProcessor.Start()
+		b.blockProcessor.Start()
 
 		blockSub := b.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", b.upstreamId))
 

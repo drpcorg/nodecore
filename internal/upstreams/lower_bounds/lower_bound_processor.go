@@ -40,17 +40,20 @@ func (b *BaseLowerBoundProcessor) Start() {
 		}
 		lowerBoundChan := lo.FanIn(100, lowerBoundsChansArr...)
 
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case lowerBound, ok := <-lowerBoundChan:
-				if ok {
-					log.Info().Msgf("upstream '%s' lower bound of type %s is %d", b.upstreamId, lowerBound.Type.String(), lowerBound.Bound)
-					b.subManager.Publish(lowerBound)
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case lowerBound, ok := <-lowerBoundChan:
+					if ok {
+						log.Info().Msgf("upstream '%s' lower bound of type %s is %d", b.upstreamId, lowerBound.Type.String(), lowerBound.Bound)
+						b.subManager.Publish(lowerBound)
+					}
 				}
 			}
-		}
+		}()
+		return nil
 	})
 }
 
