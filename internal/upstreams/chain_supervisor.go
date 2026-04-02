@@ -159,9 +159,13 @@ func (b *BaseChainSupervisor) processEvents() {
 			if ok {
 				switch eventType := event.EventType.(type) {
 				case *protocol.RemoveUpstreamEvent:
-					b.upstreamStates.Delete(event.Id)
-					b.updateState()
-					b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: protocol.ZeroBlock{}})
+					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
+						upHead := upState.HeadData
+						b.upstreamStates.Delete(event.Id)
+
+						b.updateState()
+						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
+					}
 				case *protocol.HeadUpstreamEvent:
 					b.updateHead(event.Id, eventType)
 				case *protocol.StateUpstreamEvent:

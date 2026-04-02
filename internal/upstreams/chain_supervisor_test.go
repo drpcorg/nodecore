@@ -406,6 +406,52 @@ func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
 	}, eventuallyWait, eventuallyTick)
 }
 
+func TestChainSupervisorRemoveUpstreamRecomputesHead(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	firstHead := protocol.NewBlockWithHeight(100)
+	secondHead := protocol.NewBlockWithHeight(200)
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id1", protocol.Available, firstHead, methods))
+	publishHeadEvent(chainSupervisor, "id1", protocol.Available, firstHead)
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id2", protocol.Available, secondHead, methods))
+	publishHeadEvent(chainSupervisor, "id2", protocol.Available, secondHead)
+	assertEventuallyEqual(t, secondHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id2"))
+	assertEventuallyEqual(t, firstHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("id1"))
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().HeadData.IsEmpty()
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorRemoveUpstreamWithoutTrackedHeadDoesNotResetChosenHead(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	chosenHead := protocol.NewBlockWithHeight(100)
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("tracked", protocol.Available, chosenHead, methods))
+	publishHeadEvent(chainSupervisor, "tracked", protocol.Available, chosenHead)
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	// This upstream is present in state, but fork choice never saw a head event for it.
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("state-only", protocol.Available, protocol.NewBlockWithHeight(200), methods))
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("state-only"))
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+}
+
 func TestChainSupervisorGetChainAndUpstreamIds(t *testing.T) {
 	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 	methods := mocks.NewMethodsMock()
