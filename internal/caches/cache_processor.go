@@ -35,6 +35,9 @@ func init() {
 type CacheProcessor interface {
 	Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte)
 	Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool)
+	OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	OutboxRemove(ctx context.Context, key string) error
+	OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error)
 }
 
 type BaseCacheProcessor struct {
