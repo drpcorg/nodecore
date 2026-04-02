@@ -71,14 +71,17 @@ func newRpcHead(
 func (r *RpcHead) Start() {
 	log.Info().Msgf("starting an rpc head of upstream %s with poll interval %s", r.upstreamId, r.pollInterval)
 	r.lifecycle.Start(func(ctx context.Context) error {
-		for {
-			r.poll()
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(r.pollInterval):
+		go func() {
+			for {
+				r.poll()
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(r.pollInterval):
+				}
 			}
-		}
+		}()
+		return nil
 	})
 }
 
@@ -146,8 +149,6 @@ func (w *SubscriptionHead) Start() {
 	log.Info().Msgf("starting a subscription head of upstream %s", w.upstreamId)
 	w.lifecycle.Start(func(ctx context.Context) error {
 		// get the latest block in order not to wait for the sub event
-		w.getLatestBlock()
-
 		subReq, err := w.chainSpecific.SubscribeHeadRequest()
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't create a subscription request to upstream %s", w.upstreamId)
@@ -159,29 +160,33 @@ func (w *SubscriptionHead) Start() {
 			log.Error().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
 			return err
 		}
-		for {
-			select {
-			case message, ok := <-subResponse.ResponseChan():
-				if !ok {
-					return nil
-				}
-				if message.Error != nil {
-					log.Error().Err(message.Error).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
-					return nil
-				}
-				if message.Type == protocol.Ws {
-					block, err := w.chainSpecific.ParseSubscriptionBlock(message.Message)
-					if err != nil {
-						log.Error().Err(err).Msgf("couldn't parse a message from heads subscription of upstream %s", w.upstreamId)
-						return nil
+		go func() {
+			w.getLatestBlock()
+			for {
+				select {
+				case message, ok := <-subResponse.ResponseChan():
+					if !ok {
+						return
 					}
-					w.block.Store(block)
-					w.headsChan <- block
+					if message.Error != nil {
+						log.Error().Err(message.Error).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
+						return
+					}
+					if message.Type == protocol.Ws {
+						block, err := w.chainSpecific.ParseSubscriptionBlock(message.Message)
+						if err != nil {
+							log.Error().Err(err).Msgf("couldn't parse a message from heads subscription of upstream %s", w.upstreamId)
+							return
+						}
+						w.block.Store(block)
+						w.headsChan <- block
+					}
+				case <-ctx.Done():
+					return
 				}
-			case <-ctx.Done():
-				return nil
 			}
-		}
+		}()
+		return nil
 	})
 }
 

@@ -27,13 +27,13 @@ type BaseLabelsProcessor struct {
 
 func (b *BaseLabelsProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		go func() {
-			labelDetectorsChanArr := make([]<-chan lo.Tuple2[string, string], 0, len(b.labelsDetectors))
-			for _, detector := range b.labelsDetectors {
-				labelDetectorsChanArr = append(labelDetectorsChanArr, b.detectLabels(ctx, detector))
-			}
-			labelsChan := lo.FanIn(100, labelDetectorsChanArr...)
+		labelDetectorsChanArr := make([]<-chan lo.Tuple2[string, string], 0, len(b.labelsDetectors))
+		for _, detector := range b.labelsDetectors {
+			labelDetectorsChanArr = append(labelDetectorsChanArr, b.detectLabels(ctx, detector))
+		}
+		labelsChan := lo.FanIn(100, labelDetectorsChanArr...)
 
+		go func() {
 			for {
 				select {
 				case <-ctx.Done():
@@ -46,7 +46,6 @@ func (b *BaseLabelsProcessor) Start() {
 				}
 			}
 		}()
-
 		return nil
 	})
 }

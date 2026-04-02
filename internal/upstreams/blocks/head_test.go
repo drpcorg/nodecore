@@ -179,8 +179,10 @@ func TestWsHeadGetLastBlock(t *testing.T) {
 	responseLastBlock := protocol.NewHttpUpstreamResponse("1", bodyLastBlock, 200, protocol.JsonRpc)
 	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
 
+	messages := make(chan *protocol.WsResponse, 10)
+	response := protocol.NewJsonRpcWsUpstreamResponse(messages)
 	connector := mocks.NewWsConnectorMock()
-	connector.On("Subscribe", mock.Anything, mock.Anything).Return(nil, errors.New("err")).Maybe()
+	connector.On("Subscribe", mock.Anything, mock.Anything).Return(response, nil).Maybe()
 
 	upConfig := config.Upstream{
 		ChainName:    "ethereum",
@@ -190,9 +192,9 @@ func TestWsHeadGetLastBlock(t *testing.T) {
 	}
 
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
-	go headProcessor.Start()
-
 	sub := headProcessor.Subscribe("test")
+
+	headProcessor.Start()
 
 	event, ok := <-sub.Events
 	expected := protocol.Block{

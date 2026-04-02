@@ -84,34 +84,37 @@ func (h *BaseHeadProcessor) Running() bool {
 
 func (h *BaseHeadProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
-		go h.head.Start()
+		h.head.Start()
 		h.lastUpdate.Store(time.Now())
 
-		timeout := time.NewTimer(h.headNoUpdatesTimeout)
-		for {
-			select {
-			case <-timeout.C:
-				difference := time.Since(h.lastUpdate.Load())
-				log.Warn().Msgf("No head updates of upstream %s for %d ms", h.upstreamId, difference.Milliseconds())
-				h.head.OnNoHeadUpdates()
-			case <-ctx.Done():
-				return nil
-			case block, ok := <-h.head.HeadsChan():
-				if ok {
-					log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
-					h.lastUpdate.Store(time.Now())
-					h.subManager.Publish(HeadEvent{HeadData: block})
+		go func() {
+			timeout := time.NewTimer(h.headNoUpdatesTimeout)
+			for {
+				select {
+				case <-timeout.C:
+					difference := time.Since(h.lastUpdate.Load())
+					log.Warn().Msgf("No head updates of upstream %s for %d ms", h.upstreamId, difference.Milliseconds())
+					h.head.OnNoHeadUpdates()
+				case <-ctx.Done():
+					return
+				case block, ok := <-h.head.HeadsChan():
+					if ok {
+						log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
+						h.lastUpdate.Store(time.Now())
+						h.subManager.Publish(HeadEvent{HeadData: block})
+					}
+				case manualBlock := <-h.manualHeadChan:
+					if manualBlock.Height > h.head.GetCurrentBlock().Height {
+						log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.Height)
+						h.lastUpdate.Store(time.Now())
+						h.head.UpdateHead(manualBlock)
+						h.subManager.Publish(HeadEvent{HeadData: manualBlock})
+					}
 				}
-			case manualBlock := <-h.manualHeadChan:
-				if manualBlock.Height > h.head.GetCurrentBlock().Height {
-					log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.Height)
-					h.lastUpdate.Store(time.Now())
-					h.head.UpdateHead(manualBlock)
-					h.subManager.Publish(HeadEvent{HeadData: manualBlock})
-				}
+				timeout.Reset(h.headNoUpdatesTimeout)
 			}
-			timeout.Reset(h.headNoUpdatesTimeout)
-		}
+		}()
+		return nil
 	})
 }
 
