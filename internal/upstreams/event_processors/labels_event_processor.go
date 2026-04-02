@@ -19,7 +19,7 @@ type LabelsEventProcessor struct {
 
 func (l *LabelsEventProcessor) Start() {
 	l.lifecycle.Start(func(ctx context.Context) error {
-		go l.labelsProcessor.Start()
+		l.labelsProcessor.Start()
 
 		labelsSub := l.labelsProcessor.Subscribe(fmt.Sprintf("%s_labels", l.upstreamId))
 

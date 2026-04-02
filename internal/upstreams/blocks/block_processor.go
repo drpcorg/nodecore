@@ -94,20 +94,23 @@ func (b *EthLikeBlockProcessor) DisabledBlocks() mapset.Set[protocol.BlockType] 
 
 func (b *EthLikeBlockProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		b.poll(protocol.FinalizedBlock)
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case event := <-b.manualBlockChan:
-				currentBlock, ok := b.blocks[event.BlockType]
-				if !ok || event.Block.Height > currentBlock.Height {
-					b.subManager.Publish(*event)
+		go func() {
+			b.poll(protocol.FinalizedBlock)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case event := <-b.manualBlockChan:
+					currentBlock, ok := b.blocks[event.BlockType]
+					if !ok || event.Block.Height > currentBlock.Height {
+						b.subManager.Publish(*event)
+					}
+				case <-time.After(b.upConfig.PollInterval):
+					b.poll(protocol.FinalizedBlock)
 				}
-			case <-time.After(b.upConfig.PollInterval):
-				b.poll(protocol.FinalizedBlock)
 			}
-		}
+		}()
+		return nil
 	})
 }
 

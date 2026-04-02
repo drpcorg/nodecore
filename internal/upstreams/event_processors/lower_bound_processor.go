@@ -31,7 +31,7 @@ func (b *BaseLowerBoundEventProcessor) SetEmitter(emitter Emitter) {
 
 func (b *BaseLowerBoundEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		go b.lowerBoundProcessor.Start()
+		b.lowerBoundProcessor.Start()
 
 		boundSub := b.lowerBoundProcessor.Subscribe(fmt.Sprintf("%s_lower_bounds", b.upstreamId))
 
