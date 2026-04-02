@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -17,7 +18,7 @@ import (
 func TestNewUpstreamProcessorAggregator_SkipsNilProcessors(t *testing.T) {
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{
 		nil,
-		event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", mocks.NewHeadProcessorMock()),
+		event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, mocks.NewHeadProcessorMock()),
 	})
 
 	assert.True(t, aggregator.IsHealthProcessorDisabled())
@@ -41,7 +42,7 @@ func TestUpstreamProcessorAggregatorUpdateHead_ForwardsData(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
 	headProcessor.On("UpdateHead", uint64(55), uint64(7)).Once()
 
-	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", headProcessor)
+	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, headProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headEventProcessor})
 
 	aggregator.UpdateHead(event_processors.NewHeadUpdateData(55, 7))
@@ -54,7 +55,7 @@ func TestUpstreamProcessorAggregatorUpdateBlock_ForwardsData(t *testing.T) {
 	blockData := protocol.NewBlockWithHeight(66)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
-	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", blockProcessor)
+	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{blockEventProcessor})
 
 	aggregator.UpdateBlock(event_processors.NewBaseBlockUpdateData(blockData, protocol.FinalizedBlock))

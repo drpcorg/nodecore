@@ -2,7 +2,6 @@ package upstreams
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"time"
 
@@ -25,34 +24,21 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 			var eventType protocol.UpstreamEventType = &protocol.StateUpstreamEvent{State: &state}
 
 			switch stateEvent := event.(type) {
-			case *protocol.LabelsUpstreamStateEvent:
-				state.Labels.AddLabel(stateEvent.Labels.A, stateEvent.Labels.B)
-			case *protocol.SubscribeUpstreamStateEvent:
-				switch stateEvent.State {
-				case protocol.WsConnected:
-					state.Caps.Add(protocol.WsCap)
-				case protocol.WsDisconnected:
-					state.Caps.Remove(protocol.WsCap)
-				}
-			case *protocol.LowerBoundUpstreamStateEvent:
-				state.LowerBoundsInfo.AddLowerBound(stateEvent.Data)
-			case *protocol.StatusUpstreamStateEvent:
-				state.Status = stateEvent.Status
 			case *protocol.FatalErrorUpstreamStateEvent:
+				if !validUpstream {
+					continue
+				}
 				log.Warn().Msgf("upstream '%s' settings are invalid, it will be stopped", u.id)
 				eventType = &protocol.RemoveUpstreamEvent{}
 				validUpstream = false
 				u.publishUpstreamEvent(state, eventType)
 			case *protocol.ValidUpstreamStateEvent:
+				if validUpstream {
+					continue
+				}
 				log.Warn().Msgf("upstream '%s' settings are valid", u.id)
 				eventType = &protocol.ValidUpstreamEvent{}
 				validUpstream = true
-			case *protocol.HeadUpstreamStateEvent:
-				state.HeadData = stateEvent.HeadData
-				headsMetric.WithLabelValues(u.chain.String(), u.id).Set(float64(stateEvent.HeadData.Height))
-			case *protocol.BlockUpstreamStateEvent:
-				state.BlockInfo.AddBlock(stateEvent.Block, stateEvent.BlockType)
-				blocksMetric.WithLabelValues(u.id, stateEvent.BlockType.String(), u.chain.String()).Set(float64(stateEvent.Block.Height))
 			case *protocol.BanMethodUpstreamStateEvent:
 				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.upConfig.Methods.EnableMethods, stateEvent.Method) {
 					continue
@@ -70,8 +56,14 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context) {
 				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Remove(stateEvent.Method)
 				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+			case *protocol.HeadUpstreamStateEvent:
+				state = stateEvent.ProcessEvent(state)
+				eventType = &protocol.HeadUpstreamEvent{Status: state.Status, Head: state.HeadData}
 			default:
-				panic(fmt.Sprintf("unknown event type %T", event))
+				if stateEvent.Same(state) {
+					continue
+				}
+				state = stateEvent.ProcessEvent(state)
 			}
 
 			if validUpstream {

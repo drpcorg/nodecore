@@ -20,6 +20,7 @@ var specsFS embed.FS
 
 const (
 	DefaultMethodGroup = "default"
+	SubMethodGroup     = "sub"
 	SpecPathVar        = "NODECORE_SPECS_PATH"
 )
 
@@ -96,6 +97,22 @@ func GetSpecMethod(specName, methodName string) *Method {
 		return nil
 	}
 	return method
+}
+
+func GetSubMethods(specName string) mapset.Set[string] {
+	subMethods := mapset.NewThreadUnsafeSet[string]()
+	methods, ok := specMethods[specName]
+	if !ok {
+		return subMethods
+	}
+	subMethodsGroup, ok := methods[SubMethodGroup]
+	if !ok {
+		return subMethods
+	}
+	for name := range subMethodsGroup {
+		subMethods.Add(name)
+	}
+	return subMethods
 }
 
 func IsSubscribeMethod(specName, methodName string) bool {
@@ -309,6 +326,7 @@ func mergeMethods(currentGroupMethods, importedGroupMethods groupMethods) error 
 func getGroupMethods(spec *MethodSpec, removeDisabled bool) (groupMethods, error) {
 	specGroupMethodsByName := groupMethods{}
 	specGroupMethodsByName[DefaultMethodGroup] = map[string]*Method{}
+	specGroupMethodsByName[SubMethodGroup] = map[string]*Method{}
 	specGroupMethods := lo.GroupBy(spec.Methods, func(item *MethodData) string {
 		return item.Group
 	})
@@ -329,6 +347,9 @@ func getGroupMethods(spec *MethodSpec, removeDisabled bool) (groupMethods, error
 			}
 			specGroupMethodsByName[group][methodData.Name] = method
 			specGroupMethodsByName[DefaultMethodGroup][methodData.Name] = method
+			if method.IsSubscribe() {
+				specGroupMethodsByName[SubMethodGroup][methodData.Name] = method
+			}
 		}
 	}
 

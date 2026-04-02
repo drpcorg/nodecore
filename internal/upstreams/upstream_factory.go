@@ -68,8 +68,8 @@ func CreateUpstream(
 
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
-			CreateBlockEventProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain.Type),
-			CreateHeadEventProcessor(ctx, conf, upstreamConnectorsInfo.headConnector, chainSpecific),
+			CreateBlockEventProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain),
+			CreateHeadEventProcessor(ctx, conf, upstreamConnectorsInfo.headConnector, chainSpecific, configuredChain.Chain),
 			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
 			CreateHealthEventProcessor(ctx, conf, chainSpecific),
 			CreateSettingsEventProcessor(ctx, conf, chainSpecific),

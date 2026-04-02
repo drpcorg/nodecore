@@ -31,4 +31,10 @@ func TestTrackerAllDimensions(t *testing.T) {
 	assert.Equal(t, uint64(1), fullDims.UpstreamDimensions.GetTotalErrors())
 	assert.Equal(t, 0.5, fullDims.UpstreamDimensions.GetErrorRate())
 	assert.True(t, fullDims.UpstreamDimensions.GetValueAtQuantile(0.9) > 95000)
+
+	tracker.GetChainDimensions(chain, upId).TrackHeadLag(15)
+	tracker.GetChainDimensions(chain, upId).TrackFinalizationLag(53)
+
+	assert.Equal(t, uint64(15), fullDims.ChainDimensions.GetHeadLag())
+	assert.Equal(t, uint64(53), fullDims.ChainDimensions.GetFinalizationLag())
 }

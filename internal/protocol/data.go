@@ -248,6 +248,13 @@ type StateUpstreamEvent struct {
 func (u StateUpstreamEvent) eventData() {
 }
 
+type HeadUpstreamEvent struct {
+	Status AvailabilityStatus
+	Head   Block
+}
+
+func (h HeadUpstreamEvent) eventData() {}
+
 type RemoveUpstreamEvent struct{}
 
 func (r RemoveUpstreamEvent) eventData() {}
@@ -279,7 +286,7 @@ type UpstreamState struct {
 
 func DefaultUpstreamState(upstreamMethods methods.Methods, caps mapset.Set[Cap], upstreamIndex string, rt *ratelimiter.RateLimitBudget, autoTuneRateLimiter *ratelimiter.UpstreamAutoTune) UpstreamState {
 	return UpstreamState{
-		Status:              Unavailable,
+		Status:              Available,
 		UpstreamMethods:     upstreamMethods,
 		BlockInfo:           NewBlockInfo(),
 		LowerBoundsInfo:     NewLowerBoundInfo(),
@@ -302,6 +309,10 @@ func NewLabels() *Labels {
 	}
 }
 
+func (l *Labels) GetLabel(label string) (string, bool) {
+	return l.labels.Load(label)
+}
+
 func (l *Labels) AddLabel(key, value string) {
 	l.labels.Store(key, value)
 }
@@ -315,4 +326,13 @@ func (l *Labels) GetAllLabels() map[string]string {
 	})
 
 	return labels
+}
+
+func (l *Labels) Copy() *Labels {
+	newLabels := NewLabels()
+	l.labels.Range(func(k, v string) bool {
+		newLabels.AddLabel(k, v)
+		return true
+	})
+	return newLabels
 }

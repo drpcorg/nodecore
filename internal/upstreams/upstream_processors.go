@@ -16,9 +16,10 @@ func CreateHeadEventProcessor(
 	conf *config.Upstream,
 	headConnector connectors.ApiConnector,
 	chainSpecific specific.ChainSpecific,
+	chain chains.Chain,
 ) event_processors.UpstreamStateEventProcessor {
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, conf, headConnector, chainSpecific)
-	eventProcessor := event_processors.NewHeadEventProcessor(ctx, conf.Id, headProcessor)
+	eventProcessor := event_processors.NewHeadEventProcessor(ctx, conf.Id, chain, headProcessor)
 	if eventProcessor == nil {
 		return nil
 	}
@@ -78,10 +79,10 @@ func CreateBlockEventProcessor(
 	conf *config.Upstream,
 	requestConnector connectors.ApiConnector,
 	chainSpecific specific.ChainSpecific,
-	blockchainType chains.BlockchainType,
+	configuredChain *chains.ConfiguredChain,
 ) event_processors.UpstreamStateEventProcessor {
-	blockProcessor := createBlockProcessor(ctx, conf, requestConnector, chainSpecific, blockchainType)
-	eventProcessor := event_processors.NewBaseBlockEventProcessor(ctx, conf.Id, blockProcessor)
+	blockProcessor := createBlockProcessor(ctx, conf, requestConnector, chainSpecific, configuredChain.Type)
+	eventProcessor := event_processors.NewBaseBlockEventProcessor(ctx, conf.Id, configuredChain.Chain, blockProcessor)
 	if eventProcessor == nil {
 		return nil
 	}

@@ -18,17 +18,22 @@ import (
 )
 
 type BaseUpstreamSupervisor struct {
-	ctx                     context.Context
-	chainSupervisors        *utils.CMap[chains.Chain, ChainSupervisor]
-	upstreams               *utils.CMap[string, Upstream]
+	ctx context.Context
+
+	chainSupervisors *utils.CMap[chains.Chain, ChainSupervisor]
+	upstreams        *utils.CMap[string, Upstream]
+
 	eventsChan              chan protocol.UpstreamEvent
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
 	tracker                 dimensions.DimensionTracker
 	statsService            stats.StatsService
-	upstreamIndicesCounter  int
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
-	torProxyUrl             string
+
+	torProxyUrl            string
+	upstreamIndicesCounter int
+
+	subChainSupervisorManager *utils.SubscriptionManager[ChainSupervisorEvent]
 }
 
 func NewBaseUpstreamSupervisor(
@@ -40,23 +45,28 @@ func NewBaseUpstreamSupervisor(
 	torProxyUrl string,
 ) UpstreamSupervisor {
 	return &BaseUpstreamSupervisor{
-		ctx:                     ctx,
-		upstreams:               utils.NewCMap[string, Upstream](),
-		chainSupervisors:        utils.NewCMap[chains.Chain, ChainSupervisor](),
-		eventsChan:              make(chan protocol.UpstreamEvent, 100),
-		upstreamsConfig:         upstreamsConfig,
-		tracker:                 tracker,
-		statsService:            statsService,
-		executor:                createFlowExecutor(upstreamsConfig.FailsafeConfig),
-		upstreamIndicesCounter:  1,
-		rateLimitBudgetRegistry: rateLimitBudgetRegistry,
-		torProxyUrl:             torProxyUrl,
+		ctx:                       ctx,
+		upstreams:                 utils.NewCMap[string, Upstream](),
+		chainSupervisors:          utils.NewCMap[chains.Chain, ChainSupervisor](),
+		eventsChan:                make(chan protocol.UpstreamEvent, 100),
+		upstreamsConfig:           upstreamsConfig,
+		tracker:                   tracker,
+		statsService:              statsService,
+		executor:                  createFlowExecutor(upstreamsConfig.FailsafeConfig),
+		upstreamIndicesCounter:    1,
+		rateLimitBudgetRegistry:   rateLimitBudgetRegistry,
+		torProxyUrl:               torProxyUrl,
+		subChainSupervisorManager: utils.NewSubscriptionManager[ChainSupervisorEvent]("chain_supervisor_events"),
 	}
 }
 
-func (u *BaseUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
+func (b *BaseUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent] {
+	return b.subChainSupervisorManager.Subscribe(name)
+}
+
+func (b *BaseUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
 	result := make([]ChainSupervisor, 0)
-	u.chainSupervisors.Range(func(key chains.Chain, val ChainSupervisor) bool {
+	b.chainSupervisors.Range(func(key chains.Chain, val ChainSupervisor) bool {
 		result = append(result, val)
 		return true
 	})
@@ -64,57 +74,57 @@ func (u *BaseUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
 	return result
 }
 
-func (u *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) ChainSupervisor {
-	if c, ok := u.chainSupervisors.Load(chain); ok {
+func (b *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) ChainSupervisor {
+	if c, ok := b.chainSupervisors.Load(chain); ok {
 		return c
 	}
 	return nil
 }
 
-func (u *BaseUpstreamSupervisor) GetUpstream(upstreamId string) Upstream {
-	if up, ok := u.upstreams.Load(upstreamId); ok {
+func (b *BaseUpstreamSupervisor) GetUpstream(upstreamId string) Upstream {
+	if up, ok := b.upstreams.Load(upstreamId); ok {
 		return up
 	}
 	return nil
 }
 
-func (u *BaseUpstreamSupervisor) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
-	return u.executor
+func (b *BaseUpstreamSupervisor) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
+	return b.executor
 }
 
-func (u *BaseUpstreamSupervisor) StartUpstreams() {
-	go u.processEvents()
+func (b *BaseUpstreamSupervisor) StartUpstreams() {
+	go b.processEvents()
 
-	for _, upConfig := range u.upstreamsConfig.Upstreams {
-		currentIndex := u.upstreamIndicesCounter
+	for _, upConfig := range b.upstreamsConfig.Upstreams {
+		currentIndex := b.upstreamIndicesCounter
 		if currentIndex == 1048575 { // 0xfffff, which means that the next number will be 6 bytes
 			log.Error().Msgf("upstream indices overflow, max is %d", 1048575)
 			break
 		}
 
-		u.upstreamIndicesCounter++
+		b.upstreamIndicesCounter++
 
 		go func(upstreamIndex int) {
 			upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-			up, err := CreateUpstream(u.ctx, upConfig, u.tracker, u.statsService, upstreamConnectorExecutor, upstreamIndex, u.rateLimitBudgetRegistry, u.torProxyUrl)
+			up, err := CreateUpstream(b.ctx, upConfig, b.tracker, b.statsService, upstreamConnectorExecutor, upstreamIndex, b.rateLimitBudgetRegistry, b.torProxyUrl)
 			if err != nil {
 				log.Error().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
 			}
 			up.Start()
 
-			u.upstreams.Store(up.GetId(), up)
+			b.upstreams.Store(up.GetId(), up)
 
 			upSub := up.Subscribe(fmt.Sprintf("upstream_supervisor_%s_updates", up.GetId()))
 			defer upSub.Unsubscribe()
 
 			for {
 				select {
-				case <-u.ctx.Done():
+				case <-b.ctx.Done():
 					return
 				case upstreamEvent, ok := <-upSub.Events:
 					if ok {
-						u.eventsChan <- upstreamEvent
+						b.eventsChan <- upstreamEvent
 					}
 				}
 			}
@@ -145,27 +155,28 @@ func createUpstreamExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Exec
 	return resilience.CreateUpstreamExecutor(policies...)
 }
 
-func (u *BaseUpstreamSupervisor) processEvents() {
+func (b *BaseUpstreamSupervisor) processEvents() {
 	for {
 		select {
-		case <-u.ctx.Done():
+		case <-b.ctx.Done():
 			return
-		case event, ok := <-u.eventsChan:
+		case event, ok := <-b.eventsChan:
 			if ok {
-				chainSupervisor, exists := u.chainSupervisors.LoadOrStore(event.Chain, NewBaseChainSupervisor(u.ctx, event.Chain, choice.NewHeightForkChoice(), u.tracker))
+				chainSupervisor, exists := b.chainSupervisors.LoadOrStore(event.Chain, NewBaseChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice(), b.tracker))
 
 				if !exists {
 					chainSupervisor.Start()
+					b.subChainSupervisorManager.Publish(&AddChainSupervisorEvent{chainSupervisor})
 				}
 
 				switch event.EventType.(type) {
 				case *protocol.RemoveUpstreamEvent:
-					upstream := u.GetUpstream(event.Id)
+					upstream := b.GetUpstream(event.Id)
 					if upstream != nil {
 						upstream.PartialStop()
 					}
 				case *protocol.ValidUpstreamEvent:
-					upstream := u.GetUpstream(event.Id)
+					upstream := b.GetUpstream(event.Id)
 					if upstream != nil {
 						upstream.Resume()
 					}

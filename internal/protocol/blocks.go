@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"cmp"
-	"reflect"
 
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -18,7 +17,10 @@ type Block struct {
 }
 
 func (b Block) Equals(other Block) bool {
-	return reflect.DeepEqual(b, other)
+	return b.Height == other.Height &&
+		b.Slot == other.Slot &&
+		b.Hash.Equals(other.Hash) &&
+		b.ParentHash.Equals(other.ParentHash)
 }
 
 func (b Block) CompareWithHeight(other Block) int {
@@ -85,6 +87,15 @@ func (b *BlockInfo) GetBlock(blockType BlockType) Block {
 	return block
 }
 
+func (b *BlockInfo) Copy() *BlockInfo {
+	newBlockInfo := NewBlockInfo()
+	b.blocks.Range(func(key BlockType, val Block) bool {
+		newBlockInfo.AddBlock(val, key)
+		return true
+	})
+	return newBlockInfo
+}
+
 type LowerBoundInfo struct {
 	lowerBounds *utils.CMap[LowerBoundType, LowerBoundData]
 }
@@ -93,6 +104,10 @@ func NewLowerBoundInfo() *LowerBoundInfo {
 	return &LowerBoundInfo{
 		lowerBounds: utils.NewCMap[LowerBoundType, LowerBoundData](),
 	}
+}
+
+func (l *LowerBoundInfo) GetLowerBound(boundType LowerBoundType) (LowerBoundData, bool) {
+	return l.lowerBounds.Load(boundType)
 }
 
 func (l *LowerBoundInfo) AddLowerBound(data LowerBoundData) {
@@ -108,4 +123,14 @@ func (l *LowerBoundInfo) GetAllBounds() []LowerBoundData {
 	})
 
 	return bounds
+}
+
+func (l *LowerBoundInfo) Copy() *LowerBoundInfo {
+	newBlockInfo := NewLowerBoundInfo()
+	l.lowerBounds.Range(func(key LowerBoundType, val LowerBoundData) bool {
+		newBlockInfo.AddLowerBound(val)
+		return true
+	})
+
+	return newBlockInfo
 }

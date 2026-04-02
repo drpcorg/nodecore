@@ -11,6 +11,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/server/emerald"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -38,6 +39,20 @@ func NewGrpcBlockchainService(appCtx *ApplicationContext, sessionAuth *grpcSessi
 		sessionAuth:       sessionAuth,
 		heartbeatInterval: defaultNativeSubscribeHeartbeat,
 	}
+}
+
+func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.SubscribeChainStatusRequest, stream dshackle.Blockchain_SubscribeChainStatusServer) error {
+	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
+		return err
+	}
+	if request == nil {
+		return status.Error(codes.Internal, "request is nil")
+	}
+	if s.appCtx == nil || s.appCtx.upstreamSupervisor == nil {
+		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
+	}
+
+	return emerald.SubscribeChainStatus(s.appCtx.upstreamSupervisor, stream)
 }
 
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {

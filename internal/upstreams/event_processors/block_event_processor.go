@@ -4,11 +4,38 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
+
+var blocksMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: config.AppName,
+		Subsystem: "upstream",
+		Name:      "blocks",
+		Help:      "The current block height of a specific block type",
+	},
+	[]string{"upstream", "blockType", "chain"},
+)
+
+var headsMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: config.AppName,
+		Subsystem: "upstream",
+		Name:      "heads",
+		Help:      "The current head height",
+	},
+	[]string{"chain", "upstream"},
+)
+
+func init() {
+	prometheus.MustRegister(blocksMetric, headsMetric)
+}
 
 type BlockUpdateData interface {
 	data()
@@ -50,6 +77,7 @@ type BlockEventProcessor interface {
 
 type HeadEventProcessor struct {
 	upstreamId    string
+	chain         chains.Chain
 	lifecycle     *utils.BaseLifecycle
 	headProcessor blocks.HeadProcessor
 	emitter       Emitter
@@ -79,6 +107,7 @@ func (h *HeadEventProcessor) Start() {
 				case head, ok := <-headSub.Events:
 					if ok {
 						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
+						headsMetric.WithLabelValues(h.chain.String(), h.upstreamId).Set(float64(head.HeadData.Height))
 					}
 				}
 			}
@@ -108,6 +137,7 @@ func (h *HeadEventProcessor) UpdateBlock(data BlockUpdateData) {
 func NewHeadEventProcessor(
 	ctx context.Context,
 	upstreamId string,
+	chain chains.Chain,
 	headProcessor blocks.HeadProcessor,
 ) *HeadEventProcessor {
 	if headProcessor == nil {
@@ -116,6 +146,7 @@ func NewHeadEventProcessor(
 
 	return &HeadEventProcessor{
 		upstreamId:    upstreamId,
+		chain:         chain,
 		lifecycle:     utils.NewBaseLifecycle(fmt.Sprintf("%s_head_event_processor", upstreamId), ctx),
 		headProcessor: headProcessor,
 	}
@@ -123,6 +154,7 @@ func NewHeadEventProcessor(
 
 type BaseBlockEventProcessor struct {
 	upstreamId     string
+	chain          chains.Chain
 	lifecycle      *utils.BaseLifecycle
 	blockProcessor blocks.BlockProcessor
 	emitter        Emitter
@@ -152,6 +184,7 @@ func (b *BaseBlockEventProcessor) Start() {
 				case block, ok := <-blockSub.Events:
 					if ok {
 						b.emitter(&protocol.BlockUpstreamStateEvent{Block: block.Block, BlockType: block.BlockType})
+						blocksMetric.WithLabelValues(b.upstreamId, block.BlockType.String(), b.chain.String()).Set(float64(block.Block.Height))
 					}
 				}
 			}
@@ -181,6 +214,7 @@ func (b *BaseBlockEventProcessor) UpdateBlock(data BlockUpdateData) {
 func NewBaseBlockEventProcessor(
 	ctx context.Context,
 	upstreamId string,
+	chain chains.Chain,
 	blockProcessor blocks.BlockProcessor,
 ) *BaseBlockEventProcessor {
 	if blockProcessor == nil {
@@ -190,6 +224,7 @@ func NewBaseBlockEventProcessor(
 	return &BaseBlockEventProcessor{
 		lifecycle:      utils.NewBaseLifecycle(fmt.Sprintf("%s_block_event_processor", upstreamId), ctx),
 		upstreamId:     upstreamId,
+		chain:          chain,
 		blockProcessor: blockProcessor,
 	}
 }
