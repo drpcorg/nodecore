@@ -106,12 +106,13 @@ func (b *BaseStatsService) AddRequestResults(requestResults []protocol.RequestRe
 }
 
 func (b *BaseStatsService) process() {
-	if !b.enabled.Load() {
-		return
-	}
 	defer sync.OnceFunc(func() {
 		close(b.doneChan)
 	})()
+	
+	if !b.enabled.Load() {
+		return
+	}
 
 	ticker := time.NewTicker(b.statsFlushInterval)
 	defer ticker.Stop()
