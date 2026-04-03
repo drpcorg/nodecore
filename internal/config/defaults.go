@@ -248,6 +248,16 @@ func (u *UpstreamConfig) setDefaults() {
 	if u.IntegrityConfig == nil {
 		u.IntegrityConfig = &IntegrityConfig{}
 	}
+	u.IntegrityConfig.setDefaults(u.Mode)
+}
+
+func (i *IntegrityConfig) setDefaults(upstreamMode UpstreamMode) {
+	if upstreamMode == StrictMode {
+		if i.Enabled {
+			log.Warn().Msgf("integrity feature is disabled if %s mode is active", upstreamMode)
+		}
+		i.Enabled = false
+	}
 }
 
 func (r *RateLimitAutoTuneConfig) setDefaults() {

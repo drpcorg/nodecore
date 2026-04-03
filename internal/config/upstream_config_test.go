@@ -255,6 +255,26 @@ func TestDefaultMode(t *testing.T) {
 	assert.Equal(t, config.JsonRpc, upstream.HeadConnector)
 }
 
+func TestDefaultModeKeepsIntegrityEnabled(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-integrity-enabled.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	require.NotNil(t, appConfig.UpstreamConfig.IntegrityConfig)
+	assert.Equal(t, config.DefaultMode, appConfig.UpstreamConfig.Mode)
+	assert.True(t, appConfig.UpstreamConfig.IntegrityConfig.Enabled)
+}
+
+func TestStrictModeDisablesIntegrity(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/strict-integrity-enabled.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	require.NotNil(t, appConfig.UpstreamConfig.IntegrityConfig)
+	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
+	assert.False(t, appConfig.UpstreamConfig.IntegrityConfig.Enabled)
+}
+
 func TestInvalidUpstreamModeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-mode.yaml")
 

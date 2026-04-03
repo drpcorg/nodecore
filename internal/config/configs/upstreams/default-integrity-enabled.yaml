@@ -1,0 +1,9 @@
+upstream-config:
+  integrity:
+    enabled: true
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
