@@ -33,8 +33,7 @@ func (a *Atomic[T]) CompareAndSwap(old T, new T) bool {
 }
 
 type CMap[K any, V any] struct {
-	mp   sync.Map
-	size atomic.Int64
+	mp sync.Map
 }
 
 func NewCMap[K any, V any]() *CMap[K, V] {
