@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -180,6 +181,48 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
+}
+
+func TestSetStrictDefaultHeadConnector(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/strict-head-connector.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
+	assert.Equal(t, config.Ws, upstream.HeadConnector)
+	assert.Equal(t, chains.GetChain("ethereum").Settings.ExpectedBlockTime, upstream.PollInterval)
+}
+
+func TestGetBestConnector(t *testing.T) {
+	upstream := &config.Upstream{
+		Connectors: []*config.ApiConnectorConfig{
+			{
+				Type: config.Rest,
+			},
+			{
+				Type: config.Grpc,
+			},
+			{
+				Type: config.JsonRpc,
+			},
+			{
+				Type: config.Ws,
+			},
+		},
+	}
+
+	assert.Equal(t, config.JsonRpc, upstream.GetBestConnector(config.DefaultMode))
+	assert.Equal(t, config.Ws, upstream.GetBestConnector(config.StrictMode))
+}
+
+func TestInvalidUpstreamModeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-mode.yaml")
+
+	assert.NotPanics(t, func() {
+		_, err := config.NewAppConfig()
+		assert.ErrorContains(t, err, "invalid upstream mode: wrong")
+	})
 }
 
 func TestSetChainsDefault(t *testing.T) {
