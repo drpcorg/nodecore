@@ -3,6 +3,10 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/drpcorg/nodecore/internal/stats/api"
+	"google.golang.org/protobuf/proto"
+	"sync"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -20,10 +24,116 @@ type DrpcIntegrationClient struct {
 	connector    drpc.DrpcHttpConnector
 	ownerKeys    *utils.CMap[string, map[string]*drpc.DrpcKey]
 	pollInterval time.Duration
+
+	entriesPool sync.Pool
+	maxCap      int
+
+	ownerID, apiToken string
 }
 
-func (d *DrpcIntegrationClient) ProcessStatsData(_ *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) {
-	// noop
+type statsEntryBuffer struct {
+	items []*api.StatsEntry
+}
+
+func NewDrpcIntegrationClientWithConnector(ctx context.Context, connector drpc.DrpcHttpConnector, pollInterval time.Duration) *DrpcIntegrationClient {
+	return &DrpcIntegrationClient{
+		ctx:          ctx,
+		connector:    connector,
+		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
+		pollInterval: pollInterval,
+		maxCap:       8192,
+		entriesPool: sync.Pool{
+			New: func() any {
+				return &statsEntryBuffer{
+					items: make([]*api.StatsEntry, 0, 128),
+				}
+			},
+		},
+	}
+}
+
+func NewDrpcIntegrationClient(
+	drpcIntegration *config.DrpcIntegrationConfig,
+) *DrpcIntegrationClient {
+	return &DrpcIntegrationClient{
+		ctx:          context.Background(),
+		connector:    drpc.NewSimpleDrpcHttpConnector(drpcIntegration),
+		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
+		pollInterval: 1 * time.Minute,
+		maxCap:       8192,
+		entriesPool: sync.Pool{
+			New: func() any {
+				return &statsEntryBuffer{
+					items: make([]*api.StatsEntry, 0, 128),
+				}
+			},
+		},
+	}
+}
+
+var (
+	_ IntegrationClient = (*DrpcIntegrationClient)(nil)
+
+	ErrStatsDataCorrupted = errors.New("stats data corrupted")
+)
+
+type statsData = *utils.CMap[statsdata.StatsKey, statsdata.StatsData]
+
+func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) (unprocessed []byte, err error) {
+	if d.ownerID == "" || d.apiToken == "" {
+		return nil, fmt.Errorf("stats: integration client has no credentials")
+	}
+
+	buf := d.getEntries()
+	defer d.putEntries(buf)
+
+	statsMap.Range(func(k statsdata.StatsKey, v statsdata.StatsData) bool {
+		data, ok := v.(*statsdata.RequestStatsData)
+		if !ok {
+			return true
+		}
+		buf.items = append(buf.items, &api.StatsEntry{
+			Key: &api.StatsKey{
+				Timestamp:  k.Timestamp,
+				UpstreamId: k.UpstreamId,
+				Method:     k.Method,
+				ApiKey:     k.ApiKey,
+				ReqKind:    api.RequestKind(k.ReqKind),
+				RespKind:   api.ResponseKind(k.RespKind),
+				Chain:      int64(k.Chain),
+			},
+			Data: &api.RequestStatsData{RequestAmount: data.GetRequestAmount()},
+		})
+		return true
+	})
+
+	batch := &api.StatsBatch{
+		Entries: buf.items,
+	}
+
+	bt, err := proto.Marshal(batch)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't marshal batch %w: %w", ErrStatsDataCorrupted, err)
+	}
+
+	return bt, d.connector.UploadStats(bt, d.ownerID, d.apiToken)
+}
+
+func (d *DrpcIntegrationClient) ProcessStatsDataRaw(data []byte) error {
+	return d.connector.UploadStats(data, d.ownerID, d.apiToken)
+}
+
+func (d *DrpcIntegrationClient) getEntries() *statsEntryBuffer {
+	buf := d.entriesPool.Get().(*statsEntryBuffer)
+	buf.items = buf.items[:0]
+	return buf
+}
+
+func (d *DrpcIntegrationClient) putEntries(buf *statsEntryBuffer) {
+	if cap(buf.items) > d.maxCap {
+		buf.items = make([]*api.StatsEntry, 0, d.maxCap/2)
+	}
+	d.entriesPool.Put(buf)
 }
 
 func (d *DrpcIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
@@ -49,6 +159,7 @@ func (d *DrpcIntegrationClient) InitKeys(_ string, cfg config.IntegrationKeyConf
 	keyEvents := make(chan keydata.KeyEvent, 100)
 	go d.pollKeys(drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken, keyEvents)
 
+	d.ownerID, d.apiToken = drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken
 	return keyEvents, nil
 }
 
@@ -102,25 +213,3 @@ func (d *DrpcIntegrationClient) getOwnerKeys(ownerId, apiToken string) ([]*drpc.
 	}
 	return drpcKeys, nil
 }
-
-func NewDrpcIntegrationClientWithConnector(ctx context.Context, connector drpc.DrpcHttpConnector, pollInterval time.Duration) *DrpcIntegrationClient {
-	return &DrpcIntegrationClient{
-		ctx:          ctx,
-		connector:    connector,
-		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
-		pollInterval: pollInterval,
-	}
-}
-
-func NewDrpcIntegrationClient(
-	drpcIntegration *config.DrpcIntegrationConfig,
-) *DrpcIntegrationClient {
-	return &DrpcIntegrationClient{
-		ctx:          context.Background(),
-		connector:    drpc.NewSimpleDrpcHttpConnector(drpcIntegration),
-		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
-		pollInterval: 1 * time.Minute,
-	}
-}
-
-var _ IntegrationClient = (*DrpcIntegrationClient)(nil)

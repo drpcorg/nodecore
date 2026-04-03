@@ -104,7 +104,7 @@ func (a *App) Start() {
 
 	go a.upstreamSupervisor.StartUpstreams()
 	go a.ratingRegistry.Start()
-	a.statsService.Start()
+	a.statsService.Start(a.cacheProcessor)
 
 	go func() {
 		if a.appConfig.ServerConfig.PprofPort != 0 {

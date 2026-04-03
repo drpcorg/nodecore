@@ -14,13 +14,27 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+type mockOutbox struct{}
+
+func (m mockOutbox) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return nil
+}
+
+func (m mockOutbox) OutboxRemove(ctx context.Context, key string) error {
+	return nil
+}
+
+func (m mockOutbox) OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
+	return nil, nil
+}
+
 func TestStatsServiceDisabledThenNoInterationToIntegrationClient(t *testing.T) {
 	client := mocks.NewMockIntegrationClient("type")
 	statsCfg := &config.StatsConfig{
 		Enabled: false,
 	}
 	statsService := stats.NewBaseStatsServiceWithIntegrationClient(context.Background(), statsCfg, client)
-	statsService.Start()
+	statsService.Start(&mockOutbox{})
 
 	statsService.AddRequestResults([]protocol.RequestResult{protocol.NewUnaryRequestResult()})
 
@@ -45,7 +59,7 @@ func TestStatsServiceProcessStatsDataAndStop(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	statsService := stats.NewBaseStatsServiceWithIntegrationClient(ctx, statsCfg, client)
-	statsService.Start()
+	statsService.Start(&mockOutbox{})
 
 	statsService.AddRequestResults([]protocol.RequestResult{result, result1})
 	time.Sleep(80 * time.Millisecond)

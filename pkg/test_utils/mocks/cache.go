@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -11,6 +12,18 @@ import (
 
 type CacheProcessorMock struct {
 	mock.Mock
+}
+
+func (c *CacheProcessorMock) OutboxStore(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (c *CacheProcessorMock) OutboxRemove(_ context.Context, _ string) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (c *CacheProcessorMock) OutboxList(_ context.Context, _, _ int64) ([]map[string][]byte, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (c *CacheProcessorMock) Store(ctx context.Context, chain chains.Chain, request protocol.RequestHolder, response []byte) {
@@ -28,6 +41,18 @@ func NewCacheProcessorMock() *CacheProcessorMock {
 
 type CacheConnectorMock struct {
 	mock.Mock
+}
+
+func (c *CacheConnectorMock) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return nil
+}
+
+func (c *CacheConnectorMock) OutboxRemove(ctx context.Context, key string) error {
+	return nil
+}
+
+func (c *CacheConnectorMock) OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
+	return nil, nil
 }
 
 func NewCacheConnectorMock() *CacheConnectorMock {

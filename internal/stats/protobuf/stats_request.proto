@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package stats;
+
+option go_package = "/;api";
+
+message StatsBatch {
+  repeated StatsEntry entries = 1;
+}
+
+message StatsEntry {
+  StatsKey key = 1;
+  RequestStatsData data = 2;
+}
+
+message StatsKey {
+  int64 timestamp = 1;
+
+  string upstream_id = 2;
+  string method = 3;
+  string api_key = 4;
+
+  RequestKind req_kind = 5;
+  ResponseKind resp_kind = 6;
+
+  int64 chain = 7;
+}
+
+message RequestStatsData {
+  int64 request_amount = 1;
+}
+
+enum RequestKind {
+    UnknownReqKind = 0;
+    InternalUnary = 1;
+    InternalSubscription = 2;
+    Local = 3;
+    Cached = 4;
+    Unary = 5;
+    Subscription = 6;
+}
+
+enum ResponseKind {
+    UnknownRespKind = 0;
+    Ok = 1;
+    Cancelled = 2;
+    Error = 3;
+    RetryableError = 4;
+    RoutingError = 5;
+}
