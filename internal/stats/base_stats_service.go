@@ -114,29 +114,34 @@ func (b *BaseStatsService) process() {
 		return
 	}
 
+	log.Info().Msg("stats service started")
+
 	ticker := time.NewTicker(b.statsFlushInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-b.stopChan:
-			b.flush()
+			_ = b.flush()
 			_ = b.flushUnprocessed()
 			return
 		case <-ticker.C:
-			b.flush()
+			if err := b.flush(); err != nil {
+				log.Error().Err(err).Msg("stats: cannot flush data")
+			}
 			if err := b.flushUnprocessed(); err != nil {
 				log.Error().Err(err).Msg("failed to flush unprocessed stats")
 			}
+			log.Debug().Msg("stats flush finished")
 		case <-b.ctx.Done():
-			b.flush()
+			_ = b.flush()
 			_ = b.flushUnprocessed()
 			return
 		}
 	}
 }
 
-func (b *BaseStatsService) flush() {
+func (b *BaseStatsService) flush() error {
 	current := b.statsDataHolder.Swap(newStatsDataHolder())
 	current.closed.Store(true)
 
@@ -147,15 +152,13 @@ func (b *BaseStatsService) flush() {
 	unprocessed, err := b.integrationClient.ProcessStatsData(current.statsAggregatedData)
 	if errors.Is(err, integration.ErrStatsDataCorrupted) {
 		log.Error().Err(err).Msg("stats: cannot marshal data")
-		return
+		return err
 	}
-	if err == nil {
-		return
+	if err != nil {
+		return err
 	}
 
-	if err := b.storeUnprocessed(unprocessed); err != nil {
-		log.Error().Err(err).Msg("stats: cannot store unprocessed data")
-	}
+	return b.storeUnprocessed(unprocessed)
 }
 
 func (b *BaseStatsService) flushUnprocessed() error {
@@ -332,6 +335,9 @@ func NewBaseStatsService(
 	integrationResolver *integration.IntegrationResolver,
 ) *BaseStatsService {
 	integrationClient := integrationResolver.GetIntegration(integration.GetIntegrationType(statsConfig.Type))
+	if integrationClient == nil {
+		panic(errors.New("stats: integration client is nil"))
+	}
 	var statsDataHolderPointer atomic.Pointer[statsDataHolder]
 	statsDataHolderPointer.Store(newStatsDataHolder())
 

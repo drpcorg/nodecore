@@ -100,6 +100,7 @@ func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, ownerId, apiToken st
 	defer cancel()
 
 	path := fmt.Sprintf("/v1/stats/%s/upload", ownerId)
+
 	response, closeBodyFunc, err := s.makeRequest(
 		ctx, http.MethodPost, apiToken, s.baseUrl+path, bytes.NewBuffer(stats),
 	)

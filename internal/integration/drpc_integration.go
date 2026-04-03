@@ -31,10 +31,11 @@ type statsData = *utils.CMap[statsdata.StatsKey, statsdata.StatsData]
 
 var ErrStatsDataCorrupted = errors.New("stats data corrupted")
 
-func (d *DrpcIntegrationClient) ProcessStatsData(
-	statsMap statsData) (unprocessed []byte, err error) {
+func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) (unprocessed []byte, err error) {
+	log.Debug().Msgf("processing stats data with size: %d", statsMap.Size())
+
 	if d.ownerID == "" || d.apiToken == "" {
-		return nil, fmt.Errorf("stats: DRPC integration client is not initialized")
+		return nil, fmt.Errorf("stats: integration client has no credentials")
 	}
 
 	batch := new(api.StatsBatch)

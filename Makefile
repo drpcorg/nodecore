@@ -19,8 +19,8 @@ dshackle-proto-gen:
 stats-proto-gen:
 	protoc -I internal/stats/protobuf \
     		--proto_path=internal/stats/protobuf \
-    		--go_out=internal/stats/request \
-    		--go-grpc_out=internal/stats/request \
+    		--go_out=internal/stats/api \
+    		--go-grpc_out=internal/stats/api \
     		stats_request.proto
 
 .PHONY: generate-networks
