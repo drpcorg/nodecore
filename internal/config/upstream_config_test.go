@@ -89,6 +89,10 @@ func TestSetDefaultPollInterval(t *testing.T) {
 				Type: config.JsonRpc,
 				Url:  "https://test.com",
 			},
+			{
+				Type: config.Ws,
+				Url:  "wss://test.com",
+			},
 		},
 		Options: &config.UpstreamOptions{
 			InternalTimeout:             5 * time.Second,
@@ -183,12 +187,24 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
 }
 
-func TestSetStrictDefaultHeadConnector(t *testing.T) {
+func TestSetStrictMode(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/strict-head-connector.yaml")
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
+	expectedOptions := &config.UpstreamOptions{
+		InternalTimeout:             5 * time.Second,
+		ValidationInterval:          30 * time.Second,
+		DisableValidation:           new(false),
+		DisableSettingsValidation:   new(false),
+		DisableChainValidation:      new(false),
+		DisableHealthValidation:     new(false),
+		DisableLowerBoundsDetection: new(false),
+		DisableLabelsDetection:      new(false),
+	}
+
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	assert.Equal(t, expectedOptions, upstream.Options)
 	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
 	assert.Equal(t, config.Ws, upstream.HeadConnector)
 	assert.Equal(t, chains.GetChain("ethereum").Settings.ExpectedBlockTime, upstream.PollInterval)
@@ -216,13 +232,34 @@ func TestGetBestConnector(t *testing.T) {
 	assert.Equal(t, config.Ws, upstream.GetBestConnector(config.StrictMode))
 }
 
+func TestDefaultMode(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-poll-interval.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	expectedOptions := &config.UpstreamOptions{
+		InternalTimeout:             5 * time.Second,
+		ValidationInterval:          30 * time.Second,
+		DisableValidation:           new(false),
+		DisableSettingsValidation:   new(false),
+		DisableChainValidation:      new(false),
+		DisableHealthValidation:     new(false),
+		DisableLowerBoundsDetection: new(true),
+		DisableLabelsDetection:      new(true),
+	}
+
+	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	assert.Equal(t, expectedOptions, upstream.Options)
+	assert.Equal(t, config.DefaultMode, appConfig.UpstreamConfig.Mode)
+	assert.Equal(t, 1*time.Minute, upstream.PollInterval)
+	assert.Equal(t, config.JsonRpc, upstream.HeadConnector)
+}
+
 func TestInvalidUpstreamModeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-mode.yaml")
 
-	assert.NotPanics(t, func() {
-		_, err := config.NewAppConfig()
-		assert.ErrorContains(t, err, "invalid upstream mode: wrong")
-	})
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "invalid upstream mode: wrong")
 }
 
 func TestSetChainsDefault(t *testing.T) {

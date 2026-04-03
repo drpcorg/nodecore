@@ -5,3 +5,5 @@ upstream-config:
       connectors:
         - type: json-rpc
           url: https://test.com
+        - type: websocket
+          url: wss://test.com

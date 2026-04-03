@@ -78,8 +78,9 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) ApiConnectorType 
 	})
 
 	if len(filteredConnectors) > 0 {
-		sortFunc := sortConnectorsFunc[upstreamMode]
-		return sortFunc(filteredConnectors)
+		if sortFunc, ok := sortConnectorsFunc[upstreamMode]; ok {
+			return sortFunc(filteredConnectors)
+		}
 	}
 	return ""
 }
