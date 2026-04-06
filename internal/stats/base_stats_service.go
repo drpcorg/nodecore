@@ -162,9 +162,6 @@ func (b *BaseStatsService) flush() error {
 }
 
 func (b *BaseStatsService) flushUnprocessed() error {
-	ctx, cancelF := context.WithTimeout(b.ctx, time.Second)
-	defer cancelF()
-
 	stats, err := b.listUnprocessed()
 	if err != nil {
 		return err
@@ -173,6 +170,9 @@ func (b *BaseStatsService) flushUnprocessed() error {
 		b.outboxCursor.Store(0)
 		return nil
 	}
+
+	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
+	defer cancelF()
 
 	for _, stat := range stats {
 		err := b.integrationClient.ProcessStatsDataRaw(stat.value)
@@ -189,13 +189,11 @@ func (b *BaseStatsService) flushUnprocessed() error {
 }
 
 func (b *BaseStatsService) storeUnprocessed(data []byte) error {
-	ctx, cancelF := context.WithTimeout(b.ctx, time.Second)
-	defer cancelF()
-
 	key := hashToString(data)
-
 	compressed := compressStats(data)
 
+	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
+	defer cancelF()
 	return b.outbox.OutboxStore(ctx, key, compressed, time.Hour*24)
 }
 
@@ -205,7 +203,7 @@ type statsItem struct {
 }
 
 func (b *BaseStatsService) listUnprocessed() ([]statsItem, error) {
-	ctx, cancelF := context.WithTimeout(b.ctx, time.Second)
+	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
 	defer cancelF()
 
 	result, err := b.outbox.OutboxList(ctx, b.outboxCursor.Load(), 5)

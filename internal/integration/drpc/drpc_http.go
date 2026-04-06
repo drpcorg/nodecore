@@ -105,7 +105,7 @@ func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, ownerId, apiToken st
 		ctx, http.MethodPost, apiToken, s.baseUrl+path, bytes.NewBuffer(stats),
 	)
 	if err != nil {
-		return fmt.Errorf("couldn't load keys: %w", err)
+		return fmt.Errorf("stats upload: %w", err)
 	}
 	defer closeBodyFunc()
 
