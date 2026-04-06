@@ -33,7 +33,6 @@ WHERE key = $1 OR (expires_at IS NOT NULL AND expires_at <= NOW());`
 )
 
 type postgresClient struct {
-	id   string
 	pool *pgxpool.Pool
 }
 

@@ -30,12 +30,12 @@ func NewOutboxStorage(
 		return nil, fmt.Errorf("unknown storage type: %s", conf.StorageType)
 	}
 
-	switch storage.(type) {
+	switch storage := storage.(type) {
 	case *storages.PostgresStorage:
-		pg, err := newPostgresClient(storage.(*storages.PostgresStorage))
+		pg, err := newPostgresClient(storage)
 		return &outboxStorage{storage: pg}, err
 	case *storages.RedisStorage:
-		r, err := newRedisClient(storage.(*storages.RedisStorage))
+		r, err := newRedisClient(storage)
 		return &outboxStorage{storage: r}, err
 	default:
 		log.Warn().Msg("no-op stats storage in use")
