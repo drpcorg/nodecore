@@ -119,69 +119,6 @@ func (p *PostgresConnector) Initialize() error {
 	return nil
 }
 
-const (
-	createOutboxTable = `
-CREATE TABLE IF NOT EXISTS _outbox (
-    id serial PRIMARY KEY,
-    key         VARCHAR(255) UNIQUE NOT NULL,
-    value       BYTEA NOT NULL,
-    expires_at  TIMESTAMPTZ
-);`
-
-	listOutboxItems = `
-SELECT key, value FROM _outbox
-WHERE id > $1 AND (expires_at IS NULL OR expires_at > now()) ORDER BY id ASC LIMIT $2;`
-
-	storeOutboxItem = `
-INSERT INTO _outbox (key, value, expires_at)
-VALUES ($1, $2, $3)
-ON CONFLICT (key) DO NOTHING;`
-
-	removeOutboxItems = `
-DELETE FROM _outbox
-WHERE key = $1 OR (expires_at IS NOT NULL AND expires_at <= NOW());`
-)
-
-func (p *PostgresConnector) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	var expiresAt *time.Time
-	if ttl > 0 {
-		expiresAt = lo.ToPtr(time.Now().UTC().Add(ttl))
-	}
-
-	_, err := p.pool.Exec(ctx, storeOutboxItem, key, value, expiresAt)
-	return err
-}
-
-func (p *PostgresConnector) OutboxRemove(ctx context.Context, key string) error {
-	_, err := p.pool.Exec(ctx, removeOutboxItems, key)
-	return err
-}
-
-func (p *PostgresConnector) OutboxList(
-	ctx context.Context,
-	cursor, limit int64,
-) ([]outboxItem, error) {
-	rows, err := p.pool.Query(ctx, listOutboxItems, cursor, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	result := make([]outboxItem, 0, limit)
-
-	for rows.Next() {
-		var (
-			key   string
-			value []byte
-		)
-		if err := rows.Scan(&key, &value); err != nil {
-			return nil, err
-		}
-		result = append(result, outboxItem{key: value})
-	}
-	return result, rows.Err()
-}
-
 func (p *PostgresConnector) ensureSchema() error {
 	ctx, cancel := context.WithTimeout(context.Background(), p.queryTimeout)
 	defer cancel()
@@ -206,10 +143,6 @@ func (p *PostgresConnector) ensureSchema() error {
 	if _, err = tx.Exec(ctx, fmt.Sprintf(createIndex, p.table)); err != nil {
 		return fmt.Errorf("couldn't create index: %w", err)
 	}
-	if _, err = tx.Exec(ctx, createOutboxTable); err != nil {
-		return fmt.Errorf("couldn't create outbox table: %w", err)
-	}
-
 	return tx.Commit(ctx)
 }
 
@@ -235,11 +168,6 @@ func (p *PostgresConnector) removeItems() error {
 
 	if rows := result.RowsAffected(); rows > 0 {
 		log.Debug().Msgf("removed %d expired items from %s", rows, p.table)
-	}
-
-	result, err = p.pool.Exec(ctx, removeOutboxItems)
-	if err != nil {
-		return err
 	}
 	if rows := result.RowsAffected(); rows > 0 {
 		log.Debug().Msgf("removed %d expired items from _outbox", rows)

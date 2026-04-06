@@ -180,7 +180,7 @@ func (b *BaseStatsService) flushUnprocessed() error {
 			log.Error().Err(err).Msg("stats: cannot store unprocessed data")
 			continue
 		}
-		if err := b.outbox.OutboxRemove(ctx, stat.key); err != nil {
+		if err := b.outbox.Delete(ctx, stat.key); err != nil {
 			log.Error().Err(err).Msg("stats: cannot remove outbox data")
 		}
 	}
@@ -194,7 +194,7 @@ func (b *BaseStatsService) storeUnprocessed(data []byte) error {
 
 	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
 	defer cancelF()
-	return b.outbox.OutboxStore(ctx, key, compressed, time.Hour*24)
+	return b.outbox.Set(ctx, key, compressed, time.Hour*24)
 }
 
 type statsItem struct {
@@ -206,7 +206,7 @@ func (b *BaseStatsService) listUnprocessed() ([]statsItem, error) {
 	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
 	defer cancelF()
 
-	result, err := b.outbox.OutboxList(ctx, b.outboxCursor.Load(), 5)
+	result, err := b.outbox.List(ctx, b.outboxCursor.Load(), 5)
 	if err != nil {
 		return nil, err
 	}

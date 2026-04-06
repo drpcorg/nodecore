@@ -9,9 +9,9 @@ import (
 )
 
 type StatsOutboxStorer interface {
-	OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error
-	OutboxRemove(ctx context.Context, key string) error
-	OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error)
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	Delete(ctx context.Context, key string) error
+	List(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error)
 }
 
 type StatsService interface {

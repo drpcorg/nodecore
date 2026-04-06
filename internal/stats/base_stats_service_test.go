@@ -16,16 +16,16 @@ import (
 
 type mockOutbox struct{}
 
-func (m mockOutbox) OutboxStore(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+func (m mockOutbox) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	return nil
 }
 
-func (m mockOutbox) OutboxRemove(ctx context.Context, key string) error {
+func (m mockOutbox) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (m mockOutbox) OutboxList(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
-	return nil, nil
+func (m mockOutbox) List(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
+	return []map[string][]byte{}, nil
 }
 
 func TestStatsServiceDisabledThenNoInterationToIntegrationClient(t *testing.T) {
