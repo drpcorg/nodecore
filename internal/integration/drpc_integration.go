@@ -113,10 +113,12 @@ func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) (unprocesse
 
 	bt, err := proto.Marshal(batch)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't marshal batch %w: %w", ErrStatsDataCorrupted, err)
+		return nil, fmt.Errorf("couldn't marshal batch %w: %v", ErrStatsDataCorrupted, err)
 	}
-
-	return bt, d.connector.UploadStats(bt, d.ownerID, d.apiToken)
+	if err := d.connector.UploadStats(bt, d.ownerID, d.apiToken); err != nil {
+		return nil, fmt.Errorf("couldn't upload stats: %w", err)
+	}
+	return bt, nil
 }
 
 func (d *DrpcIntegrationClient) ProcessStatsDataRaw(data []byte) error {

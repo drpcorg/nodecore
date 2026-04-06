@@ -67,9 +67,9 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]ou
 	// cursor = timestamp
 	minimum := strconv.FormatInt(cursor+1, 10)
 
-	keys, err := r.client.ZRevRangeByScore(ctx, outboxKeyIndexPrefix, &redis.ZRangeBy{
-		Max:   "-inf",
+	keys, err := r.client.ZRangeByScore(ctx, outboxKeyIndexPrefix, &redis.ZRangeBy{
 		Min:   minimum,
+		Max:   "+inf",
 		Count: limit,
 	}).Result()
 	if err != nil {
@@ -91,9 +91,18 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]ou
 		if values[i] == nil {
 			continue
 		}
+		var value []byte
+		switch v := values[i].(type) {
+		case []byte:
+			value = v
+		case string:
+			value = []byte(v)
+		default:
+			return nil, fmt.Errorf("unexpected redis hash value type %T for key %q", values[i], keys[i])
+		}
 
 		result = append(result, outboxItem{
-			key: values[i].([]byte),
+			key: value,
 		})
 	}
 

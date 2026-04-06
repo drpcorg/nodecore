@@ -25,6 +25,12 @@ func NewOutboxStorage(
 	conf *config.StatsConfig,
 	storageRegistry *storages.StorageRegistry,
 ) (*outboxStorage, error) {
+	if conf == nil {
+		return &outboxStorage{storage: newNoopStorage()}, nil
+	}
+	if !conf.Enabled {
+		return &outboxStorage{storage: newNoopStorage()}, nil
+	}
 	storage, ok := storageRegistry.Get(conf.StorageType)
 	if !ok {
 		return nil, fmt.Errorf("unknown storage type: %s", conf.StorageType)

@@ -31,8 +31,9 @@ type BaseStatsService struct {
 	outbox       StatsOutboxStorer
 	outboxCursor atomic.Int64
 
+	once     sync.Once
 	stopChan chan struct{}
-	doneChan chan struct{}
+	waitChan chan struct{}
 }
 
 type statsDataHolder struct {
@@ -55,13 +56,13 @@ func (b *BaseStatsService) Start(outbox StatsOutboxStorer) {
 
 func (b *BaseStatsService) Stop(ctx context.Context) error {
 	b.enabled.Store(false)
-	sync.OnceFunc(func() {
+	b.once.Do(func() {
 		close(b.stopChan)
-	})()
+	})
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-b.doneChan:
+	case <-b.waitChan:
 		return nil
 	}
 }
@@ -106,9 +107,7 @@ func (b *BaseStatsService) AddRequestResults(requestResults []protocol.RequestRe
 }
 
 func (b *BaseStatsService) process() {
-	defer sync.OnceFunc(func() {
-		close(b.doneChan)
-	})()
+	defer close(b.waitChan)
 
 	if !b.enabled.Load() {
 		return
@@ -154,11 +153,12 @@ func (b *BaseStatsService) flush() error {
 		log.Error().Err(err).Msg("stats: cannot marshal data")
 		return err
 	}
-	if err != nil {
-		return err
+	if len(unprocessed) != 0 {
+		if storeErr := b.storeUnprocessed(unprocessed); storeErr != nil {
+			return storeErr
+		}
 	}
-
-	return b.storeUnprocessed(unprocessed)
+	return err
 }
 
 func (b *BaseStatsService) flushUnprocessed() error {
@@ -348,7 +348,7 @@ func NewBaseStatsService(
 		integrationClient:  integrationClient,
 		statsDataHolder:    &statsDataHolderPointer,
 		stopChan:           make(chan struct{}),
-		doneChan:           make(chan struct{}),
+		waitChan:           make(chan struct{}),
 	}
 
 	return statsService
@@ -371,7 +371,7 @@ func NewBaseStatsServiceWithIntegrationClient(
 		integrationClient:  integrationClient,
 		statsDataHolder:    &statsDataHolderPointer,
 		stopChan:           make(chan struct{}),
-		doneChan:           make(chan struct{}),
+		waitChan:           make(chan struct{}),
 	}
 
 	return statsService
