@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -224,6 +225,9 @@ func (r *RedisStorageTimeoutsConfig) setDefaults() {
 }
 
 func (u *UpstreamConfig) setDefaults() {
+	if u.Mode == "" {
+		u.Mode = DefaultMode
+	}
 	if u.FailsafeConfig == nil {
 		u.FailsafeConfig = &FailsafeConfig{}
 	}
@@ -239,10 +243,20 @@ func (u *UpstreamConfig) setDefaults() {
 	u.ScorePolicyConfig.setDefaults()
 	for _, upstream := range u.Upstreams {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
-		upstream.setDefaults(chainDefaults)
+		upstream.setDefaults(chainDefaults, u.Mode)
 	}
 	if u.IntegrityConfig == nil {
 		u.IntegrityConfig = &IntegrityConfig{}
+	}
+	u.IntegrityConfig.setDefaults(u.Mode)
+}
+
+func (i *IntegrityConfig) setDefaults(upstreamMode UpstreamMode) {
+	if upstreamMode == StrictMode {
+		if i.Enabled {
+			log.Warn().Msgf("integrity feature is disabled if %s mode is active", upstreamMode)
+		}
+		i.Enabled = false
 	}
 }
 
@@ -271,7 +285,7 @@ func (s *ScorePolicyConfig) setDefaults() {
 	}
 }
 
-func (u *Upstream) setDefaults(defaults *ChainDefaults) {
+func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMode) {
 	if u.Methods == nil {
 		u.Methods = &MethodsConfig{}
 	}
@@ -282,14 +296,14 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 	if u.Options == nil {
 		u.Options = &UpstreamOptions{}
 	}
-	u.Options.setDefaults(defaults)
+	u.Options.setDefaults(defaults, upstreamMode)
 	if u.FailsafeConfig != nil {
 		if u.FailsafeConfig.RetryConfig != nil {
 			u.FailsafeConfig.RetryConfig.setDefaults()
 		}
 	}
 	if u.HeadConnector == "" && len(u.Connectors) > 0 {
-		if headConnector := u.GetBestConnector(); headConnector != "" {
+		if headConnector := u.GetBestConnector(upstreamMode); headConnector != "" {
 			u.HeadConnector = headConnector
 		}
 	}
@@ -297,7 +311,7 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 		u.RateLimitAutoTune.setDefaults()
 	}
 	if u.PollInterval == 0 {
-		pollInterval := defaultInterval
+		pollInterval := getDefaultPollInterval(u.ChainName, upstreamMode)
 		if defaults != nil && defaults.PollInterval != 0 {
 			// set the chain default poll interval only if there is no explicit value on the upstream level
 			pollInterval = defaults.PollInterval
@@ -306,7 +320,18 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults) {
 	}
 }
 
-func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults) {
+func getDefaultPollInterval(chainName string, upstreamMode UpstreamMode) time.Duration {
+	if upstreamMode == DefaultMode {
+		return defaultInterval
+	}
+	chain := chains.GetChain(chainName)
+	if chain == chains.UnknownChain {
+		return defaultInterval
+	}
+	return chain.Settings.ExpectedBlockTime
+}
+
+func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMode) {
 	if o.InternalTimeout == 0 {
 		timeout := 5 * time.Second
 		if defaults != nil && defaults.Options != nil && defaults.Options.InternalTimeout != 0 {
@@ -350,14 +375,14 @@ func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults) {
 		o.DisableHealthValidation = &value
 	}
 	if o.DisableLowerBoundsDetection == nil {
-		value := true
+		value := lo.Ternary(upstreamMode == StrictMode, false, true)
 		if defaults != nil && defaults.Options != nil && defaults.Options.DisableLowerBoundsDetection != nil {
 			value = *defaults.Options.DisableLowerBoundsDetection
 		}
 		o.DisableLowerBoundsDetection = &value
 	}
 	if o.DisableLabelsDetection == nil {
-		value := true
+		value := lo.Ternary(upstreamMode == StrictMode, false, true)
 		if defaults != nil && defaults.Options != nil && defaults.Options.DisableLabelsDetection != nil {
 			value = *defaults.Options.DisableLabelsDetection
 		}

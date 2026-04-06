@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -87,6 +88,10 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			{
 				Type: config.JsonRpc,
 				Url:  "https://test.com",
+			},
+			{
+				Type: config.Ws,
+				Url:  "wss://test.com",
 			},
 		},
 		Options: &config.UpstreamOptions{
@@ -180,6 +185,101 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, appConfig.UpstreamConfig.Upstreams[0])
+}
+
+func TestSetStrictMode(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/strict-head-connector.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	expectedOptions := &config.UpstreamOptions{
+		InternalTimeout:             5 * time.Second,
+		ValidationInterval:          30 * time.Second,
+		DisableValidation:           new(false),
+		DisableSettingsValidation:   new(false),
+		DisableChainValidation:      new(false),
+		DisableHealthValidation:     new(false),
+		DisableLowerBoundsDetection: new(false),
+		DisableLabelsDetection:      new(false),
+	}
+
+	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	assert.Equal(t, expectedOptions, upstream.Options)
+	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
+	assert.Equal(t, config.Ws, upstream.HeadConnector)
+	assert.Equal(t, chains.GetChain("ethereum").Settings.ExpectedBlockTime, upstream.PollInterval)
+}
+
+func TestGetBestConnector(t *testing.T) {
+	upstream := &config.Upstream{
+		Connectors: []*config.ApiConnectorConfig{
+			{
+				Type: config.Rest,
+			},
+			{
+				Type: config.Grpc,
+			},
+			{
+				Type: config.JsonRpc,
+			},
+			{
+				Type: config.Ws,
+			},
+		},
+	}
+
+	assert.Equal(t, config.JsonRpc, upstream.GetBestConnector(config.DefaultMode))
+	assert.Equal(t, config.Ws, upstream.GetBestConnector(config.StrictMode))
+}
+
+func TestDefaultMode(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-poll-interval.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	expectedOptions := &config.UpstreamOptions{
+		InternalTimeout:             5 * time.Second,
+		ValidationInterval:          30 * time.Second,
+		DisableValidation:           new(false),
+		DisableSettingsValidation:   new(false),
+		DisableChainValidation:      new(false),
+		DisableHealthValidation:     new(false),
+		DisableLowerBoundsDetection: new(true),
+		DisableLabelsDetection:      new(true),
+	}
+
+	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	assert.Equal(t, expectedOptions, upstream.Options)
+	assert.Equal(t, config.DefaultMode, appConfig.UpstreamConfig.Mode)
+	assert.Equal(t, 1*time.Minute, upstream.PollInterval)
+	assert.Equal(t, config.JsonRpc, upstream.HeadConnector)
+}
+
+func TestDefaultModeKeepsIntegrityEnabled(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-integrity-enabled.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	require.NotNil(t, appConfig.UpstreamConfig.IntegrityConfig)
+	assert.Equal(t, config.DefaultMode, appConfig.UpstreamConfig.Mode)
+	assert.True(t, appConfig.UpstreamConfig.IntegrityConfig.Enabled)
+}
+
+func TestStrictModeDisablesIntegrity(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/strict-integrity-enabled.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	require.NotNil(t, appConfig.UpstreamConfig.IntegrityConfig)
+	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
+	assert.False(t, appConfig.UpstreamConfig.IntegrityConfig.Enabled)
+}
+
+func TestInvalidUpstreamModeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-mode.yaml")
+
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "invalid upstream mode: wrong")
 }
 
 func TestSetChainsDefault(t *testing.T) {

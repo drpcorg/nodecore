@@ -166,6 +166,7 @@ func TestReadFullConfig(t *testing.T) {
 			},
 		},
 		UpstreamConfig: &config.UpstreamConfig{
+			Mode:            config.DefaultMode,
 			IntegrityConfig: &config.IntegrityConfig{},
 			ScorePolicyConfig: &config.ScorePolicyConfig{
 				CalculationInterval:     10 * time.Second,

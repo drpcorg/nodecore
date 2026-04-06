@@ -250,7 +250,7 @@ func createUpstreamConnectors(
 		if connectorConfig.Type == conf.HeadConnector {
 			headConnector = apiConnector
 		}
-		if connectorConfig.Type == conf.GetBestConnector() {
+		if connectorConfig.Type == conf.GetBestConnector(config.DefaultMode) {
 			internalRequestConnector = apiConnector
 		}
 		apiConnectors = append(apiConnectors, apiConnector)

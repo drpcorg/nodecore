@@ -23,6 +23,23 @@ type UpstreamConfig struct {
 	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config"`
 	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
 	IntegrityConfig   *IntegrityConfig          `yaml:"integrity"`
+	Mode              UpstreamMode              `yaml:"mode"`
+}
+
+type UpstreamMode string
+
+const (
+	DefaultMode UpstreamMode = "default"
+	StrictMode  UpstreamMode = "strict"
+)
+
+func (u UpstreamMode) Validate() error {
+	switch u {
+	case DefaultMode, StrictMode:
+	default:
+		return fmt.Errorf("invalid upstream mode: %s", u)
+	}
+	return nil
 }
 
 type Upstream struct {
@@ -39,16 +56,31 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 }
 
-func (u *Upstream) GetBestConnector() ApiConnectorType {
+type sortConnectorFunc func([]*ApiConnectorConfig) ApiConnectorType
+
+var sortConnectorsFunc = map[UpstreamMode]sortConnectorFunc{
+	DefaultMode: func(configs []*ApiConnectorConfig) ApiConnectorType {
+		return lo.MinBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
+			return connectorTypesRating[a.Type] < connectorTypesRating[b.Type]
+		}).Type
+	},
+	StrictMode: func(configs []*ApiConnectorConfig) ApiConnectorType {
+		return lo.MaxBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
+			return connectorTypesRating[a.Type] > connectorTypesRating[b.Type]
+		}).Type
+	},
+}
+
+func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) ApiConnectorType {
 	filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
 		_, ok := connectorTypesRating[item.Type]
 		return ok
 	})
 
 	if len(filteredConnectors) > 0 {
-		return lo.MinBy(filteredConnectors, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
-			return connectorTypesRating[a.Type] < connectorTypesRating[b.Type]
-		}).Type
+		if sortFunc, ok := sortConnectorsFunc[upstreamMode]; ok {
+			return sortFunc(filteredConnectors)
+		}
 	}
 	return ""
 }
@@ -187,6 +219,9 @@ type MethodsConfig struct {
 }
 
 func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torProxyUrl string) error {
+	if err := u.Mode.Validate(); err != nil {
+		return err
+	}
 	if err := u.ScorePolicyConfig.validate(); err != nil {
 		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
 	}
