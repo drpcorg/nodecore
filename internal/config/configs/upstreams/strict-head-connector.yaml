@@ -1,4 +1,5 @@
 upstream-config:
+  mode: strict
   upstreams:
     - id: eth-upstream
       chain: ethereum

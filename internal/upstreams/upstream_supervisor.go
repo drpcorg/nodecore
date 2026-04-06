@@ -93,6 +93,8 @@ func (b *BaseUpstreamSupervisor) GetExecutor() failsafe.Executor[*protocol.Respo
 }
 
 func (b *BaseUpstreamSupervisor) StartUpstreams() {
+	log.Info().Msgf("upstreams will be started in %s mode", b.upstreamsConfig.Mode)
+
 	go b.processEvents()
 
 	for _, upConfig := range b.upstreamsConfig.Upstreams {
