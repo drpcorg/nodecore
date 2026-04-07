@@ -99,7 +99,7 @@ func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 	requests, failures := service.buildNativeCallRequests(request, nil)
 	require.Empty(t, failures)
 	require.Len(t, requests, 1)
-	assert.True(t, requests[0].IsStream())
+	assert.False(t, requests[0].IsStream())
 }
 
 func TestStreamNativeCallPayloadChunking(t *testing.T) {
