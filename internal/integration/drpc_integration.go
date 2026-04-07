@@ -7,7 +7,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats/api"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
-	"sync"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -26,8 +25,7 @@ type DrpcIntegrationClient struct {
 	ownerKeys    *utils.CMap[string, map[string]*drpc.DrpcKey]
 	pollInterval time.Duration
 
-	entriesPool sync.Pool
-	maxCap      int
+	maxCap int
 }
 
 func NewDrpcIntegrationClientWithConnector(ctx context.Context, connector drpc.DrpcHttpConnector, pollInterval time.Duration) *DrpcIntegrationClient {
