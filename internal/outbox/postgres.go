@@ -3,7 +3,8 @@ package outbox
 import (
 	"context"
 	"fmt"
-	"github.com/drpcorg/nodecore/internal/storages"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/samber/lo"
 	"time"
@@ -32,13 +33,20 @@ DELETE FROM _stats_outbox
 WHERE key = $1 OR (expires_at IS NOT NULL AND expires_at <= NOW());`
 )
 
-type postgresClient struct {
-	pool *pgxpool.Pool
+type Pooler interface {
+	Ping(ctx context.Context) error
+	Acquire(ctx context.Context) (*pgxpool.Conn, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-func newPostgresClient(storage *storages.PostgresStorage) (*postgresClient, error) {
+type postgresClient struct {
+	pool Pooler
+}
+
+func newPostgresClient(pool Pooler) (*postgresClient, error) {
 	pc := &postgresClient{
-		pool: storage.Postgres,
+		pool: pool,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -88,14 +96,14 @@ func (p *postgresClient) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (p *postgresClient) List(ctx context.Context, cursor, limit int64) ([]outboxItem, error) {
+func (p *postgresClient) List(ctx context.Context, cursor, limit int64) ([]OutboxItem, error) {
 	rows, err := p.pool.Query(ctx, listOutboxItems, cursor, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make([]outboxItem, 0, limit)
+	result := make([]OutboxItem, 0, limit)
 
 	for rows.Next() {
 		var (
@@ -105,7 +113,7 @@ func (p *postgresClient) List(ctx context.Context, cursor, limit int64) ([]outbo
 		if err := rows.Scan(&key, &value); err != nil {
 			return nil, err
 		}
-		result = append(result, outboxItem{key: value})
+		result = append(result, OutboxItem{key, value})
 	}
 	return result, rows.Err()
 }

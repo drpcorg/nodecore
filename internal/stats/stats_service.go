@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"time"
 )
@@ -11,7 +12,7 @@ import (
 type StatsOutboxStorer interface {
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
-	List(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error)
+	List(ctx context.Context, cursor, limit int64) ([]outbox.OutboxItem, error)
 }
 
 type StatsService interface {

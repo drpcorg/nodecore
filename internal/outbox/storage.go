@@ -9,12 +9,15 @@ import (
 	"time"
 )
 
-type outboxItem = map[string][]byte
+type OutboxItem struct {
+	Key   string
+	Value []byte
+}
 
 type outboxStorer interface {
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
-	List(ctx context.Context, cursor, limit int64) ([]outboxItem, error)
+	List(ctx context.Context, cursor, limit int64) ([]OutboxItem, error)
 }
 
 type outboxStorage struct {
@@ -38,10 +41,10 @@ func NewOutboxStorage(
 
 	switch storage := storage.(type) {
 	case *storages.PostgresStorage:
-		pg, err := newPostgresClient(storage)
+		pg, err := newPostgresClient(storage.Postgres)
 		return &outboxStorage{storage: pg}, err
 	case *storages.RedisStorage:
-		r, err := newRedisClient(storage)
+		r, err := newRedisClient(storage.Redis)
 		return &outboxStorage{storage: r}, err
 	default:
 		log.Warn().Msg("no-op stats storage in use")
@@ -59,7 +62,7 @@ func (o *outboxStorage) Delete(ctx context.Context, k string) error {
 
 const defaultLimit = 5
 
-func (o *outboxStorage) List(ctx context.Context, cur, limit int64) ([]outboxItem, error) {
+func (o *outboxStorage) List(ctx context.Context, cur, limit int64) ([]OutboxItem, error) {
 	if limit == 0 {
 		limit = defaultLimit
 	}

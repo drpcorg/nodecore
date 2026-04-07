@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,13 +17,20 @@ const (
 	expiredCleanupBatchSize = 256
 )
 
-type redisClient struct {
-	client *redis.Client
+type Memorizer interface {
+	Ping(ctx context.Context) *redis.StatusCmd
+	TxPipeline() redis.Pipeliner
+	ZRangeByScore(ctx context.Context, key string, opt *redis.ZRangeBy) *redis.StringSliceCmd
+	HMGet(ctx context.Context, key string, fields ...string) *redis.SliceCmd
 }
 
-func newRedisClient(storage *storages.RedisStorage) (*redisClient, error) {
+type redisClient struct {
+	client Memorizer
+}
+
+func newRedisClient(redis Memorizer) (*redisClient, error) {
 	redisClientInstance := &redisClient{
-		client: storage.Redis,
+		client: redis,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -79,9 +85,9 @@ func (r *redisClient) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]outboxItem, error) {
+func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]OutboxItem, error) {
 	if limit <= 0 {
-		return []outboxItem{}, nil
+		return []OutboxItem{}, nil
 	}
 
 	if err := r.cleanupExpired(ctx); err != nil {
@@ -100,7 +106,7 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]ou
 	}
 
 	if len(keys) == 0 {
-		return []outboxItem{}, nil
+		return []OutboxItem{}, nil
 	}
 
 	values, err := r.client.HMGet(ctx, outboxKeyDataPrefix, keys...).Result()
@@ -108,7 +114,7 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]ou
 		return nil, fmt.Errorf("read outbox data: %w", err)
 	}
 
-	result := make([]outboxItem, 0, len(keys))
+	result := make([]OutboxItem, 0, len(keys))
 	orphanedKeys := make([]string, 0)
 
 	for index, key := range keys {
@@ -129,8 +135,8 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]ou
 			return nil, fmt.Errorf("unexpected redis hash value type %T for key %q", rawValue, key)
 		}
 
-		result = append(result, outboxItem{
-			key: valueBytes,
+		result = append(result, OutboxItem{
+			key, valueBytes,
 		})
 	}
 

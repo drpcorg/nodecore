@@ -212,13 +212,11 @@ func (b *BaseStatsService) listUnprocessed() ([]statsItem, error) {
 	}
 
 	items := make([]statsItem, 0, len(result))
-	for _, mp := range result {
-		for key, v := range mp {
-			items = append(items, statsItem{
-				key:   key,
-				value: decompressStats(v),
-			})
-		}
+	for _, item := range result {
+		items = append(items, statsItem{
+			key:   item.Key,
+			value: decompressStats(item.Value),
+		})
 	}
 	return items, nil
 }
