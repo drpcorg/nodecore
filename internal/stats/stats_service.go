@@ -12,7 +12,7 @@ import (
 type StatsOutboxStorer interface {
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
-	List(ctx context.Context, cursor, limit int64) ([]outbox.OutboxItem, error)
+	List(ctx context.Context, cursor, limit int64) ([]outbox.Item, error)
 }
 
 type StatsService interface {

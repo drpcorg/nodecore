@@ -85,9 +85,9 @@ func (r *redisClient) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]OutboxItem, error) {
+func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]Item, error) {
 	if limit <= 0 {
-		return []OutboxItem{}, nil
+		return []Item{}, nil
 	}
 
 	if err := r.cleanupExpired(ctx); err != nil {
@@ -106,7 +106,7 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]Ou
 	}
 
 	if len(keys) == 0 {
-		return []OutboxItem{}, nil
+		return []Item{}, nil
 	}
 
 	values, err := r.client.HMGet(ctx, outboxKeyDataPrefix, keys...).Result()
@@ -114,7 +114,7 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]Ou
 		return nil, fmt.Errorf("read outbox data: %w", err)
 	}
 
-	result := make([]OutboxItem, 0, len(keys))
+	result := make([]Item, 0, len(keys))
 	orphanedKeys := make([]string, 0)
 
 	for index, key := range keys {
@@ -135,7 +135,7 @@ func (r *redisClient) List(ctx context.Context, cursor int64, limit int64) ([]Ou
 			return nil, fmt.Errorf("unexpected redis hash value type %T for key %q", rawValue, key)
 		}
 
-		result = append(result, OutboxItem{
+		result = append(result, Item{
 			key, valueBytes,
 		})
 	}

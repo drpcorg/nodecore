@@ -19,6 +19,6 @@ func (n *noopStorage) Delete(_ context.Context, _ string) error {
 	return nil
 }
 
-func (n *noopStorage) List(_ context.Context, _, _ int64) ([]OutboxItem, error) {
-	return []OutboxItem{}, nil
+func (n *noopStorage) List(_ context.Context, _, _ int64) ([]Item, error) {
+	return []Item{}, nil
 }

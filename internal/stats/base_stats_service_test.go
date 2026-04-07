@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/outbox"
 	"testing"
 	"time"
 
@@ -24,8 +25,8 @@ func (m mockOutbox) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-func (m mockOutbox) List(ctx context.Context, cursor, limit int64) ([]map[string][]byte, error) {
-	return []map[string][]byte{}, nil
+func (m mockOutbox) List(ctx context.Context, cursor int64, limit int64) ([]outbox.Item, error) {
+	return []outbox.Item{}, nil
 }
 
 func TestStatsServiceDisabledThenNoInterationToIntegrationClient(t *testing.T) {

@@ -96,14 +96,14 @@ func (p *postgresClient) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-func (p *postgresClient) List(ctx context.Context, cursor, limit int64) ([]OutboxItem, error) {
+func (p *postgresClient) List(ctx context.Context, cursor, limit int64) ([]Item, error) {
 	rows, err := p.pool.Query(ctx, listOutboxItems, cursor, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make([]OutboxItem, 0, limit)
+	result := make([]Item, 0, limit)
 
 	for rows.Next() {
 		var (
@@ -113,7 +113,7 @@ func (p *postgresClient) List(ctx context.Context, cursor, limit int64) ([]Outbo
 		if err := rows.Scan(&key, &value); err != nil {
 			return nil, err
 		}
-		result = append(result, OutboxItem{key, value})
+		result = append(result, Item{key, value})
 	}
 	return result, rows.Err()
 }

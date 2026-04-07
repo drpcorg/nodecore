@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type OutboxItem struct {
+type Item struct {
 	Key   string
 	Value []byte
 }
@@ -17,7 +17,7 @@ type OutboxItem struct {
 type outboxStorer interface {
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
-	List(ctx context.Context, cursor, limit int64) ([]OutboxItem, error)
+	List(ctx context.Context, cursor, limit int64) ([]Item, error)
 }
 
 type outboxStorage struct {
@@ -62,7 +62,7 @@ func (o *outboxStorage) Delete(ctx context.Context, k string) error {
 
 const defaultLimit = 5
 
-func (o *outboxStorage) List(ctx context.Context, cur, limit int64) ([]OutboxItem, error) {
+func (o *outboxStorage) List(ctx context.Context, cur, limit int64) ([]Item, error) {
 	if limit == 0 {
 		limit = defaultLimit
 	}
