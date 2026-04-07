@@ -25,12 +25,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type AppOutboxStorer interface {
-	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
-	Delete(ctx context.Context, key string) error
-	List(ctx context.Context, cursor, limit int64) ([]outbox.Item, error)
-}
-
 type App struct {
 	ctx context.Context
 
@@ -39,7 +33,7 @@ type App struct {
 	authProcessor      auth.AuthProcessor
 	ratingRegistry     *rating.RatingRegistry
 	cacheProcessor     caches.CacheProcessor
-	outboxStorage      AppOutboxStorer
+	outboxStorage      outbox.Storer
 	upstreamSupervisor upstreams.UpstreamSupervisor
 
 	httpServer *echo.Echo

@@ -11,6 +11,7 @@ import (
 
 type MockIntegrationClient struct {
 	mock.Mock
+
 	integrationType integration.IntegrationType
 }
 
@@ -40,9 +41,9 @@ func (m *MockIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
 	return args.Get(0).([]statsdata.StatsDims)
 }
 
-func (m *MockIntegrationClient) ProcessStatsData(aggregatedData *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) ([]byte, error) {
-	m.Called(aggregatedData)
-	return nil, nil
+func (m *MockIntegrationClient) ProcessStatsData(aggregatedData *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) error {
+	args := m.Called(aggregatedData)
+	return args.Error(0)
 }
 
 func (m *MockIntegrationClient) Type() integration.IntegrationType {

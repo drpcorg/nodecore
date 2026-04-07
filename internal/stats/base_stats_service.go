@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/klauspost/compress/gzip"
 	"hash"
 	"io"
@@ -28,7 +30,7 @@ type BaseStatsService struct {
 	statsDataHolder    *atomic.Pointer[statsDataHolder]
 	statsFlushInterval time.Duration
 
-	outbox       StatsOutboxStorer
+	outbox       outbox.Storer
 	outboxCursor atomic.Int64
 
 	once     sync.Once
@@ -36,10 +38,12 @@ type BaseStatsService struct {
 	waitChan chan struct{}
 }
 
+type statsMap = *utils.CMap[statsdata.StatsKey, statsdata.StatsData]
+
 type statsDataHolder struct {
 	counter             atomic.Int64
 	closed              atomic.Bool
-	statsAggregatedData *utils.CMap[statsdata.StatsKey, statsdata.StatsData]
+	statsAggregatedData statsMap
 }
 
 func newStatsDataHolder() *statsDataHolder {
@@ -48,7 +52,7 @@ func newStatsDataHolder() *statsDataHolder {
 	}
 }
 
-func (b *BaseStatsService) Start(outbox StatsOutboxStorer) {
+func (b *BaseStatsService) Start(outbox outbox.Storer) {
 	b.outbox = outbox
 
 	go b.process()
@@ -148,25 +152,24 @@ func (b *BaseStatsService) flush() error {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	unprocessed, err := b.integrationClient.ProcessStatsData(current.statsAggregatedData)
+	aggregated := current.statsAggregatedData
+	err := b.integrationClient.ProcessStatsData(aggregated)
 	if errors.Is(err, integration.ErrStatsDataCorrupted) {
-		log.Error().Err(err).Msg("stats: cannot marshal data")
+		log.Error().Err(err).Msg("stats: stats data corrupted")
 		return err
 	}
-	if len(unprocessed) != 0 {
-		if storeErr := b.storeUnprocessed(unprocessed); storeErr != nil {
-			return storeErr
-		}
+	if err == nil {
+		return nil
 	}
-	return err
+	return b.storeUnprocessed(aggregated)
 }
 
 func (b *BaseStatsService) flushUnprocessed() error {
-	stats, err := b.listUnprocessed()
+	stats, keys, err := b.listUnprocessed()
 	if err != nil {
 		return err
 	}
-	if len(stats) == 0 {
+	if stats == nil {
 		b.outboxCursor.Store(0)
 		return nil
 	}
@@ -174,21 +177,25 @@ func (b *BaseStatsService) flushUnprocessed() error {
 	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
 	defer cancelF()
 
-	for _, stat := range stats {
-		err := b.integrationClient.ProcessStatsDataRaw(stat.value)
-		if err != nil {
-			log.Error().Err(err).Msg("stats: cannot store unprocessed data")
-			continue
-		}
-		if err := b.outbox.Delete(ctx, stat.key); err != nil {
+	err = b.integrationClient.ProcessStatsData(stats)
+	if err != nil {
+		log.Error().Err(err).Msg("stats: cannot store unprocessed data")
+		return err
+	}
+	for _, key := range keys {
+		if err := b.outbox.Delete(ctx, key); err != nil {
 			log.Error().Err(err).Msg("stats: cannot remove outbox data")
 		}
 	}
-	b.outboxCursor.Add(int64(len(stats)))
+	b.outboxCursor.Add(int64(len(keys)))
 	return nil
 }
 
-func (b *BaseStatsService) storeUnprocessed(data []byte) error {
+func (b *BaseStatsService) storeUnprocessed(aggregated statsMap) error {
+	data, err := marshalStatsMap(aggregated)
+	if err != nil {
+		return err
+	}
 	key := hashToString(data)
 	compressed := compressStats(data)
 
@@ -197,28 +204,38 @@ func (b *BaseStatsService) storeUnprocessed(data []byte) error {
 	return b.outbox.Set(ctx, key, compressed, time.Hour*24)
 }
 
-type statsItem struct {
-	key   string
-	value []byte
-}
+const defaultLimit = 5
 
-func (b *BaseStatsService) listUnprocessed() ([]statsItem, error) {
+func (b *BaseStatsService) listUnprocessed() (statsMap, []string, error) {
 	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
 	defer cancelF()
 
-	result, err := b.outbox.List(ctx, b.outboxCursor.Load(), 5)
+	result, err := b.outbox.List(ctx, b.outboxCursor.Load(), defaultLimit)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if len(result) == 0 {
+		return nil, nil, nil
 	}
 
-	items := make([]statsItem, 0, len(result))
+	mergedStats := utils.NewCMap[statsdata.StatsKey, statsdata.StatsData]()
+	keys := make([]string, 0, len(result))
+
 	for _, item := range result {
-		items = append(items, statsItem{
-			key:   item.Key,
-			value: decompressStats(item.Value),
+		keys = append(keys, item.Key)
+
+		decompressed := decompressStats(item.Value)
+
+		currentStats, err := unmarshalStatsMap(decompressed)
+		if err != nil {
+			return nil, nil, err
+		}
+		currentStats.Range(func(key statsdata.StatsKey, value statsdata.StatsData) bool {
+			mergedStats.Store(key, value)
+			return true
 		})
 	}
-	return items, nil
+	return mergedStats, keys, nil
 }
 
 var gzipWriterPool = sync.Pool{
@@ -376,3 +393,49 @@ func NewBaseStatsServiceWithIntegrationClient(
 }
 
 var _ StatsService = (*BaseStatsService)(nil)
+
+type persistedStatsItem struct {
+	Key           statsdata.StatsKey `json:"key"`
+	RequestAmount int64              `json:"request_amount"`
+}
+
+// TODO that's bad. Get rid of a CMap
+func marshalStatsMap(stats statsMap) ([]byte, error) {
+	items := make([]persistedStatsItem, 0)
+
+	stats.Range(func(key statsdata.StatsKey, value statsdata.StatsData) bool {
+		requestStatsData, ok := value.(*statsdata.RequestStatsData)
+		if !ok {
+			return true
+		}
+
+		items = append(items, persistedStatsItem{
+			Key:           key,
+			RequestAmount: requestStatsData.GetRequestAmount(),
+		})
+		return true
+	})
+
+	return sonic.Marshal(items)
+}
+
+// TODO that's bad. Get rid of a CMap
+func unmarshalStatsMap(data []byte) (statsMap, error) {
+	var items []persistedStatsItem
+	if err := sonic.Unmarshal(data, &items); err != nil {
+		return nil, err
+	}
+
+	result := utils.NewCMap[statsdata.StatsKey, statsdata.StatsData]()
+
+	for _, item := range items {
+		requestStatsData := statsdata.NewRequestStatsData()
+		for requestIndex := int64(0); requestIndex < item.RequestAmount; requestIndex++ {
+			requestStatsData.AddRequest()
+		}
+
+		result.Store(item.Key, requestStatsData)
+	}
+
+	return result, nil
+}

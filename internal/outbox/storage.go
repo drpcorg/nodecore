@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+type Storer interface {
+	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+	Delete(ctx context.Context, key string) error
+	List(ctx context.Context, cursor, limit int64) ([]Item, error)
+}
+
 type Item struct {
 	Key   string
 	Value []byte

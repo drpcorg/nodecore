@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/drpcorg/nodecore/internal/stats/api"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"sync"
 	"time"
@@ -27,12 +28,6 @@ type DrpcIntegrationClient struct {
 
 	entriesPool sync.Pool
 	maxCap      int
-
-	ownerID, apiToken string
-}
-
-type statsEntryBuffer struct {
-	items []*api.StatsEntry
 }
 
 func NewDrpcIntegrationClientWithConnector(ctx context.Context, connector drpc.DrpcHttpConnector, pollInterval time.Duration) *DrpcIntegrationClient {
@@ -42,13 +37,6 @@ func NewDrpcIntegrationClientWithConnector(ctx context.Context, connector drpc.D
 		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
 		pollInterval: pollInterval,
 		maxCap:       8192,
-		entriesPool: sync.Pool{
-			New: func() any {
-				return &statsEntryBuffer{
-					items: make([]*api.StatsEntry, 0, 128),
-				}
-			},
-		},
 	}
 }
 
@@ -61,13 +49,6 @@ func NewDrpcIntegrationClient(
 		ownerKeys:    utils.NewCMap[string, map[string]*drpc.DrpcKey](),
 		pollInterval: 1 * time.Minute,
 		maxCap:       8192,
-		entriesPool: sync.Pool{
-			New: func() any {
-				return &statsEntryBuffer{
-					items: make([]*api.StatsEntry, 0, 128),
-				}
-			},
-		},
 	}
 }
 
@@ -79,20 +60,23 @@ var (
 
 type statsData = *utils.CMap[statsdata.StatsKey, statsdata.StatsData]
 
-func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) (unprocessed []byte, err error) {
-	if d.ownerID == "" || d.apiToken == "" {
-		return nil, fmt.Errorf("stats: integration client has no credentials")
-	}
-
-	buf := d.getEntries()
-	defer d.putEntries(buf)
+func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) error {
+	itemsPerKey := make(map[string][]*api.StatsEntry, 128)
+	defer func() {
+		for key := range itemsPerKey {
+			delete(itemsPerKey, key)
+		}
+	}()
 
 	statsMap.Range(func(k statsdata.StatsKey, v statsdata.StatsData) bool {
 		data, ok := v.(*statsdata.RequestStatsData)
 		if !ok {
 			return true
 		}
-		buf.items = append(buf.items, &api.StatsEntry{
+		if itemsPerKey[k.ApiKey] == nil {
+			itemsPerKey[k.ApiKey] = make([]*api.StatsEntry, 0, 128)
+		}
+		itemsPerKey[k.ApiKey] = append(itemsPerKey[k.ApiKey], &api.StatsEntry{
 			Key: &api.StatsKey{
 				Timestamp:  k.Timestamp,
 				UpstreamId: k.UpstreamId,
@@ -107,35 +91,20 @@ func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) (unprocesse
 		return true
 	})
 
-	batch := &api.StatsBatch{
-		Entries: buf.items,
+	g := new(errgroup.Group)
+	for apiKey, items := range itemsPerKey {
+		g.Go(func() error {
+			batch := &api.StatsBatch{
+				Entries: items,
+			}
+			bt, err := proto.Marshal(batch)
+			if err != nil {
+				return fmt.Errorf("couldn't marshal batch %w: %v", ErrStatsDataCorrupted, err)
+			}
+			return d.connector.UploadStats(bt, apiKey)
+		})
 	}
-
-	bt, err := proto.Marshal(batch)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't marshal batch %w: %v", ErrStatsDataCorrupted, err)
-	}
-	if err := d.connector.UploadStats(bt, d.ownerID, d.apiToken); err != nil {
-		return nil, fmt.Errorf("couldn't upload stats: %w", err)
-	}
-	return bt, nil
-}
-
-func (d *DrpcIntegrationClient) ProcessStatsDataRaw(data []byte) error {
-	return d.connector.UploadStats(data, d.ownerID, d.apiToken)
-}
-
-func (d *DrpcIntegrationClient) getEntries() *statsEntryBuffer {
-	buf := d.entriesPool.Get().(*statsEntryBuffer)
-	buf.items = buf.items[:0]
-	return buf
-}
-
-func (d *DrpcIntegrationClient) putEntries(buf *statsEntryBuffer) {
-	if cap(buf.items) > d.maxCap {
-		buf.items = make([]*api.StatsEntry, 0, d.maxCap/2)
-	}
-	d.entriesPool.Put(buf)
+	return g.Wait()
 }
 
 func (d *DrpcIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
@@ -161,7 +130,6 @@ func (d *DrpcIntegrationClient) InitKeys(_ string, cfg config.IntegrationKeyConf
 	keyEvents := make(chan keydata.KeyEvent, 100)
 	go d.pollKeys(drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken, keyEvents)
 
-	d.ownerID, d.apiToken = drpcKeyCfg.Owner.Id, drpcKeyCfg.Owner.ApiToken
 	return keyEvents, nil
 }
 
