@@ -85,6 +85,7 @@ func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
 func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, nil)
 	request := &dshackle.NativeCallRequest{
+		ChunkSize: 100,
 		Items: []*dshackle.NativeCallItem{
 			{
 				Id:     1,
@@ -99,7 +100,7 @@ func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 	requests, failures := service.buildNativeCallRequests(request, nil)
 	require.Empty(t, failures)
 	require.Len(t, requests, 1)
-	assert.False(t, requests[0].IsStream())
+	assert.True(t, requests[0].IsStream())
 }
 
 func TestStreamNativeCallPayloadChunking(t *testing.T) {
