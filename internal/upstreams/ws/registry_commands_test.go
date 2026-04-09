@@ -36,7 +36,7 @@ func TestAbortCommandHandleCancelsRequestAndSkipsDoOnClose(t *testing.T) {
 	assertDoneRegistryCommand(t, req.CtxDone())
 }
 
-func TestRPCCommandHandleRemovesUnaryRequestAndWritesInternalSynchronously(t *testing.T) {
+func TestRPCCommandHandleDropsUnaryMessageWhenInternalChannelIsFull(t *testing.T) {
 	registry := newTestRegistryState("eth")
 	req := NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
 	registry.registryState.requests["request-1"] = req
@@ -53,16 +53,13 @@ func TestRPCCommandHandleRemovesUnaryRequestAndWritesInternalSynchronously(t *te
 		close(done)
 	}()
 
-	assertCommandIsBlocked(t, done)
-	drainOneInternalMessage(t, req)
 	assertCommandCompletes(t, done)
 
 	assert.NotContains(t, registry.registryState.requests, "request-1")
-	drainFilledInternalMessages(t, req)
-	assertSameInternalMessage(t, req, response)
+	assert.Len(t, req.GetChannel(MessageInternal), cap(req.GetChannel(MessageInternal)))
 }
 
-func TestRPCCommandHandleStoresSubscriptionAndWritesInternalSynchronously(t *testing.T) {
+func TestRPCCommandHandleStoresSubscriptionAndDropsMessageWhenInternalChannelIsFull(t *testing.T) {
 	loadRegistryCommandMethodSpecs(t)
 
 	registry := newTestRegistryState("eth")
@@ -81,18 +78,15 @@ func TestRPCCommandHandleStoresSubscriptionAndWritesInternalSynchronously(t *tes
 		close(done)
 	}()
 
-	assertCommandIsBlocked(t, done)
-	drainOneInternalMessage(t, req)
 	assertCommandCompletes(t, done)
 
 	assert.Equal(t, "0xsub", req.SubID())
 	require.Contains(t, registry.registryState.subs, "0xsub")
 	assert.Contains(t, registry.registryState.subs["0xsub"].ops, req.Id())
-	drainFilledInternalMessages(t, req)
-	assertSameInternalMessage(t, req, response)
+	assert.Len(t, req.GetChannel(MessageInternal), cap(req.GetChannel(MessageInternal)))
 }
 
-func TestSubscriptionCommandHandleWritesInternalSynchronouslyForEachRequest(t *testing.T) {
+func TestSubscriptionCommandHandleDropsMessagesWhenInternalChannelsAreFull(t *testing.T) {
 	registry := newTestRegistryState("eth")
 	req1 := NewBaseRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	req2 := NewBaseRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
@@ -119,16 +113,10 @@ func TestSubscriptionCommandHandleWritesInternalSynchronouslyForEachRequest(t *t
 		close(done)
 	}()
 
-	assertCommandIsBlocked(t, done)
-	drainOneInternalMessage(t, req1)
-	assertCommandIsBlocked(t, done)
-	drainOneInternalMessage(t, req2)
 	assertCommandCompletes(t, done)
 
-	drainFilledInternalMessages(t, req1)
-	drainFilledInternalMessages(t, req2)
-	assertSameInternalMessage(t, req1, event)
-	assertSameInternalMessage(t, req2, event)
+	assert.Len(t, req1.GetChannel(MessageInternal), cap(req1.GetChannel(MessageInternal)))
+	assert.Len(t, req2.GetChannel(MessageInternal), cap(req2.GetChannel(MessageInternal)))
 }
 
 func TestFinishCommandHandleKeepsSharedSubscriptionUntilLastRequest(t *testing.T) {
@@ -212,45 +200,6 @@ func fillInternalChannel(t *testing.T, req *BaseRequestOp) {
 		case <-time.After(time.Second):
 			t.Fatal("failed to fill internal channel")
 		}
-	}
-}
-
-func drainOneInternalMessage(t *testing.T, req *BaseRequestOp) {
-	t.Helper()
-
-	select {
-	case <-req.GetChannel(MessageInternal):
-	case <-time.After(time.Second):
-		t.Fatal("expected internal channel message")
-	}
-}
-
-func drainFilledInternalMessages(t *testing.T, req *BaseRequestOp) {
-	t.Helper()
-
-	for len(req.GetChannel(MessageInternal)) > 1 {
-		drainOneInternalMessage(t, req)
-	}
-}
-
-func assertSameInternalMessage(t *testing.T, req *BaseRequestOp, expected *protocol.WsResponse) {
-	t.Helper()
-
-	select {
-	case got := <-req.GetChannel(MessageInternal):
-		assert.Same(t, expected, got)
-	case <-time.After(time.Second):
-		t.Fatal("expected internal message")
-	}
-}
-
-func assertCommandIsBlocked(t *testing.T, done <-chan struct{}) {
-	t.Helper()
-
-	select {
-	case <-done:
-		t.Fatal("command returned before WriteInternal completed")
-	case <-time.After(50 * time.Millisecond):
 	}
 }
 

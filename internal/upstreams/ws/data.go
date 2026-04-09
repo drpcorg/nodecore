@@ -144,12 +144,16 @@ func (r *BaseRequestOp) Write(message *protocol.WsResponse, messageType MessageT
 		case <-r.CtxDone():
 			return
 		case r.internalMessages <- message:
+		default:
+			log.Warn().Msgf("internal channel full, dropping message %s", r.method)
 		}
 	case MessageResponse:
 		select {
 		case <-r.CtxDone():
 			return
 		case r.responseChan <- message:
+		default:
+			log.Warn().Msgf("response channel full, dropping message %s", r.method)
 		}
 	}
 }

@@ -14,7 +14,7 @@ import (
 )
 
 func TestRequestRegistryRegister(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -30,7 +30,7 @@ func TestRequestRegistryRegister(t *testing.T) {
 }
 
 func TestRequestRegistryStartForwardsInternalMessages(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -46,7 +46,7 @@ func TestRequestRegistryStartForwardsInternalMessages(t *testing.T) {
 func TestRequestRegistryStartCallsDoOnCloseOnCancel(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -78,7 +78,7 @@ func TestRequestRegistryStartCallsDoOnCloseOnCancel(t *testing.T) {
 }
 
 func TestRequestRegistryStartSkipsDoOnCloseWhenDisabled(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -100,7 +100,7 @@ func TestRequestRegistryStartSkipsDoOnCloseWhenDisabled(t *testing.T) {
 }
 
 func TestRequestRegistryAbortCancelsOperationAndRemovesRequest(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -124,7 +124,7 @@ func TestRequestRegistryAbortCancelsOperationAndRemovesRequest(t *testing.T) {
 }
 
 func TestRequestRegistryCancelCancelsUnaryOperationWithoutDoOnClose(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -157,7 +157,7 @@ func TestRequestRegistryCancelCancelsUnaryOperationWithoutDoOnClose(t *testing.T
 func TestRequestRegistryCancelCancelsSubscriptionAndDetachesEvents(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -197,7 +197,7 @@ func TestRequestRegistryCancelCancelsSubscriptionAndDetachesEvents(t *testing.T)
 }
 
 func TestRequestRegistryOnRpcMessageRoutesUnaryResponseOnce(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -215,7 +215,7 @@ func TestRequestRegistryOnRpcMessageRoutesUnaryResponseOnce(t *testing.T) {
 func TestRequestRegistryOnRpcMessageStoresSubscriptionAndRoutesEvents(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -243,7 +243,7 @@ func TestRequestRegistryOnRpcMessageStoresSubscriptionAndRoutesEvents(t *testing
 func TestRequestRegistryOnRpcMessageWithErrorCancelsOperation(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -265,7 +265,7 @@ func TestRequestRegistryOnRpcMessageWithErrorCancelsOperation(t *testing.T) {
 func TestRequestRegistryCancelAllCancelsRequestsAndSubscriptionsWithoutDoOnClose(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	called := make(chan struct{}, 2)
 
 	unaryRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
@@ -323,7 +323,7 @@ func TestRequestRegistryCancelAllCancelsRequestsAndSubscriptionsWithoutDoOnClose
 func TestRequestRegistrySharedSubscriptionKeepsLastOperationActive(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request1, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 	request2, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)

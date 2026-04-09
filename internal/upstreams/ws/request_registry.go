@@ -2,12 +2,14 @@ package ws
 
 import (
 	"context"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog/log"
 )
 
 var jsonRpcWsConnectionsMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -49,6 +51,7 @@ type registryState struct {
 }
 
 type BaseRequestRegistry struct {
+	ctx           context.Context
 	chain         chains.Chain
 	upId          string
 	methodSpec    string
@@ -73,8 +76,12 @@ func (b *BaseRequestRegistry) Register(
 	doOnCLose DoOnClose,
 ) RequestOperation {
 	req := NewBaseRequestOp(ctx, requestId, request.Method(), subType, doOnCLose)
-	b.allOps.Store(requestId, req)
-	b.commands <- newRegisterCommand(requestId, req)
+	select {
+	case <-b.ctx.Done():
+		req.Cancel()
+	case b.commands <- newRegisterCommand(requestId, req):
+		b.allOps.Store(requestId, req)
+	}
 	return req
 }
 
@@ -101,34 +108,40 @@ func (b *BaseRequestRegistry) Start(req RequestOperation) {
 }
 
 func (b *BaseRequestRegistry) Abort(requestId string) {
-	b.commands <- newAbortCommand(requestId)
+	b.sendCmd(newAbortCommand(requestId))
 	b.allOps.Delete(requestId)
 }
 
 func (b *BaseRequestRegistry) OnRpcMessage(response *protocol.WsResponse) {
-	b.commands <- newRpcCommand(response)
+	b.sendCmd(newRpcCommand(response))
 }
 
 func (b *BaseRequestRegistry) OnSubscriptionMessage(response *protocol.WsResponse) {
-	b.commands <- newSubscriptionCommand(response)
+	b.sendCmd(newSubscriptionCommand(response))
 }
 
 func (b *BaseRequestRegistry) CancelAll() {
-	b.commands <- newCancelAllCommand()
+	b.sendCmd(newCancelAllCommand())
 }
 
 func (b *BaseRequestRegistry) run() {
-	for cmd := range b.commands {
-		cmd.handle(b)
+	for {
+		select {
+		case <-b.ctx.Done():
+			return
+		case cmd := <-b.commands:
+			cmd.handle(b)
+		}
 	}
 }
 
-func NewBaseRequestRegistry(chain chains.Chain, upId, methodSpec string) *BaseRequestRegistry {
+func NewBaseRequestRegistry(ctx context.Context, chain chains.Chain, upId, methodSpec string) *BaseRequestRegistry {
 	registry := &BaseRequestRegistry{
+		ctx:        ctx,
 		chain:      chain,
 		upId:       upId,
 		methodSpec: methodSpec,
-		commands:   make(chan registryCommand, 256),
+		commands:   make(chan registryCommand, 1000),
 		registryState: &registryState{
 			requests: make(map[string]RequestOperation),
 			subs:     make(map[string]*registrySubscription),
@@ -141,11 +154,26 @@ func NewBaseRequestRegistry(chain chains.Chain, upId, methodSpec string) *BaseRe
 	return registry
 }
 
+func (b *BaseRequestRegistry) sendCmd(cmd registryCommand) {
+	select {
+	case <-b.ctx.Done():
+		log.Warn().Msgf("RequestRegistry of '%s' is not working, command is ignored", b.upId)
+	case b.commands <- cmd:
+	}
+}
+
 func (b *BaseRequestRegistry) closeReq(req RequestOperation) {
 	done := make(chan bool, 1)
-	b.commands <- newFinishCommand(req, done)
-	if <-done {
-		req.DoOnClose()
+	b.sendCmd(newFinishCommand(req, done))
+
+	select {
+	case <-b.ctx.Done():
+	case doClose := <-done:
+		if doClose {
+			req.DoOnClose()
+		}
+	case <-time.After(1 * time.Minute):
+		log.Warn().Msgf("close WS RequestOperation %s timeout", req.Method())
 	}
 	req.Cancel()
 	b.allOps.Delete(req.Id())

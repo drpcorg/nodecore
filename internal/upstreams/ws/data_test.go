@@ -68,6 +68,36 @@ func TestBaseRequestOpWriteInternal(t *testing.T) {
 	}
 }
 
+func TestBaseRequestOpWriteResponseDropsWhenChannelIsFull(t *testing.T) {
+	ctx := context.Background()
+
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	responseChan := op.GetChannel(ws.MessageResponse)
+	for i := 0; i < cap(responseChan); i++ {
+		responseChan <- &protocol.WsResponse{Id: "filler"}
+	}
+
+	op.Write(&protocol.WsResponse{Id: "request-1", Type: protocol.Ws}, ws.MessageResponse)
+
+	assert.False(t, op.IsCompleted())
+	assert.Len(t, responseChan, cap(responseChan))
+}
+
+func TestBaseRequestOpWriteInternalDropsWhenChannelIsFull(t *testing.T) {
+	ctx := context.Background()
+
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	internalChan := op.GetChannel(ws.MessageInternal)
+	for i := 0; i < cap(internalChan); i++ {
+		internalChan <- &protocol.WsResponse{Id: "filler"}
+	}
+
+	op.Write(&protocol.WsResponse{Id: "request-1", Type: protocol.Ws}, ws.MessageInternal)
+
+	assert.False(t, op.IsCompleted())
+	assert.Len(t, internalChan, cap(internalChan))
+}
+
 func TestBaseRequestOpSetSubID(t *testing.T) {
 	ctx := context.Background()
 

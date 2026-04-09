@@ -36,7 +36,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		defer close(responses)
 		var response *protocol.ResponseHolderWrapper
 
-		if request.SpecMethod() == nil && request.SpecMethod().Subscription == nil {
+		if request.SpecMethod() == nil || request.SpecMethod().Subscription == nil {
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				RequestId:  request.Id(),
@@ -128,7 +128,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 					if s.subCtx.IsSubscriptionResultOnly() {
 						subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
 					} else {
-						subResponse = protocol.NewSubscriptionMethodResulResponse(request.Id(), method, r.Message, currentSubId)
+						subResponse = protocol.NewSubscriptionMethodResultResponse(request.Id(), method, r.Message, currentSubId)
 					}
 				}
 				wrapper := &protocol.ResponseHolderWrapper{

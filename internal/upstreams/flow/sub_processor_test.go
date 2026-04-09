@@ -144,7 +144,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	upSupervisor.AssertExpectations(t)
 	apiConnector.AssertExpectations(t)
 
-	assert.IsType(t, &protocol.SubscriptionMethodResulResponse{}, responseWrapper.Response)
+	assert.IsType(t, &protocol.SubscriptionMethodResultResponse{}, responseWrapper.Response)
 	assert.Equal(t, []byte(nil), responseWrapper.Response.ResponseResult())
 	assert.False(t, responseWrapper.Response.HasError())
 	assert.False(t, responseWrapper.Response.HasStream())

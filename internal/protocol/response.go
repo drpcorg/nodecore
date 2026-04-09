@@ -29,15 +29,15 @@ type SubscriptionResultResponse struct {
 	result []byte
 }
 
-type SubscriptionMethodResulResponse struct {
+type SubscriptionMethodResultResponse struct {
 	id     string
 	method string
 	result []byte
 	subId  json.RawMessage
 }
 
-func NewSubscriptionMethodResulResponse(id, method string, result []byte, subId json.RawMessage) *SubscriptionMethodResulResponse {
-	return &SubscriptionMethodResulResponse{
+func NewSubscriptionMethodResultResponse(id, method string, result []byte, subId json.RawMessage) *SubscriptionMethodResultResponse {
+	return &SubscriptionMethodResultResponse{
 		id:     id,
 		method: method,
 		result: result,
@@ -45,19 +45,19 @@ func NewSubscriptionMethodResulResponse(id, method string, result []byte, subId 
 	}
 }
 
-func (s *SubscriptionMethodResulResponse) ResponseResult() []byte {
+func (s *SubscriptionMethodResultResponse) ResponseResult() []byte {
 	return s.result
 }
 
-func (s *SubscriptionMethodResulResponse) ResponseResultString() (string, error) {
+func (s *SubscriptionMethodResultResponse) ResponseResultString() (string, error) {
 	return "", nil
 }
 
-func (s *SubscriptionMethodResulResponse) ResponseCode() int {
+func (s *SubscriptionMethodResultResponse) ResponseCode() int {
 	return 0
 }
 
-func (s *SubscriptionMethodResulResponse) GetError() *ResponseError {
+func (s *SubscriptionMethodResultResponse) GetError() *ResponseError {
 	return nil
 }
 
@@ -67,7 +67,7 @@ type jsonRpcWsSubResponse struct {
 	Params  jsonRpcWsParams `json:"params"`
 }
 
-func (s *SubscriptionMethodResulResponse) EncodeResponse(_ []byte) io.Reader {
+func (s *SubscriptionMethodResultResponse) EncodeResponse(_ []byte) io.Reader {
 	resp := jsonRpcWsSubResponse{
 		JsonRpc: "2.0",
 		Method:  s.method,
@@ -83,19 +83,19 @@ func (s *SubscriptionMethodResulResponse) EncodeResponse(_ []byte) io.Reader {
 	return bytes.NewReader(respBytes)
 }
 
-func (s *SubscriptionMethodResulResponse) HasError() bool {
+func (s *SubscriptionMethodResultResponse) HasError() bool {
 	return false
 }
 
-func (s *SubscriptionMethodResulResponse) HasStream() bool {
+func (s *SubscriptionMethodResultResponse) HasStream() bool {
 	return false
 }
 
-func (s *SubscriptionMethodResulResponse) Id() string {
+func (s *SubscriptionMethodResultResponse) Id() string {
 	return s.id
 }
 
-func (s *SubscriptionMethodResulResponse) IsEventFrame() bool {
+func (s *SubscriptionMethodResultResponse) IsEventFrame() bool {
 	return true
 }
 
@@ -222,7 +222,7 @@ func (s *SubscriptionResultResponse) ResponseCode() int {
 var _ SubscriptionResponseHolder = (*SubscriptionEventResponse)(nil)
 var _ SubscriptionResponseHolder = (*SubscriptionMessageResponse)(nil)
 var _ SubscriptionResponseHolder = (*SubscriptionResultResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionMethodResulResponse)(nil)
+var _ SubscriptionResponseHolder = (*SubscriptionMethodResultResponse)(nil)
 
 type WsJsonRpcResponse struct {
 	id     string
