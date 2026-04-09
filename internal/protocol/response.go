@@ -29,6 +29,76 @@ type SubscriptionResultResponse struct {
 	result []byte
 }
 
+type SubscriptionMethodResulResponse struct {
+	id     string
+	method string
+	result []byte
+	subId  json.RawMessage
+}
+
+func NewSubscriptionMethodResulResponse(id, method string, result []byte, subId json.RawMessage) *SubscriptionMethodResulResponse {
+	return &SubscriptionMethodResulResponse{
+		id:     id,
+		method: method,
+		result: result,
+		subId:  subId,
+	}
+}
+
+func (s *SubscriptionMethodResulResponse) ResponseResult() []byte {
+	return s.result
+}
+
+func (s *SubscriptionMethodResulResponse) ResponseResultString() (string, error) {
+	return "", nil
+}
+
+func (s *SubscriptionMethodResulResponse) ResponseCode() int {
+	return 0
+}
+
+func (s *SubscriptionMethodResulResponse) GetError() *ResponseError {
+	return nil
+}
+
+type jsonRpcWsSubResponse struct {
+	JsonRpc string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  jsonRpcWsParams `json:"params"`
+}
+
+func (s *SubscriptionMethodResulResponse) EncodeResponse(_ []byte) io.Reader {
+	resp := jsonRpcWsSubResponse{
+		JsonRpc: "2.0",
+		Method:  s.method,
+		Params: jsonRpcWsParams{
+			Result:       s.result,
+			Subscription: s.subId,
+		},
+	}
+	respBytes, err := sonic.Marshal(resp)
+	if err != nil {
+		return iotest.ErrReader(err)
+	}
+	return bytes.NewReader(respBytes)
+}
+
+func (s *SubscriptionMethodResulResponse) HasError() bool {
+	return false
+}
+
+func (s *SubscriptionMethodResulResponse) HasStream() bool {
+	return false
+}
+
+func (s *SubscriptionMethodResulResponse) Id() string {
+	return s.id
+}
+
+func (s *SubscriptionMethodResulResponse) IsEventFrame() bool {
+	return true
+}
+
 func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
 	return "", nil
 }
@@ -152,6 +222,7 @@ func (s *SubscriptionResultResponse) ResponseCode() int {
 var _ SubscriptionResponseHolder = (*SubscriptionEventResponse)(nil)
 var _ SubscriptionResponseHolder = (*SubscriptionMessageResponse)(nil)
 var _ SubscriptionResponseHolder = (*SubscriptionResultResponse)(nil)
+var _ SubscriptionResponseHolder = (*SubscriptionMethodResulResponse)(nil)
 
 type WsJsonRpcResponse struct {
 	id     string
@@ -483,15 +554,21 @@ type WsResponse struct {
 
 type JsonRpcWsUpstreamResponse struct {
 	messages chan *WsResponse
+	subOpId  string
+}
+
+func (j *JsonRpcWsUpstreamResponse) OpId() string {
+	return j.subOpId
 }
 
 func (j *JsonRpcWsUpstreamResponse) ResponseChan() chan *WsResponse {
 	return j.messages
 }
 
-func NewJsonRpcWsUpstreamResponse(messages chan *WsResponse) *JsonRpcWsUpstreamResponse {
+func NewJsonRpcWsUpstreamResponse(messages chan *WsResponse, subOpId string) *JsonRpcWsUpstreamResponse {
 	return &JsonRpcWsUpstreamResponse{
 		messages: messages,
+		subOpId:  subOpId,
 	}
 }
 

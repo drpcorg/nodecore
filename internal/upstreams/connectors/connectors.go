@@ -12,6 +12,7 @@ type ApiConnector interface {
 
 	SendRequest(context.Context, protocol.RequestHolder) protocol.ResponseHolder
 	Subscribe(context.Context, protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error)
+	Unsubscribe(opId string)
 	GetType() protocol.ApiConnectorType
 
 	SubscribeStates(name string) *utils.Subscription[protocol.SubscribeConnectorState]

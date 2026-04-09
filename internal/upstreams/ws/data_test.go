@@ -24,10 +24,11 @@ func TestNewRequestFrame(t *testing.T) {
 func TestNewBaseRequestOp(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
-	require.NotNil(t, op.GetResponseChannel())
-	require.NotNil(t, op.GetInternalChannel())
+	require.NotNil(t, op.GetChannel(ws.MessageResponse))
+	require.NotNil(t, op.GetChannel(ws.MessageInternal))
+	assert.Equal(t, "request-1", op.Id())
 	assert.Equal(t, "eth_subscribe", op.Method())
 	assert.Equal(t, "newHeads", op.SubType())
 	assert.False(t, op.IsCompleted())
@@ -38,13 +39,13 @@ func TestNewBaseRequestOp(t *testing.T) {
 func TestBaseRequestOpWriteResponse(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 	message := &protocol.WsResponse{Id: "1", Type: protocol.Ws}
 
-	op.WriteResponse(message)
+	op.Write(message, ws.MessageResponse)
 
 	select {
-	case got := <-op.GetResponseChannel():
+	case got := <-op.GetChannel(ws.MessageResponse):
 		assert.Same(t, message, got)
 	case <-time.After(time.Second):
 		t.Fatal("expected response message")
@@ -54,13 +55,13 @@ func TestBaseRequestOpWriteResponse(t *testing.T) {
 func TestBaseRequestOpWriteInternal(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 	message := &protocol.WsResponse{Id: "1", Type: protocol.Ws}
 
-	op.WriteInternal(message)
+	op.Write(message, ws.MessageInternal)
 
 	select {
-	case got := <-op.GetInternalChannel():
+	case got := <-op.GetChannel(ws.MessageInternal):
 		assert.Same(t, message, got)
 	case <-time.After(time.Second):
 		t.Fatal("expected internal message")
@@ -70,17 +71,18 @@ func TestBaseRequestOpWriteInternal(t *testing.T) {
 func TestBaseRequestOpSetSubID(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
-	op.SetSubID("0xsub")
+	op.SetSubID([]byte(`"0xsub"`))
 
 	assert.Equal(t, "0xsub", op.SubID())
+	assert.Equal(t, []byte(`"0xsub"`), op.SubIdBytes())
 }
 
 func TestBaseRequestOpSetSkipDoOnClose(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.SetSkipDoOnClose()
 
@@ -89,29 +91,29 @@ func TestBaseRequestOpSetSkipDoOnClose(t *testing.T) {
 
 func TestBaseRequestOpCancelClosesDoneChannel(t *testing.T) {
 	ctx := context.Background()
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.Cancel()
 
 	select {
-	case <-op.Done():
+	case <-op.CtxDone():
 	case <-time.After(time.Second):
 		t.Fatal("expected done channel to close")
 	}
 }
 
-func TestBaseRequestOpCompleteMarksCompletedAndClosesResponseChannel(t *testing.T) {
+func TestBaseRequestOpCancelMarksCompletedAndClosesResponseChannel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	op := ws.NewBaseRequestOp(ctx, "eth_subscribe", "newHeads")
+	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.Cancel()
 
 	assert.True(t, op.IsCompleted())
 
 	select {
-	case _, ok := <-op.GetResponseChannel():
+	case _, ok := <-op.GetChannel(ws.MessageResponse):
 		assert.False(t, ok)
 	case <-time.After(time.Second):
 		t.Fatal("expected response channel to close")

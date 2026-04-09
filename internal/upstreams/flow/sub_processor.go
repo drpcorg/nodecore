@@ -2,11 +2,18 @@ package flow
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/rs/zerolog/log"
 )
 
 type SubscriptionRequestProcessor struct {
@@ -28,6 +35,18 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	go func() {
 		defer close(responses)
 		var response *protocol.ResponseHolderWrapper
+
+		if request.SpecMethod() == nil && request.SpecMethod().Subscription == nil {
+			response = &protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				RequestId:  request.Id(),
+				Response:   protocol.NewTotalFailureFromErr(request.Id(), errors.New("no subscription info"), request.RequestType()),
+			}
+			responses <- response
+			return
+		}
+
+		method := request.SpecMethod().Subscription.Method
 
 		//TODO: it might be a good idea to select an upstream with a ws (or other sub) head connector
 		// and receive updates from it in order to reduce client's costs
@@ -71,6 +90,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			responses <- response
 			return
 		}
+		var currentSubId json.RawMessage
 
 		for {
 			select {
@@ -86,27 +106,37 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 					}
 				}
 			case r, ok := <-subResp.ResponseChan():
-				if ok {
-					var subResponse protocol.ResponseHolder
-					if r.SubId == "" {
-						s.subCtx.AddSub(protocol.ResultAsString(r.Message), cancel)
-						subResponse = protocol.NewSubscriptionMessageEventResponse(request.Id(), r.Message)
-					} else {
-						if s.subCtx.IsSubscriptionResultOnly() {
-							subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
-						} else {
-							subResponse = protocol.NewSubscriptionEventResponse(request.Id(), r.Event)
-						}
-					}
-					wrapper := &protocol.ResponseHolderWrapper{
-						UpstreamId: upstreamId,
-						RequestId:  request.Id(),
-						Response:   subResponse,
-					}
-					responses <- wrapper
-				} else {
+				if !ok {
 					return
 				}
+				var subResponse protocol.ResponseHolder
+				if r.SubId == "" {
+					subId, err := nextSubscriptionJson(isSolana(upstream.GetChain()))
+					if err != nil {
+						log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
+						responses <- &protocol.ResponseHolderWrapper{
+							UpstreamId: upstreamId,
+							RequestId:  request.Id(),
+							Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.WsTotalFailureError(), request.RequestType()),
+						}
+						return
+					}
+					currentSubId = subId
+					s.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
+					subResponse = protocol.NewSubscriptionMessageEventResponse(request.Id(), subId)
+				} else {
+					if s.subCtx.IsSubscriptionResultOnly() {
+						subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
+					} else {
+						subResponse = protocol.NewSubscriptionMethodResulResponse(request.Id(), method, r.Message, currentSubId)
+					}
+				}
+				wrapper := &protocol.ResponseHolderWrapper{
+					UpstreamId: upstreamId,
+					RequestId:  request.Id(),
+					Response:   subResponse,
+				}
+				responses <- wrapper
 			case <-execCtx.Done():
 				return
 			}
@@ -114,4 +144,33 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	}()
 
 	return &SubscriptionResponse{responses}
+}
+
+func isSolana(chain chains.Chain) bool {
+	return chain == chains.SOLANA || chain == chains.SOLANA_DEVNET || chain == chains.SOLANA_TESTNET
+}
+
+func nextSubscriptionJson(isNumber bool) (json.RawMessage, error) {
+	if isNumber {
+		subscriptionId, err := nextSubscriptionId(6)
+		if err != nil {
+			return nil, err
+		}
+		subId := json.RawMessage(fmt.Sprintf("%d", binary.BigEndian.Uint64(append(subscriptionId, byte(0), byte(0)))))
+		return subId, nil
+	}
+	subscriptionId, err := nextSubscriptionId(20)
+	if err != nil {
+		return nil, err
+	}
+	subId := json.RawMessage(fmt.Sprintf("\"0x%s\"", hex.EncodeToString(subscriptionId)))
+	return subId, nil
+}
+
+func nextSubscriptionId(n int) ([]byte, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, err
+	}
+	return bytes, nil
 }

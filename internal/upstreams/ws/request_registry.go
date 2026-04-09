@@ -6,7 +6,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -29,50 +28,69 @@ func init() {
 }
 
 type RequestRegistry interface {
-	Start(req RequestOperation, doOnCloseFunc DoOnClose)
-	Abort(requestId string, req RequestOperation)
-	Register(ctx context.Context, request protocol.RequestHolder, requestId, subType string) RequestOperation
+	Start(req RequestOperation)
+	Abort(requestId string)
+	Register(ctx context.Context, request protocol.RequestHolder, requestId, subType string, doOnCLose DoOnClose) RequestOperation
+	Cancel(opId string)
 	CancelAll()
 
 	OnRpcMessage(response *protocol.WsResponse)
 	OnSubscriptionMessage(response *protocol.WsResponse)
 }
 
-type BaseRequestRegistry struct {
-	chain      chains.Chain
-	upId       string
-	methodSpec string
-	requests   *utils.CMap[string, RequestOperation]
-	subs       *utils.CMap[string, RequestOperation]
+type registrySubscription struct {
+	subType string
+	ops     map[string]RequestOperation
 }
 
-func (b *BaseRequestRegistry) Register(ctx context.Context, request protocol.RequestHolder, requestId, subType string) RequestOperation {
-	req := NewBaseRequestOp(ctx, request.Method(), subType)
+type registryState struct {
+	requests map[string]RequestOperation
+	subs     map[string]*registrySubscription
+}
 
-	b.requests.Store(requestId, req)
+type BaseRequestRegistry struct {
+	chain         chains.Chain
+	upId          string
+	methodSpec    string
+	commands      chan registryCommand
+	registryState *registryState
 
+	allOps *utils.CMap[string, RequestOperation]
+}
+
+func (b *BaseRequestRegistry) Cancel(opId string) {
+	op, ok := b.allOps.LoadAndDelete(opId)
+	if !ok {
+		return
+	}
+	b.closeReq(op)
+}
+
+func (b *BaseRequestRegistry) Register(
+	ctx context.Context,
+	request protocol.RequestHolder,
+	requestId, subType string,
+	doOnCLose DoOnClose,
+) RequestOperation {
+	req := NewBaseRequestOp(ctx, requestId, request.Method(), subType, doOnCLose)
+	b.allOps.Store(requestId, req)
+	b.commands <- newRegisterCommand(requestId, req)
 	return req
 }
 
-func (b *BaseRequestRegistry) Start(req RequestOperation, doOnCloseFunc DoOnClose) {
+func (b *BaseRequestRegistry) Start(req RequestOperation) {
 	go func() {
 		jsonRpcWsOperations.WithLabelValues(b.chain.String(), b.upId).Inc()
 		defer jsonRpcWsOperations.WithLabelValues(b.chain.String(), b.upId).Dec()
+
 		for {
 			select {
-			case <-req.Done():
-				if req.ShouldDoOnClose() {
-					doOnCloseFunc(req)
-				}
-
-				if subID := req.SubID(); subID != "" {
-					b.subs.Delete(subID)
-					jsonRpcWsConnectionsMetric.WithLabelValues(b.chain.String(), b.upId, req.SubType()).Dec()
-				}
+			case <-req.CtxDone():
+				b.closeReq(req)
 				return
-			case message, ok := <-req.GetInternalChannel():
+			case message, ok := <-req.GetChannel(MessageInternal):
 				if ok {
-					req.WriteResponse(message)
+					req.Write(message, MessageResponse)
 					if message.Error != nil {
 						req.Cancel()
 					}
@@ -82,65 +100,55 @@ func (b *BaseRequestRegistry) Start(req RequestOperation, doOnCloseFunc DoOnClos
 	}()
 }
 
-func (b *BaseRequestRegistry) Abort(requestId string, req RequestOperation) {
-	b.requests.Delete(requestId)
-	req.SetSkipDoOnClose()
-	req.Cancel()
+func (b *BaseRequestRegistry) Abort(requestId string) {
+	b.commands <- newAbortCommand(requestId)
+	b.allOps.Delete(requestId)
 }
 
 func (b *BaseRequestRegistry) OnRpcMessage(response *protocol.WsResponse) {
-	if req, ok := b.requests.Load(response.Id); ok {
-		defer b.requests.Delete(response.Id)
-
-		if req.IsCompleted() {
-			return
-		}
-
-		req.WriteInternal(response)
-		if response.Error == nil && specs.IsSubscribeMethod(b.methodSpec, req.Method()) {
-			subID := protocol.ResultAsString(response.Message)
-			req.SetSubID(subID)
-			b.subs.Store(subID, req)
-			if subID != "" {
-				jsonRpcWsConnectionsMetric.WithLabelValues(b.chain.String(), b.upId, req.SubType()).Inc()
-			}
-		}
-	}
+	b.commands <- newRpcCommand(response)
 }
 
 func (b *BaseRequestRegistry) OnSubscriptionMessage(response *protocol.WsResponse) {
-	if req, ok := b.subs.Load(response.SubId); ok {
-		if req.IsCompleted() {
-			b.subs.Delete(response.SubId)
-			return
-		}
-		req.WriteInternal(response)
-	}
+	b.commands <- newSubscriptionCommand(response)
 }
 
 func (b *BaseRequestRegistry) CancelAll() {
-	b.requests.Range(func(key string, val RequestOperation) bool {
-		b.requests.Delete(key)
-		val.SetSkipDoOnClose()
-		val.Cancel()
-		return true
-	})
-	b.subs.Range(func(key string, val RequestOperation) bool {
-		b.subs.Delete(key)
-		val.SetSkipDoOnClose()
-		val.Cancel()
-		return true
-	})
+	b.commands <- newCancelAllCommand()
+}
+
+func (b *BaseRequestRegistry) run() {
+	for cmd := range b.commands {
+		cmd.handle(b)
+	}
 }
 
 func NewBaseRequestRegistry(chain chains.Chain, upId, methodSpec string) *BaseRequestRegistry {
-	return &BaseRequestRegistry{
+	registry := &BaseRequestRegistry{
 		chain:      chain,
 		upId:       upId,
 		methodSpec: methodSpec,
-		requests:   utils.NewCMap[string, RequestOperation](),
-		subs:       utils.NewCMap[string, RequestOperation](),
+		commands:   make(chan registryCommand, 256),
+		registryState: &registryState{
+			requests: make(map[string]RequestOperation),
+			subs:     make(map[string]*registrySubscription),
+		},
+		allOps: utils.NewCMap[string, RequestOperation](),
 	}
+
+	go registry.run()
+
+	return registry
+}
+
+func (b *BaseRequestRegistry) closeReq(req RequestOperation) {
+	done := make(chan bool, 1)
+	b.commands <- newFinishCommand(req, done)
+	if <-done {
+		req.DoOnClose()
+	}
+	req.Cancel()
+	b.allOps.Delete(req.Id())
 }
 
 var _ RequestRegistry = (*BaseRequestRegistry)(nil)
