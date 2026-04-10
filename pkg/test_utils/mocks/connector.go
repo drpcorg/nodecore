@@ -13,7 +13,7 @@ type MockDrpcHttpcConnector struct {
 	mock.Mock
 }
 
-func (m *MockDrpcHttpcConnector) UploadStats(stats []byte, apiToken string) error {
+func (m *MockDrpcHttpcConnector) UploadStats(stats []byte, ownerId, apiToken string) error {
 	return nil
 }
 

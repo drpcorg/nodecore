@@ -1,15 +1,16 @@
+// TODO resolve cyclic imports - it's sign of inefficient design
 package integration_test
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
 	"github.com/drpcorg/nodecore/internal/key_management/keydata"
-	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 )
 

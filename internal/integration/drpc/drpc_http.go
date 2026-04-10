@@ -24,7 +24,7 @@ type jsonError struct {
 type DrpcHttpConnector interface {
 	OwnerExists(ownerId, apiToken string) error
 	LoadOwnerKeys(ownerId, apiToken string) ([]*DrpcKey, error)
-	UploadStats(stats []byte, apiToken string) error
+	UploadStats(stats []byte, ownerId, apiToken string) error
 }
 
 type SimpleDrpcHttpConnector struct {
@@ -95,11 +95,11 @@ func (s *SimpleDrpcHttpConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*Dr
 	}
 }
 
-func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, apiToken string) error {
+func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, ownerId, apiToken string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
 	defer cancel()
 
-	path := "/v1/stats/upload"
+	path := fmt.Sprintf("/v1/owners/%s/stats/upload", ownerId)
 	response, closeBodyFunc, err := s.makeRequest(
 		ctx, http.MethodPost, apiToken, s.baseUrl+path, bytes.NewBuffer(stats),
 	)

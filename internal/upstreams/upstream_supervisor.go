@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
-	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
@@ -15,12 +14,6 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog/log"
 )
-
-type UpstreamSupervisorStatsService interface {
-	Start(_ outbox.Storer)
-	Stop(ctx context.Context) error
-	AddRequestResults(requestResults []protocol.RequestResult)
-}
 
 type BaseUpstreamSupervisor struct {
 	ctx context.Context
@@ -32,7 +25,7 @@ type BaseUpstreamSupervisor struct {
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
 	tracker                 dimensions.DimensionTracker
-	statsService            UpstreamSupervisorStatsService
+	statsService            UpstreamStatsService
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
 
 	torProxyUrl            string
@@ -45,7 +38,7 @@ func NewBaseUpstreamSupervisor(
 	ctx context.Context,
 	upstreamsConfig *config.UpstreamConfig,
 	tracker dimensions.DimensionTracker,
-	statsService UpstreamSupervisorStatsService,
+	statsService UpstreamStatsService,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
 ) UpstreamSupervisor {

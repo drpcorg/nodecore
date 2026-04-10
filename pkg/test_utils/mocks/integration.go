@@ -15,10 +15,6 @@ type MockIntegrationClient struct {
 	integrationType integration.IntegrationType
 }
 
-func (m *MockIntegrationClient) ProcessStatsDataRaw(data []byte) error {
-	return nil
-}
-
 func NewMockIntegrationClient(integrationType integration.IntegrationType) *MockIntegrationClient {
 	return &MockIntegrationClient{
 		integrationType: integrationType,

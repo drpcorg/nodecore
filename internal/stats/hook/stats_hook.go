@@ -2,13 +2,10 @@ package hook
 
 import (
 	"context"
-	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
 type HookStatsService interface {
-	Start(_ outbox.Storer)
-	Stop(ctx context.Context) error
 	AddRequestResults(requestResults []protocol.RequestResult)
 }
 

@@ -3,7 +3,6 @@ package upstreams
 import (
 	"context"
 	"fmt"
-	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/drpcorg/nodecore/internal/stats/hook"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -26,8 +25,6 @@ import (
 )
 
 type UpstreamStatsService interface {
-	Start(_ outbox.Storer)
-	Stop(ctx context.Context) error
 	AddRequestResults(requestResults []protocol.RequestResult)
 }
 
