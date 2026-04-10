@@ -13,6 +13,10 @@ type WsConnector struct {
 	wsProcessor ws.WsProcessor
 }
 
+func (w *WsConnector) Unsubscribe(opId string) {
+	w.wsProcessor.Unsubscribe(opId)
+}
+
 func NewWsConnector(connection ws.WsProcessor) *WsConnector {
 	return &WsConnector{
 		wsProcessor: connection,
@@ -32,11 +36,11 @@ func (w *WsConnector) SendRequest(ctx context.Context, request protocol.RequestH
 }
 
 func (w *WsConnector) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
-	respChan, err := w.wsProcessor.SendWsRequest(ctx, request)
+	respChan, subOpId, err := w.wsProcessor.SendWsRequest(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	return protocol.NewJsonRpcWsUpstreamResponse(respChan), nil
+	return protocol.NewJsonRpcWsUpstreamResponse(respChan, subOpId), nil
 }
 
 func (w *WsConnector) GetType() protocol.ApiConnectorType {

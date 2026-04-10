@@ -15,7 +15,8 @@ type WsProcessor interface {
 	utils.Lifecycle
 
 	SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error)
-	SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error)
+	SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error)
+	Unsubscribe(opId string)
 
 	SubscribeWsStates(name string) *utils.Subscription[protocol.SubscribeConnectorState]
 }
@@ -37,6 +38,10 @@ type BaseWsProcessor struct {
 
 	executor   failsafe.Executor[bool]
 	subManager *utils.SubscriptionManager[protocol.SubscribeConnectorState]
+}
+
+func (b *BaseWsProcessor) Unsubscribe(opId string) {
+	b.requestRegistry.Cancel(opId)
 }
 
 func (b *BaseWsProcessor) Start() {
@@ -109,7 +114,7 @@ func (b *BaseWsProcessor) SendRpcRequest(ctx context.Context, upstreamRequest pr
 
 	timeout := time.NewTimer(rpcTimeout)
 	defer timeout.Stop()
-	respChan, err := b.sendWsRequest(ctx, upstreamRequest)
+	respChan, _, err := b.sendWsRequest(ctx, upstreamRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -126,13 +131,13 @@ func (b *BaseWsProcessor) SendRpcRequest(ctx context.Context, upstreamRequest pr
 	}
 }
 
-func (b *BaseWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+func (b *BaseWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
 	specMethod := upstreamRequest.SpecMethod()
 	if specMethod == nil {
-		return nil, fmt.Errorf("no spec method found for %s", upstreamRequest.Method())
+		return nil, "", fmt.Errorf("no spec method found for %s", upstreamRequest.Method())
 	}
 	if !specMethod.IsSubscribe() {
-		return nil, fmt.Errorf("'%s' is not subscribe method and it can't be sent via SendWsRequest, use SendRpcRequest instead", upstreamRequest.Method())
+		return nil, "", fmt.Errorf("'%s' is not subscribe method and it can't be sent via SendWsRequest, use SendRpcRequest instead", upstreamRequest.Method())
 	}
 
 	return b.sendWsRequest(ctx, upstreamRequest)
@@ -172,22 +177,22 @@ func NewBaseWsProcessor(
 	}, nil
 }
 
-func (b *BaseWsProcessor) sendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+func (b *BaseWsProcessor) sendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
 	frame, err := b.wsProtocol.RequestFrame(upstreamRequest)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	req := b.requestRegistry.Register(ctx, upstreamRequest, frame.RequestId, frame.SubType)
-	b.requestRegistry.Start(req, b.wsProtocol.DoOnCloseFunc(b.writeRequest))
+	req := b.requestRegistry.Register(ctx, upstreamRequest, frame.RequestId, frame.SubType, b.wsProtocol.DoOnCloseFunc(b.writeRequest))
+	b.requestRegistry.Start(req)
 
 	err = b.writeRequest(ctx, frame.Body)
 	if err != nil {
-		b.requestRegistry.Abort(frame.RequestId, req)
-		return nil, err
+		b.requestRegistry.Abort(frame.RequestId)
+		return nil, "", err
 	}
 
-	return req.GetResponseChannel(), nil
+	return req.GetChannel(MessageResponse), frame.RequestId, nil
 }
 
 func (b *BaseWsProcessor) writeMessage(message []byte) error {

@@ -60,7 +60,16 @@ func (c *ConnectorMock) SendRequest(ctx context.Context, request protocol.Reques
 }
 
 func (c *ConnectorMock) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
-	return nil, nil
+	args := c.Called(ctx, request)
+	var response protocol.UpstreamSubscriptionResponse
+	if args.Get(0) != nil {
+		response = args.Get(0).(protocol.UpstreamSubscriptionResponse)
+	}
+	return response, args.Error(1)
+}
+
+func (c *ConnectorMock) Unsubscribe(opId string) {
+	c.Called(opId)
 }
 
 func (c *ConnectorMock) Start() {
@@ -122,6 +131,10 @@ func (c *WsConnectorMock) Subscribe(ctx context.Context, request protocol.Reques
 		response = args.Get(0).(protocol.UpstreamSubscriptionResponse)
 	}
 	return response, args.Error(1)
+}
+
+func (c *WsConnectorMock) Unsubscribe(opId string) {
+	c.Called(opId)
 }
 
 func (c *WsConnectorMock) GetType() protocol.ApiConnectorType {

@@ -57,6 +57,7 @@ type Sticky struct {
 
 type Subscription struct {
 	IsSubscribe bool   `json:"is-subscribe"`
+	Method      string `json:"method"`
 	UnsubMethod string `json:"unsubscribe-method"`
 }
 

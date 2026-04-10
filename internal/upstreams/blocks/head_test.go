@@ -77,7 +77,19 @@ func TestRpcHead(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestWsHeadSubscribe(t *testing.T) {
+func TestSubHeadUnsub(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	connector := mocks.NewConnectorMock()
+	subHead := blocks.NewSubHead(ctx, "", 0, connector, nil)
+
+	connector.On("Unsubscribe", mock.Anything).Return()
+
+	subHead.Stop()
+	connector.AssertExpectations(t)
+}
+
+func TestSubHeadSubscribe(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -100,8 +112,9 @@ func TestWsHeadSubscribe(t *testing.T) {
 	}`)
 	messages := make(chan *protocol.WsResponse, 10)
 	messages <- protocol.ParseJsonRpcWsMessage(body)
-	response := protocol.NewJsonRpcWsUpstreamResponse(messages)
+	response := protocol.NewJsonRpcWsUpstreamResponse(messages, "op-1")
 	connector.On("Subscribe", mock.Anything, mock.Anything).Return(response, nil)
+	connector.On("Unsubscribe", "op-1").Maybe()
 
 	upConfig := config.Upstream{
 		ChainName:    "ethereum",
@@ -129,7 +142,7 @@ func TestWsHeadSubscribe(t *testing.T) {
 	reqConnector.AssertExpectations(t)
 }
 
-func TestWsHeadManualUpdate(t *testing.T) {
+func TestSubHeadManualUpdate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -163,7 +176,7 @@ func TestWsHeadManualUpdate(t *testing.T) {
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 }
 
-func TestWsHeadGetLastBlock(t *testing.T) {
+func TestSubHeadGetLastBlock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -180,9 +193,10 @@ func TestWsHeadGetLastBlock(t *testing.T) {
 	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
 
 	messages := make(chan *protocol.WsResponse, 10)
-	response := protocol.NewJsonRpcWsUpstreamResponse(messages)
+	response := protocol.NewJsonRpcWsUpstreamResponse(messages, "op-1")
 	connector := mocks.NewWsConnectorMock()
 	connector.On("Subscribe", mock.Anything, mock.Anything).Return(response, nil).Maybe()
+	connector.On("Unsubscribe", "op-1").Maybe()
 
 	upConfig := config.Upstream{
 		ChainName:    "ethereum",

@@ -196,6 +196,7 @@ type SubscriptionResponseHolder interface {
 
 type UpstreamSubscriptionResponse interface {
 	ResponseChan() chan *WsResponse
+	OpId() string
 }
 
 type ResponseHolderWrapper struct {

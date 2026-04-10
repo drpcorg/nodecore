@@ -352,6 +352,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "eth_subscription",
           "unsubscribe-method": "eth_unsubscribe"
         }
       },

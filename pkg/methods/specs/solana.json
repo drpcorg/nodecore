@@ -398,6 +398,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "accountNotification",
           "unsubscribe-method": "accountUnsubscribe"
         }
       },
@@ -417,6 +418,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "blockNotification",
           "unsubscribe-method": "blockUnsubscribe"
         }
       },
@@ -436,6 +438,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "logsNotification",
           "unsubscribe-method": "logsUnsubscribe"
         }
       },
@@ -455,6 +458,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "programNotification",
           "unsubscribe-method": "programUnsubscribe"
         }
       },
@@ -474,6 +478,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "signatureNotification",
           "unsubscribe-method": "signatureUnsubscribe"
         }
       },
@@ -493,6 +498,7 @@
         "cacheable": false,
         "subscription": {
           "is-subscribe": true,
+          "method": "slotNotification",
           "unsubscribe-method": "slotUnsubscribe"
         }
       },

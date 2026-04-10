@@ -34,20 +34,29 @@ func NewRequestRegistryMock() *RequestRegistryMock {
 	return &RequestRegistryMock{}
 }
 
-func (m *RequestRegistryMock) Start(req ws.RequestOperation, doOnCloseFunc ws.DoOnClose) {
-	m.Called(req, doOnCloseFunc)
+func (m *RequestRegistryMock) Start(req ws.RequestOperation) {
+	m.Called(req)
 }
 
-func (m *RequestRegistryMock) Abort(requestId string, req ws.RequestOperation) {
-	m.Called(requestId, req)
+func (m *RequestRegistryMock) Abort(requestId string) {
+	m.Called(requestId)
 }
 
-func (m *RequestRegistryMock) Register(ctx context.Context, request protocol.RequestHolder, requestId, subType string) ws.RequestOperation {
-	args := m.Called(ctx, request, requestId, subType)
+func (m *RequestRegistryMock) Register(
+	ctx context.Context,
+	request protocol.RequestHolder,
+	requestId, subType string,
+	doOnClose ws.DoOnClose,
+) ws.RequestOperation {
+	args := m.Called(ctx, request, requestId, subType, doOnClose)
 	if args.Get(0) == nil {
 		return nil
 	}
 	return args.Get(0).(ws.RequestOperation)
+}
+
+func (m *RequestRegistryMock) Cancel(opId string) {
+	m.Called(opId)
 }
 
 func (m *RequestRegistryMock) CancelAll() {

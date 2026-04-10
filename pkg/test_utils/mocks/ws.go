@@ -38,13 +38,21 @@ func (w *WsProcessorMock) SendRpcRequest(ctx context.Context, upstreamRequest pr
 	return resp, args.Error(1)
 }
 
-func (w *WsProcessorMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, error) {
+func (w *WsProcessorMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
 	args := w.Called(ctx, upstreamRequest)
 	var ch chan *protocol.WsResponse
 	if args.Get(0) != nil {
 		ch = args.Get(0).(chan *protocol.WsResponse)
 	}
-	return ch, args.Error(1)
+	var opID string
+	if args.Get(1) != nil {
+		opID = args.String(1)
+	}
+	return ch, opID, args.Error(2)
+}
+
+func (w *WsProcessorMock) Unsubscribe(opId string) {
+	w.Called(opId)
 }
 
 func (w *WsProcessorMock) SubscribeWsStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {

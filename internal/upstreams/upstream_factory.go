@@ -125,7 +125,7 @@ func createConnector(
 	case config.Ws:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
-		reqRegistry := ws.NewBaseRequestRegistry(configuredChain.Chain, upId, configuredChain.MethodSpec)
+		reqRegistry := ws.NewBaseRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
 		wsProcessor, err := ws.NewBaseWsProcessor(
 			ctx,
 			upId,

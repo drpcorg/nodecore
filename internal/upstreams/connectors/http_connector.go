@@ -29,6 +29,9 @@ type HttpConnector struct {
 	torProxyUrl       string
 }
 
+func (h *HttpConnector) Unsubscribe(_ string) {
+}
+
 func NewHttpConnectorWithDefaultClient(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType protocol.ApiConnectorType,
