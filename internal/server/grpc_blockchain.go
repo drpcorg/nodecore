@@ -19,6 +19,8 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	_ "google.golang.org/grpc/encoding/gzip"
 )
 
 const defaultNativeSubscribeHeartbeat = 30 * time.Second
@@ -249,7 +251,7 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 			specMethod = chainSupervisor.GetMethod(item.GetMethod())
 		}
 		requestID := strconv.FormatUint(uint64(item.GetId()), 10)
-		if protocol.IsStream(item.GetMethod()) {
+		if request.ChunkSize > 0 {
 			requests = append(requests, protocol.NewStreamUpstreamJsonRpcRequest(
 				requestID,
 				[]byte(requestID),

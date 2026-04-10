@@ -85,6 +85,7 @@ func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
 func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, nil)
 	request := &dshackle.NativeCallRequest{
+		ChunkSize: 100,
 		Items: []*dshackle.NativeCallItem{
 			{
 				Id:     1,

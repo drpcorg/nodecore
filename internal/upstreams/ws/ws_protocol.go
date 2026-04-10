@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -16,8 +17,9 @@ import (
 
 type WsProtocol interface {
 	RequestFrame(request protocol.RequestHolder) (*RequestFrame, error)
-	DoOnCloseFunc(writeRequestFunc WriteRequest) DoOnClose
 	ParseWsMessage(payload []byte) (*protocol.WsResponse, error)
+
+	DoOnCloseFunc(writeRequestFunc WriteRequest) DoOnClose
 }
 
 type JsonRpcWsProtocol struct {
@@ -51,29 +53,33 @@ func (j *JsonRpcWsProtocol) RequestFrame(request protocol.RequestHolder) (*Reque
 
 func (j *JsonRpcWsProtocol) DoOnCloseFunc(writeRequestFunc WriteRequest) DoOnClose {
 	return func(op RequestOperation) {
-		subId := op.SubID()
-		if subId != "" {
-			if unsubMethod, ok := specs.GetUnsubscribeMethod(j.methodSpec, op.Method()); ok {
-				params := []interface{}{subId}
-				unsubReq, err := protocol.NewInternalUpstreamJsonRpcRequest(unsubMethod, params, j.chain)
-				if err != nil {
-					log.Error().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, subId)
-				} else {
-					body, err := unsubReq.Body()
-					if err != nil {
-						log.Error().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, subId)
-					} else {
-						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						err = writeRequestFunc(ctx, body)
-						cancel()
-						if err != nil {
-							log.Error().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, j.upstreamId, subId)
-						} else {
-							log.Info().Msgf("sub %s of upstream %s has been successfully stopped", subId, j.upstreamId)
-						}
-					}
-				}
-			}
+		subId := op.SubIdBytes()
+		if len(subId) == 0 {
+			return
+		}
+		unsubMethod, ok := specs.GetUnsubscribeMethod(j.methodSpec, op.Method())
+		if !ok {
+			return
+		}
+
+		params := []interface{}{json.RawMessage(subId)}
+		unsubReq, err := protocol.NewInternalUpstreamJsonRpcRequest(unsubMethod, params, j.chain)
+		if err != nil {
+			log.Error().Err(err).Msgf("couldn't parse unsubscribe method %s and subId %s", unsubMethod, subId)
+			return
+		}
+		body, err := unsubReq.Body()
+		if err != nil {
+			log.Error().Err(err).Msgf("couldn't get a body of method %s and subId %s", unsubMethod, subId)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = writeRequestFunc(ctx, body)
+		cancel()
+		if err != nil {
+			log.Error().Err(err).Msgf("couldn't unsubscribe with method %s of upstream %s and subId %s", unsubMethod, j.upstreamId, subId)
+		} else {
+			log.Info().Msgf("sub %s of upstream %s has been successfully stopped", subId, j.upstreamId)
 		}
 	}
 }

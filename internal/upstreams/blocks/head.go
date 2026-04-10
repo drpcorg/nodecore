@@ -47,7 +47,7 @@ func (r *RpcHead) UpdateHead(newHead protocol.Block) {
 
 var _ Head = (*RpcHead)(nil)
 
-func newRpcHead(
+func NewRpcHead(
 	ctx context.Context,
 	upstreamId string,
 	internalTimeout,
@@ -121,6 +121,7 @@ type SubscriptionHead struct {
 	chainSpecific   specific.ChainSpecific
 	headConnector   connectors.ApiConnector
 	upstreamId      string
+	subOpId         *utils.Atomic[string]
 	headsChan       chan protocol.Block
 	internalTimeout time.Duration
 }
@@ -131,6 +132,7 @@ func (w *SubscriptionHead) Running() bool {
 
 func (w *SubscriptionHead) Stop() {
 	log.Info().Msgf("stopping subscription head of upstream '%s'", w.upstreamId)
+	w.headConnector.Unsubscribe(w.subOpId.Load())
 	w.lifecycle.Stop()
 }
 
@@ -160,6 +162,7 @@ func (w *SubscriptionHead) Start() {
 			log.Error().Err(err).Msgf("couldn't subscribe to upstream %s heads", w.upstreamId)
 			return err
 		}
+		w.subOpId.Store(subResponse.OpId())
 		go func() {
 			w.getLatestBlock()
 			for {
@@ -197,7 +200,7 @@ func (w *SubscriptionHead) HeadsChan() chan protocol.Block {
 func (w *SubscriptionHead) OnNoHeadUpdates() {
 	log.Info().Msgf("trying to resubscribe to new heads of upstream %s", w.upstreamId)
 	w.Stop()
-	go w.Start()
+	w.Start()
 }
 
 func (w *SubscriptionHead) getLatestBlock() {
@@ -212,7 +215,7 @@ func (w *SubscriptionHead) getLatestBlock() {
 	w.headsChan <- block
 }
 
-func newWsHead(
+func NewSubHead(
 	ctx context.Context,
 	upstreamId string,
 	internalTimeout time.Duration,
@@ -227,6 +230,7 @@ func newWsHead(
 		internalTimeout: internalTimeout,
 		block:           utils.NewAtomic[protocol.Block](),
 		headsChan:       make(chan protocol.Block),
+		subOpId:         utils.NewAtomic[string](),
 	}
 
 	return &head

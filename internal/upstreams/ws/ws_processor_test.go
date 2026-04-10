@@ -45,7 +45,7 @@ func TestBaseWsProcessorSendWsRequestReturnsProtocolError(t *testing.T) {
 	expectedErr := errors.New("frame error")
 	processor.wsProtocol.On("RequestFrame", request).Return(nil, expectedErr).Once()
 
-	responseChan, callErr := processor.processor.SendWsRequest(context.Background(), request)
+	responseChan, _, callErr := processor.processor.SendWsRequest(context.Background(), request)
 
 	assert.Nil(t, responseChan)
 	require.ErrorIs(t, callErr, expectedErr)
@@ -57,7 +57,7 @@ func TestBaseWsProcessorSendWsRequestReturnsErrorWhenSpecMethodMissing(t *testin
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("unknown_method", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
-	responseChan, callErr := processor.processor.SendWsRequest(context.Background(), request)
+	responseChan, _, callErr := processor.processor.SendWsRequest(context.Background(), request)
 
 	assert.Nil(t, responseChan)
 	require.EqualError(t, callErr, "no spec method found for unknown_method")
@@ -70,7 +70,7 @@ func TestBaseWsProcessorSendWsRequestReturnsErrorWhenMethodIsNotSubscription(t *
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
-	responseChan, callErr := processor.processor.SendWsRequest(context.Background(), request)
+	responseChan, _, callErr := processor.processor.SendWsRequest(context.Background(), request)
 
 	assert.Nil(t, responseChan)
 	require.EqualError(t, callErr, "'eth_blockNumber' is not subscribe method and it can't be sent via SendWsRequest, use SendRpcRequest instead")
@@ -92,14 +92,14 @@ func TestBaseWsProcessorSendWsRequest(t *testing.T) {
 
 	processor.wsProtocol.On("RequestFrame", request).Return(frame, nil).Once()
 	processor.wsProtocol.On("DoOnCloseFunc", mock.Anything).Return(wsupstream.DoOnClose(func(op wsupstream.RequestOperation) {})).Once()
-	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "newHeads").Return(reqOp).Once()
-	processor.requestRegistry.On("Start", reqOp, mock.Anything).Once()
+	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "newHeads", mock.Anything).Return(reqOp).Once()
+	processor.requestRegistry.On("Start", reqOp).Once()
 	processor.wsSession.On("WriteMessage", "ws://endpoint", frame.Body).Return(nil).Once()
 
-	responseChan, callErr := processor.processor.SendWsRequest(context.Background(), request)
+	responseChan, _, callErr := processor.processor.SendWsRequest(context.Background(), request)
 
 	require.NoError(t, callErr)
-	assert.Equal(t, reqOp.GetResponseChannel(), responseChan)
+	assert.Equal(t, reqOp.GetChannel(wsupstream.MessageResponse), responseChan)
 }
 
 func TestBaseWsProcessorSendWsRequestAbortsWhenWriteFails(t *testing.T) {
@@ -119,12 +119,12 @@ func TestBaseWsProcessorSendWsRequestAbortsWhenWriteFails(t *testing.T) {
 
 	processor.wsProtocol.On("RequestFrame", request).Return(frame, nil).Once()
 	processor.wsProtocol.On("DoOnCloseFunc", mock.Anything).Return(wsupstream.DoOnClose(func(op wsupstream.RequestOperation) {})).Once()
-	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "newHeads").Return(reqOp).Once()
-	processor.requestRegistry.On("Start", reqOp, mock.Anything).Once()
+	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "newHeads", mock.Anything).Return(reqOp).Once()
+	processor.requestRegistry.On("Start", reqOp).Once()
 	processor.wsSession.On("WriteMessage", "ws://endpoint", frame.Body).Return(expectedErr).Once()
-	processor.requestRegistry.On("Abort", "request-1", reqOp).Once()
+	processor.requestRegistry.On("Abort", "request-1").Once()
 
-	responseChan, callErr := processor.processor.SendWsRequest(context.Background(), request)
+	responseChan, _, callErr := processor.processor.SendWsRequest(context.Background(), request)
 
 	assert.Nil(t, responseChan)
 	require.ErrorIs(t, callErr, expectedErr)
@@ -137,7 +137,7 @@ func TestBaseWsProcessorSendRpcRequest(t *testing.T) {
 
 	reqOp := mocks.NewRequestOperationMock()
 	expectedResponse := &protocol.WsResponse{Id: "request-1", Type: protocol.JsonRpc, Message: []byte(`"0x1"`)}
-	reqOp.ResponseChannel <- expectedResponse
+	reqOp.GetChannel(wsupstream.MessageResponse) <- expectedResponse
 
 	frame := &wsupstream.RequestFrame{
 		RequestId: "request-1",
@@ -146,8 +146,8 @@ func TestBaseWsProcessorSendRpcRequest(t *testing.T) {
 
 	processor.wsProtocol.On("RequestFrame", request).Return(frame, nil).Once()
 	processor.wsProtocol.On("DoOnCloseFunc", mock.Anything).Return(wsupstream.DoOnClose(func(op wsupstream.RequestOperation) {})).Once()
-	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "").Return(reqOp).Once()
-	processor.requestRegistry.On("Start", reqOp, mock.Anything).Once()
+	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "", mock.Anything).Return(reqOp).Once()
+	processor.requestRegistry.On("Start", reqOp).Once()
 	processor.wsSession.On("WriteMessage", "ws://endpoint", frame.Body).Return(nil).Once()
 
 	response, callErr := processor.processor.SendRpcRequest(context.Background(), request)
@@ -162,7 +162,7 @@ func TestBaseWsProcessorSendRpcRequestReturnsErrorWhenChannelClosed(t *testing.T
 	require.NoError(t, err)
 
 	reqOp := mocks.NewRequestOperationMock()
-	close(reqOp.ResponseChannel)
+	close(reqOp.GetChannel(wsupstream.MessageResponse))
 
 	frame := &wsupstream.RequestFrame{
 		RequestId: "request-1",
@@ -171,8 +171,8 @@ func TestBaseWsProcessorSendRpcRequestReturnsErrorWhenChannelClosed(t *testing.T
 
 	processor.wsProtocol.On("RequestFrame", request).Return(frame, nil).Once()
 	processor.wsProtocol.On("DoOnCloseFunc", mock.Anything).Return(wsupstream.DoOnClose(func(op wsupstream.RequestOperation) {})).Once()
-	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "").Return(reqOp).Once()
-	processor.requestRegistry.On("Start", reqOp, mock.Anything).Once()
+	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "", mock.Anything).Return(reqOp).Once()
+	processor.requestRegistry.On("Start", reqOp).Once()
 	processor.wsSession.On("WriteMessage", "ws://endpoint", frame.Body).Return(nil).Once()
 
 	response, callErr := processor.processor.SendRpcRequest(context.Background(), request)
@@ -194,8 +194,8 @@ func TestBaseWsProcessorSendRpcRequestReturnsContextError(t *testing.T) {
 
 	processor.wsProtocol.On("RequestFrame", request).Return(frame, nil).Once()
 	processor.wsProtocol.On("DoOnCloseFunc", mock.Anything).Return(wsupstream.DoOnClose(func(op wsupstream.RequestOperation) {})).Once()
-	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "").Return(reqOp).Once()
-	processor.requestRegistry.On("Start", reqOp, mock.Anything).Once()
+	processor.requestRegistry.On("Register", mock.Anything, request, "request-1", "", mock.Anything).Return(reqOp).Once()
+	processor.requestRegistry.On("Start", reqOp).Once()
 	processor.wsSession.On("WriteMessage", "ws://endpoint", frame.Body).Return(nil).Once()
 
 	ctx, cancel := context.WithCancel(context.Background())

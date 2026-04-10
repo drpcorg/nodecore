@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -87,22 +88,31 @@ func newReadEvent(response *protocol.WsResponse) *readEvent {
 
 func (e *readEvent) wsEvent() {}
 
+type MessageType int
+
+const (
+	MessageInternal MessageType = iota
+	MessageResponse
+)
+
 type RequestOperation interface {
-	WriteInternal(message *protocol.WsResponse)
-	WriteResponse(message *protocol.WsResponse)
-	SetSubID(subID string)
+	Write(message *protocol.WsResponse, messageType MessageType)
+	SetSubID(subID []byte)
 	SetSkipDoOnClose()
 
+	Id() string
 	IsCompleted() bool
 	SubID() string
+	SubIdBytes() []byte
 	ShouldDoOnClose() bool
 	Method() string
-	GetInternalChannel() chan *protocol.WsResponse
-	GetResponseChannel() chan *protocol.WsResponse
+	GetChannel(messageType MessageType) chan *protocol.WsResponse
 	SubType() string
-	Done() <-chan struct{}
+
+	CtxDone() <-chan struct{}
 
 	Cancel()
+	DoOnClose()
 }
 
 type BaseRequestOp struct {
@@ -115,25 +125,64 @@ type BaseRequestOp struct {
 	cancel        context.CancelFunc
 	method        string
 	subId         string
+	subIdAsBytes  []byte
 	subType       string
-	completed     bool
+	completed     atomic.Bool
 	skipDoOnClose bool
+	id            string
+	doOnClose     DoOnClose
 }
 
-func (r *BaseRequestOp) GetResponseChannel() chan *protocol.WsResponse {
-	return r.responseChan
+func (r *BaseRequestOp) DoOnClose() {
+	r.doOnClose(r)
 }
 
-func (r *BaseRequestOp) Done() <-chan struct{} {
-	return r.ctx.Done()
-}
-
-func (r *BaseRequestOp) WriteResponse(message *protocol.WsResponse) {
-	select {
-	case <-r.Done():
-		return
-	case r.responseChan <- message:
+func (r *BaseRequestOp) Write(message *protocol.WsResponse, messageType MessageType) {
+	switch messageType {
+	case MessageInternal:
+		select {
+		case <-r.CtxDone():
+			return
+		case r.internalMessages <- message:
+		default:
+			log.Warn().Msgf("internal channel full, dropping message %s", r.method)
+		}
+	case MessageResponse:
+		select {
+		case <-r.CtxDone():
+			return
+		case r.responseChan <- message:
+		default:
+			log.Warn().Msgf("response channel full, dropping message %s", r.method)
+		}
 	}
+}
+
+func (r *BaseRequestOp) GetChannel(messageType MessageType) chan *protocol.WsResponse {
+	switch messageType {
+	case MessageInternal:
+		return r.internalMessages
+	case MessageResponse:
+		return r.responseChan
+	}
+	return nil
+}
+
+func (r *BaseRequestOp) SubIdBytes() []byte {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	subIdBytes := make([]byte, len(r.subIdAsBytes))
+	copy(subIdBytes, r.subIdAsBytes)
+	return subIdBytes
+}
+
+func (r *BaseRequestOp) Id() string {
+	return r.id
+}
+
+func (r *BaseRequestOp) CtxDone() <-chan struct{} {
+	return r.ctx.Done()
 }
 
 func (r *BaseRequestOp) SubType() string {
@@ -141,48 +190,31 @@ func (r *BaseRequestOp) SubType() string {
 }
 
 func (r *BaseRequestOp) Cancel() {
-	r.cancel()
+	if r.completed.CompareAndSwap(false, true) {
+		r.cancel()
 
-	r.mu.Lock()
-	if r.completed {
-		r.mu.Unlock()
-		return
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			close(r.responseChan)
+		}()
 	}
-	r.completed = true
-	r.mu.Unlock()
-
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		close(r.responseChan)
-	}()
-}
-
-func (r *BaseRequestOp) GetInternalChannel() chan *protocol.WsResponse {
-	return r.internalMessages
 }
 
 func (r *BaseRequestOp) Method() string {
 	return r.method
 }
 
-func (r *BaseRequestOp) WriteInternal(message *protocol.WsResponse) {
-	select {
-	case <-r.Done():
-		return
-	case r.internalMessages <- message:
-	}
-}
-
 func (r *BaseRequestOp) IsCompleted() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.completed
+	return r.completed.Load()
 }
 
-func (r *BaseRequestOp) SetSubID(subID string) {
+func (r *BaseRequestOp) SetSubID(subID []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.subId = subID
+	r.subId = protocol.ResultAsString(subID)
+	r.subIdAsBytes = subID
 }
 
 func (r *BaseRequestOp) SubID() string {
@@ -203,16 +235,18 @@ func (r *BaseRequestOp) ShouldDoOnClose() bool {
 	return !r.skipDoOnClose
 }
 
-func NewBaseRequestOp(ctx context.Context, method, subType string) *BaseRequestOp {
+func NewBaseRequestOp(ctx context.Context, id, method, subType string, doOnClose DoOnClose) *BaseRequestOp {
 	ctx, cancel := context.WithCancel(ctx)
 
 	return &BaseRequestOp{
+		id:               id,
 		responseChan:     make(chan *protocol.WsResponse, 50),
 		internalMessages: make(chan *protocol.WsResponse, 50),
 		ctx:              ctx,
 		cancel:           cancel,
 		method:           method,
 		subType:          subType,
+		doOnClose:        doOnClose,
 	}
 }
 

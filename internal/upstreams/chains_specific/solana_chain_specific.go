@@ -136,7 +136,11 @@ func NewSolanaChainSpecificObject(
 func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.Block, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", nil, chains.SOLANA)
+
+	params := map[string]interface{}{
+		"commitment": "confirmed",
+	}
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getEpochInfo", []interface{}{params}, chains.SOLANA)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}

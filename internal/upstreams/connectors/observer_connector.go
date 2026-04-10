@@ -19,6 +19,10 @@ type ObserverConnector struct {
 	executor              failsafe.Executor[protocol.ResponseHolder]
 }
 
+func (o *ObserverConnector) Unsubscribe(opId string) {
+	o.delegate.Unsubscribe(opId)
+}
+
 func NewObserverConnector(
 	chain chains.Chain,
 	upstreamId string,

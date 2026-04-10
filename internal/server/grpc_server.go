@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/reflection"
 )
 
 const grpcShutdownTimeout = 10 * time.Second
@@ -37,6 +38,7 @@ func NewGrpcServer(appCtx *ApplicationContext) (*GrpcServer, error) {
 	}
 
 	grpcServer := grpc.NewServer(options...)
+	reflection.Register(grpcServer)
 
 	authService, sessionAuth, err := NewGrpcAuthService(serverConfig.GrpcAuthConfig)
 	if err != nil {
