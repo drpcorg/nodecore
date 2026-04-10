@@ -3,12 +3,12 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/stats/hook"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
-	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -24,6 +24,10 @@ import (
 	"github.com/samber/lo"
 )
 
+type UpstreamStatsService interface {
+	AddRequestResults(requestResults []protocol.RequestResult)
+}
+
 type upstreamCreationData struct {
 	upstreamConnectorsInfo *connectorsInfo
 	upstreamMethods        *methods.UpstreamMethods
@@ -35,7 +39,7 @@ func CreateUpstream(
 	ctx context.Context,
 	conf *config.Upstream,
 	tracker dimensions.DimensionTracker,
-	statsService stats.StatsService,
+	statsService UpstreamStatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	upstreamIndex int,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
@@ -229,7 +233,7 @@ func createUpstreamConnectors(
 	conf *config.Upstream,
 	configuredChain *chains.ConfiguredChain,
 	tracker dimensions.DimensionTracker,
-	statsService stats.StatsService,
+	statsService UpstreamStatsService,
 	executor failsafe.Executor[protocol.ResponseHolder],
 	torProxyUrl string,
 ) (*connectorsInfo, error) {
@@ -244,7 +248,7 @@ func createUpstreamConnectors(
 		}
 		hooks := []protocol.ResponseReceivedHook{
 			dimensions.NewDimensionHook(tracker),
-			stats.NewStatsHook(statsService),
+			hook.NewStatsHook(statsService),
 		}
 		apiConnector = connectors.NewObserverConnector(configuredChain.Chain, conf.Id, apiConnector, hooks, executor)
 		if connectorConfig.Type == conf.HeadConnector {

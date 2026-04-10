@@ -3,13 +3,11 @@ package upstreams
 import (
 	"context"
 	"fmt"
-
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
-	"github.com/drpcorg/nodecore/internal/stats"
 	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -27,7 +25,7 @@ type BaseUpstreamSupervisor struct {
 	upstreamsConfig         *config.UpstreamConfig
 	executor                failsafe.Executor[*protocol.ResponseHolderWrapper]
 	tracker                 dimensions.DimensionTracker
-	statsService            stats.StatsService
+	statsService            UpstreamStatsService
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
 
 	torProxyUrl            string
@@ -40,7 +38,7 @@ func NewBaseUpstreamSupervisor(
 	ctx context.Context,
 	upstreamsConfig *config.UpstreamConfig,
 	tracker dimensions.DimensionTracker,
-	statsService stats.StatsService,
+	statsService UpstreamStatsService,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
 ) UpstreamSupervisor {

@@ -2,14 +2,14 @@ package stats
 
 import (
 	"context"
-
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
 type StatsService interface {
-	Start()
+	Start(_ outbox.Storer)
 	Stop(ctx context.Context) error
 	AddRequestResults(requestResults []protocol.RequestResult)
 }
@@ -17,7 +17,7 @@ type StatsService interface {
 type noopStatsService struct {
 }
 
-func (n *noopStatsService) Start() {
+func (n *noopStatsService) Start(_ outbox.Storer) {
 	// noop
 }
 

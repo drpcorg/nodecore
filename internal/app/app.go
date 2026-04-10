@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/outbox"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,7 @@ type App struct {
 	authProcessor      auth.AuthProcessor
 	ratingRegistry     *rating.RatingRegistry
 	cacheProcessor     caches.CacheProcessor
+	outboxStorage      outbox.Storer
 	upstreamSupervisor upstreams.UpstreamSupervisor
 
 	httpServer *echo.Echo
@@ -86,6 +88,10 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		return nil, fmt.Errorf("unable to create grpc server: %w", err)
 	}
 
+	outboxStorage, err := outbox.NewOutboxStorage(appConfig.StatsConfig, storageRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create the outbox storage: %w", err)
+	}
 	return &App{
 		ctx:                ctx,
 		appConfig:          appConfig,
@@ -96,6 +102,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		upstreamSupervisor: upstreamSupervisor,
 		httpServer:         httpServer,
 		grpcServer:         grpcServer,
+		outboxStorage:      outboxStorage,
 	}, nil
 }
 
@@ -104,7 +111,7 @@ func (a *App) Start() {
 
 	go a.upstreamSupervisor.StartUpstreams()
 	go a.ratingRegistry.Start()
-	a.statsService.Start()
+	a.statsService.Start(a.outboxStorage)
 
 	go func() {
 		if a.appConfig.ServerConfig.PprofPort != 0 {

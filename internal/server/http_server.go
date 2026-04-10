@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/stats/hook"
 	"io"
 	"net"
 	"net/http"
@@ -340,7 +341,7 @@ func handleRequest(
 	executionFlow.AddHooks(
 		flow.NewMethodBanHook(appCtx.upstreamSupervisor),
 		dimensions.NewDimensionHook(appCtx.dimensionTracker),
-		stats.NewStatsHook(appCtx.statsService),
+		hook.NewStatsHook(appCtx.statsService),
 	)
 
 	go executionFlow.Execute(ctx, request.UpstreamRequests)

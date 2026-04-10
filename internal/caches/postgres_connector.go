@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
-
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/storages"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
@@ -47,6 +47,27 @@ type PostgresConnector struct {
 	table                 string
 	queryTimeout          time.Duration
 	expiredRemoveInterval time.Duration
+}
+
+var _ CacheConnector = (*PostgresConnector)(nil)
+
+func NewPostgresConnector(id string, postgresCfg *config.PostgresCacheConnectorConfig, storageRegistry *storages.StorageRegistry) (*PostgresConnector, error) {
+	storage, ok := storageRegistry.Get(postgresCfg.StorageName)
+	if !ok {
+		return nil, fmt.Errorf("postgres storage with name %s not found", postgresCfg.StorageName)
+	}
+	postgresStorage, ok := storage.(*storages.PostgresStorage)
+	if !ok {
+		return nil, fmt.Errorf("postgres storage with name %s is not a postgres storage", postgresCfg.StorageName)
+	}
+
+	return &PostgresConnector{
+		id:                    id,
+		pool:                  postgresStorage.Postgres,
+		table:                 postgresCfg.CacheTable,
+		queryTimeout:          *postgresCfg.QueryTimeout,
+		expiredRemoveInterval: postgresCfg.ExpiredRemoveInterval,
+	}, nil
 }
 
 func (p *PostgresConnector) Id() string {
@@ -122,7 +143,6 @@ func (p *PostgresConnector) ensureSchema() error {
 	if _, err = tx.Exec(ctx, fmt.Sprintf(createIndex, p.table)); err != nil {
 		return fmt.Errorf("couldn't create index: %w", err)
 	}
-
 	return tx.Commit(ctx)
 }
 
@@ -147,29 +167,10 @@ func (p *PostgresConnector) removeItems() error {
 	}
 
 	if rows := result.RowsAffected(); rows > 0 {
-		log.Debug().Msgf("removed %d expired items from postgres", rows)
+		log.Debug().Msgf("removed %d expired items from %s", rows, p.table)
 	}
-
+	if rows := result.RowsAffected(); rows > 0 {
+		log.Debug().Msgf("removed %d expired items from _outbox", rows)
+	}
 	return nil
 }
-
-func NewPostgresConnector(id string, postgresCfg *config.PostgresCacheConnectorConfig, storageRegistry *storages.StorageRegistry) (*PostgresConnector, error) {
-	storage, ok := storageRegistry.Get(postgresCfg.StorageName)
-	if !ok {
-		return nil, fmt.Errorf("postgres storage with name %s not found", postgresCfg.StorageName)
-	}
-	postgresStorage, ok := storage.(*storages.PostgresStorage)
-	if !ok {
-		return nil, fmt.Errorf("postgres storage with name %s is not a postgres storage", postgresCfg.StorageName)
-	}
-
-	return &PostgresConnector{
-		id:                    id,
-		pool:                  postgresStorage.Postgres,
-		table:                 postgresCfg.CacheTable,
-		queryTimeout:          *postgresCfg.QueryTimeout,
-		expiredRemoveInterval: postgresCfg.ExpiredRemoveInterval,
-	}, nil
-}
-
-var _ CacheConnector = (*PostgresConnector)(nil)

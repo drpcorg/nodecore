@@ -13,8 +13,9 @@ import (
 type LocalIntegration struct {
 }
 
-func (l *LocalIntegration) ProcessStatsData(_ *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) {
+func (l *LocalIntegration) ProcessStatsData(_ *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) error {
 	// noop
+	return nil
 }
 
 func (l *LocalIntegration) GetStatsSchema() []statsdata.StatsDims {

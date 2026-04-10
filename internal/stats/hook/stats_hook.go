@@ -1,13 +1,16 @@
-package stats
+package hook
 
 import (
 	"context"
-
 	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
+type HookStatsService interface {
+	AddRequestResults(requestResults []protocol.RequestResult)
+}
+
 type StatsHook struct {
-	statsService StatsService
+	statsService HookStatsService
 }
 
 func (s *StatsHook) OnResponseReceived(
@@ -20,7 +23,7 @@ func (s *StatsHook) OnResponseReceived(
 	}()
 }
 
-func NewStatsHook(statsService StatsService) *StatsHook {
+func NewStatsHook(statsService HookStatsService) *StatsHook {
 	return &StatsHook{
 		statsService: statsService,
 	}

@@ -1,6 +1,7 @@
 package drpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,6 +24,7 @@ type jsonError struct {
 type DrpcHttpConnector interface {
 	OwnerExists(ownerId, apiToken string) error
 	LoadOwnerKeys(ownerId, apiToken string) ([]*DrpcKey, error)
+	UploadStats(stats []byte, ownerId, apiToken string) error
 }
 
 type SimpleDrpcHttpConnector struct {
@@ -91,6 +93,26 @@ func (s *SimpleDrpcHttpConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*Dr
 	} else {
 		return nil, handleStatusCodes(response.StatusCode, ownerId, path, response.Body)
 	}
+}
+
+func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, ownerId, apiToken string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.requestTimeout)
+	defer cancel()
+
+	path := fmt.Sprintf("/v1/stats/%s/upload", ownerId)
+	response, closeBodyFunc, err := s.makeRequest(
+		ctx, http.MethodPost, apiToken, s.baseUrl+path, bytes.NewBuffer(stats),
+	)
+	if err != nil {
+		return fmt.Errorf("stats upload: %w", err)
+	}
+	defer closeBodyFunc()
+
+	if response.StatusCode != http.StatusAccepted {
+		return handleStatusCodes(response.StatusCode, "unknown", path, response.Body)
+
+	}
+	return nil
 }
 
 func handleStatusCodes(statusCode int, ownerId, path string, responseBody io.ReadCloser) error {

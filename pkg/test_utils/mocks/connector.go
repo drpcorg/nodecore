@@ -13,6 +13,10 @@ type MockDrpcHttpcConnector struct {
 	mock.Mock
 }
 
+func (m *MockDrpcHttpcConnector) UploadStats(stats []byte, ownerId, apiToken string) error {
+	return nil
+}
+
 func NewMockDrpcHttpcConnector() *MockDrpcHttpcConnector {
 	return &MockDrpcHttpcConnector{}
 }

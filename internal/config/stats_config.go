@@ -8,6 +8,7 @@ import (
 
 type StatsConfig struct {
 	Enabled       bool            `yaml:"enabled"`
+	StorageType   string          `yaml:"storage-type"`
 	Type          IntegrationType `yaml:"type"`
 	FlushInterval time.Duration   `yaml:"flush-interval"`
 }

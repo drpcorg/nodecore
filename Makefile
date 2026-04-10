@@ -15,6 +15,14 @@ dshackle-proto-gen:
 		--go-grpc_opt=Mauth.proto=github.com/drpcorg/nodecore/pkg/dshackle \
 		blockchain.proto common.proto auth.proto
 
+.PHONY: stats-proto-gen
+stats-proto-gen:
+	protoc -I internal/stats/protobuf \
+    		--proto_path=internal/stats/protobuf \
+    		--go_out=internal/stats/api \
+    		--go-grpc_out=internal/stats/api \
+    		stats_request.proto
+
 .PHONY: generate-networks
 generate-networks:
 	go run cmd/chains/init_chains.go
