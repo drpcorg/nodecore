@@ -2,7 +2,6 @@ package outbox
 
 import (
 	"context"
-	"fmt"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/rs/zerolog/log"
@@ -42,7 +41,8 @@ func NewOutboxStorage(
 	}
 	storage, ok := storageRegistry.Get(conf.StorageType)
 	if !ok {
-		return nil, fmt.Errorf("unknown storage type: %s", conf.StorageType)
+		log.Warn().Msgf("unknown storage type: %s", conf.StorageType)
+		return &outboxStorage{storage: newNoopStorage()}, nil
 	}
 
 	switch storage := storage.(type) {
