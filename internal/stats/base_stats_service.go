@@ -155,12 +155,13 @@ func (b *BaseStatsService) flush() error {
 	aggregated := current.statsAggregatedData
 	err := b.integrationClient.ProcessStatsData(aggregated)
 	if errors.Is(err, integration.ErrStatsDataCorrupted) {
-		log.Error().Err(err).Msg("stats: stats data corrupted")
+		log.Error().Err(err).Msg("stats data: corrupted")
 		return err
 	}
 	if err == nil {
 		return nil
 	}
+	log.Error().Err(err).Msg("stats data: processing failed")
 	return b.storeUnprocessed(aggregated)
 }
 
