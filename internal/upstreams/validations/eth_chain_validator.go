@@ -2,7 +2,9 @@ package validations
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -19,6 +21,9 @@ type ChainValidator struct {
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
+
+	lastChainIdErr    atomic.Value
+	lastNetVersionErr atomic.Value
 }
 
 func NewChainValidator(
@@ -46,8 +51,13 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 
 	group.Go(func() error {
 		result, err := c.getChainId(ctx)
+		if errors.Is(err, context.Canceled) { // if other goroutine failed - no log
+			return err
+		}
 		if err != nil {
-			logger.Error().Err(err).Msgf("failed to get chainId of upstream '%s'", c.upstreamId)
+			if isErrorStateChanged(&c.lastChainIdErr, err) {
+				logger.Error().Err(err).Msgf("failed to get chainId of upstream '%s'", c.upstreamId)
+			}
 			return err
 		}
 		chainId = strings.ToLower(result)
@@ -56,8 +66,13 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 
 	group.Go(func() error {
 		result, err := c.getNetVersion(ctx)
+		if errors.Is(err, context.Canceled) { // if other goroutine failed - no log
+			return err
+		}
 		if err != nil {
-			logger.Error().Err(err).Msgf("failed to get netVersion of upstream '%s'", c.upstreamId)
+			if isErrorStateChanged(&c.lastNetVersionErr, err) {
+				logger.Error().Err(err).Msgf("failed to get netVersion of upstream '%s'", c.upstreamId)
+			}
 			return err
 		}
 		netVersion = strings.ToLower(result)
@@ -84,8 +99,25 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 
 		return FatalSettingError
 	}
-
+	recoveredChainId := isErrorStateChanged(&c.lastChainIdErr, nil)
+	recoveredNetVersion := isErrorStateChanged(&c.lastNetVersionErr, nil)
+	if recoveredChainId || recoveredNetVersion {
+		logger.Info().Str("upstream", c.upstreamId).Msg("chain validation recovered")
+	}
 	return Valid
+}
+
+func isErrorStateChanged(lastErr *atomic.Value, err error) bool {
+	var newErr string
+	if err != nil {
+		newErr = err.Error()
+	}
+
+	prev, _ := lastErr.Load().(string)
+	if prev == newErr {
+		return false
+	}
+	return lastErr.CompareAndSwap(prev, newErr)
 }
 
 func (c *ChainValidator) getChainId(ctx context.Context) (string, error) {

@@ -183,7 +183,7 @@ func (d *DrpcIntegrationClient) processKeys(ownerId, apiToken string, keyEvents 
 		log.Error().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
 		return
 	}
-	log.Info().Msgf("polled %d drpc keys for owner", len(ownerKeys))
+	log.Info().Msgf("polled %d drpc keys for owner %s", len(ownerKeys), ownerId)
 
 	newKeys := mapset.NewThreadUnsafeSet[string]()
 	for _, key := range ownerKeys {

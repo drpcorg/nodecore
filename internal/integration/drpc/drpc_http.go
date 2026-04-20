@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"time"
@@ -100,6 +101,7 @@ func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, ownerId, apiToken st
 	defer cancel()
 
 	path := fmt.Sprintf("/v1/stats/%s/upload", ownerId)
+
 	response, closeBodyFunc, err := s.makeRequest(
 		ctx, http.MethodPost, apiToken, s.baseUrl+path, bytes.NewBuffer(stats),
 	)
@@ -108,9 +110,10 @@ func (s *SimpleDrpcHttpConnector) UploadStats(stats []byte, ownerId, apiToken st
 	}
 	defer closeBodyFunc()
 
+	log.Info().Msgf("upload stats data: url %s, status code: %d", s.baseUrl+path, response.StatusCode)
+
 	if response.StatusCode != http.StatusAccepted {
 		return handleStatusCodes(response.StatusCode, "unknown", path, response.Body)
-
 	}
 	return nil
 }
