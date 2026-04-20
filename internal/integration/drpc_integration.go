@@ -117,6 +117,9 @@ func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) error {
 		})
 		return true
 	})
+	if len(itemsPerKey) == 0 {
+		return fmt.Errorf("process stats data: no keys found")
+	}
 
 	g := new(errgroup.Group)
 	for _, uploadBatch := range itemsPerKey {
@@ -180,6 +183,7 @@ func (d *DrpcIntegrationClient) processKeys(ownerId, apiToken string, keyEvents 
 		log.Error().Err(err).Msgf("error polling drpc keys for owner '%s'", ownerId)
 		return
 	}
+	log.Info().Msgf("polled %d drpc keys for owner", len(ownerKeys))
 
 	newKeys := mapset.NewThreadUnsafeSet[string]()
 	for _, key := range ownerKeys {
