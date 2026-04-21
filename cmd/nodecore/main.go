@@ -44,4 +44,6 @@ func main() {
 		log.Panic().Err(err).Msg("unable to create the app")
 	}
 	nodeCoreApp.Start()
+
+	log.Info().Msg("============= NodeCore started ============")
 }

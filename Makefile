@@ -45,4 +45,4 @@ setup:
 
 .PHONY: run
 run:
-	go run ./cmd/nodecore/main.go
+	NODECORE_CONFIG_PATH=test_nodecore.yml go run ./cmd/nodecore/main.go
