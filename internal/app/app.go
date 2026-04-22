@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/server"
@@ -71,6 +72,11 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		return nil, fmt.Errorf("unable to create the cache processor: %w", err)
 	}
 
+	quorumRegistry, err := quorum.DefaultRegistry()
+	if err != nil {
+		return nil, fmt.Errorf("unable to load quorum provider keys: %w", err)
+	}
+
 	appCtx := server.NewApplicationContext(
 		upstreamSupervisor,
 		cacheProcessor,
@@ -80,6 +86,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		storageRegistry,
 		statsService,
 		dimensionTracker,
+		quorumRegistry,
 	)
 
 	httpServer := server.NewHttpServer(ctx, appCtx)

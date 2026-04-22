@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -81,6 +82,10 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 	var response *protocol.ResponseHolderWrapper
 	var err error
 	fromCache := false // don't store responses from cache
+	// Quorum-read requests are served fresh from drpc upstreams: cached payloads
+	// don't carry the QR* signature headers, so both cache Receive and Store
+	// are skipped here.
+	_, quorumRequested := quorum.FromContext(ctx)
 
 	if specs.IsSubscribeMethod(chains.GetMethodSpecNameByChain(u.chain), request.Method()) {
 		err = protocol.ClientError(fmt.Errorf("unable to process a subscription request %s", request.Method()))
@@ -90,7 +95,11 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 			Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 		}
 	} else {
-		result, ok := u.cacheProcessor.Receive(ctx, u.chain, request)
+		var result []byte
+		var ok bool
+		if !quorumRequested {
+			result, ok = u.cacheProcessor.Receive(ctx, u.chain, request)
+		}
 		if ok {
 			// change the previous request type since it will not be sent to the upstream
 			request.RequestObserver().
@@ -113,7 +122,7 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 		}
 	}
 
-	if !fromCache && !response.Response.HasError() && !response.Response.HasStream() {
+	if !fromCache && !quorumRequested && !response.Response.HasError() && !response.Response.HasStream() {
 		go u.cacheProcessor.Store(ctx, u.chain, request, response.Response.ResponseResult())
 	}
 

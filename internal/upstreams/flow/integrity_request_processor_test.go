@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -13,6 +14,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+func TestIntegrityRequestProcessor_QuorumRequested_Bypasses(t *testing.T) {
+	strategy := mocks.NewMockStrategy()
+	processor := NewRequestProcessorMock()
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	// eth_blockNumber would normally trigger integrity re-check, but quorum
+	// in the context must short-circuit that and delegate straight through.
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest(specs.EthBlockNumber, nil, chains.ARBITRUM)
+	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 2, QuorumOf: 3})
+	integrityProcessor := flow.NewIntegrityRequestProcessor(chains.ARBITRUM, upSupervisor, processor)
+
+	processor.On("ProcessRequest", ctx, strategy, request).Return(&flow.UnaryResponse{})
+
+	resp := integrityProcessor.ProcessRequest(ctx, strategy, request)
+
+	processor.AssertExpectations(t)
+	upSupervisor.AssertNotCalled(t, "GetChainSupervisor", mock.Anything)
+	upSupervisor.AssertNotCalled(t, "GetUpstream", mock.Anything)
+	upSupervisor.AssertNotCalled(t, "GetExecutor")
+	strategy.AssertNotCalled(t, "SelectUpstream", mock.Anything)
+
+	assert.Equal(t, &flow.UnaryResponse{}, resp)
+}
 
 func TestIntegrityRequestProcessorAnyMethodNoProcessed(t *testing.T) {
 	strategy := mocks.NewMockStrategy()

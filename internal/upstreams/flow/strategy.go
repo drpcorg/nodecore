@@ -204,3 +204,21 @@ func selectionError(matchResponse MatchResponse) error {
 }
 
 var _ UpstreamStrategy = (*BaseStrategy)(nil)
+
+// FailingStrategy is a sentinel strategy that returns the same preset error
+// for every SelectUpstream call. Used by createStrategy to surface policy
+// errors (e.g. quorum-not-supported) to the client without tying the check
+// to a specific upstream selection path.
+type FailingStrategy struct {
+	err error
+}
+
+func NewFailingStrategy(err error) *FailingStrategy {
+	return &FailingStrategy{err: err}
+}
+
+func (f *FailingStrategy) SelectUpstream(_ protocol.RequestHolder) (string, error) {
+	return "", f.err
+}
+
+var _ UpstreamStrategy = (*FailingStrategy)(nil)

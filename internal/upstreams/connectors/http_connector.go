@@ -16,6 +16,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
@@ -117,6 +118,21 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 			protocol.ClientError(err),
 		)
 	}
+	// Forward quorum params (quorum=N&quorum_required=n) to the upstream when the
+	// client requested quorum reads. The upstream (e.g. drpc astream) responds
+	// with QR<N>-id-<req-id> signature headers that we verify after receiving.
+	// Quorum signatures are computed over the full response body, so streaming
+	// is force-disabled below: we need the whole payload buffered to hash.
+	quorumParams, quorumRequested := quorum.FromContext(ctx)
+	if quorumRequested {
+		url, err = appendQuery(url, quorumParams.EncodeQuery())
+		if err != nil {
+			return protocol.NewTotalFailure(
+				request,
+				protocol.ClientError(fmt.Errorf("invalid upstream url %q: %w", url, err)),
+			)
+		}
+	}
 
 	body, err := request.Body()
 	if err != nil {
@@ -149,25 +165,32 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 		)
 	}
 
-	if request.IsStream() && resp.StatusCode == 200 {
+	if request.IsStream() && resp.StatusCode == 200 && !quorumRequested {
 		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
 		// if this is a REST request then it can be streamed as is
 		// if this is a JSON-RPC request, first it's necessary to understand if there is an error or not
 		canBeStreamed := request.RequestType() == protocol.Rest || protocol.ResponseCanBeStreamed(bufReader, protocol.MaxChunkSize)
 		if canBeStreamed {
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
-			return protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
+			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
+			return streamResp.WithResponseHeaders(resp.Header)
 		} else {
 			defer utils.CloseBodyReader(ctx, resp.Body)
-			return h.receiveWholeResponse(ctx, request, resp.StatusCode, bufReader)
+			return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, bufReader)
 		}
 	} else {
 		defer utils.CloseBodyReader(ctx, resp.Body)
-		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Body)
+		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, resp.Body)
 	}
 }
 
-func (h *HttpConnector) receiveWholeResponse(ctx context.Context, request protocol.RequestHolder, status int, reader io.Reader) protocol.ResponseHolder {
+func (h *HttpConnector) receiveWholeResponse(
+	ctx context.Context,
+	request protocol.RequestHolder,
+	status int,
+	headers http.Header,
+	reader io.Reader,
+) protocol.ResponseHolder {
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -179,7 +202,8 @@ func (h *HttpConnector) receiveWholeResponse(ctx context.Context, request protoc
 		)
 	}
 
-	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType())
+	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).
+		WithResponseHeaders(headers)
 }
 
 func (h *HttpConnector) GetType() protocol.ApiConnectorType {
@@ -188,6 +212,28 @@ func (h *HttpConnector) GetType() protocol.ApiConnectorType {
 
 func (h *HttpConnector) Subscribe(_ context.Context, _ protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
 	return nil, nil
+}
+
+// appendQuery merges an already-encoded query string into a URL, preserving
+// any existing query/fragment/userinfo. `extraQuery` wins on duplicate keys.
+func appendQuery(rawURL, extraQuery string) (string, error) {
+	if extraQuery == "" {
+		return rawURL, nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL, err
+	}
+	extra, err := url.ParseQuery(extraQuery)
+	if err != nil {
+		return rawURL, err
+	}
+	q := u.Query()
+	for k, vs := range extra {
+		q[k] = vs
+	}
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
 
 func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, string, error) {

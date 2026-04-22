@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"sync"
@@ -120,6 +121,25 @@ func calculateJsonRpcHash(method string, params json.RawMessage) string {
 
 func (u *UpstreamJsonRpcRequest) Id() string {
 	return u.id
+}
+
+// RealId returns the textual form of the JSON-RPC id actually placed on the
+// wire (u.realId), unwrapped from the outer JSON quotes for string ids. This
+// is what upstreams echo back in correlation headers (e.g. the QR quorum
+// signature headers), and it differs from Id() which is nodecore's internal
+// UUID tag used to route responses.
+func (u *UpstreamJsonRpcRequest) RealId() string {
+	raw := bytes.TrimSpace(u.realId)
+	if len(raw) == 0 {
+		return ""
+	}
+	if raw[0] == '"' && raw[len(raw)-1] == '"' {
+		var s string
+		if err := sonic.Unmarshal(raw, &s); err == nil {
+			return s
+		}
+	}
+	return string(raw)
 }
 
 func (u *UpstreamJsonRpcRequest) Method() string {

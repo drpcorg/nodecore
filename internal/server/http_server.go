@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
@@ -74,6 +75,7 @@ type ApplicationContext struct {
 	storageRegistry    *storages.StorageRegistry
 	statsService       stats.StatsService
 	dimensionTracker   dimensions.DimensionTracker
+	quorumRegistry     *quorum.Registry
 }
 
 func NewApplicationContext(
@@ -85,6 +87,7 @@ func NewApplicationContext(
 	storageRegistry *storages.StorageRegistry,
 	statsService stats.StatsService,
 	dimensionTracker dimensions.DimensionTracker,
+	quorumRegistry *quorum.Registry,
 ) *ApplicationContext {
 	return &ApplicationContext{
 		upstreamSupervisor: upstreamSupervisor,
@@ -95,6 +98,7 @@ func NewApplicationContext(
 		storageRegistry:    storageRegistry,
 		statsService:       statsService,
 		dimensionTracker:   dimensionTracker,
+		quorumRegistry:     quorumRegistry,
 	}
 }
 
@@ -141,6 +145,7 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 		chain := c.Param("chain")
 		restPath := c.Param("*") // for rest requests
 		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
+		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
 		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
 
@@ -337,6 +342,7 @@ func handleRequest(
 		appCtx.registry,
 		appCtx.appConfig,
 		subCtx,
+		appCtx.quorumRegistry,
 	)
 	executionFlow.AddHooks(
 		flow.NewMethodBanHook(appCtx.upstreamSupervisor),

@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -38,6 +39,14 @@ func (i *IntegrityRequestProcessor) ProcessRequest(
 	upstreamStrategy UpstreamStrategy,
 	request protocol.RequestHolder,
 ) ProcessedResponse {
+	// Integrity re-checks would fire a second request to a different upstream
+	// (possibly non-DRPC) and compare results; with quorum the client already
+	// requires N signed copies from DRPC upstreams, so the integrity pass
+	// would only dilute the signature guarantees. Bypass it entirely.
+	if _, quorumRequested := quorum.FromContext(ctx); quorumRequested {
+		return i.requestProcessor.ProcessRequest(ctx, upstreamStrategy, request)
+	}
+
 	var integrityHandler IntegrityHandler
 	switch request.Method() {
 	case specs.EthBlockNumber:

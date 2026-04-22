@@ -93,6 +93,7 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		s.appCtx.registry,
 		s.appCtx.appConfig,
 		flow.NewSubCtx(),
+		s.appCtx.quorumRegistry,
 	)
 	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.upstreamSupervisor))
 
@@ -152,6 +153,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		s.appCtx.registry,
 		s.appCtx.appConfig,
 		subCtx,
+		s.appCtx.quorumRegistry,
 	)
 	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.upstreamSupervisor))
 

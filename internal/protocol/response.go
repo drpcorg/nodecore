@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"testing/iotest"
 
@@ -13,6 +14,13 @@ import (
 	"github.com/bytedance/sonic/ast"
 	"github.com/samber/lo"
 )
+
+// HasResponseHeaders is an optional capability for response holders that
+// carry upstream HTTP response headers (e.g. QR<N>-id-* quorum signatures).
+// Kept separate from ResponseHolder to avoid forcing every implementation.
+type HasResponseHeaders interface {
+	ResponseHeaders() http.Header
+}
 
 type SubscriptionEventResponse struct {
 	id    string
@@ -280,16 +288,26 @@ func (w *WsJsonRpcResponse) ResponseCode() int {
 }
 
 type BaseUpstreamResponse struct {
-	id           string
-	result       []byte
-	error        *ResponseError
-	requestType  RequestType
-	stream       io.Reader
-	responseCode int
+	id              string
+	result          []byte
+	error           *ResponseError
+	requestType     RequestType
+	stream          io.Reader
+	responseCode    int
+	responseHeaders http.Header
 }
 
 func (h *BaseUpstreamResponse) ResponseCode() int {
 	return h.responseCode
+}
+
+func (h *BaseUpstreamResponse) ResponseHeaders() http.Header {
+	return h.responseHeaders
+}
+
+func (h *BaseUpstreamResponse) WithResponseHeaders(headers http.Header) *BaseUpstreamResponse {
+	h.responseHeaders = headers
+	return h
 }
 
 func (h *BaseUpstreamResponse) ResponseResultString() (string, error) {

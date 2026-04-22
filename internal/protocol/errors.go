@@ -17,6 +17,7 @@ const (
 	RateLimitExceeded       = 429
 	NoSupportedMethod       = -32601
 	IncorrectResponseBody   = -32001
+	QuorumSignatureErrCode  = -32010
 )
 
 type ResponseError struct {
@@ -131,5 +132,65 @@ func WsTotalFailureError() *ResponseError {
 	return &ResponseError{
 		Message: "websocket total failure",
 		Code:    WsTotalFailure,
+	}
+}
+
+func QuorumUnknownProviderError(providerID string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("quorum signature verification failed: no public key configured for provider %q", providerID),
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumInvalidSignatureError(providerID string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("quorum signature verification failed: invalid signature from provider %q", providerID),
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumMissingSignaturesError() *ResponseError {
+	return &ResponseError{
+		Message: "quorum signature verification failed: no signatures returned by upstream",
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumInsufficientSignaturesError(got, required int) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("quorum signature verification failed: got %d signatures, required %d", got, required),
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumMalformedHeaderError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("quorum signature verification failed: malformed QR header - %s", cause.Error()),
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumUnexpectedRequestIDError(expected, got string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("quorum signature verification failed: QR header request id mismatch (expected %q, got %q)", expected, got),
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumVerificationError(cause error) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("quorum signature verification failed: %s", cause.Error()),
+		Code:    QuorumSignatureErrCode,
+	}
+}
+
+func QuorumNotSupportedError(reason string) *ResponseError {
+	msg := "quorum is not supported for this request"
+	if reason != "" {
+		msg = fmt.Sprintf("%s: %s", msg, reason)
+	}
+	return &ResponseError{
+		Message: msg,
+		Code:    QuorumSignatureErrCode,
 	}
 }

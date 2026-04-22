@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -78,6 +79,33 @@ func TestUnaryRequestProcessorReceiveFromCache(t *testing.T) {
 	assert.False(t, unaryRespWrapper.Response.HasError())
 	assert.False(t, unaryRespWrapper.Response.HasStream())
 	assert.Equal(t, result, unaryRespWrapper.Response.ResponseResult())
+}
+
+func TestUnaryRequestProcessor_QuorumSkipsCacheReadAndStore(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	cacheProcessor := mocks.NewCacheProcessorMock()
+	chain := chains.POLYGON
+	err := errors.New("select err")
+	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+
+	// No cacheProcessor.On("Receive", ...) / ("Store", ...) — if the processor
+	// touches the cache when quorum is requested, the mock will fail.
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
+	strategy.On("SelectUpstream", request).Return("", err)
+
+	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 2, QuorumOf: 3})
+	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
+	response := processor.ProcessRequest(ctx, strategy, request)
+
+	time.Sleep(10 * time.Millisecond)
+
+	cacheProcessor.AssertNotCalled(t, "Receive")
+	cacheProcessor.AssertNotCalled(t, "Store")
+
+	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
+	assert.Equal(t, "223", unaryRespWrapper.RequestId)
+	assert.True(t, unaryRespWrapper.Response.HasError())
 }
 
 func TestUnaryRequestProcessorCantGetUpstreamThenError(t *testing.T) {
