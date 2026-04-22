@@ -19,6 +19,7 @@ var chainsCfg []byte
 type BlockchainType string
 
 const (
+	Algorand            BlockchainType = "algorand"
 	Bitcoin             BlockchainType = "bitcoin"
 	Cosmos              BlockchainType = "cosmos"
 	Ethereum            BlockchainType = "eth"
@@ -213,6 +214,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "solana"
 	case Aztec:
 		return "aztec"
+	case Algorand:
+		return "algorand"
 	}
 
 	return ""

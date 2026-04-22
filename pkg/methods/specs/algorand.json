@@ -1,0 +1,85 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Algorand JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "algorand"
+  },
+  "methods": [
+    {
+      "name": "status",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getBlock",
+      "params": []
+    },
+    {
+      "name": "getTransaction",
+      "params": []
+    },
+    {
+      "name": "getAccount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getAssetByID",
+      "params": []
+    },
+    {
+      "name": "getApplicationByID",
+      "params": []
+    },
+    {
+      "name": "sendRawTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getTransactionParams",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getPendingTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getSupply",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getVersions",
+      "params": []
+    },
+    {
+      "name": "getGenesis",
+      "params": []
+    },
+    {
+      "name": "getHealth",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

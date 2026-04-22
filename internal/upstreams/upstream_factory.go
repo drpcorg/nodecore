@@ -207,6 +207,8 @@ func getChainSpecific(
 		return specific.NewEvmChainSpecific(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, conf.Options)
 	case chains.Aztec:
 		return specific.NewAztecChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
+	case chains.Algorand:
+		return specific.NewAlgorandChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
 	case chains.Solana:
 		return specific.NewSolanaChainSpecificObject(
 			ctx,
