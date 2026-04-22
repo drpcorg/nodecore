@@ -36,7 +36,7 @@ func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validat
 }
 
 func (a *AlgorandChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []interface{}{}, chains.ALGORAND)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []interface{}{}, chains.Unknown)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
