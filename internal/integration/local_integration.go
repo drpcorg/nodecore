@@ -22,6 +22,10 @@ func (l *LocalIntegration) GetStatsSchema() []statsdata.StatsDims {
 	return []statsdata.StatsDims{statsdata.Chain, statsdata.UpstreamId, statsdata.Method, statsdata.ReqKind, statsdata.RespKind}
 }
 
+func (l *LocalIntegration) GetInternalApiKey() string {
+	return ""
+}
+
 func (l *LocalIntegration) InitKeys(id string, cfg config.IntegrationKeyConfig) (chan keydata.KeyEvent, error) {
 	localKeyCfg, ok := cfg.(*config.LocalKeyConfig)
 	if !ok {

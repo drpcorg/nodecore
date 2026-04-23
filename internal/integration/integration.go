@@ -12,6 +12,7 @@ import (
 type IntegrationClient interface {
 	InitKeys(id string, cfg config.IntegrationKeyConfig) (chan keydata.KeyEvent, error)
 	GetStatsSchema() []statsdata.StatsDims
+	GetInternalApiKey() string
 	ProcessStatsData(aggregatedData *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) error
 	Type() IntegrationType
 }

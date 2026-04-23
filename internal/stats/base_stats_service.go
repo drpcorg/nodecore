@@ -334,7 +334,11 @@ func (b *BaseStatsService) extractUnaryRequestKey(requestResult *protocol.UnaryR
 		case statsdata.RespKind:
 			key.RespKind = requestResult.GetRespKind()
 		case statsdata.ApiKey:
-			key.ApiKey = requestResult.GetApiKey()
+			apiKey := requestResult.GetApiKey()
+			if apiKey == "" {
+				apiKey = b.integrationClient.GetInternalApiKey()
+			}
+			key.ApiKey = apiKey
 		case statsdata.Chain:
 			key.Chain = requestResult.GetChain()
 		}

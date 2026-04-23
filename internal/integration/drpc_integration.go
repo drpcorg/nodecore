@@ -7,6 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats/api"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
+	"sync/atomic"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -30,6 +31,7 @@ type DrpcIntegrationClient struct {
 	connector        drpc.DrpcHttpConnector
 	ownerKeys        *utils.CMap[string, map[string]*drpc.DrpcKey]
 	keyOwnersMapping *utils.CMap[string, DrpcOwnedKey]
+	internalApiKey   atomic.Pointer[string]
 
 	pollInterval time.Duration
 
@@ -138,6 +140,13 @@ func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) error {
 	return g.Wait()
 }
 
+func (d *DrpcIntegrationClient) GetInternalApiKey() string {
+	if k := d.internalApiKey.Load(); k != nil {
+		return *k
+	}
+	return ""
+}
+
 func (d *DrpcIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
 	// could be hardcoded at first
 	// but in the future the scheme could be fetched from the drpc backend
@@ -208,6 +217,10 @@ func (d *DrpcIntegrationClient) processKeys(ownerId, apiToken string, keyEvents 
 			ApiToken: apiToken,
 			ApiKey:   apiKey,
 		})
+		if d.internalApiKey.Load() == nil {
+			k := apiKey
+			d.internalApiKey.Store(&k)
+		}
 	}
 
 	for apiKey, key := range currentKeys {

@@ -37,6 +37,11 @@ func (m *MockIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
 	return args.Get(0).([]statsdata.StatsDims)
 }
 
+func (m *MockIntegrationClient) GetInternalApiKey() string {
+	args := m.Called()
+	return args.String(0)
+}
+
 func (m *MockIntegrationClient) ProcessStatsData(aggregatedData *utils.CMap[statsdata.StatsKey, statsdata.StatsData]) error {
 	args := m.Called(aggregatedData)
 	return args.Error(0)
