@@ -19,7 +19,7 @@ var chainsCfg []byte
 type BlockchainType string
 
 const (
-	Algorand            BlockchainType = "algorand"
+	Algorand            BlockchainType = "avm"
 	Bitcoin             BlockchainType = "bitcoin"
 	Cosmos              BlockchainType = "cosmos"
 	Ethereum            BlockchainType = "eth"
