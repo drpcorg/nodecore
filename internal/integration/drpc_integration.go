@@ -139,9 +139,16 @@ func (d *DrpcIntegrationClient) ProcessStatsData(statsMap statsData) error {
 }
 
 func (d *DrpcIntegrationClient) GetStatsSchema() []statsdata.StatsDims {
-	// could be hardcoded at first
+	// TODO could be hardcoded at first
 	// but in the future the scheme could be fetched from the drpc backend
-	return nil
+	return []statsdata.StatsDims{
+		statsdata.Chain,
+		statsdata.UpstreamId,
+		statsdata.Method,
+		statsdata.ReqKind,
+		statsdata.RespKind,
+		statsdata.ApiKey,
+	}
 }
 
 func (d *DrpcIntegrationClient) Type() IntegrationType {
