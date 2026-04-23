@@ -109,6 +109,7 @@ func (o *ObserverConnector) sendRequest(
 		result.
 			WithDuration(duration).
 			WithUpstreamId(o.upstreamId).
+			WithApiKey(request.RequestObserver().GetApiKey()).
 			WithRespKindFromResponse(responseHolder),
 		false,
 	)

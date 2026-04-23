@@ -86,6 +86,11 @@ func (u *UnaryRequestResult) WithDuration(duration float64) *UnaryRequestResult 
 	return u
 }
 
+func (u *UnaryRequestResult) WithApiKey(apiKey string) *UnaryRequestResult {
+	u.apiKey = apiKey
+	return u
+}
+
 func (u *UnaryRequestResult) withReqKind(reqKind RequestKind) RequestResult {
 	u.reqKind = reqKind
 	return u

@@ -104,6 +104,10 @@ func (b *RequestObserver) GetRequestKind() RequestKind {
 	return b.reqKind
 }
 
+func (b *RequestObserver) GetApiKey() string {
+	return b.apiKey
+}
+
 func (b *RequestObserver) GetResults() []RequestResult {
 	return b.reqCtx.getResults()
 }
