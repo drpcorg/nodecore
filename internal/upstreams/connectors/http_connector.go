@@ -202,6 +202,10 @@ func (h *HttpConnector) receiveWholeResponse(
 		)
 	}
 
+	if request.Method() == "eth_chainId" || request.Method() == "net_version" {
+		zerolog.Ctx(ctx).Info().Msgf("raw response for %s: %s", request.Method(), string(body))
+	}
+
 	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).
 		WithResponseHeaders(headers)
 }
