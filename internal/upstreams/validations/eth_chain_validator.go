@@ -47,20 +47,23 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 	group.Go(func() error {
 		result, err := c.getChainId(ctx)
 		if err != nil {
-			logger.Error().Err(err).Str("upstream", c.upstreamId).Msgf("failed to get chainId: %s", result)
+			logger.Error().Err(err).Msgf("failed to get chainId of upstream '%s'", c.upstreamId)
+			return err
 		}
 		chainId = strings.ToLower(result)
 		return nil
 	})
+
 	group.Go(func() error {
 		result, err := c.getNetVersion(ctx)
 		if err != nil {
-			logger.Error().Err(err).Str("upstream", c.upstreamId).Msgf("failed to get netVersion: %s", result)
+			logger.Error().Err(err).Msgf("failed to get netVersion of upstream '%s'", c.upstreamId)
 			return err
 		}
 		netVersion = strings.ToLower(result)
 		return nil
 	})
+
 	if err := group.Wait(); err != nil {
 		return SettingsError
 	}
