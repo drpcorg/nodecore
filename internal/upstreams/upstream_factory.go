@@ -187,6 +187,9 @@ func createBlockProcessor(
 	chainSpecific specific.ChainSpecific,
 	blockchainType chains.BlockchainType,
 ) blocks.BlockProcessor {
+	if *upConfig.Options.DisableChainValidation {
+		return nil
+	}
 	switch blockchainType {
 	case chains.Ethereum:
 		return blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, chainSpecific)
