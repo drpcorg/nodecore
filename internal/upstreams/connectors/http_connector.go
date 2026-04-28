@@ -201,6 +201,9 @@ func (h *HttpConnector) receiveWholeResponse(
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to read an http response: %v", err)),
 		)
 	}
+	if status > 399 && (request.Method() == "eth_chainId" || request.Method() == "net_version") {
+		zerolog.Ctx(ctx).Info().Msgf("raw response for %s: %s", request.Method(), string(body))
+	}
 
 	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).
 		WithResponseHeaders(headers)
