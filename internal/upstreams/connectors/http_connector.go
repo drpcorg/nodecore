@@ -202,12 +202,14 @@ func (h *HttpConnector) receiveWholeResponse(
 		)
 	}
 
-	if request.Method() == "eth_chainId" || request.Method() == "net_version" {
-		zerolog.Ctx(ctx).Info().Msgf("raw response for %s: %s", request.Method(), string(body))
+	response := protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).
+		WithResponseHeaders(headers)
+
+	if response.HasError() && (request.Method() == "eth_chainId" || request.Method() == "net_version") {
+		zerolog.Ctx(ctx).Info().Msgf("raw response for %s (status=%d): %s", request.Method(), status, string(body))
 	}
 
-	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).
-		WithResponseHeaders(headers)
+	return response
 }
 
 func (h *HttpConnector) GetType() protocol.ApiConnectorType {
