@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 
 	"github.com/bytedance/sonic"
@@ -46,7 +45,6 @@ func NewUpstreamJsonRpcRequestWithSpecMethod(method string, params any, specMeth
 
 func NewInternalUpstreamJsonRpcRequest(method string, params any, chain chains.Chain) (*UpstreamJsonRpcRequest, error) {
 	requestParams, err := sonic.Marshal(params)
-	fmt.Println("MARSHAL REQUEST PARAMS RESULT", chain.String(), method, string(requestParams))
 	if err != nil {
 		return nil, err
 	}
