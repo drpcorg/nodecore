@@ -201,7 +201,7 @@ func (h *HttpConnector) receiveWholeResponse(
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to read an http response: %v", err)),
 		)
 	}
-	if status > 399 && (request.Method() == "eth_chainId" || request.Method() == "net_version") {
+	if (strings.Contains(h.endpoint, "bittorrent") || strings.Contains(h.endpoint, "bt.io")) && status > 399 && (request.Method() == "eth_chainId" || request.Method() == "net_version") {
 		zerolog.Ctx(ctx).Info().Msgf("raw response for %s, headers=%v, body=%s", h.endpoint, headers, string(body))
 	}
 
