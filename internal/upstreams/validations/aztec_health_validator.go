@@ -2,7 +2,6 @@ package validations
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -12,13 +11,36 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var errAztecNotReady = errors.New("aztec node is not ready")
-var errAztecEmptyTips = errors.New("aztec node returned empty L2 tips")
+type aztecHealthValidatorError string
+
+func (e aztecHealthValidatorError) Error() string {
+	return string(e)
+}
+
+const (
+	errAztecNotReady  aztecHealthValidatorError = "aztec node is not ready"
+	errAztecEmptyTips aztecHealthValidatorError = "aztec node returned empty L2 tips"
+)
 
 type AztecHealthValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
+	chain           chains.Chain
 	internalTimeout time.Duration
+}
+
+func NewAztecHealthValidator(
+	upstreamId string,
+	connector connectors.ApiConnector,
+	chain chains.Chain,
+	internalTimeout time.Duration,
+) *AztecHealthValidator {
+	return &AztecHealthValidator{
+		upstreamId:      upstreamId,
+		connector:       connector,
+		chain:           chain,
+		internalTimeout: internalTimeout,
+	}
 }
 
 func (a *AztecHealthValidator) Validate() protocol.AvailabilityStatus {
@@ -37,7 +59,9 @@ func (a *AztecHealthValidator) checkReady() error {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_isReady", nil, chains.AZTEC_MAINNET)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
+		"node_isReady", nil, a.chain,
+	)
 	if err != nil {
 		return err
 	}
@@ -61,47 +85,6 @@ func (a *AztecHealthValidator) checkReady() error {
 	}
 	return nil
 }
-
-func (a *AztecHealthValidator) checkTips() error {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
-	defer cancel()
-
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getL2Tips", nil, chains.AZTEC_MAINNET)
-	if err != nil {
-		return err
-	}
-
-	response := a.connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return response.GetError()
-	}
-
-	tips := AztecL2Tips{}
-	if err := sonic.Unmarshal(response.ResponseResult(), &tips); err != nil {
-		return err
-	}
-	if tips.Proposed.Number == 0 {
-		return errAztecEmptyTips
-	}
-	if tips.Proven.Number > tips.Proposed.Number {
-		return errAztecEmptyTips
-	}
-	return nil
-}
-
-func NewAztecHealthValidator(
-	upstreamId string,
-	connector connectors.ApiConnector,
-	internalTimeout time.Duration,
-) *AztecHealthValidator {
-	return &AztecHealthValidator{
-		upstreamId:      upstreamId,
-		connector:       connector,
-		internalTimeout: internalTimeout,
-	}
-}
-
-var _ HealthValidator = (*AztecHealthValidator)(nil)
 
 // AztecL2Tips models node_getL2Tips. Aztec reshaped the payload between v3 and v4:
 // v3 had every tip flat ({number, hash}); v4 nested proven/finalized/checkpointed
@@ -141,3 +124,34 @@ func (a *AztecVersionedTip) UnmarshalJSON(data []byte) error {
 	a.Hash = flat.Hash
 	return nil
 }
+
+func (a *AztecHealthValidator) checkTips() error {
+	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
+		"node_getL2Tips", nil, a.chain,
+	)
+	if err != nil {
+		return err
+	}
+
+	response := a.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return response.GetError()
+	}
+
+	tips := AztecL2Tips{}
+	if err := sonic.Unmarshal(response.ResponseResult(), &tips); err != nil {
+		return err
+	}
+	if tips.Proposed.Number == 0 {
+		return errAztecEmptyTips
+	}
+	if tips.Proven.Number > tips.Proposed.Number {
+		return errAztecEmptyTips
+	}
+	return nil
+}
+
+var _ HealthValidator = (*AztecHealthValidator)(nil)
