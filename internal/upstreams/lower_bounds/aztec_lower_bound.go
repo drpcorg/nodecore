@@ -30,17 +30,20 @@ var errAztecNoOldestHistoric = errors.New("aztec node returned no oldestHistoric
 type AztecLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
+	chain           chains.Chain
 	internalTimeout time.Duration
 }
 
 func NewAztecLowerBoundDetector(
 	upstreamId string,
+	chain chains.Chain,
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *AztecLowerBoundDetector {
 	return &AztecLowerBoundDetector{
 		upstreamId:      upstreamId,
 		connector:       connector,
+		chain:           chain,
 		internalTimeout: internalTimeout,
 	}
 }
@@ -67,7 +70,11 @@ func (a *AztecLowerBoundDetector) fetchOldestHistoric() (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getWorldStateSyncStatus", []interface{}{}, chains.AZTEC_MAINNET)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
+		"node_getWorldStateSyncStatus",
+		[]interface{}{},
+		a.chain,
+	)
 	if err != nil {
 		return 0, err
 	}
