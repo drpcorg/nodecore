@@ -18,7 +18,7 @@ func (s *StatsConfig) validate() error {
 		return fmt.Errorf("stats type validation error - %s", err.Error())
 	}
 	if s.Enabled && s.FlushInterval.Minutes() < 3 {
-		return errors.New("stats flush-interval must be greater than 3 minutes")
+		return errors.New("stats flush-interval must be at least 3 minutes")
 	}
 	return nil
 }
