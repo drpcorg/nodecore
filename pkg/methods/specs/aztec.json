@@ -42,6 +42,40 @@
       "params": []
     },
     {
+      "name": "node_getBlockByArchive",
+      "params": []
+    },
+    {
+      "name": "node_getBlockByHash",
+      "params": []
+    },
+    {
+      "name": "node_getBlockHeaderByArchive",
+      "params": []
+    },
+    {
+      "name": "node_getCheckpointNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getCheckpointedBlockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getCheckpointedBlocks",
+      "params": []
+    },
+    {
+      "name": "node_getCheckpoints",
+      "params": []
+    },
+    {
       "name": "node_sendTx",
       "params": [],
       "settings": {
@@ -58,6 +92,10 @@
     },
     {
       "name": "node_getTxByHash",
+      "params": []
+    },
+    {
+      "name": "node_getTxsByHash",
       "params": []
     },
     {
@@ -140,11 +178,19 @@
       "params": []
     },
     {
+      "name": "node_getBlockHashMembershipWitness",
+      "params": []
+    },
+    {
       "name": "node_getL1ToL2MessageMembershipWitness",
       "params": []
     },
     {
       "name": "node_getL1ToL2MessageBlock",
+      "params": []
+    },
+    {
+      "name": "node_getL1ToL2MessageCheckpoint",
       "params": []
     },
     {
@@ -160,7 +206,15 @@
       "params": []
     },
     {
+      "name": "node_getPrivateLogsByTags",
+      "params": []
+    },
+    {
       "name": "node_getPublicLogs",
+      "params": []
+    },
+    {
+      "name": "node_getPublicLogsByTagsFromContract",
       "params": []
     },
     {
@@ -222,6 +276,20 @@
     },
     {
       "name": "node_getCurrentBaseFees",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getCurrentMinFees",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getMaxPriorityFees",
       "params": [],
       "settings": {
         "cacheable": false
