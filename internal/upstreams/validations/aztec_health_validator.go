@@ -15,22 +15,6 @@ import (
 var errAztecNotReady = errors.New("aztec node is not ready")
 var errAztecEmptyTips = errors.New("aztec node returned empty L2 tips")
 
-const (
-	aztecMaxRetries     = 2
-	aztecRetryBackoff   = 200 * time.Millisecond
-	aztecMaxRetryBackoff = time.Second
-)
-
-// transientHttpCodes are 5xx statuses the public Aztec endpoint occasionally
-// emits during deploys / sequencer failovers. They almost always recover on
-// retry, so the health validator should not flap an upstream into Unavailable
-// on a single hit.
-var transientHttpCodes = map[int]struct{}{
-	502: {},
-	503: {},
-	504: {},
-}
-
 type AztecHealthValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -50,10 +34,15 @@ func (a *AztecHealthValidator) Validate() protocol.AvailabilityStatus {
 }
 
 func (a *AztecHealthValidator) checkReady() error {
-	response, err := a.sendWithRetry("node_isReady")
+	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_isReady", nil, chains.AZTEC_MAINNET)
 	if err != nil {
 		return err
 	}
+
+	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return response.GetError()
 	}
@@ -74,10 +63,15 @@ func (a *AztecHealthValidator) checkReady() error {
 }
 
 func (a *AztecHealthValidator) checkTips() error {
-	response, err := a.sendWithRetry("node_getL2Tips")
+	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getL2Tips", nil, chains.AZTEC_MAINNET)
 	if err != nil {
 		return err
 	}
+
+	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return response.GetError()
 	}
@@ -93,50 +87,6 @@ func (a *AztecHealthValidator) checkTips() error {
 		return errAztecEmptyTips
 	}
 	return nil
-}
-
-// sendWithRetry sends the JSON-RPC method up to aztecMaxRetries+1 times when
-// the upstream answers with a transient HTTP 5xx (502/503/504). The final
-// response is returned regardless of success - callers handle non-retryable
-// errors as before.
-func (a *AztecHealthValidator) sendWithRetry(method string) (protocol.ResponseHolder, error) {
-	var response protocol.ResponseHolder
-	backoff := aztecRetryBackoff
-	for attempt := 0; attempt <= aztecMaxRetries; attempt++ {
-		ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
-		request, err := protocol.NewInternalUpstreamJsonRpcRequest(method, nil, chains.AZTEC_MAINNET)
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-		response = a.connector.SendRequest(ctx, request)
-		cancel()
-
-		if !isTransientHttpStatus(response) {
-			return response, nil
-		}
-		if attempt == aztecMaxRetries {
-			break
-		}
-		log.Warn().Msgf(
-			"aztec upstream '%s' answered HTTP %d for %s; retry %d/%d after %s",
-			a.upstreamId, response.ResponseCode(), method, attempt+1, aztecMaxRetries, backoff,
-		)
-		time.Sleep(backoff)
-		backoff *= 2
-		if backoff > aztecMaxRetryBackoff {
-			backoff = aztecMaxRetryBackoff
-		}
-	}
-	return response, nil
-}
-
-func isTransientHttpStatus(response protocol.ResponseHolder) bool {
-	if response == nil || !response.HasError() {
-		return false
-	}
-	_, ok := transientHttpCodes[response.ResponseCode()]
-	return ok
 }
 
 func NewAztecHealthValidator(
