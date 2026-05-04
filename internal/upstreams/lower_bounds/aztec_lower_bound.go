@@ -21,9 +21,11 @@ const aztecMaxProbe int64 = 100_000_000
 var errAztecNoBlock = errors.New("aztec upstream has no blocks within probing range")
 
 // AztecLowerBoundDetector binary-searches the lowest L2 block the upstream can
-// still serve. node_getBlock(N) returns JSON `null` for blocks the node does not
-// have (no error, just null), so the probe treats a `null` (case-insensitive,
-// trimmed) result as "no data" and any non-null body as "has data".
+// still serve. node_getBlockHeader(N) returns JSON `null` for blocks the node does
+// not have (no error, just null), so the probe treats a `null` (case-insensitive,
+// trimmed) result as "no data" and any non-null body as "has data". The header is
+// preferred over node_getBlock because we only need a presence signal and the
+// binary search performs ~log2(currentHeight) probes per refresh cycle.
 //
 // Most Aztec full nodes are archive nodes and converge to bound=1 immediately;
 // pruning-capable builds will converge to whatever block the prune kept.
@@ -106,7 +108,7 @@ func (a *AztecLowerBoundDetector) hasBlock(number int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{number}, chains.AZTEC_MAINNET)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlockHeader", []interface{}{number}, chains.AZTEC_MAINNET)
 	if err != nil {
 		return false, err
 	}
