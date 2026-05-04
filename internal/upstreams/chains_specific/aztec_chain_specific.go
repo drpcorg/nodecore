@@ -138,15 +138,46 @@ func NewAztecChainSpecificObject(
 	}
 }
 
+// AztecL2Tips models the response from node_getL2Tips. Aztec reshaped the payload
+// between v3 and v4: in v3 every tip was flat ({number, hash}); in v4 proven,
+// finalized and checkpointed each became {block: {number, hash}, checkpoint: {...}}
+// while proposed stayed flat. AztecVersionedTip handles both shapes transparently
+// so a node on either version is parsed correctly.
 type AztecL2Tips struct {
-	Proposed     AztecTip `json:"proposed"`
-	Proven       AztecTip `json:"proven"`
-	Checkpointed AztecTip `json:"checkpointed"`
+	Proposed     AztecTip          `json:"proposed"`
+	Proven       AztecVersionedTip `json:"proven"`
+	Finalized    AztecVersionedTip `json:"finalized"`
+	Checkpointed AztecVersionedTip `json:"checkpointed"`
 }
 
 type AztecTip struct {
 	Number uint64 `json:"number"`
 	Hash   string `json:"hash"`
+}
+
+// AztecVersionedTip flattens v3 ({number, hash}) and v4 ({block: {number, hash}})
+// shapes into a single {Number, Hash} pair.
+type AztecVersionedTip struct {
+	Number uint64
+	Hash   string
+}
+
+func (a *AztecVersionedTip) UnmarshalJSON(data []byte) error {
+	var nested struct {
+		Block *AztecTip `json:"block"`
+	}
+	if err := sonic.Unmarshal(data, &nested); err == nil && nested.Block != nil {
+		a.Number = nested.Block.Number
+		a.Hash = nested.Block.Hash
+		return nil
+	}
+	var flat AztecTip
+	if err := sonic.Unmarshal(data, &flat); err != nil {
+		return err
+	}
+	a.Number = flat.Number
+	a.Hash = flat.Hash
+	return nil
 }
 
 var _ ChainSpecific = (*AztecChainSpecificObject)(nil)
