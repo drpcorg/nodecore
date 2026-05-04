@@ -31,7 +31,10 @@ func (a *AztecClientLabelsDetector) ClientVersionAndType(data []byte) (string, s
 		// (e.g. node_getNodeInfo-like payload), fall back to extracting nodeVersion.
 		var info aztecNodeInfo
 		if err2 := sonic.Unmarshal(data, &info); err2 != nil {
-			return "", "", err
+			// Surface the object-decode failure (the string-decode error above
+			// only triggered the fallback - the actual reason we couldn't
+			// extract a version is err2).
+			return "", "", err2
 		}
 		version = info.NodeVersion
 	}
