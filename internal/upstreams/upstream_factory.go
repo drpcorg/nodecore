@@ -208,6 +208,7 @@ func getChainSpecific(
 	case chains.Aztec:
 		return specific.NewAztecChainSpecificObject(
 			ctx,
+			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			conf.Options.InternalTimeout,
