@@ -21,6 +21,7 @@ type AztecChainSpecificObject struct {
 	connector       connectors.ApiConnector
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
+	configuredChain *chains.ConfiguredChain
 }
 
 func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -31,7 +32,10 @@ func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 }
 
 func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
-	return nil
+	detectors := []lower_bounds.LowerBoundDetector{
+		lower_bounds.NewAztecLowerBoundDetector(a.upstreamId, a.internalTimeout, a.connector),
+	}
+	return lower_bounds.NewBaseLowerBoundProcessor(a.ctx, a.upstreamId, a.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
@@ -41,7 +45,12 @@ func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	return nil
+	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+		return nil
+	}
+	return []validations.Validator[validations.ValidationSettingResult]{
+		validations.NewAztecChainValidator(a.upstreamId, a.connector, a.configuredChain, a.internalTimeout),
+	}
 }
 
 func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
@@ -114,6 +123,7 @@ func (a *AztecChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolde
 
 func NewAztecChainSpecificObject(
 	ctx context.Context,
+	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
 	internalTimeout, labelsDelay time.Duration,
@@ -124,6 +134,7 @@ func NewAztecChainSpecificObject(
 		connector:       connector,
 		internalTimeout: internalTimeout,
 		labelsDelay:     labelsDelay,
+		configuredChain: configuredChain,
 	}
 }
 
