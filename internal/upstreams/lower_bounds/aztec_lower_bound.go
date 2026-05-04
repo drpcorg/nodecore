@@ -2,16 +2,19 @@ package lower_bounds
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/rs/zerolog/log"
 )
 
 const aztecPeriod = 5 * time.Minute
+
+var errAztecNoOldestHistoric = errors.New("aztec node returned no oldestHistoricBlockNumber")
 
 // AztecLowerBoundDetector reports the lowest L2 block for which the upstream
 // still has state available, by reading oldestHistoricBlockNumber from
@@ -19,10 +22,11 @@ const aztecPeriod = 5 * time.Minute
 // synchronizer publishes this number directly, no binary-search probing
 // needed).
 //
-// On transient errors (the public Aztec endpoint occasionally returns code 19
-// on this method) we fall back to StateBound=1 since Aztec full nodes are
-// archive by default. Subsequent refresh ticks will retry and pick up the real
-// prune boundary if the node is actually pruning.
+// On any error the detector returns (nil, err). BaseLowerBoundProcessor
+// logs the error and skips the tick, so the previously cached lower bound
+// stays in place. Faking a default value here would risk clobbering a real
+// prune boundary on a transient endpoint outage (the public Aztec endpoint
+// occasionally returns code 19 on this method per the Aztec team's audit).
 type AztecLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -42,9 +46,9 @@ func NewAztecLowerBoundDetector(
 }
 
 func (a *AztecLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	bound := a.fetchOldestHistoric()
-	if bound < 1 {
-		bound = 1
+	bound, err := a.fetchOldestHistoric()
+	if err != nil {
+		return nil, err
 	}
 	return []protocol.LowerBoundData{
 		protocol.NewLowerBoundDataNow(bound, protocol.StateBound),
@@ -59,30 +63,28 @@ func (a *AztecLowerBoundDetector) Period() time.Duration {
 	return aztecPeriod
 }
 
-// fetchOldestHistoric returns the upstream's oldestHistoricBlockNumber, or 1
-// (the archive-node default) on any error or unparseable response.
-func (a *AztecLowerBoundDetector) fetchOldestHistoric() int64 {
+func (a *AztecLowerBoundDetector) fetchOldestHistoric() (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getWorldStateSyncStatus", []interface{}{}, chains.AZTEC_MAINNET)
 	if err != nil {
-		log.Debug().Err(err).Msgf("aztec upstream '%s' couldn't build world state sync request, defaulting to STATE=1", a.upstreamId)
-		return 1
+		return 0, err
 	}
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
-		log.Debug().Err(response.GetError()).Msgf("aztec upstream '%s' world state sync status unavailable, defaulting to STATE=1", a.upstreamId)
-		return 1
+		return 0, response.GetError()
 	}
 
 	var status worldStateSyncStatus
 	if err := sonic.Unmarshal(response.ResponseResult(), &status); err != nil {
-		log.Debug().Err(err).Msgf("aztec upstream '%s' returned unparseable world state sync status, defaulting to STATE=1", a.upstreamId)
-		return 1
+		return 0, fmt.Errorf("aztec world state sync status unparseable: %w", err)
 	}
-	return int64(status.OldestHistoricBlockNumber)
+	if status.OldestHistoricBlockNumber == 0 {
+		return 0, errAztecNoOldestHistoric
+	}
+	return int64(status.OldestHistoricBlockNumber), nil
 }
 
 type worldStateSyncStatus struct {
