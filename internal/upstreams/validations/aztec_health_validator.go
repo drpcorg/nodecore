@@ -76,7 +76,9 @@ func (a *AztecHealthValidator) checkReady() error {
 		// some nodes wrap the answer as a string "true"/"false"
 		var s string
 		if err2 := sonic.Unmarshal(response.ResponseResult(), &s); err2 != nil {
-			return err
+			// Surface the actual string-decode failure (the bool-decode error
+			// above is just the trigger for the fallback path).
+			return err2
 		}
 		ready = s == "true"
 	}
