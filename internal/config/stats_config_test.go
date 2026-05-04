@@ -46,5 +46,5 @@ func TestStatsConfigInvalidType(t *testing.T) {
 func TestStatsConfigInvalidFlushInterval(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/stats/stats-config-invalid-flush-interval.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, `stats flush-interval must be greater than 3 minutes`)
+	assert.ErrorContains(t, err, `stats flush-interval must be at least 3 minutes`)
 }
