@@ -3,6 +3,7 @@ package validations
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"time"
@@ -81,14 +82,17 @@ func (a *AztecChainValidator) getChainId() (string, error) {
 
 	// node_getChainId may return either a JSON number (e.g. 1) or a JSON string ("1" / "0x1")
 	var asString string
-	if err := sonic.Unmarshal(raw, &asString); err == nil {
+	if errStr := sonic.Unmarshal(raw, &asString); errStr == nil {
 		return strings.TrimSpace(asString), nil
 	}
 	var asNumber uint64
-	if err := sonic.Unmarshal(raw, &asNumber); err == nil {
+	errNum := sonic.Unmarshal(raw, &asNumber)
+	if errNum == nil {
 		return strings.ToLower((&big.Int{}).SetUint64(asNumber).String()), nil
 	}
-	return "", errAztecEmptyChainId
+	// Neither shape decoded - surface the raw payload and the last decode error
+	// so operators can diagnose misbehaving upstreams returning unexpected shapes.
+	return "", fmt.Errorf("aztec chain id payload %q is not a JSON string or number: %w", string(raw), errNum)
 }
 
 // chainIdEqual compares two chainId strings tolerating decimal/hex formats and 0x prefix.
