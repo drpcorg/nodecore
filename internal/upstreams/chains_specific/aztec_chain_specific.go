@@ -105,18 +105,6 @@ func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol
 	return a.ParseBlock(response.ResponseResult())
 }
 
-// AztecL2Tips models the response from node_getL2Tips. Aztec reshaped the payload
-// between v3 and v4: in v3 every tip was flat ({number, hash}); in v4 proven,
-// finalized and checkpointed each became {block: {number, hash}, checkpoint: {...}}
-// while proposed stayed flat. AztecVersionedTip handles both shapes transparently
-// so a node on either version is parsed correctly.
-type AztecL2Tips struct {
-	Proposed     validations.AztecTip          `json:"proposed"`
-	Proven       validations.AztecVersionedTip `json:"proven"`
-	Finalized    validations.AztecVersionedTip `json:"finalized"`
-	Checkpointed validations.AztecVersionedTip `json:"checkpointed"`
-}
-
 func (a *AztecChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"node_getL2Tips",
@@ -132,25 +120,33 @@ func (a *AztecChainSpecificObject) GetFinalizedBlock(ctx context.Context) (proto
 		return protocol.ZeroBlock{}, response.GetError()
 	}
 
-	tips := AztecL2Tips{}
+	tips := validations.AztecL2Tips{}
 	if err := sonic.Unmarshal(response.ResponseResult(), &tips); err != nil {
 		return protocol.ZeroBlock{}, fmt.Errorf(
 			"couldn't parse aztec L2 tips, reason - %s", err.Error(),
 		)
 	}
-	if tips.Proven.Number == 0 {
+	// Aztec exposes both `proven` (zk proof submitted) and `finalized` (the L1
+	// block carrying that proof is finalized). Finalized is the stronger notion
+	// expected by GetFinalizedBlock callers; fall back to proven only if the
+	// node has not produced a finalized tip yet (early genesis blocks).
+	finalized := tips.Finalized
+	if finalized.Number == 0 {
+		finalized = tips.Proven
+	}
+	if finalized.Number == 0 {
 		return protocol.ZeroBlock{}, nil
 	}
 	return protocol.NewBlock(
-		tips.Proven.Number,
+		finalized.Number,
 		0,
-		blockchain.NewHashIdFromString(tips.Proven.Hash),
+		blockchain.NewHashIdFromString(finalized.Hash),
 		blockchain.EmptyHash,
 	), nil
 }
 
 func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
-	tips := AztecL2Tips{}
+	tips := validations.AztecL2Tips{}
 	err := sonic.Unmarshal(blockBytes, &tips)
 	if err != nil {
 		return protocol.ZeroBlock{}, fmt.Errorf(
