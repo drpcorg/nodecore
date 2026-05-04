@@ -56,7 +56,10 @@ func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
 		lower_bounds.NewAztecLowerBoundDetector(
-			a.upstreamId, a.internalTimeout, a.connector,
+			a.upstreamId,
+			a.configuredChain.Chain,
+			a.internalTimeout,
+			a.connector,
 		),
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(
