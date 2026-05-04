@@ -40,7 +40,7 @@ func NewAztecChainValidator(
 func (a *AztecChainValidator) Validate() ValidationSettingResult {
 	chainId, err := a.getChainId()
 	if err != nil {
-		log.Error().Err(err).Msgf("failed to get chainId of aztec upstream '%s'", a.upstreamId)
+		log.Error().Err(err).Msgf("failed to get chainId of chain %s upstream '%s'", a.chain.Chain, a.upstreamId)
 		return SettingsError
 	}
 	if chainId == "" {
@@ -64,7 +64,7 @@ func (a *AztecChainValidator) getChainId() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getChainId", nil, a.chain.Chain)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getChainId", []string{}, a.chain.Chain)
 	if err != nil {
 		return "", err
 	}

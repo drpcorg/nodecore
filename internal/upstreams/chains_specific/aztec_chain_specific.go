@@ -46,7 +46,7 @@ func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		labels.NewClientLabelDetectorHandler(
 			a.upstreamId,
 			a.connector,
-			labels.NewAztecClientLabelsDetector(),
+			labels.NewAztecClientLabelsDetector(a.configuredChain.Chain),
 			a.internalTimeout,
 		),
 	}

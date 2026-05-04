@@ -60,7 +60,7 @@ func (a *AztecHealthValidator) checkReady() error {
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"node_isReady", nil, a.chain,
+		"node_isReady", []string{}, a.chain,
 	)
 	if err != nil {
 		return err
@@ -130,7 +130,7 @@ func (a *AztecHealthValidator) checkTips() error {
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"node_getL2Tips", nil, a.chain,
+		"node_getL2Tips", []string{}, a.chain,
 	)
 	if err != nil {
 		return err

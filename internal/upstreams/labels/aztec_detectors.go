@@ -9,10 +9,19 @@ import (
 )
 
 type AztecClientLabelsDetector struct {
+	chain chains.Chain
+}
+
+func NewAztecClientLabelsDetector(chain chains.Chain) *AztecClientLabelsDetector {
+	return &AztecClientLabelsDetector{chain: chain}
 }
 
 func (a *AztecClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalUpstreamJsonRpcRequest("node_getNodeVersion", nil, chains.AZTEC_MAINNET)
+	return protocol.NewInternalUpstreamJsonRpcRequest("node_getNodeVersion", []string{}, a.chain)
+}
+
+type aztecNodeInfo struct {
+	NodeVersion string `json:"nodeVersion"`
 }
 
 func (a *AztecClientLabelsDetector) ClientVersionAndType(data []byte) (string, string, error) {
@@ -32,12 +41,4 @@ func (a *AztecClientLabelsDetector) ClientVersionAndType(data []byte) (string, s
 	return version, "aztec", nil
 }
 
-func NewAztecClientLabelsDetector() *AztecClientLabelsDetector {
-	return &AztecClientLabelsDetector{}
-}
-
 var _ ClientLabelsDetector = (*AztecClientLabelsDetector)(nil)
-
-type aztecNodeInfo struct {
-	NodeVersion string `json:"nodeVersion"`
-}
