@@ -3,6 +3,7 @@ package specific
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -15,12 +16,18 @@ import (
 )
 
 type AztecChainSpecificObject struct {
-	upstreamId string
-	connector  connectors.ApiConnector
+	ctx             context.Context
+	upstreamId      string
+	connector       connectors.ApiConnector
+	internalTimeout time.Duration
+	labelsDelay     time.Duration
 }
 
 func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	return nil
+	labelsDetectors := []labels.LabelsDetector{
+		labels.NewClientLabelDetectorHandler(a.upstreamId, a.connector, labels.NewAztecClientLabelsDetector(), a.internalTimeout),
+	}
+	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -28,7 +35,9 @@ func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 }
 
 func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
-	return nil
+	return []validations.Validator[protocol.AvailabilityStatus]{
+		validations.NewAztecHealthValidator(a.upstreamId, a.connector, a.internalTimeout),
+	}
 }
 
 func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
@@ -36,7 +45,7 @@ func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[
 }
 
 func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlock", []interface{}{"latest"}, chains.AZTEC_MAINNET)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getL2Tips", []interface{}{}, chains.AZTEC_MAINNET)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
@@ -49,23 +58,50 @@ func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol
 	return a.ParseBlock(response.ResponseResult())
 }
 
-func (a *AztecChainSpecificObject) GetFinalizedBlock(_ context.Context) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, nil
+func (a *AztecChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getL2Tips", []interface{}{}, chains.AZTEC_MAINNET)
+	if err != nil {
+		return protocol.ZeroBlock{}, err
+	}
+
+	response := a.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return protocol.ZeroBlock{}, response.GetError()
+	}
+
+	tips := AztecL2Tips{}
+	if err := sonic.Unmarshal(response.ResponseResult(), &tips); err != nil {
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse aztec L2 tips, reason - %s", err.Error())
+	}
+	if tips.Proven.Number == 0 {
+		return protocol.ZeroBlock{}, nil
+	}
+	return protocol.NewBlock(
+		tips.Proven.Number,
+		0,
+		blockchain.NewHashIdFromString(tips.Proven.Hash),
+		blockchain.EmptyHash,
+	), nil
 }
 
 func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
-	block := AztecBlock{}
-	err := sonic.Unmarshal(blockBytes, &block)
+	tips := AztecL2Tips{}
+	err := sonic.Unmarshal(blockBytes, &tips)
 	if err != nil {
-		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the aztec block, reason - %s", err.Error())
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the aztec L2 tips, reason - %s", err.Error())
 	}
 
-	height := block.Header.GlobalVariables.BlockNumber
+	height := tips.Proposed.Number
 	if height == 0 {
-		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the aztec block, got '%s'", string(blockBytes))
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the aztec L2 tips, got '%s'", string(blockBytes))
 	}
 
-	return protocol.NewBlock(height, 0, blockchain.NewHashIdFromString(block.BlockHash), blockchain.EmptyHash), nil
+	return protocol.NewBlock(
+		height,
+		0,
+		blockchain.NewHashIdFromString(tips.Proposed.Hash),
+		blockchain.EmptyHash,
+	), nil
 }
 
 func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
@@ -77,26 +113,29 @@ func (a *AztecChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolde
 }
 
 func NewAztecChainSpecificObject(
+	ctx context.Context,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	internalTimeout, labelsDelay time.Duration,
 ) *AztecChainSpecificObject {
 	return &AztecChainSpecificObject{
-		upstreamId: upstreamId,
-		connector:  connector,
+		ctx:             ctx,
+		upstreamId:      upstreamId,
+		connector:       connector,
+		internalTimeout: internalTimeout,
+		labelsDelay:     labelsDelay,
 	}
 }
 
-type AztecBlock struct {
-	BlockHash string      `json:"blockHash"`
-	Header    AztecHeader `json:"header"`
+type AztecL2Tips struct {
+	Proposed     AztecTip `json:"proposed"`
+	Proven       AztecTip `json:"proven"`
+	Checkpointed AztecTip `json:"checkpointed"`
 }
 
-type AztecHeader struct {
-	GlobalVariables AztecGlobalVariables `json:"globalVariables"`
-}
-
-type AztecGlobalVariables struct {
-	BlockNumber uint64 `json:"blockNumber"`
+type AztecTip struct {
+	Number uint64 `json:"number"`
+	Hash   string `json:"hash"`
 }
 
 var _ ChainSpecific = (*AztecChainSpecificObject)(nil)
