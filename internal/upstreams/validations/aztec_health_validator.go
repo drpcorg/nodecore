@@ -1,0 +1,115 @@
+package validations
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/rs/zerolog/log"
+)
+
+var errAztecNotReady = errors.New("aztec node is not ready")
+var errAztecEmptyTips = errors.New("aztec node returned empty L2 tips")
+
+type AztecHealthValidator struct {
+	upstreamId      string
+	connector       connectors.ApiConnector
+	internalTimeout time.Duration
+}
+
+func (a *AztecHealthValidator) Validate() protocol.AvailabilityStatus {
+	if err := a.checkReady(); err != nil {
+		log.Error().Err(err).Msgf("aztec upstream '%s' health validation failed", a.upstreamId)
+		return protocol.Unavailable
+	}
+	if err := a.checkTips(); err != nil {
+		log.Error().Err(err).Msgf("aztec upstream '%s' tips validation failed", a.upstreamId)
+		return protocol.Unavailable
+	}
+	return protocol.Available
+}
+
+func (a *AztecHealthValidator) checkReady() error {
+	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_isReady", nil, chains.AZTEC_MAINNET)
+	if err != nil {
+		return err
+	}
+
+	response := a.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return response.GetError()
+	}
+
+	var ready bool
+	if err := sonic.Unmarshal(response.ResponseResult(), &ready); err != nil {
+		// some nodes wrap the answer as a string "true"/"false"
+		var s string
+		if err2 := sonic.Unmarshal(response.ResponseResult(), &s); err2 != nil {
+			return err
+		}
+		ready = s == "true"
+	}
+	if !ready {
+		return errAztecNotReady
+	}
+	return nil
+}
+
+func (a *AztecHealthValidator) checkTips() error {
+	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getL2Tips", nil, chains.AZTEC_MAINNET)
+	if err != nil {
+		return err
+	}
+
+	response := a.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return response.GetError()
+	}
+
+	tips := AztecL2Tips{}
+	if err := sonic.Unmarshal(response.ResponseResult(), &tips); err != nil {
+		return err
+	}
+	if tips.Proposed.Number == 0 {
+		return errAztecEmptyTips
+	}
+	if tips.Proven.Number > tips.Proposed.Number {
+		return errAztecEmptyTips
+	}
+	return nil
+}
+
+func NewAztecHealthValidator(
+	upstreamId string,
+	connector connectors.ApiConnector,
+	internalTimeout time.Duration,
+) *AztecHealthValidator {
+	return &AztecHealthValidator{
+		upstreamId:      upstreamId,
+		connector:       connector,
+		internalTimeout: internalTimeout,
+	}
+}
+
+var _ HealthValidator = (*AztecHealthValidator)(nil)
+
+type AztecL2Tips struct {
+	Proposed     AztecTip `json:"proposed"`
+	Proven       AztecTip `json:"proven"`
+	Checkpointed AztecTip `json:"checkpointed"`
+}
+
+type AztecTip struct {
+	Number uint64 `json:"number"`
+	Hash   string `json:"hash"`
+}
