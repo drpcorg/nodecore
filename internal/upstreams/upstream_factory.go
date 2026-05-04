@@ -206,7 +206,13 @@ func getChainSpecific(
 	case chains.Ethereum:
 		return specific.NewEvmChainSpecific(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, conf.Options)
 	case chains.Aztec:
-		return specific.NewAztecChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
+		return specific.NewAztecChainSpecificObject(
+			ctx,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options.InternalTimeout,
+			conf.Options.ValidationInterval*5,
+		)
 	case chains.Algorand:
 		return specific.NewAlgorandChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
 	case chains.Solana:
