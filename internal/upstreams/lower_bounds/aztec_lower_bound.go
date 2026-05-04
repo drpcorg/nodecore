@@ -2,33 +2,27 @@ package lower_bounds
 
 import (
 	"context"
-	"errors"
-	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/rs/zerolog/log"
 )
 
 const aztecPeriod = 5 * time.Minute
 
-// aztecMaxProbe caps the exponential probe used to find an upper bound when the
-// upstream is not an archive node. Aztec mainnet block numbers grow at ~1 block/s,
-// so 100M is multiple decades of headroom and serves as a safety stop only.
-const aztecMaxProbe int64 = 100_000_000
-
-var errAztecNoBlock = errors.New("aztec upstream has no blocks within probing range")
-
-// AztecLowerBoundDetector binary-searches the lowest L2 block the upstream can
-// still serve. node_getBlockHeader(N) returns JSON `null` for blocks the node does
-// not have (no error, just null), so the probe treats a `null` (case-insensitive,
-// trimmed) result as "no data" and any non-null body as "has data". The header is
-// preferred over node_getBlock because we only need a presence signal and the
-// binary search performs ~log2(currentHeight) probes per refresh cycle.
+// AztecLowerBoundDetector reports the lowest L2 block for which the upstream
+// still has state available, by reading oldestHistoricBlockNumber from
+// node_getWorldStateSyncStatus (one RPC per refresh - the world-state
+// synchronizer publishes this number directly, no binary-search probing
+// needed).
 //
-// Most Aztec full nodes are archive nodes and converge to bound=1 immediately;
-// pruning-capable builds will converge to whatever block the prune kept.
+// On transient errors (the public Aztec endpoint occasionally returns code 19
+// on this method) we fall back to StateBound=1 since Aztec full nodes are
+// archive by default. Subsequent refresh ticks will retry and pick up the real
+// prune boundary if the node is actually pruning.
 type AztecLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -48,51 +42,12 @@ func NewAztecLowerBoundDetector(
 }
 
 func (a *AztecLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	// Fast path: archive nodes have block 1 available.
-	if has, err := a.hasBlock(1); err == nil && has {
-		return []protocol.LowerBoundData{
-			protocol.NewLowerBoundDataNow(1, protocol.StateBound),
-		}, nil
+	bound := a.fetchOldestHistoric()
+	if bound < 1 {
+		bound = 1
 	}
-
-	// Find an upper bound by exponential probe.
-	var lo int64 = 2
-	var hi int64 = 1000
-	for {
-		has, err := a.hasBlock(hi)
-		if err != nil {
-			return nil, err
-		}
-		if has {
-			break
-		}
-		if hi >= aztecMaxProbe {
-			return nil, errAztecNoBlock
-		}
-		lo = hi + 1
-		next := hi * 10
-		if next > aztecMaxProbe {
-			next = aztecMaxProbe
-		}
-		hi = next
-	}
-
-	// Binary search [lo, hi] for the smallest block that has data.
-	for lo < hi {
-		mid := lo + (hi-lo)/2
-		has, err := a.hasBlock(mid)
-		if err != nil {
-			return nil, err
-		}
-		if has {
-			hi = mid
-		} else {
-			lo = mid + 1
-		}
-	}
-
 	return []protocol.LowerBoundData{
-		protocol.NewLowerBoundDataNow(lo, protocol.StateBound),
+		protocol.NewLowerBoundDataNow(bound, protocol.StateBound),
 	}, nil
 }
 
@@ -104,28 +59,34 @@ func (a *AztecLowerBoundDetector) Period() time.Duration {
 	return aztecPeriod
 }
 
-func (a *AztecLowerBoundDetector) hasBlock(number int64) (bool, error) {
+// fetchOldestHistoric returns the upstream's oldestHistoricBlockNumber, or 1
+// (the archive-node default) on any error or unparseable response.
+func (a *AztecLowerBoundDetector) fetchOldestHistoric() int64 {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getBlockHeader", []interface{}{number}, chains.AZTEC_MAINNET)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getWorldStateSyncStatus", []interface{}{}, chains.AZTEC_MAINNET)
 	if err != nil {
-		return false, err
+		log.Debug().Err(err).Msgf("aztec upstream '%s' couldn't build world state sync request, defaulting to STATE=1", a.upstreamId)
+		return 1
 	}
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
-		// RPC errors here usually mean "no block" / "pruned" / temporary upstream
-		// issue. Treat as "no data" - the binary search will move past this block.
-		// Real connectivity issues are caught by the surrounding retry/health flow.
-		return false, nil
+		log.Debug().Err(response.GetError()).Msgf("aztec upstream '%s' world state sync status unavailable, defaulting to STATE=1", a.upstreamId)
+		return 1
 	}
 
-	body := strings.TrimSpace(strings.ToLower(string(response.ResponseResult())))
-	if body == "" || body == "null" {
-		return false, nil
+	var status worldStateSyncStatus
+	if err := sonic.Unmarshal(response.ResponseResult(), &status); err != nil {
+		log.Debug().Err(err).Msgf("aztec upstream '%s' returned unparseable world state sync status, defaulting to STATE=1", a.upstreamId)
+		return 1
 	}
-	return true, nil
+	return int64(status.OldestHistoricBlockNumber)
+}
+
+type worldStateSyncStatus struct {
+	OldestHistoricBlockNumber uint64 `json:"oldestHistoricBlockNumber"`
 }
 
 var _ LowerBoundDetector = (*AztecLowerBoundDetector)(nil)
