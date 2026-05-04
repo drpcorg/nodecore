@@ -103,13 +103,41 @@ func NewAztecHealthValidator(
 
 var _ HealthValidator = (*AztecHealthValidator)(nil)
 
+// AztecL2Tips models node_getL2Tips. Aztec reshaped the payload between v3 and v4:
+// v3 had every tip flat ({number, hash}); v4 nested proven/finalized/checkpointed
+// as {block: {number, hash}, checkpoint: {...}} and kept proposed flat.
+// AztecVersionedTip transparently handles both shapes.
 type AztecL2Tips struct {
-	Proposed     AztecTip `json:"proposed"`
-	Proven       AztecTip `json:"proven"`
-	Checkpointed AztecTip `json:"checkpointed"`
+	Proposed     AztecTip          `json:"proposed"`
+	Proven       AztecVersionedTip `json:"proven"`
+	Finalized    AztecVersionedTip `json:"finalized"`
+	Checkpointed AztecVersionedTip `json:"checkpointed"`
 }
 
 type AztecTip struct {
 	Number uint64 `json:"number"`
 	Hash   string `json:"hash"`
+}
+
+type AztecVersionedTip struct {
+	Number uint64
+	Hash   string
+}
+
+func (a *AztecVersionedTip) UnmarshalJSON(data []byte) error {
+	var nested struct {
+		Block *AztecTip `json:"block"`
+	}
+	if err := sonic.Unmarshal(data, &nested); err == nil && nested.Block != nil {
+		a.Number = nested.Block.Number
+		a.Hash = nested.Block.Hash
+		return nil
+	}
+	var flat AztecTip
+	if err := sonic.Unmarshal(data, &flat); err != nil {
+		return err
+	}
+	a.Number = flat.Number
+	a.Hash = flat.Hash
+	return nil
 }
