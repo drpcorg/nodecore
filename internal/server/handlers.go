@@ -26,27 +26,35 @@ type RequestHandler interface {
 
 type RestHandler struct {
 	preReq      *Request
+	httpMethod  string
+	path        string
 	requestBody []byte
-	method      string
 }
 
-func NewRestHandler(preReq *Request, method string, requestBody io.Reader) (*RestHandler, error) {
+// NewRestHandler builds a REST handler from an incoming HTTP request.
+// httpMethod is the verb (GET/POST/...), restPath is the path under
+// /queries/{chain}/ (already URL-decoded by echo). For GETs and other
+// no-body verbs the request body is allowed to be empty; only non-empty
+// bodies are validated as JSON so callers like algod's REST API don't get
+// rejected at parse time.
+func NewRestHandler(preReq *Request, httpMethod, restPath string, requestBody io.Reader) (*RestHandler, error) {
 	body, err := io.ReadAll(requestBody)
 	if err != nil {
 		return nil, err
 	}
-	if !sonic.Valid(body) {
+	if len(body) > 0 && !sonic.Valid(body) {
 		return nil, errors.New("no valid json")
 	}
 	return &RestHandler{
 		preReq:      preReq,
-		method:      method,
+		httpMethod:  httpMethod,
+		path:        restPath,
 		requestBody: body,
 	}, nil
 }
 
-func (r *RestHandler) RequestDecode(ctx context.Context) (*Request, error) {
-	upstreamReq := protocol.NewUpstreamRestRequest()
+func (r *RestHandler) RequestDecode(_ context.Context) (*Request, error) {
+	upstreamReq := protocol.NewUpstreamRestRequest(r.httpMethod, r.path, r.requestBody)
 	return &Request{
 		Chain:            r.preReq.Chain,
 		UpstreamRequests: []protocol.RequestHolder{upstreamReq},

@@ -168,7 +168,7 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 			HandleWebsocket(reqCtx, conn, chain, authPayload, appCtx)
 			return nil
 		}
-		err = handleHttp(reqCtx, c, chain, reqType, authPayload, appCtx)
+		err = handleHttp(reqCtx, c, chain, restPath, reqType, authPayload, appCtx)
 		requestTimeToLastByte.Observe(time.Since(start).Seconds())
 		return err
 	}
@@ -200,6 +200,7 @@ func handleHttp(
 	ctx context.Context,
 	reqCtx echo.Context,
 	chain string,
+	restPath string,
 	reqType protocol.RequestType,
 	authPayload auth.AuthPayload,
 	appCtx *ApplicationContext,
@@ -212,7 +213,12 @@ func handleHttp(
 	if reqType == protocol.JsonRpc {
 		requestHandler, err = NewJsonRpcHandler(preRequest, reqCtx.Request().Body, false)
 	} else {
-		requestHandler, err = NewRestHandler(preRequest, "", reqCtx.Request().Body)
+		requestHandler, err = NewRestHandler(
+			preRequest,
+			reqCtx.Request().Method,
+			restPathWithQuery(reqCtx, restPath),
+			reqCtx.Request().Body,
+		)
 	}
 
 	if err != nil {
@@ -226,6 +232,16 @@ func handleHttp(
 	handleResp := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
 
 	return handleResponse(ctx, requestHandler, reqCtx, handleResp)
+}
+
+// restPathWithQuery returns the REST path with the original query string
+// re-attached so the upstream sees the same query parameters that were
+// supplied by the client. echo's c.Param("*") strips the query.
+func restPathWithQuery(c echo.Context, path string) string {
+	if rawQuery := c.Request().URL.RawQuery; rawQuery != "" {
+		return path + "?" + rawQuery
+	}
+	return path
 }
 
 func handleResponse(
