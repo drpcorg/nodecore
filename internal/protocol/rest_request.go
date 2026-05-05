@@ -8,6 +8,7 @@ import (
 
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/google/uuid"
 )
 
 type UpstreamRestRequest struct {
@@ -21,14 +22,8 @@ type UpstreamRestRequest struct {
 }
 
 func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain) *UpstreamRestRequest {
-	verb := strings.ToUpper(strings.TrimSpace(httpMethod))
-	if verb == "" {
-		verb = "GET"
-	}
-	cleanPath := path
-	if !strings.HasPrefix(cleanPath, "/") {
-		cleanPath = "/" + cleanPath
-	}
+	verb := normaliseVerb(httpMethod)
+	cleanPath := normalisePath(path)
 	combined := verb + MethodSeparator + cleanPath
 	return &UpstreamRestRequest{
 		id:       "1",
@@ -54,15 +49,37 @@ func NewInternalUpstreamRestRequestWithQuery(httpMethod, path string, query map[
 	return NewInternalUpstreamRestRequest(httpMethod, full, chain)
 }
 
-// NewUpstreamRestRequest builds an external-facing REST request holder.
-// Always initialises the observer to avoid nil-deref in ObserverConnector.
-func NewUpstreamRestRequest() *UpstreamRestRequest {
-	method := "GET" + MethodSeparator + "/"
+// NewUpstreamRestRequest builds an external-facing REST request from an
+// incoming HTTP call. Encodes method as "<VERB>#<path>" so the shared
+// HttpConnector can split on MethodSeparator and forward the call to the
+// upstream. Always initialises the observer to avoid a nil deref in
+// ObserverConnector.
+func NewUpstreamRestRequest(httpMethod, path string, body []byte) *UpstreamRestRequest {
+	verb := normaliseVerb(httpMethod)
+	cleanPath := normalisePath(path)
+	combined := verb + MethodSeparator + cleanPath
 	return &UpstreamRestRequest{
-		id:       "1",
-		method:   method,
-		observer: NewRequestObserver(false).WithMethod(method),
+		id:       uuid.NewString(),
+		method:   combined,
+		path:     cleanPath,
+		body:     body,
+		observer: NewRequestObserver(false).WithRequestKind(Unary).WithMethod(combined),
 	}
+}
+
+func normaliseVerb(httpMethod string) string {
+	verb := strings.ToUpper(strings.TrimSpace(httpMethod))
+	if verb == "" {
+		return "GET"
+	}
+	return verb
+}
+
+func normalisePath(path string) string {
+	if !strings.HasPrefix(path, "/") {
+		return "/" + path
+	}
+	return path
 }
 
 func (u *UpstreamRestRequest) RequestObserver() *RequestObserver {
