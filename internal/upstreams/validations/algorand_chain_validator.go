@@ -17,10 +17,13 @@ var errAlgorandEmptyGenesis = errors.New("algorand node returned empty genesis")
 
 // AlgorandChainValidator pulls `GET /v2/genesis` and compares the reported
 // network identity to the chain's configured chainId. Algorand has no
-// EVM-style numeric chain id; the natural identifier is the genesis network
-// (`mainnet`/`testnet`/`betanet`/...) plus the genesis schema id (`v1.0`).
-// We accept any of: bare network, bare id, or composed `network-id` so
-// existing config layouts continue to validate.
+// EVM-style numeric chain id; drpc assigns synthetic ones in chains.yaml
+// (`0x65901` mainnet, `0x65902` testnet, `0x65903` betanet) while algod
+// publishes the genesis `network` as `mainnet`/`testnet`/`betanet`/... and
+// the schema `id` as `v1.0`. We translate the configured chain-id to its
+// expected algod network first, then fall back to accepting bare network /
+// bare id / composed `network-id` so deployments that point chain-id
+// directly at the literal continue to validate.
 type AlgorandChainValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -55,21 +58,38 @@ func (a *AlgorandChainValidator) Validate() ValidationSettingResult {
 		log.Error().Err(err).Msgf("failed to fetch algorand genesis for upstream '%s'", a.upstreamId)
 		return SettingsError
 	}
-	candidates := genesisCandidates(genesis)
-	for _, c := range candidates {
+	expectedNetwork, hasMapping := algorandChainIdNetwork[strings.ToLower(expected)]
+	if hasMapping && strings.EqualFold(genesis.Network, expectedNetwork) {
+		return Valid
+	}
+	for _, c := range genesisCandidates(genesis) {
 		if strings.EqualFold(c, expected) {
 			return Valid
 		}
 	}
+	expectedDescr := expectedNetwork
+	if !hasMapping {
+		expectedDescr = "<unknown>"
+	}
 	log.Error().Msgf(
-		"'%s' is configured with chain-id '%s' but algorand upstream '%s' reports network='%s' id='%s'",
+		"'%s' is configured with chain-id '%s' (expected network='%s') but algorand upstream '%s' reports network='%s' id='%s'",
 		a.chain.Chain.String(),
 		expected,
+		expectedDescr,
 		a.upstreamId,
 		genesis.Network,
 		genesis.Id,
 	)
 	return FatalSettingError
+}
+
+// algorandChainIdNetwork maps drpc's synthetic Algorand chain-ids to the
+// network name algod publishes via /v2/genesis. Keep keys lowercase so
+// callers can normalise without the map having to.
+var algorandChainIdNetwork = map[string]string{
+	"0x65901": "mainnet",
+	"0x65902": "testnet",
+	"0x65903": "betanet",
 }
 
 func (a *AlgorandChainValidator) fetchGenesis() (*algorandGenesis, error) {
