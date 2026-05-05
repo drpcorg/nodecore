@@ -22,6 +22,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -184,6 +185,26 @@ func NewEvmChainSpecific(connector connectors.ApiConnector) *specific.EvmChainSp
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
 	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, 5*time.Second, 10*time.Second)
+}
+
+func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AztecChainSpecificObject {
+	options := &config.UpstreamOptions{
+		InternalTimeout:        5 * time.Second,
+		ValidationInterval:     10 * time.Second,
+		DisableChainValidation: lo.ToPtr(false),
+		DisableHealthValidation: lo.ToPtr(false),
+	}
+	return specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
+}
+
+func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AlgorandChainSpecificObject {
+	options := &config.UpstreamOptions{
+		InternalTimeout:        5 * time.Second,
+		ValidationInterval:     10 * time.Second,
+		DisableChainValidation: lo.ToPtr(false),
+		DisableHealthValidation: lo.ToPtr(false),
+	}
+	return specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
