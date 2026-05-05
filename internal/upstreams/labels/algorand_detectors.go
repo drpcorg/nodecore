@@ -17,7 +17,7 @@ func NewAlgorandClientLabelsDetector(chain chains.Chain) *AlgorandClientLabelsDe
 }
 
 func (a *AlgorandClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalUpstreamRestRequest("GET", "/v2/versions", a.chain), nil
+	return protocol.NewInternalUpstreamRestRequest("GET", "/versions", a.chain), nil
 }
 
 type algorandVersionsResponse struct {
@@ -33,7 +33,7 @@ type algorandBuildInfo struct {
 func (a *AlgorandClientLabelsDetector) ClientVersionAndType(data []byte) (string, string, error) {
 	var versions algorandVersionsResponse
 	if err := sonic.Unmarshal(data, &versions); err != nil {
-		return "", "", fmt.Errorf("algorand /v2/versions payload unparseable: %w", err)
+		return "", "", fmt.Errorf("algorand /versions payload unparseable: %w", err)
 	}
 	build := versions.Build
 	if build.Major == 0 && build.Minor == 0 && build.BuildNumber == 0 {
