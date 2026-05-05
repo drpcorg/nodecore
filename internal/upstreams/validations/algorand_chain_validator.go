@@ -16,14 +16,13 @@ import (
 var errAlgorandEmptyGenesis = errors.New("algorand node returned empty genesis")
 
 // AlgorandChainValidator pulls `GET /v2/genesis` and compares the reported
-// network identity to the chain's configured chainId. Algorand has no
-// EVM-style numeric chain id; drpc assigns synthetic ones in chains.yaml
-// (`0x65901` mainnet, `0x65902` testnet, `0x65903` betanet) while algod
-// publishes the genesis `network` as `mainnet`/`testnet`/`betanet`/... and
-// the schema `id` as `v1.0`. We translate the configured chain-id to its
-// expected algod network first, then fall back to accepting bare network /
-// bare id / composed `network-id` so deployments that point chain-id
-// directly at the literal continue to validate.
+// network identity to the chain's configured chainId. Algorand assigns one
+// chain-id per network (`0x65901` mainnet, `0x65902` testnet, `0x65903`
+// betanet); algod's /v2/genesis does not echo the chain-id back as a number
+// but reports the human network name in the `network` field. We translate
+// the configured chain-id to its expected algod network and require an
+// exact match - the schema `id` (e.g. `v1.0`) is shared across networks so
+// it cannot be used as an additional acceptance candidate.
 type AlgorandChainValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -53,29 +52,28 @@ func (a *AlgorandChainValidator) Validate() ValidationSettingResult {
 		// upstream.
 		return Valid
 	}
+	expectedNetwork, hasMapping := algorandChainIdNetwork[strings.ToLower(expected)]
+	if !hasMapping {
+		log.Warn().Msgf(
+			"algorand upstream '%s' has unknown chain-id '%s'; cannot validate against /v2/genesis",
+			a.upstreamId,
+			expected,
+		)
+		return SettingsError
+	}
 	genesis, err := a.fetchGenesis()
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch algorand genesis for upstream '%s'", a.upstreamId)
 		return SettingsError
 	}
-	expectedNetwork, hasMapping := algorandChainIdNetwork[strings.ToLower(expected)]
-	if hasMapping && strings.EqualFold(genesis.Network, expectedNetwork) {
+	if strings.EqualFold(genesis.Network, expectedNetwork) {
 		return Valid
-	}
-	for _, c := range genesisCandidates(genesis) {
-		if strings.EqualFold(c, expected) {
-			return Valid
-		}
-	}
-	expectedDescr := expectedNetwork
-	if !hasMapping {
-		expectedDescr = "<unknown>"
 	}
 	log.Error().Msgf(
 		"'%s' is configured with chain-id '%s' (expected network='%s') but algorand upstream '%s' reports network='%s' id='%s'",
 		a.chain.Chain.String(),
 		expected,
-		expectedDescr,
+		expectedNetwork,
 		a.upstreamId,
 		genesis.Network,
 		genesis.Id,
@@ -83,8 +81,8 @@ func (a *AlgorandChainValidator) Validate() ValidationSettingResult {
 	return FatalSettingError
 }
 
-// algorandChainIdNetwork maps drpc's synthetic Algorand chain-ids to the
-// network name algod publishes via /v2/genesis. Keep keys lowercase so
+// algorandChainIdNetwork is the official Algorand chain-id per network, mapped
+// to the network name algod publishes via /v2/genesis. Keep keys lowercase so
 // callers can normalise without the map having to.
 var algorandChainIdNetwork = map[string]string{
 	"0x65901": "mainnet",
@@ -111,20 +109,6 @@ func (a *AlgorandChainValidator) fetchGenesis() (*algorandGenesis, error) {
 		return nil, err
 	}
 	return &genesis, nil
-}
-
-func genesisCandidates(g *algorandGenesis) []string {
-	candidates := make([]string, 0, 3)
-	if g.Network != "" {
-		candidates = append(candidates, g.Network)
-	}
-	if g.Id != "" {
-		candidates = append(candidates, g.Id)
-	}
-	if g.Network != "" && g.Id != "" {
-		candidates = append(candidates, g.Network+"-"+g.Id)
-	}
-	return candidates
 }
 
 type algorandGenesis struct {
