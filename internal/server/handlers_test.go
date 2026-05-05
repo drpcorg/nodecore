@@ -3,206 +3,115 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"errors"
-	"io"
+	"strings"
 	"testing"
 
-	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/decoder"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/server"
+	servernodecore "github.com/drpcorg/nodecore/internal/server"
 	"github.com/stretchr/testify/assert"
 )
 
-type jsonRpcReqWithoutId struct {
-	Method string `json:"method"`
-	Params any    `json:"params"`
-}
+// TestRestHandlerAcceptsEmptyBody is the regression test for the "couldn't
+// parse a request" bug: every REST GET arrived with an empty body, but the
+// old NewRestHandler ran sonic.Valid([]byte{}) which is false, so it always
+// short-circuited with parse error. Algod and other REST upstreams could
+// never be reached.
+func TestRestHandlerAcceptsEmptyBody(t *testing.T) {
+	handler, err := servernodecore.NewRestHandler(
+		&servernodecore.Request{Chain: "algorand-testnet"},
+		"GET",
+		"/v2/status",
+		bytes.NewReader(nil),
+	)
 
-func TestCreateJsonRpcHandlerOk(t *testing.T) {
-	req := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(`{"method": "eth_test"}`))
-	handler, err := server.NewJsonRpcHandler(&req, bodyReader, false)
-
-	assert.Nil(t, err)
+	assert.NoError(t, err, "empty body must not be rejected for GET-style requests")
+	assert.NotNil(t, handler)
 	assert.True(t, handler.IsSingle())
-	assert.Equal(t, protocol.JsonRpc, handler.GetRequestType())
+	assert.Equal(t, 1, handler.RequestCount())
+	assert.Equal(t, protocol.Rest, handler.GetRequestType())
 }
 
-func TestCreateJsonRpcHandlerWithArrayOk(t *testing.T) {
-	req := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(`[{"method": "eth_test"}]`))
-	handler, err := server.NewJsonRpcHandler(&req, bodyReader, false)
+func TestRestHandlerAcceptsValidJsonBody(t *testing.T) {
+	handler, err := servernodecore.NewRestHandler(
+		&servernodecore.Request{Chain: "algorand-testnet"},
+		"POST",
+		"/v2/transactions",
+		strings.NewReader(`{"raw":"AAA"}`),
+	)
 
-	assert.Nil(t, err)
-	assert.False(t, handler.IsSingle())
-	assert.Equal(t, protocol.JsonRpc, handler.GetRequestType())
+	assert.NoError(t, err)
+	assert.NotNil(t, handler)
 }
 
-func TestCreateJsonRpcHandlerWithEmptyBodyThenError(t *testing.T) {
-	req := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(``))
-	_, err := server.NewJsonRpcHandler(&req, bodyReader, false)
+func TestRestHandlerRejectsMalformedJsonBody(t *testing.T) {
+	_, err := servernodecore.NewRestHandler(
+		&servernodecore.Request{Chain: "algorand-testnet"},
+		"POST",
+		"/v2/transactions",
+		strings.NewReader(`{not json`),
+	)
 
-	assert.True(t, errors.Is(err, decoder.SyntaxError{}))
+	assert.Error(t, err, "non-empty bodies must still be validated as JSON")
 }
 
-func TestDecodeSingleRequestJsonRpcHandler(t *testing.T) {
-	preReq := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(`{"id":1,"method": "eth_test", "params": [false, 0, {"key": "value"}]}`))
-	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader, false)
+func TestRestHandlerRequestDecodeForwardsVerbAndPath(t *testing.T) {
+	handler, err := servernodecore.NewRestHandler(
+		&servernodecore.Request{Chain: "algorand-testnet"},
+		"GET",
+		"/v2/status",
+		bytes.NewReader(nil),
+	)
+	assert.NoError(t, err)
 
-	assert.Nil(t, err)
+	request, err := handler.RequestDecode(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, "algorand-testnet", request.Chain)
+	assert.Len(t, request.UpstreamRequests, 1)
 
-	req, err := handler.RequestDecode(context.Background())
-
-	assert.Nil(t, err)
-	assert.Equal(t, 1, len(req.UpstreamRequests))
-
-	upReq := req.UpstreamRequests[0]
-	expected := jsonRpcReqWithoutId{
-		Method: "eth_test",
-		Params: []interface{}{
-			false,
-			float64(0),
-			map[string]interface{}{"key": "value"},
-		},
-	}
-	body, err := upReq.Body()
-	assert.Nil(t, err)
-
-	reqBody := parseBody(body)
-
-	assert.Equal(t, "eth_test", upReq.Method())
-	assert.Equal(t, protocol.JsonRpc, upReq.RequestType())
-	assert.Equal(t, expected, reqBody)
+	up := request.UpstreamRequests[0]
+	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/status", up.Method(),
+		"upstream method must encode the original verb + path so HttpConnector forwards correctly")
+	assert.Equal(t, protocol.Rest, up.RequestType())
+	body, err := up.Body()
+	assert.NoError(t, err)
+	assert.Empty(t, body)
 }
 
-func TestDecodeSingleMultipleJsonRpcHandler(t *testing.T) {
-	preReq := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(`[{"id":1,"method": "eth_test", "params": [false, 0, {"key": "value"}]}, {"id":1,"method": "eth_test2"}]`))
-	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader, false)
+func TestRestHandlerRequestDecodeForwardsBody(t *testing.T) {
+	payload := []byte(`{"raw":"AAA"}`)
+	handler, err := servernodecore.NewRestHandler(
+		&servernodecore.Request{Chain: "algorand-testnet"},
+		"POST",
+		"/v2/transactions",
+		bytes.NewReader(payload),
+	)
+	assert.NoError(t, err)
 
-	assert.Nil(t, err)
+	request, err := handler.RequestDecode(context.Background())
+	assert.NoError(t, err)
+	assert.Len(t, request.UpstreamRequests, 1)
 
-	req, err := handler.RequestDecode(context.Background())
-
-	assert.Nil(t, err)
-	assert.Equal(t, 2, len(req.UpstreamRequests))
-
-	expected := jsonRpcReqWithoutId{
-		Method: "eth_test",
-		Params: []interface{}{
-			false,
-			float64(0),
-			map[string]interface{}{"key": "value"},
-		},
-	}
-	expected1 := jsonRpcReqWithoutId{
-		Method: "eth_test2",
-	}
-	tests := []struct {
-		name     string
-		request  protocol.RequestHolder
-		expected jsonRpcReqWithoutId
-	}{
-		{
-			request: req.UpstreamRequests[0],
-			name:    "first req",
-
-			expected: expected,
-		},
-		{
-			request:  req.UpstreamRequests[1],
-			name:     "second req",
-			expected: expected1,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(te *testing.T) {
-			body, reqErr := test.request.Body()
-
-			assert.Nil(te, reqErr)
-			assert.Equal(t, protocol.JsonRpc, test.request.RequestType())
-			assert.Equal(t, test.expected, parseBody(body))
-		})
-	}
+	up := request.UpstreamRequests[0]
+	assert.Equal(t, "POST"+protocol.MethodSeparator+"/v2/transactions", up.Method())
+	body, err := up.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, payload, body)
 }
 
-func TestEncodeResponseJsonRpcHandlerWithNoRequests(t *testing.T) {
-	req := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(`{"method": "eth_test"}`))
-	handler, err := server.NewJsonRpcHandler(&req, bodyReader, false)
+func TestRestHandlerForwardsPathWithQueryString(t *testing.T) {
+	handler, err := servernodecore.NewRestHandler(
+		&servernodecore.Request{Chain: "algorand-testnet"},
+		"GET",
+		"/v2/blocks/1?header-only=true",
+		bytes.NewReader(nil),
+	)
+	assert.NoError(t, err)
 
-	assert.Nil(t, err)
-
-	response := testResponseHolder{"23"}
-	resp := handler.ResponseEncode(response)
-
-	assert.Equal(t, -1, resp.Order)
+	request, err := handler.RequestDecode(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t,
+		"GET"+protocol.MethodSeparator+"/v2/blocks/1?header-only=true",
+		request.UpstreamRequests[0].Method(),
+		"query string must reach the upstream so e.g. ?header-only=true is preserved",
+	)
 }
-
-func TestEncodeResponseJsonRpcHandlerOk(t *testing.T) {
-	preReq := server.Request{Chain: "chain"}
-	bodyReader := bytes.NewReader([]byte(`{"id":1,"method": "eth_test", "params": [false, 0, {"key": "value"}]}`))
-	handler, err := server.NewJsonRpcHandler(&preReq, bodyReader, false)
-
-	assert.Nil(t, err)
-
-	req, err := handler.RequestDecode(context.Background())
-
-	assert.Nil(t, err)
-	assert.Equal(t, 1, len(req.UpstreamRequests))
-
-	response := testResponseHolder{id: req.UpstreamRequests[0].Id()}
-	resp := handler.ResponseEncode(response)
-
-	assert.Equal(t, 0, resp.Order)
-}
-
-func parseBody(body []byte) jsonRpcReqWithoutId {
-	var reqBody jsonRpcReqWithoutId
-	err := sonic.Unmarshal(body, &reqBody)
-	if err != nil {
-		panic(err)
-	}
-	return reqBody
-}
-
-type testResponseHolder struct {
-	id string
-}
-
-func (t testResponseHolder) ResponseCode() int {
-	return 0
-}
-
-func (t testResponseHolder) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (t testResponseHolder) ResponseResult() []byte {
-	return nil
-}
-
-func (t testResponseHolder) GetError() *protocol.ResponseError {
-	return nil
-}
-
-func (t testResponseHolder) EncodeResponse(realId []byte) io.Reader {
-	return bytes.NewReader(realId)
-}
-
-func (t testResponseHolder) HasError() bool {
-	return false
-}
-
-func (t testResponseHolder) Id() string {
-	return t.id
-}
-
-func (t testResponseHolder) HasStream() bool {
-	return false
-}
-
-var _ protocol.ResponseHolder = (*testResponseHolder)(nil)
