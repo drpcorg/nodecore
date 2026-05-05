@@ -18,30 +18,6 @@ const algorandPeriod = 5 * time.Minute
 
 var errAlgorandNoLatestRound = errors.New("algorand node returned no last-round")
 
-// AlgorandLowerBoundDetector reports the lowest round that an algod upstream
-// still retains.
-//
-// algod does not expose a lower-bound field directly:
-//   - `/v2/status` only carries `last-round` (the head).
-//   - `/v2/ledger/sync` is an admin pin used during catchpoint catchup; once
-//     the operator unsets it the endpoint returns 400, so it cannot be used as
-//     a general source of truth.
-//
-// The cheapest reliable signal is therefore a probe of `/v2/blocks/{round}`:
-// algod answers 200 when the round is retained and 404 (with a JSON body)
-// once it has been pruned. Header-only mode keeps each probe response small.
-//
-// The detector amortises the cost as follows:
-//   - First run: binary-search [1, last_round] using `/v2/blocks/{round}` as
-//     the predicate. O(log latest_round) probes, ~30 calls for a 50M-round
-//     mainnet ledger - paid once at startup.
-//   - Subsequent runs: probe the cached lower bound. If still retained,
-//     return immediately (one call). If pruned, binary-search forward in
-//     [cached+1, last_round] - the prune boundary moves forward only.
-//
-// On any error path we bubble the error up so [BaseLowerBoundProcessor] skips
-// the tick and keeps the previously published bound. Synthesising STATE=1
-// here would falsely advertise full archival history to the router.
 type AlgorandLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -94,9 +70,6 @@ func (a *AlgorandLowerBoundDetector) Period() time.Duration {
 	return algorandPeriod
 }
 
-// locateBound returns the smallest round in [1, latest] for which `/v2/blocks`
-// returns a non-404 response. When `cached > 0` we first verify it is still
-// retained and otherwise narrow the search to (cached, latest].
 func (a *AlgorandLowerBoundDetector) locateBound(cached, latest int64) (int64, error) {
 	if cached > 0 {
 		available, err := a.hasBlock(cached)
@@ -108,7 +81,6 @@ func (a *AlgorandLowerBoundDetector) locateBound(cached, latest int64) (int64, e
 		}
 		return a.binarySearchLower(cached+1, latest)
 	}
-	// Cold start: probe round 1 first to short-circuit archival nodes.
 	available, err := a.hasBlock(1)
 	if err != nil {
 		return 0, err
@@ -116,15 +88,15 @@ func (a *AlgorandLowerBoundDetector) locateBound(cached, latest int64) (int64, e
 	if available {
 		return 1, nil
 	}
+	if latest < 2 {
+		return 0, fmt.Errorf("algorand upstream '%s' retains no blocks (last-round=%d)", a.upstreamId, latest)
+	}
 	return a.binarySearchLower(2, latest)
 }
 
-// binarySearchLower returns the smallest round in [lo, hi] whose block is
-// retained. Assumes the predicate is monotonic (once a round is retained,
-// all higher rounds are too) which holds for algod's prune behaviour.
 func (a *AlgorandLowerBoundDetector) binarySearchLower(lo, hi int64) (int64, error) {
 	if lo > hi {
-		return hi, nil
+		return 0, fmt.Errorf("algorand upstream '%s' empty search range [%d, %d]", a.upstreamId, lo, hi)
 	}
 	left, right := lo, hi
 	var result int64
@@ -142,28 +114,20 @@ func (a *AlgorandLowerBoundDetector) binarySearchLower(lo, hi int64) (int64, err
 		}
 	}
 	if result == 0 {
-		// Nothing in [lo, hi] is retained right now - give up rather than
-		// advertise a bogus bound. The next tick will retry.
 		return 0, fmt.Errorf("algorand upstream '%s' has no retained block in [%d, %d]", a.upstreamId, lo, hi)
 	}
 	return result, nil
 }
 
-// hasBlock reports whether `GET /v2/blocks/{round}?header-only=true` returns
-// a successful response. 404 / "block not found" / "not available" are
-// treated as a clean "missing" signal; other errors are surfaced.
 func (a *AlgorandLowerBoundDetector) hasBlock(round int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	path := fmt.Sprintf("/v2/blocks/%d?header-only=true", round)
+	path := fmt.Sprintf("/v2/blocks/%d/hash", round)
 	request := protocol.NewInternalUpstreamRestRequest("GET", path, a.chain)
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
-		// Distinguish "round was pruned" (a 404 / well-known message) from
-		// "the upstream is misbehaving" (transport error, 5xx). The former
-		// must not propagate as an error or the binary search collapses.
 		respErr := response.GetError()
 		if respErr != nil {
 			if response.ResponseCode() == 404 || isNotFoundMessage(respErr.Message) {
@@ -174,25 +138,25 @@ func (a *AlgorandLowerBoundDetector) hasBlock(round int64) (bool, error) {
 	}
 	raw := response.ResponseResult()
 	if len(raw) == 0 {
-		return false, nil
+		return false, fmt.Errorf("algorand upstream '%s' /v2/blocks/%d/hash returned empty body", a.upstreamId, round)
 	}
-	// algod sometimes returns 200 with an error envelope. Probe for a `block`
-	// key to distinguish a real header from an error body.
-	var probe map[string]any
+	var probe struct {
+		BlockHash string `json:"blockHash"`
+		Message   string `json:"message"`
+	}
 	if err := sonic.Unmarshal(raw, &probe); err != nil {
-		// Unparseable payload - treat as transient by surfacing the error.
-		return false, fmt.Errorf("algorand upstream '%s' /v2/blocks/%d unparseable: %w", a.upstreamId, round, err)
+		return false, fmt.Errorf("algorand upstream '%s' /v2/blocks/%d/hash unparseable: %w", a.upstreamId, round, err)
 	}
-	if _, ok := probe["block"]; ok {
+	if probe.BlockHash != "" {
 		return true, nil
 	}
-	if msg, ok := probe["message"].(string); ok && isNotFoundMessage(msg) {
+	if isNotFoundMessage(probe.Message) {
 		return false, nil
 	}
-	if _, ok := probe["cert"]; ok {
-		return true, nil
+	if probe.Message != "" {
+		return false, fmt.Errorf("algorand upstream '%s' /v2/blocks/%d/hash unexpected error: %s", a.upstreamId, round, probe.Message)
 	}
-	return false, nil
+	return false, fmt.Errorf("algorand upstream '%s' /v2/blocks/%d/hash returned an unrecognised body", a.upstreamId, round)
 }
 
 func (a *AlgorandLowerBoundDetector) fetchLatestRound() (int64, error) {
@@ -225,9 +189,6 @@ func isNotFoundMessage(msg string) bool {
 	return false
 }
 
-// algod 404 phrasing varies between releases; keep this list narrow but
-// inclusive of the strings that are observed in the wild against
-// /v2/blocks/{round}.
 var notFoundHints = []string{
 	"block not found",
 	"not available",

@@ -15,10 +15,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// AlgorandChainSpecificObject wires Algorand-specific processors over the algod
-// REST API. All internal calls go through [protocol.NewInternalUpstreamRestRequest]
-// so the shared HttpConnector forwards them as plain GET/POSTs against the
-// upstream endpoint instead of wrapping them in a JSON-RPC envelope.
 type AlgorandChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
@@ -102,9 +98,6 @@ func (a *AlgorandChainSpecificObject) GetLatestBlock(ctx context.Context) (proto
 	return a.ParseBlock(response.ResponseResult())
 }
 
-// GetFinalizedBlock has no separate finalized tip in Algorand: with pure proof
-// of stake every committed block is final once it has been certified. The
-// safest approximation is therefore the latest round itself.
 func (a *AlgorandChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
 	return a.GetLatestBlock(ctx)
 }

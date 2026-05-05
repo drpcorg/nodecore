@@ -8,11 +8,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// AlgorandClientLabelsDetector reads node identity from the algod
-// `GET /v2/versions` REST endpoint. algod is the only public algorand node
-// implementation, so client_type is fixed to `algod` while client_version is
-// reconstructed from the build object that algorand publishes in their
-// release notes.
 type AlgorandClientLabelsDetector struct {
 	chain chains.Chain
 }
@@ -42,8 +37,6 @@ func (a *AlgorandClientLabelsDetector) ClientVersionAndType(data []byte) (string
 	}
 	build := versions.Build
 	if build.Major == 0 && build.Minor == 0 && build.BuildNumber == 0 {
-		// Treat an all-zero build object as a missing version - reporting "0.0.0"
-		// would be misleading. Empty client_version is preferred over noise.
 		return "", "algod", nil
 	}
 	return fmt.Sprintf("%d.%d.%d", build.Major, build.Minor, build.BuildNumber), "algod", nil

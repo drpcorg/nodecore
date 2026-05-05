@@ -18,10 +18,6 @@ var (
 	errAlgorandNoRound         = errors.New("algorand node returned no last-round")
 )
 
-// AlgorandHealthValidator polls `GET /v2/status` and reports Unavailable when
-// the upstream is still catching up (catchup-time > 0) or has halted on an
-// unsupported consensus upgrade. Both signals come straight out of NodeStatus
-// without an extra round-trip.
 type AlgorandHealthValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -81,9 +77,6 @@ func (a *AlgorandHealthValidator) fetchStatus() (*AlgorandStatus, error) {
 	return &status, nil
 }
 
-// AlgorandStatus mirrors the algod NodeStatusResponse fields nodecore needs.
-// The full schema has more entries (catchpoint progress, upgrade voting) but
-// nothing else informs availability decisions.
 type AlgorandStatus struct {
 	LastRound                 uint64 `json:"last-round"`
 	CatchupTime               int64  `json:"catchup-time"`

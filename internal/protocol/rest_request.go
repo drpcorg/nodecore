@@ -10,31 +10,16 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
-// UpstreamRestRequest represents a REST call dispatched over the shared
-// HttpConnector. The connector inspects RequestHolder.Method() and splits it on
-// `MethodSeparator` ("#") into [verb, path]; the verb becomes the HTTP method
-// and the path is appended to the upstream endpoint. Encoded query parameters
-// can be baked into `path` directly (e.g. "/v2/blocks/123?header-only=true").
-//
-// The struct is intentionally minimal: spec-driven param parsing/modification,
-// caching and request observation collapse to no-ops because internal REST
-// calls (chain validation, lower-bound probes, label detection) do not flow
-// through the spec/cache machinery used for client-facing JSON-RPC. Should a
-// future change route external REST traffic here those can be filled in.
 type UpstreamRestRequest struct {
-	id            string
-	method        string
-	path          string
-	body          []byte
-	headers       map[string]string
-	specMethod    *specs.Method
-	observer      *RequestObserver
+	id         string
+	method     string
+	path       string
+	body       []byte
+	headers    map[string]string
+	specMethod *specs.Method
+	observer   *RequestObserver
 }
 
-// NewInternalUpstreamRestRequest builds a REST request for one of nodecore's
-// own internal calls (label/lower-bound/health/chain-id detection). The method
-// is encoded as "<HTTP-verb>#<path>" as expected by HttpConnector.requestParams,
-// and the path may contain a leading slash and an already-encoded query string.
 func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain) *UpstreamRestRequest {
 	verb := strings.ToUpper(strings.TrimSpace(httpMethod))
 	if verb == "" {
@@ -53,9 +38,6 @@ func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain)
 	}
 }
 
-// NewInternalUpstreamRestRequestWithQuery is a convenience wrapper that encodes
-// a map of query params alongside the path so callers don't have to assemble
-// query strings manually.
 func NewInternalUpstreamRestRequestWithQuery(httpMethod, path string, query map[string]string, chain chains.Chain) *UpstreamRestRequest {
 	if len(query) == 0 {
 		return NewInternalUpstreamRestRequest(httpMethod, path, chain)
@@ -72,18 +54,22 @@ func NewInternalUpstreamRestRequestWithQuery(httpMethod, path string, query map[
 	return NewInternalUpstreamRestRequest(httpMethod, full, chain)
 }
 
+// NewUpstreamRestRequest builds an external-facing REST request holder.
+// Always initialises the observer to avoid nil-deref in ObserverConnector.
 func NewUpstreamRestRequest() *UpstreamRestRequest {
-	return &UpstreamRestRequest{id: "1", method: "GET" + MethodSeparator + "/"}
+	method := "GET" + MethodSeparator + "/"
+	return &UpstreamRestRequest{
+		id:       "1",
+		method:   method,
+		observer: NewRequestObserver(false).WithMethod(method),
+	}
 }
 
 func (u *UpstreamRestRequest) RequestObserver() *RequestObserver {
 	return u.observer
 }
 
-func (u *UpstreamRestRequest) ModifyParams(_ context.Context, _ any) {
-	// Internal REST calls are constructed in full at the call site - there is
-	// no spec-driven param rewriting to perform here.
-}
+func (u *UpstreamRestRequest) ModifyParams(_ context.Context, _ any) {}
 
 func (u *UpstreamRestRequest) SpecMethod() *specs.Method {
 	return u.specMethod
