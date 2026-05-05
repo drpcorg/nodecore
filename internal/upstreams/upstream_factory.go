@@ -208,7 +208,14 @@ func getChainSpecific(
 	case chains.Aztec:
 		return specific.NewAztecChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
 	case chains.Algorand:
-		return specific.NewAlgorandChainSpecificObject(conf.Id, upstreamConnectorsInfo.internalRequestConnector)
+		return specific.NewAlgorandChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options.InternalTimeout,
+			conf.Options.ValidationInterval*5,
+		)
 	case chains.Solana:
 		return specific.NewSolanaChainSpecificObject(
 			ctx,
