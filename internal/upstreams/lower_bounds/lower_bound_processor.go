@@ -28,8 +28,41 @@ type BaseLowerBoundProcessor struct {
 	lowerBounds          *LowerBounds
 }
 
-func (b *BaseLowerBoundProcessor) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
-	return b.lowerBounds.PredictNextBound(boundType, timeOffset)
+func NewBaseLowerBoundProcessor(
+	ctx context.Context,
+	upstreamId string,
+	averageSpeed float64,
+	lowerBoundsDetectors []LowerBoundDetector,
+) *BaseLowerBoundProcessor {
+	return NewBaseLowerBoundProcessorWithDelay(
+		ctx, upstreamId, averageSpeed, 15*time.Second, lowerBoundsDetectors,
+	)
+}
+
+func NewBaseLowerBoundProcessorWithDelay(
+	ctx context.Context,
+	upstreamId string,
+	averageSpeed float64,
+	initialDelay time.Duration,
+	lowerBoundsDetectors []LowerBoundDetector,
+) *BaseLowerBoundProcessor {
+	if len(lowerBoundsDetectors) == 0 {
+		return nil
+	}
+
+	name := fmt.Sprintf("%s_lower_bound_service", upstreamId)
+	return &BaseLowerBoundProcessor{
+		upstreamId:           upstreamId,
+		initialDelay:         initialDelay,
+		subManager:           utils.NewSubscriptionManager[protocol.LowerBoundData](name),
+		lifecycle:            utils.NewBaseLifecycle(name, ctx),
+		lowerBoundsDetectors: lowerBoundsDetectors,
+		lowerBounds:          NewLowerBounds(averageSpeed),
+	}
+}
+
+func (b *BaseLowerBoundProcessor) PredictLowerBound(bt protocol.LowerBoundType, timeOffset int64) int64 {
+	return b.lowerBounds.PredictNextBound(bt, timeOffset)
 }
 
 func (b *BaseLowerBoundProcessor) Start() {
@@ -70,38 +103,10 @@ func (b *BaseLowerBoundProcessor) Subscribe(name string) *utils.Subscription[pro
 	return b.subManager.Subscribe(name)
 }
 
-func NewBaseLowerBoundProcessor(
+func (b *BaseLowerBoundProcessor) detectLowerBound(
 	ctx context.Context,
-	upstreamId string,
-	averageSpeed float64,
-	lowerBoundsDetectors []LowerBoundDetector,
-) *BaseLowerBoundProcessor {
-	return NewBaseLowerBoundProcessorWithDelay(ctx, upstreamId, averageSpeed, 15*time.Second, lowerBoundsDetectors)
-}
-
-func NewBaseLowerBoundProcessorWithDelay(
-	ctx context.Context,
-	upstreamId string,
-	averageSpeed float64,
-	initialDelay time.Duration,
-	lowerBoundsDetectors []LowerBoundDetector,
-) *BaseLowerBoundProcessor {
-	if len(lowerBoundsDetectors) == 0 {
-		return nil
-	}
-
-	name := fmt.Sprintf("%s_lower_bound_service", upstreamId)
-	return &BaseLowerBoundProcessor{
-		upstreamId:           upstreamId,
-		initialDelay:         initialDelay,
-		subManager:           utils.NewSubscriptionManager[protocol.LowerBoundData](name),
-		lifecycle:            utils.NewBaseLifecycle(name, ctx),
-		lowerBoundsDetectors: lowerBoundsDetectors,
-		lowerBounds:          NewLowerBounds(averageSpeed),
-	}
-}
-
-func (b *BaseLowerBoundProcessor) detectLowerBound(ctx context.Context, detector LowerBoundDetector) chan protocol.LowerBoundData {
+	detector LowerBoundDetector,
+) chan protocol.LowerBoundData {
 	boundsChan := make(chan protocol.LowerBoundData, 10)
 
 	go func() {
@@ -123,13 +128,19 @@ func (b *BaseLowerBoundProcessor) detectLowerBound(ctx context.Context, detector
 	return boundsChan
 }
 
-func (b *BaseLowerBoundProcessor) processBounds(detector LowerBoundDetector, boundsChan chan protocol.LowerBoundData) {
+func (b *BaseLowerBoundProcessor) processBounds(
+	detector LowerBoundDetector,
+	boundsChan chan protocol.LowerBoundData,
+) {
 	bounds, err := detector.DetectLowerBound()
 	if err != nil {
 		log.
 			Error().
 			Err(err).
-			Msgf("couldn't detect lower bounds %s for upstream '%s'", detector.SupportedTypes(), b.upstreamId)
+			Msgf(
+				"couldn't detect lower bounds %s for upstream '%s'",
+				detector.SupportedTypes(), b.upstreamId,
+			)
 		return
 	}
 
