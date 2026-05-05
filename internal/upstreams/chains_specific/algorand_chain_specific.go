@@ -3,6 +3,7 @@ package specific
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -14,32 +15,84 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
+// AlgorandChainSpecificObject wires Algorand-specific processors over the algod
+// REST API. All internal calls go through [protocol.NewInternalUpstreamRestRequest]
+// so the shared HttpConnector forwards them as plain GET/POSTs against the
+// upstream endpoint instead of wrapping them in a JSON-RPC envelope.
 type AlgorandChainSpecificObject struct {
-	upstreamId string
-	connector  connectors.ApiConnector
+	ctx             context.Context
+	upstreamId      string
+	connector       connectors.ApiConnector
+	internalTimeout time.Duration
+	labelsDelay     time.Duration
+	configuredChain *chains.ConfiguredChain
+}
+
+func NewAlgorandChainSpecificObject(
+	ctx context.Context,
+	configuredChain *chains.ConfiguredChain,
+	upstreamId string,
+	connector connectors.ApiConnector,
+	internalTimeout, labelsDelay time.Duration,
+) *AlgorandChainSpecificObject {
+	return &AlgorandChainSpecificObject{
+		ctx:             ctx,
+		upstreamId:      upstreamId,
+		connector:       connector,
+		internalTimeout: internalTimeout,
+		labelsDelay:     labelsDelay,
+		configuredChain: configuredChain,
+	}
 }
 
 func (a *AlgorandChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	return nil
+	labelsDetectors := []labels.LabelsDetector{
+		labels.NewClientLabelDetectorHandler(
+			a.upstreamId,
+			a.connector,
+			labels.NewAlgorandClientLabelsDetector(a.configuredChain.Chain),
+			a.internalTimeout,
+		),
+	}
+	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AlgorandChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
-	return nil
+	detectors := []lower_bounds.LowerBoundDetector{
+		lower_bounds.NewAlgorandLowerBoundDetector(
+			a.upstreamId,
+			a.configuredChain.Chain,
+			a.internalTimeout,
+			a.connector,
+		),
+	}
+	return lower_bounds.NewBaseLowerBoundProcessor(
+		a.ctx,
+		a.upstreamId,
+		a.configuredChain.AverageRemoveSpeed(),
+		detectors,
+	)
 }
 
 func (a *AlgorandChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
-	return nil
+	return []validations.Validator[protocol.AvailabilityStatus]{
+		validations.NewAlgorandHealthValidator(
+			a.upstreamId, a.connector, a.configuredChain.Chain, a.internalTimeout,
+		),
+	}
 }
 
 func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	return nil
+	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+		return nil
+	}
+	return []validations.Validator[validations.ValidationSettingResult]{
+		validations.NewAlgorandChainValidator(a.upstreamId, a.connector, a.configuredChain, a.internalTimeout),
+	}
 }
 
 func (a *AlgorandChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []interface{}{}, chains.ALGORAND)
-	if err != nil {
-		return protocol.ZeroBlock{}, err
-	}
+	request := protocol.NewInternalUpstreamRestRequest("GET", "/v2/status", a.configuredChain.Chain)
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
@@ -49,12 +102,15 @@ func (a *AlgorandChainSpecificObject) GetLatestBlock(ctx context.Context) (proto
 	return a.ParseBlock(response.ResponseResult())
 }
 
-func (a *AlgorandChainSpecificObject) GetFinalizedBlock(_ context.Context) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, nil
+// GetFinalizedBlock has no separate finalized tip in Algorand: with pure proof
+// of stake every committed block is final once it has been certified. The
+// safest approximation is therefore the latest round itself.
+func (a *AlgorandChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
+	return a.GetLatestBlock(ctx)
 }
 
 func (a *AlgorandChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
-	status := AlgorandStatus{}
+	status := validations.AlgorandStatus{}
 	err := sonic.Unmarshal(blockBytes, &status)
 	if err != nil {
 		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the algorand status, reason - %s", err.Error())
@@ -74,20 +130,6 @@ func (a *AlgorandChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol
 
 func (a *AlgorandChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
 	return nil, fmt.Errorf("algorand does not support websocket subscriptions")
-}
-
-func NewAlgorandChainSpecificObject(
-	upstreamId string,
-	connector connectors.ApiConnector,
-) *AlgorandChainSpecificObject {
-	return &AlgorandChainSpecificObject{
-		upstreamId: upstreamId,
-		connector:  connector,
-	}
-}
-
-type AlgorandStatus struct {
-	LastRound uint64 `json:"last-round"`
 }
 
 var _ ChainSpecific = (*AlgorandChainSpecificObject)(nil)
