@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/emerald"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -95,7 +96,10 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		flow.NewSubCtx(),
 		s.appCtx.quorumRegistry,
 	)
-	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.upstreamSupervisor))
+	executionFlow.AddHooks(
+		flow.NewMethodBanHook(s.appCtx.upstreamSupervisor),
+		dimensions.NewDimensionHook(s.appCtx.dimensionTracker),
+	)
 
 	go executionFlow.Execute(stream.Context(), requests)
 
