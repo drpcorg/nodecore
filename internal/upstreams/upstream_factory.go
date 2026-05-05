@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+
 	"github.com/drpcorg/nodecore/internal/stats/hook"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -210,9 +211,8 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
+			conf.Options,
 			upstreamConnectorsInfo.internalRequestConnector,
-			conf.Options.InternalTimeout,
-			conf.Options.ValidationInterval*5,
 		)
 	case chains.Algorand:
 		return specific.NewAlgorandChainSpecificObject(
@@ -220,8 +220,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
-			conf.Options.InternalTimeout,
-			conf.Options.ValidationInterval*5,
+			conf.Options,
 		)
 	case chains.Solana:
 		return specific.NewSolanaChainSpecificObject(

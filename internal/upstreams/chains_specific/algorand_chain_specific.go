@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -19,6 +20,7 @@ type AlgorandChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
 	connector       connectors.ApiConnector
+	options         *config.UpstreamOptions
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
@@ -29,14 +31,15 @@ func NewAlgorandChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
-	internalTimeout, labelsDelay time.Duration,
+	options *config.UpstreamOptions,
 ) *AlgorandChainSpecificObject {
 	return &AlgorandChainSpecificObject{
 		ctx:             ctx,
 		upstreamId:      upstreamId,
 		connector:       connector,
-		internalTimeout: internalTimeout,
-		labelsDelay:     labelsDelay,
+		options:         options,
+		internalTimeout: options.InternalTimeout,
+		labelsDelay:     options.ValidationInterval * 5,
 		configuredChain: configuredChain,
 	}
 }
@@ -71,6 +74,9 @@ func (a *AlgorandChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBo
 }
 
 func (a *AlgorandChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
+	if a.options != nil && *a.options.DisableHealthValidation {
+		return []validations.Validator[protocol.AvailabilityStatus]{}
+	}
 	return []validations.Validator[protocol.AvailabilityStatus]{
 		validations.NewAlgorandHealthValidator(
 			a.upstreamId, a.connector, a.configuredChain.Chain, a.internalTimeout,
@@ -81,6 +87,9 @@ func (a *AlgorandChainSpecificObject) HealthValidators() []validations.Validator
 func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
 	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
 		return nil
+	}
+	if a.options != nil && *a.options.DisableChainValidation {
+		return []validations.Validator[validations.ValidationSettingResult]{}
 	}
 	return []validations.Validator[validations.ValidationSettingResult]{
 		validations.NewAlgorandChainValidator(a.upstreamId, a.connector, a.configuredChain, a.internalTimeout),

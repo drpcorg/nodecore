@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -22,21 +23,23 @@ type AztecChainSpecificObject struct {
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
+	options         *config.UpstreamOptions
 }
 
 func NewAztecChainSpecificObject(
 	ctx context.Context,
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
+	options *config.UpstreamOptions,
 	connector connectors.ApiConnector,
-	internalTimeout, labelsDelay time.Duration,
 ) *AztecChainSpecificObject {
 	return &AztecChainSpecificObject{
 		ctx:             ctx,
 		upstreamId:      upstreamId,
+		options:         options,
 		connector:       connector,
-		internalTimeout: internalTimeout,
-		labelsDelay:     labelsDelay,
+		internalTimeout: options.InternalTimeout,
+		labelsDelay:     options.ValidationInterval * 5,
 		configuredChain: configuredChain,
 	}
 }
@@ -71,6 +74,9 @@ func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 }
 
 func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
+	if a.options != nil && *a.options.DisableHealthValidation {
+		return []validations.Validator[protocol.AvailabilityStatus]{}
+	}
 	return []validations.Validator[protocol.AvailabilityStatus]{
 		validations.NewAztecHealthValidator(
 			a.upstreamId, a.connector, a.configuredChain.Chain, a.internalTimeout,
@@ -81,6 +87,9 @@ func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[pr
 func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
 	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
 		return nil
+	}
+	if a.options != nil && *a.options.DisableChainValidation {
+		return []validations.Validator[validations.ValidationSettingResult]{}
 	}
 	return []validations.Validator[validations.ValidationSettingResult]{
 		validations.NewAztecChainValidator(a.upstreamId, a.connector, a.configuredChain, a.internalTimeout),
