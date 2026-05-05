@@ -2,75 +2,113 @@ package protocol
 
 import (
 	"context"
+	"fmt"
+	"net/url"
+	"strings"
 
+	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
 type UpstreamRestRequest struct {
+	id         string
+	method     string
+	path       string
+	body       []byte
+	headers    map[string]string
+	specMethod *specs.Method
+	observer   *RequestObserver
+}
+
+func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain) *UpstreamRestRequest {
+	verb := strings.ToUpper(strings.TrimSpace(httpMethod))
+	if verb == "" {
+		verb = "GET"
+	}
+	cleanPath := path
+	if !strings.HasPrefix(cleanPath, "/") {
+		cleanPath = "/" + cleanPath
+	}
+	combined := verb + MethodSeparator + cleanPath
+	return &UpstreamRestRequest{
+		id:       "1",
+		method:   combined,
+		path:     cleanPath,
+		observer: NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(combined),
+	}
+}
+
+func NewInternalUpstreamRestRequestWithQuery(httpMethod, path string, query map[string]string, chain chains.Chain) *UpstreamRestRequest {
+	if len(query) == 0 {
+		return NewInternalUpstreamRestRequest(httpMethod, path, chain)
+	}
+	values := url.Values{}
+	for k, v := range query {
+		values.Set(k, v)
+	}
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	full := fmt.Sprintf("%s%s%s", path, separator, values.Encode())
+	return NewInternalUpstreamRestRequest(httpMethod, full, chain)
+}
+
+// NewUpstreamRestRequest builds an external-facing REST request holder.
+// Always initialises the observer to avoid nil-deref in ObserverConnector.
+func NewUpstreamRestRequest() *UpstreamRestRequest {
+	method := "GET" + MethodSeparator + "/"
+	return &UpstreamRestRequest{
+		id:       "1",
+		method:   method,
+		observer: NewRequestObserver(false).WithMethod(method),
+	}
 }
 
 func (u *UpstreamRestRequest) RequestObserver() *RequestObserver {
-	//TODO implement me
-	panic("implement me")
+	return u.observer
 }
 
-func NewUpstreamRestRequest() *UpstreamRestRequest {
-	return &UpstreamRestRequest{}
-}
-
-func (u *UpstreamRestRequest) ModifyParams(ctx context.Context, newValue any) {
-	//TODO implement me
-	panic("implement me")
-}
+func (u *UpstreamRestRequest) ModifyParams(_ context.Context, _ any) {}
 
 func (u *UpstreamRestRequest) SpecMethod() *specs.Method {
-	//TODO implement me
-	panic("implement me")
+	return u.specMethod
 }
 
 func (u *UpstreamRestRequest) Id() string {
-	//TODO implement me
-	panic("implement me")
+	return u.id
 }
 
 func (u *UpstreamRestRequest) Method() string {
-	//TODO implement me
-	panic("implement me")
+	return u.method
 }
 
 func (u *UpstreamRestRequest) Headers() map[string]string {
-	//TODO implement me
-	panic("implement me")
+	return u.headers
 }
 
 func (u *UpstreamRestRequest) Body() ([]byte, error) {
-	//TODO implement me
-	panic("implement me")
+	return u.body, nil
 }
 
-func (u *UpstreamRestRequest) ParseParams(ctx context.Context) specs.MethodParam {
-	//TODO implement me
-	panic("implement me")
+func (u *UpstreamRestRequest) ParseParams(_ context.Context) specs.MethodParam {
+	return nil
 }
 
 func (u *UpstreamRestRequest) IsStream() bool {
-	//TODO implement me
-	panic("implement me")
+	return false
 }
 
 func (u *UpstreamRestRequest) IsSubscribe() bool {
-	//TODO implement me
-	panic("implement me")
+	return false
 }
 
 func (u *UpstreamRestRequest) RequestType() RequestType {
-	//TODO implement me
-	panic("implement me")
+	return Rest
 }
 
 func (u *UpstreamRestRequest) RequestHash() string {
-	//TODO implement me
-	panic("implement me")
+	return calculateHash([]byte(u.method))
 }
 
 var _ RequestHolder = (*UpstreamRestRequest)(nil)
