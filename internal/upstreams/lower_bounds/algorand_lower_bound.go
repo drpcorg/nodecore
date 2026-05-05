@@ -12,6 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/rs/zerolog/log"
 )
 
 const algorandPeriod = 5 * time.Minute
@@ -44,16 +45,16 @@ func NewAlgorandLowerBoundDetector(
 func (a *AlgorandLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
 	latest, err := a.fetchLatestRound()
 	if err != nil {
-		return nil, fmt.Errorf("algorand lower bound: cannot fetch latest round: %w", err)
+		return a.fallback(fmt.Errorf("cannot fetch latest round: %w", err)), nil
 	}
 	if latest == 0 {
-		return nil, errAlgorandNoLatestRound
+		return a.fallback(errAlgorandNoLatestRound), nil
 	}
 
 	cached := a.lastBound.Load()
 	bound, err := a.locateBound(cached, latest)
 	if err != nil {
-		return nil, err
+		return a.fallback(err), nil
 	}
 	a.lastBound.Store(bound)
 
@@ -63,11 +64,34 @@ func (a *AlgorandLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundDa
 }
 
 func (a *AlgorandLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
-	return []protocol.LowerBoundType{protocol.StateBound}
+	return []protocol.LowerBoundType{protocol.StateBound, protocol.UnknownBound}
 }
 
 func (a *AlgorandLowerBoundDetector) Period() time.Duration {
 	return algorandPeriod
+}
+
+// fallback decides what to publish when the calculation cannot complete.
+// If a previous tick produced a bound, re-emit it so the router keeps using
+// the last known good value. Otherwise emit UnknownBound=0 so consumers get
+// an explicit "we don't know" signal instead of silence.
+func (a *AlgorandLowerBoundDetector) fallback(reason error) []protocol.LowerBoundData {
+	if cached := a.lastBound.Load(); cached > 0 {
+		log.Warn().Err(reason).Msgf(
+			"algorand upstream '%s' lower-bound calculation failed; retaining cached STATE=%d",
+			a.upstreamId, cached,
+		)
+		return []protocol.LowerBoundData{
+			protocol.NewLowerBoundDataNow(cached, protocol.StateBound),
+		}
+	}
+	log.Warn().Err(reason).Msgf(
+		"algorand upstream '%s' lower-bound calculation failed and no cache available; emitting UnknownBound",
+		a.upstreamId,
+	)
+	return []protocol.LowerBoundData{
+		protocol.NewLowerBoundDataNow(0, protocol.UnknownBound),
+	}
 }
 
 func (a *AlgorandLowerBoundDetector) locateBound(cached, latest int64) (int64, error) {
