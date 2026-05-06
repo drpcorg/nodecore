@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -16,7 +15,7 @@ import (
 
 func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	options := &config.UpstreamOptions{
+	options := &chains.Options{
 		InternalTimeout: time.Second,
 	}
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
@@ -38,7 +37,7 @@ func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
 
 func TestChainValidatorNetVersionErrorThenSettingErrorResult(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	options := &config.UpstreamOptions{
+	options := &chains.Options{
 		InternalTimeout: time.Second,
 	}
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
@@ -60,7 +59,7 @@ func TestChainValidatorNetVersionErrorThenSettingErrorResult(t *testing.T) {
 
 func TestChainValidatorWrongChainSettingsThenFatalErrorResult(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	options := &config.UpstreamOptions{
+	options := &chains.Options{
 		InternalTimeout: time.Second,
 	}
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
@@ -82,7 +81,7 @@ func TestChainValidatorWrongChainSettingsThenFatalErrorResult(t *testing.T) {
 
 func TestChainValidatorValidResult(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	options := &config.UpstreamOptions{
+	options := &chains.Options{
 		InternalTimeout: time.Second,
 	}
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)

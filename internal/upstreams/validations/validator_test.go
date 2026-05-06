@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -74,7 +73,7 @@ func TestSettingsValidationProcessorMultipleValidators(t *testing.T) {
 
 func getTestChainValidator(chainIdResp, netVersionResp protocol.ResponseHolder) (*mocks.ConnectorMock, validations.SettingsValidator) {
 	connector := mocks.NewConnectorMock()
-	options := &config.UpstreamOptions{
+	options := &chains.Options{
 		InternalTimeout: time.Second,
 	}
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)

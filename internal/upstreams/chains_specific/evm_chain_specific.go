@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -36,7 +35,7 @@ type EvmChainSpecificObject struct {
 	upstreamId string
 	connector  connectors.ApiConnector
 	chain      *chains.ConfiguredChain
-	options    *config.UpstreamOptions
+	options    *chains.Options
 }
 
 func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -48,7 +47,16 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 }
 
 func (e *EvmChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
-	return nil
+	validators := make([]validations.Validator[protocol.AvailabilityStatus], 0)
+
+	if *e.options.ValidateSyncing {
+		validators = append(validators, validations.NewEthSyncingValidator(e.upstreamId, e.chain, e.connector, e.options.InternalTimeout))
+	}
+	if *e.options.ValidatePeers {
+		validators = append(validators, validations.NewEthPeersValidator(e.upstreamId, e.chain.Chain, e.connector, e.options))
+	}
+
+	return validators
 }
 
 func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
@@ -99,7 +107,7 @@ func NewEvmChainSpecific(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 ) *EvmChainSpecificObject {
 	return &EvmChainSpecificObject{
 		upstreamId: upstreamId,

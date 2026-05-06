@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
@@ -20,7 +19,7 @@ import (
 )
 
 func TestChainValidator(t *testing.T) {
-	options := &config.UpstreamOptions{
+	options := &chains.Options{
 		DisableChainValidation: lo.ToPtr(false),
 	}
 	connector := mocks.NewConnectorMock()

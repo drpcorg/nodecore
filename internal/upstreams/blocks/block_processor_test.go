@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
-	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second}}
+	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &chains.Options{InternalTimeout: 5 * time.Second}}
 	ctx := context.Background()
 	connector := mocks.NewConnectorMock()
 	body := []byte(`{
@@ -68,7 +69,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 }
 
 func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
-	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &config.UpstreamOptions{InternalTimeout: 5 * time.Second}}
+	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &chains.Options{InternalTimeout: 5 * time.Second}}
 	ctx := context.Background()
 	connector := mocks.NewConnectorMock()
 	body := []byte(`{

@@ -294,9 +294,10 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		u.FailsafeConfig = &FailsafeConfig{}
 	}
 	if u.Options == nil {
-		u.Options = &UpstreamOptions{}
+		u.Options = &chains.Options{}
 	}
-	u.Options.setDefaults(defaults, upstreamMode)
+	configuredChain := chains.GetChain(u.ChainName)
+	setOptionsDefaults(u.Options, defaults, configuredChain.Settings.Options, upstreamMode)
 	if u.FailsafeConfig != nil {
 		if u.FailsafeConfig.RetryConfig != nil {
 			u.FailsafeConfig.RetryConfig.setDefaults()
@@ -329,65 +330,6 @@ func getDefaultPollInterval(chainName string, upstreamMode UpstreamMode) time.Du
 		return defaultInterval
 	}
 	return chain.Settings.ExpectedBlockTime
-}
-
-func (o *UpstreamOptions) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMode) {
-	if o.InternalTimeout == 0 {
-		timeout := 5 * time.Second
-		if defaults != nil && defaults.Options != nil && defaults.Options.InternalTimeout != 0 {
-			timeout = defaults.Options.InternalTimeout
-		}
-		o.InternalTimeout = timeout
-	}
-	if o.ValidationInterval == 0 {
-		interval := 30 * time.Second
-		if defaults != nil && defaults.Options != nil && defaults.Options.ValidationInterval != 0 {
-			interval = defaults.Options.ValidationInterval
-		}
-		o.ValidationInterval = interval
-	}
-	if o.DisableValidation == nil {
-		value := false
-		if defaults != nil && defaults.Options != nil && defaults.Options.DisableValidation != nil {
-			value = *defaults.Options.DisableValidation
-		}
-		o.DisableValidation = &value
-	}
-	if o.DisableChainValidation == nil {
-		value := false
-		if defaults != nil && defaults.Options != nil && defaults.Options.DisableChainValidation != nil {
-			value = *defaults.Options.DisableChainValidation
-		}
-		o.DisableChainValidation = &value
-	}
-	if o.DisableSettingsValidation == nil {
-		value := false
-		if defaults != nil && defaults.Options != nil && defaults.Options.DisableSettingsValidation != nil {
-			value = *defaults.Options.DisableSettingsValidation
-		}
-		o.DisableSettingsValidation = &value
-	}
-	if o.DisableHealthValidation == nil {
-		value := false
-		if defaults != nil && defaults.Options != nil && defaults.Options.DisableHealthValidation != nil {
-			value = *defaults.Options.DisableHealthValidation
-		}
-		o.DisableHealthValidation = &value
-	}
-	if o.DisableLowerBoundsDetection == nil {
-		value := lo.Ternary(upstreamMode == StrictMode, false, true)
-		if defaults != nil && defaults.Options != nil && defaults.Options.DisableLowerBoundsDetection != nil {
-			value = *defaults.Options.DisableLowerBoundsDetection
-		}
-		o.DisableLowerBoundsDetection = &value
-	}
-	if o.DisableLabelsDetection == nil {
-		value := lo.Ternary(upstreamMode == StrictMode, false, true)
-		if defaults != nil && defaults.Options != nil && defaults.Options.DisableLabelsDetection != nil {
-			value = *defaults.Options.DisableLabelsDetection
-		}
-		o.DisableLabelsDetection = &value
-	}
 }
 
 func (m *MethodsConfig) setDefaults() {

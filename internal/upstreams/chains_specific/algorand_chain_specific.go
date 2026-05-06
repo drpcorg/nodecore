@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -22,7 +21,7 @@ type AlgorandChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
 	connector       connectors.ApiConnector
-	options         *config.UpstreamOptions
+	options         *chains.Options
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
@@ -33,7 +32,7 @@ func NewAlgorandChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 ) *AlgorandChainSpecificObject {
 	return &AlgorandChainSpecificObject{
 		ctx:             ctx,
