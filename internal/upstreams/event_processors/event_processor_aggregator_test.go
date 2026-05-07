@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
@@ -144,8 +143,8 @@ func TestUpstreamProcessorAggregatorStartAndStopProcessor_ControlLifecycleByType
 	}
 }
 
-func aggregatorTestUpstreamOptions() *config.UpstreamOptions {
-	return &config.UpstreamOptions{
+func aggregatorTestUpstreamOptions() *chains.Options {
+	return &chains.Options{
 		InternalTimeout:             time.Second,
 		ValidationInterval:          time.Second,
 		DisableValidation:           new(false),

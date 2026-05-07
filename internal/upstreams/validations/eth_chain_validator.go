@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -25,7 +24,7 @@ func NewChainValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 ) *ChainValidator {
 	return &ChainValidator{
 		upstreamId:      upstreamId,

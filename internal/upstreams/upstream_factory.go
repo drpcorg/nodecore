@@ -110,7 +110,7 @@ func createRateLimiter(
 	return rt, autoTuneRateLimiter
 }
 
-func createLowerBoundsProcessor(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) lower_bounds.LowerBoundProcessor {
+func createLowerBoundsProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) lower_bounds.LowerBoundProcessor {
 	if *options.DisableLowerBoundsDetection {
 		return nil
 	}
@@ -151,7 +151,7 @@ func createConnector(
 	}
 }
 
-func createSettingValidationProcessor(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) *validations.ValidationProcessor[validations.ValidationSettingResult] {
+func createSettingValidationProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[validations.ValidationSettingResult] {
 	if *options.DisableValidation || *options.DisableSettingsValidation {
 		return nil
 	}
@@ -163,7 +163,7 @@ func createSettingValidationProcessor(chainSpecific specific.ChainSpecific, opti
 	return validations.NewSettingsValidationProcessor(validators)
 }
 
-func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) *validations.ValidationProcessor[protocol.AvailabilityStatus] {
+func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[protocol.AvailabilityStatus] {
 	if *options.DisableValidation || *options.DisableHealthValidation {
 		return nil
 	}
@@ -174,7 +174,7 @@ func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, optio
 	return validations.NewHealthValidationProcessor(validators)
 }
 
-func createLabelsProcessor(chainSpecific specific.ChainSpecific, options *config.UpstreamOptions) labels.LabelsProcessor {
+func createLabelsProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) labels.LabelsProcessor {
 	if *options.DisableLabelsDetection {
 		return nil
 	}

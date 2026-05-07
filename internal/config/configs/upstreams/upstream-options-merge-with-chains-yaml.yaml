@@ -1,0 +1,12 @@
+upstream-config:
+  chain-defaults:
+    sei:
+      options:
+        internal-timeout: 15s
+        validate-syncing: true
+  upstreams:
+    - id: sei-upstream
+      chain: sei
+      connectors:
+        - type: json-rpc
+          url: https://test.com

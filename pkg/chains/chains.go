@@ -56,9 +56,16 @@ type Protocol struct {
 	Type     BlockchainType         `yaml:"type"`
 }
 
+type LagConfig struct {
+	Lagging int64 `yaml:"lagging"`
+	Syncing int64 `yaml:"syncing"`
+}
+
 type Settings struct {
 	ExpectedBlockTime time.Duration `yaml:"expected-block-time"`
 	MethodSpec        string        `yaml:"method-spec"`
+	Lags              LagConfig     `yaml:"lags"`
+	Options           *Options      `yaml:"options"`
 }
 
 type ConfiguredChain struct {

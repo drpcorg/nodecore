@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -238,7 +239,7 @@ func TestReadFullConfig(t *testing.T) {
 							Jitter:   lo.ToPtr(6 * time.Second),
 						},
 					},
-					Options: &config.UpstreamOptions{
+					Options: &chains.Options{
 						InternalTimeout:             5 * time.Second,
 						ValidationInterval:          30 * time.Second,
 						DisableValidation:           new(false),
@@ -247,6 +248,9 @@ func TestReadFullConfig(t *testing.T) {
 						DisableHealthValidation:     new(false),
 						DisableLowerBoundsDetection: new(true),
 						DisableLabelsDetection:      new(true),
+						ValidateSyncing:             new(false),
+						ValidatePeers:               new(false),
+						MinPeers:                    1,
 					},
 				},
 				{
@@ -278,7 +282,7 @@ func TestReadFullConfig(t *testing.T) {
 							},
 						},
 					},
-					Options: &config.UpstreamOptions{
+					Options: &chains.Options{
 						InternalTimeout:             5 * time.Second,
 						ValidationInterval:          30 * time.Second,
 						DisableValidation:           new(false),
@@ -287,6 +291,9 @@ func TestReadFullConfig(t *testing.T) {
 						DisableHealthValidation:     new(false),
 						DisableLowerBoundsDetection: new(true),
 						DisableLabelsDetection:      new(true),
+						ValidateSyncing:             new(false),
+						ValidatePeers:               new(false),
+						MinPeers:                    1,
 					},
 				},
 			},

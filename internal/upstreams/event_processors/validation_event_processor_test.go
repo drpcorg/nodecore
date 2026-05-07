@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -395,12 +395,12 @@ func TestBaseHealthEventProcessorStopStopsLifecycle(t *testing.T) {
 	validator.AssertExpectations(t)
 }
 
-func testUpstreamOptions() *config.UpstreamOptions {
+func testUpstreamOptions() *chains.Options {
 	return testUpstreamOptionsWithInterval(10 * time.Millisecond)
 }
 
-func testUpstreamOptionsWithInterval(interval time.Duration) *config.UpstreamOptions {
-	return &config.UpstreamOptions{
+func testUpstreamOptionsWithInterval(interval time.Duration) *chains.Options {
+	return &chains.Options{
 		ValidationInterval:        interval,
 		DisableValidation:         new(false),
 		DisableSettingsValidation: new(false),

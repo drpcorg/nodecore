@@ -217,7 +217,7 @@ func upConfig() *config.Upstream {
 	return &config.Upstream{
 		Id:           "id",
 		PollInterval: 10 * time.Millisecond,
-		Options:      &config.UpstreamOptions{InternalTimeout: 5 * time.Second},
+		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
 }
 

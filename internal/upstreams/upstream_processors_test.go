@@ -249,10 +249,10 @@ func TestCreateBlockEventProcessor_ReturnsProcessorForEthereum(t *testing.T) {
 	assert.Equal(t, event_processors.BlockEventProcessorType, processor.Type())
 }
 
-type upstreamOptionsMutator func(*config.UpstreamOptions)
+type upstreamOptionsMutator func(*chains.Options)
 
-func testUpstreamOptions(mutators ...upstreamOptionsMutator) *config.UpstreamOptions {
-	options := &config.UpstreamOptions{
+func testUpstreamOptions(mutators ...upstreamOptionsMutator) *chains.Options {
+	options := &chains.Options{
 		InternalTimeout:             time.Second,
 		ValidationInterval:          time.Second,
 		DisableValidation:           new(false),
@@ -261,6 +261,8 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *config.UpstreamOpt
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(false),
 		DisableLabelsDetection:      new(false),
+		ValidatePeers:               new(false),
+		ValidateSyncing:             new(false),
 	}
 
 	for _, mutate := range mutators {
@@ -271,37 +273,37 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *config.UpstreamOpt
 }
 
 func withDisableValidation(v bool) upstreamOptionsMutator {
-	return func(options *config.UpstreamOptions) {
+	return func(options *chains.Options) {
 		options.DisableValidation = new(v)
 	}
 }
 
 func withDisableSettingsValidation(v bool) upstreamOptionsMutator {
-	return func(options *config.UpstreamOptions) {
+	return func(options *chains.Options) {
 		options.DisableSettingsValidation = new(v)
 	}
 }
 
 func withDisableChainValidation(v bool) upstreamOptionsMutator {
-	return func(options *config.UpstreamOptions) {
+	return func(options *chains.Options) {
 		options.DisableChainValidation = new(v)
 	}
 }
 
 func withDisableHealthValidation(v bool) upstreamOptionsMutator {
-	return func(options *config.UpstreamOptions) {
+	return func(options *chains.Options) {
 		options.DisableHealthValidation = new(v)
 	}
 }
 
 func withDisableLowerBoundsDetection(v bool) upstreamOptionsMutator {
-	return func(options *config.UpstreamOptions) {
+	return func(options *chains.Options) {
 		options.DisableLowerBoundsDetection = new(v)
 	}
 }
 
 func withDisableLabelsDetection(v bool) upstreamOptionsMutator {
-	return func(options *config.UpstreamOptions) {
+	return func(options *chains.Options) {
 		options.DisableLabelsDetection = new(v)
 	}
 }

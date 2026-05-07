@@ -188,20 +188,20 @@ func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnect
 }
 
 func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AztecChainSpecificObject {
-	options := &config.UpstreamOptions{
-		InternalTimeout:        5 * time.Second,
-		ValidationInterval:     10 * time.Second,
-		DisableChainValidation: lo.ToPtr(false),
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  lo.ToPtr(false),
 		DisableHealthValidation: lo.ToPtr(false),
 	}
 	return specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
 }
 
 func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AlgorandChainSpecificObject {
-	options := &config.UpstreamOptions{
-		InternalTimeout:        5 * time.Second,
-		ValidationInterval:     10 * time.Second,
-		DisableChainValidation: lo.ToPtr(false),
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  lo.ToPtr(false),
 		DisableHealthValidation: lo.ToPtr(false),
 	}
 	return specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)

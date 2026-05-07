@@ -132,7 +132,7 @@ func createHead(
 	id string, pollInterval time.Duration,
 	headConnector connectors.ApiConnector,
 	specific specific.ChainSpecific,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 ) Head {
 	switch headConnector.GetType() {
 	case protocol.JsonRpcConnector, protocol.RestConnector:

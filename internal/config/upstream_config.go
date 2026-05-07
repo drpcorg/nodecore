@@ -50,7 +50,7 @@ type Upstream struct {
 	PollInterval      time.Duration            `yaml:"poll-interval"`
 	Methods           *MethodsConfig           `yaml:"methods"`
 	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config"`
-	Options           *UpstreamOptions         `yaml:"options"`
+	Options           *chains.Options          `yaml:"options"`
 	RateLimitBudget   string                   `yaml:"rate-limit-budget"`
 	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
@@ -85,20 +85,9 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) ApiConnectorType 
 	return ""
 }
 
-type UpstreamOptions struct {
-	InternalTimeout             time.Duration `yaml:"internal-timeout"`
-	ValidationInterval          time.Duration `yaml:"validation-interval"`
-	DisableValidation           *bool         `yaml:"disable-validation"`
-	DisableSettingsValidation   *bool         `yaml:"disable-settings-validation"`
-	DisableChainValidation      *bool         `yaml:"disable-chain-validation"`
-	DisableHealthValidation     *bool         `yaml:"disable-health-validation"`
-	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
-	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
-}
-
 type ChainDefaults struct {
-	PollInterval time.Duration    `yaml:"poll-interval"`
-	Options      *UpstreamOptions `yaml:"options"`
+	PollInterval time.Duration   `yaml:"poll-interval"`
+	Options      *chains.Options `yaml:"options"`
 }
 
 type FailsafeConfig struct {
@@ -303,16 +292,6 @@ func (f *FailsafeConfig) validate() error {
 	return nil
 }
 
-func (o *UpstreamOptions) validate() error {
-	if o.InternalTimeout < 0 {
-		return errors.New("internal timeout can't be less than 0")
-	}
-	if o.ValidationInterval < 0 {
-		return errors.New("validation interval can't be less than 0")
-	}
-	return nil
-}
-
 func (r *RetryConfig) validate() error {
 	if r.Attempts < 1 {
 		return errors.New("the number of attempts can't be less than 1")
@@ -384,7 +363,7 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		return err
 	}
 
-	if err := u.Options.validate(); err != nil {
+	if err := u.Options.Validate(); err != nil {
 		return err
 	}
 
@@ -413,7 +392,7 @@ func (m *MethodsConfig) validate() error {
 
 func (c *ChainDefaults) validate() error {
 	if c.Options != nil {
-		if err := c.Options.validate(); err != nil {
+		if err := c.Options.Validate(); err != nil {
 			return err
 		}
 	}

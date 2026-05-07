@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -23,14 +22,14 @@ type AztecChainSpecificObject struct {
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
-	options         *config.UpstreamOptions
+	options         *chains.Options
 }
 
 func NewAztecChainSpecificObject(
 	ctx context.Context,
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 	connector connectors.ApiConnector,
 ) *AztecChainSpecificObject {
 	return &AztecChainSpecificObject{

@@ -94,7 +94,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 				Url:  "wss://test.com",
 			},
 		},
-		Options: &config.UpstreamOptions{
+		Options: &chains.Options{
 			InternalTimeout:             5 * time.Second,
 			ValidationInterval:          30 * time.Second,
 			DisableValidation:           new(false),
@@ -103,6 +103,9 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			DisableHealthValidation:     new(false),
 			DisableLowerBoundsDetection: new(true),
 			DisableLabelsDetection:      new(true),
+			ValidateSyncing:             new(false),
+			ValidatePeers:               new(false),
+			MinPeers:                    1,
 		},
 	}
 
@@ -133,7 +136,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 				Url:  "https://test.com",
 			},
 		},
-		Options: &config.UpstreamOptions{
+		Options: &chains.Options{
 			InternalTimeout:             5 * time.Second,
 			ValidationInterval:          30 * time.Second,
 			DisableValidation:           new(false),
@@ -142,6 +145,9 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			DisableHealthValidation:     new(false),
 			DisableLowerBoundsDetection: new(true),
 			DisableLabelsDetection:      new(true),
+			ValidateSyncing:             new(false),
+			ValidatePeers:               new(false),
+			MinPeers:                    1,
 		},
 	}
 
@@ -172,7 +178,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 				Url:  "https://test.com",
 			},
 		},
-		Options: &config.UpstreamOptions{
+		Options: &chains.Options{
 			InternalTimeout:             5 * time.Second,
 			ValidationInterval:          30 * time.Second,
 			DisableValidation:           new(false),
@@ -181,6 +187,9 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			DisableHealthValidation:     new(false),
 			DisableLowerBoundsDetection: new(true),
 			DisableLabelsDetection:      new(true),
+			ValidateSyncing:             new(false),
+			ValidatePeers:               new(false),
+			MinPeers:                    1,
 		},
 	}
 
@@ -192,7 +201,7 @@ func TestSetStrictMode(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	expectedOptions := &config.UpstreamOptions{
+	expectedOptions := &chains.Options{
 		InternalTimeout:             5 * time.Second,
 		ValidationInterval:          30 * time.Second,
 		DisableValidation:           new(false),
@@ -201,6 +210,9 @@ func TestSetStrictMode(t *testing.T) {
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(false),
 		DisableLabelsDetection:      new(false),
+		ValidateSyncing:             new(true),
+		ValidatePeers:               new(true),
+		MinPeers:                    1,
 	}
 
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
@@ -237,7 +249,7 @@ func TestDefaultMode(t *testing.T) {
 	appConfig, err := config.NewAppConfig()
 	require.NoError(t, err)
 
-	expectedOptions := &config.UpstreamOptions{
+	expectedOptions := &chains.Options{
 		InternalTimeout:             5 * time.Second,
 		ValidationInterval:          30 * time.Second,
 		DisableValidation:           new(false),
@@ -246,6 +258,9 @@ func TestDefaultMode(t *testing.T) {
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(true),
 		DisableLabelsDetection:      new(true),
+		ValidateSyncing:             new(false),
+		ValidatePeers:               new(false),
+		MinPeers:                    1,
 	}
 
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
@@ -310,7 +325,7 @@ func TestSetChainsDefault(t *testing.T) {
 							Url:  "https://test.com",
 						},
 					},
-					Options: &config.UpstreamOptions{
+					Options: &chains.Options{
 						InternalTimeout:             5 * time.Second,
 						ValidationInterval:          30 * time.Second,
 						DisableValidation:           new(false),
@@ -319,6 +334,9 @@ func TestSetChainsDefault(t *testing.T) {
 						DisableHealthValidation:     new(false),
 						DisableLowerBoundsDetection: new(true),
 						DisableLabelsDetection:      new(true),
+						ValidateSyncing:             new(false),
+						ValidatePeers:               new(false),
+						MinPeers:                    1,
 					},
 				},
 			},
@@ -508,4 +526,17 @@ func TestUpstreamOptionsDefaultsFromChainCommonOptions(t *testing.T) {
 	assert.True(t, *reqUp.Options.DisableHealthValidation)
 	assert.False(t, *reqUp.Options.DisableLowerBoundsDetection)
 	assert.False(t, *reqUp.Options.DisableLabelsDetection)
+}
+
+func TestUpstreamOptionsMergeWithChainsYaml(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-merge-with-chains-yaml.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	assert.Equal(t, 15*time.Second, reqUp.Options.InternalTimeout)
+	assert.Equal(t, 30*time.Second, reqUp.Options.ValidationInterval)
+	assert.True(t, *reqUp.Options.ValidateSyncing)
+	assert.False(t, *reqUp.Options.ValidatePeers)
 }

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
@@ -90,7 +90,7 @@ func (b *BaseSettingsEventProcessor) Validate() validations.ValidationSettingRes
 func NewBaseSettingsEventProcessor(
 	ctx context.Context,
 	upstreamId string,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 	validator *validations.ValidationProcessor[validations.ValidationSettingResult],
 ) *BaseSettingsEventProcessor {
 	if validator == nil || (*options.DisableValidation || *options.DisableSettingsValidation) {
@@ -170,7 +170,7 @@ func (b *BaseHealthEventProcessor) validateHealth() {
 func NewBaseHealthEventProcessor(
 	ctx context.Context,
 	upstreamId string,
-	options *config.UpstreamOptions,
+	options *chains.Options,
 	validator *validations.ValidationProcessor[protocol.AvailabilityStatus],
 ) *BaseHealthEventProcessor {
 	if validator == nil || (*options.DisableValidation || *options.DisableHealthValidation) {
