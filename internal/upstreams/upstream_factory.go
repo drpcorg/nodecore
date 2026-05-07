@@ -205,7 +205,13 @@ func getChainSpecific(
 	//TODO: there might be a few protocols a chain can work with, so it will be necessary to implement all of them
 	switch configuredChain.Type {
 	case chains.Ethereum:
-		return specific.NewEvmChainSpecific(conf.Id, upstreamConnectorsInfo.internalRequestConnector, configuredChain, conf.Options)
+		return specific.NewEvmChainSpecific(
+			ctx,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			configuredChain,
+			conf.Options,
+		)
 	case chains.Aztec:
 		return specific.NewAztecChainSpecificObject(
 			ctx,
@@ -228,8 +234,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
-			conf.Options.InternalTimeout,
-			conf.Options.ValidationInterval*5,
+			conf.Options,
 		)
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
