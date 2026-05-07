@@ -25,7 +25,10 @@ func (e *EthFlashBlockDetector) DetectLabels() map[string]string {
 		return nil
 	}
 
-	resp := e.sendFlashblockRequest(req)
+	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	defer cancel()
+
+	resp := e.connector.SendRequest(ctx, req)
 	if resp.HasError() {
 		log.Error().Err(resp.GetError()).Msgf("unable to detect flashblocks of upstream '%s'", e.upstreamId)
 		return nil
@@ -56,13 +59,6 @@ func NewEthFlashBlockDetector(
 		connector:       connector,
 		internalTimeout: internalTimeout,
 	}
-}
-
-func (e *EthFlashBlockDetector) sendFlashblockRequest(request protocol.RequestHolder) protocol.ResponseHolder {
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
-	defer cancel()
-
-	return e.connector.SendRequest(ctx, request)
 }
 
 var _ LabelsDetector = (*EthFlashBlockDetector)(nil)
