@@ -88,8 +88,8 @@ func (e *EthHLTxLabelsDetector) DetectLabels() map[string]string {
 func NewEthHLTxLabelsDetector(
 	upstreamId string,
 	chain chains.Chain,
-	connector connectors.ApiConnector,
 	internalTimeout time.Duration,
+	connector connectors.ApiConnector,
 ) *EthHLTxLabelsDetector {
 	return &EthHLTxLabelsDetector{
 		upstreamId:      upstreamId,

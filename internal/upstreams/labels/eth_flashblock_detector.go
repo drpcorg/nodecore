@@ -47,8 +47,8 @@ func (e *EthFlashBlockDetector) DetectLabels() map[string]string {
 func NewEthFlashBlockDetector(
 	upstreamId string,
 	chain chains.Chain,
-	connector connectors.ApiConnector,
 	internalTimeout time.Duration,
+	connector connectors.ApiConnector,
 ) *EthFlashBlockDetector {
 	return &EthFlashBlockDetector{
 		upstreamId:      upstreamId,

@@ -59,7 +59,7 @@ func TestEthFlashBlockDetectorDetectLabels(t *testing.T) {
 				Return(tt.response).
 				Once()
 
-			detector := labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, connector, time.Second)
+			detector := labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
 			result := detector.DetectLabels()
 
@@ -83,7 +83,7 @@ func TestEthFlashBlockDetectorDetectLabelsReturnsNilWhenConnectorReturnsError(t 
 		Return(protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)).
 		Once()
 
-	detector := labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, connector, time.Second)
+	detector := labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
 	result := detector.DetectLabels()
 
@@ -105,7 +105,7 @@ func TestEthFlashBlockDetectorDetectLabelsReturnsNilWhenResponseIsInvalidJson(t 
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"stateRoot":"0x0"`), protocol.JsonRpc)).
 		Once()
 
-	detector := labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, connector, time.Second)
+	detector := labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
 	result := detector.DetectLabels()
 

@@ -19,7 +19,7 @@ import (
 
 func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilForUnsupportedChain(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.ETHEREUM, connector, time.Second)
+	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
 	result := detector.DetectLabels()
 
@@ -56,7 +56,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsTrueWhenNativeTxIsFound(t *test
 		}).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc))
 
-	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, connector, time.Second)
+	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
 	result := detector.DetectLabels()
 
@@ -86,7 +86,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsFalseWhenNoNativeTxIsFound(t *t
 		}).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc))
 
-	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, connector, time.Second)
+	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, time.Second, connector)
 
 	result := detector.DetectLabels()
 
@@ -118,7 +118,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsRunsOnlyEveryFifthProbe(t *testing.T) 
 		}).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc))
 
-	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, connector, time.Second)
+	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
 	first := detector.DetectLabels()
 	for i := 0; i < 4; i++ {
@@ -148,7 +148,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilWhenLatestBlockLookupFails(t
 		Return(protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)).
 		Once()
 
-	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, connector, time.Second)
+	detector := labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
 	result := detector.DetectLabels()
 

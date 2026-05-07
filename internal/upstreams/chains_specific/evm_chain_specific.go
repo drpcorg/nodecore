@@ -48,8 +48,8 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			e.options.InternalTimeout,
 		),
 		labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout),
-		labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout*2),
+		labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
 		labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 	}
 
