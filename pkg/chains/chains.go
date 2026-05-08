@@ -42,12 +42,13 @@ type ChainSettings struct {
 }
 
 type ChainData struct {
-	ShortNames []string               `yaml:"short-names"`
-	ChainId    string                 `yaml:"chain-id"`
-	GrpcId     int                    `yaml:"grpcId"`
-	MethodSpec string                 `yaml:"method-spec"`
-	Settings   map[string]interface{} `yaml:"settings"`
-	NetVersion string                 `yaml:"net-version"`
+	ShortNames           []string               `yaml:"short-names"`
+	ChainId              string                 `yaml:"chain-id"`
+	GrpcId               int                    `yaml:"grpcId"`
+	MethodSpec           string                 `yaml:"method-spec"`
+	Settings             map[string]interface{} `yaml:"settings"`
+	NetVersion           string                 `yaml:"net-version"`
+	CallValidateContract string                 `yaml:"call-validate-contract"`
 }
 
 type Protocol struct {
@@ -69,14 +70,15 @@ type Settings struct {
 }
 
 type ConfiguredChain struct {
-	GrpcId     int
-	ChainId    string
-	NetVersion string
-	ShortNames []string
-	Type       BlockchainType
-	Settings   Settings
-	Chain      Chain
-	MethodSpec string
+	GrpcId               int
+	ChainId              string
+	NetVersion           string
+	ShortNames           []string
+	Type                 BlockchainType
+	Settings             Settings
+	Chain                Chain
+	MethodSpec           string
+	CallValidateContract string
 }
 
 var UnknownChain = &ConfiguredChain{
@@ -182,14 +184,15 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 				)
 
 				configuredChain := &ConfiguredChain{
-					GrpcId:     chain.GrpcId,
-					ChainId:    strings.ToLower(chain.ChainId),
-					ShortNames: chain.ShortNames,
-					NetVersion: strings.ToLower(netVersion),
-					Type:       protocol.Type,
-					Settings:   settings,
-					Chain:      network,
-					MethodSpec: methodSpec,
+					GrpcId:               chain.GrpcId,
+					ChainId:              strings.ToLower(chain.ChainId),
+					ShortNames:           chain.ShortNames,
+					NetVersion:           strings.ToLower(netVersion),
+					Type:                 protocol.Type,
+					Settings:             settings,
+					Chain:                network,
+					MethodSpec:           methodSpec,
+					CallValidateContract: chain.CallValidateContract,
 				}
 
 				for _, shortName := range chain.ShortNames {

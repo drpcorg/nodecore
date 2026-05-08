@@ -17,6 +17,8 @@ type Options struct {
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
 	ValidatePeers               *bool         `yaml:"validate-peers"`
 	MinPeers                    int64         `yaml:"min-peers"`
+	ValidateCallLimit           *bool         `yaml:"validate-call-limit"`
+	CallLimitSize               int64         `yaml:"call-limit-size"`
 }
 
 func (o *Options) Validate() error {

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -215,7 +216,7 @@ func receiptBlockHex(request protocol.RequestHolder) (string, error) {
 	var payload struct {
 		Params []json.RawMessage `json:"params"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if err := sonic.Unmarshal(body, &payload); err != nil {
 		return "", err
 	}
 	if len(payload.Params) != 1 {
@@ -223,7 +224,7 @@ func receiptBlockHex(request protocol.RequestHolder) (string, error) {
 	}
 
 	var blockHex string
-	if err := json.Unmarshal(payload.Params[0], &blockHex); err != nil {
+	if err := sonic.Unmarshal(payload.Params[0], &blockHex); err != nil {
 		return "", err
 	}
 	return blockHex, nil

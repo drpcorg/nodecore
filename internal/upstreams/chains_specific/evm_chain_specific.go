@@ -77,7 +77,10 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	settingsValidators := make([]validations.Validator[validations.ValidationSettingResult], 0)
 
 	if !*e.options.DisableChainValidation {
-		settingsValidators = append(settingsValidators, validations.NewChainValidator(e.upstreamId, e.connector, e.chain, e.options))
+		settingsValidators = append(settingsValidators, validations.NewEthChainValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
+	if *e.options.ValidateCallLimit && e.chain.CallValidateContract != "" {
+		settingsValidators = append(settingsValidators, validations.NewEthCallLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 
 	return settingsValidators

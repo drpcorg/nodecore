@@ -38,7 +38,9 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 		DisableLabelsDetection:      new(false),
 		ValidateSyncing:             new(false),
 		ValidatePeers:               new(false),
+		ValidateCallLimit:           new(true),
 		MinPeers:                    7,
+		CallLimitSize:               7777777,
 	}
 
 	setOptionsDefaults(options, &ChainDefaults{
@@ -51,7 +53,9 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 			DisableLabelsDetection:      new(true),
 			ValidateSyncing:             new(true),
 			ValidatePeers:               new(true),
+			ValidateCallLimit:           new(false),
 			MinPeers:                    3,
+			CallLimitSize:               3333333,
 		},
 	}, &chains.Options{
 		DisableValidation:           new(false),
@@ -62,7 +66,9 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 		DisableLabelsDetection:      new(true),
 		ValidateSyncing:             new(true),
 		ValidatePeers:               new(true),
+		ValidateCallLimit:           new(false),
 		MinPeers:                    2,
+		CallLimitSize:               2222222,
 	}, DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
@@ -73,7 +79,9 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 	assert.False(t, *options.DisableLabelsDetection)
 	assert.False(t, *options.ValidateSyncing)
 	assert.False(t, *options.ValidatePeers)
+	assert.True(t, *options.ValidateCallLimit)
 	assert.Equal(t, int64(7), options.MinPeers)
+	assert.Equal(t, int64(7777777), options.CallLimitSize)
 }
 
 func TestSetOptionsDefaultsUsesNodecoreDurationDefaultsBeforeChain(t *testing.T) {
@@ -106,6 +114,7 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 			DisableLabelsDetection:      new(false),
 			ValidateSyncing:             new(true),
 			ValidatePeers:               new(true),
+			ValidateCallLimit:           new(true),
 		},
 	}, &chains.Options{
 		DisableValidation:           new(false),
@@ -116,6 +125,7 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 		DisableLabelsDetection:      new(true),
 		ValidateSyncing:             new(false),
 		ValidatePeers:               new(false),
+		ValidateCallLimit:           new(false),
 	}, DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
@@ -126,18 +136,24 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 	assert.False(t, *options.DisableLabelsDetection)
 	assert.True(t, *options.ValidateSyncing)
 	assert.True(t, *options.ValidatePeers)
+	assert.True(t, *options.ValidateCallLimit)
 }
 
-func TestSetOptionsDefaultsUsesNodecoreMinPeersBeforeChain(t *testing.T) {
+func TestSetOptionsDefaultsUsesNodecoreIntDefaultsBeforeChain(t *testing.T) {
 	options := &chains.Options{}
 
 	setOptionsDefaults(options, &ChainDefaults{
-		Options: &chains.Options{MinPeers: 5},
+		Options: &chains.Options{
+			MinPeers:      5,
+			CallLimitSize: 5000000,
+		},
 	}, &chains.Options{
-		MinPeers: 2,
+		MinPeers:      2,
+		CallLimitSize: 2000000,
 	}, DefaultMode)
 
 	assert.Equal(t, int64(5), options.MinPeers)
+	assert.Equal(t, int64(5000000), options.CallLimitSize)
 }
 
 func TestSetOptionsDefaultsUsesChainDurationsWhenNodecoreMissing(t *testing.T) {
@@ -164,6 +180,7 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 		DisableLabelsDetection:      new(false),
 		ValidateSyncing:             new(false),
 		ValidatePeers:               new(false),
+		ValidateCallLimit:           new(true),
 	}, DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
@@ -174,14 +191,19 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 	assert.False(t, *options.DisableLabelsDetection)
 	assert.False(t, *options.ValidateSyncing)
 	assert.False(t, *options.ValidatePeers)
+	assert.True(t, *options.ValidateCallLimit)
 }
 
-func TestSetOptionsDefaultsUsesChainMinPeersWhenNodecoreMissing(t *testing.T) {
+func TestSetOptionsDefaultsUsesChainIntDefaultsWhenNodecoreMissing(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, &chains.Options{MinPeers: 4}, DefaultMode)
+	setOptionsDefaults(options, nil, &chains.Options{
+		MinPeers:      4,
+		CallLimitSize: 4000000,
+	}, DefaultMode)
 
 	assert.Equal(t, int64(4), options.MinPeers)
+	assert.Equal(t, int64(4000000), options.CallLimitSize)
 }
 
 func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
@@ -199,10 +221,12 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	assert.True(t, *options.DisableLabelsDetection)
 	assert.False(t, *options.ValidateSyncing)
 	assert.False(t, *options.ValidatePeers)
+	assert.False(t, *options.ValidateCallLimit)
 	assert.Equal(t, int64(1), options.MinPeers)
+	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
 
-func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionFlags(t *testing.T) {
+func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags(t *testing.T) {
 	options := &chains.Options{}
 
 	setOptionsDefaults(options, nil, nil, StrictMode)
@@ -211,6 +235,8 @@ func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionFlags(t *testing.T
 	assert.False(t, *options.DisableLabelsDetection)
 	assert.True(t, *options.ValidateSyncing)
 	assert.True(t, *options.ValidatePeers)
+	assert.True(t, *options.ValidateCallLimit)
+	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
 
 func TestSetOptionsDefaultsHandlesNilDefaultOptions(t *testing.T) {

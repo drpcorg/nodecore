@@ -1,9 +1,14 @@
 package validations
 
 import (
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
@@ -15,6 +20,34 @@ const (
 	FatalSettingError
 	UnknownResult
 )
+
+const (
+	RetryMaxAttempts = 3
+)
+
+func validatorExecutor(upstreamId, validationName string, ignoreErrors []string) failsafe.Executor[protocol.ResponseHolder] {
+	retryPolicy := retrypolicy.Builder[protocol.ResponseHolder]()
+
+	retryPolicy.WithMaxAttempts(RetryMaxAttempts)
+	retryPolicy.WithBackoff(100*time.Millisecond, 500*time.Millisecond)
+
+	retryPolicy.HandleIf(func(result protocol.ResponseHolder, err error) bool {
+		isIgnored := lo.SomeBy(ignoreErrors, func(item string) bool {
+			return result.HasError() && strings.Contains(result.GetError().Message, item)
+		})
+		return result.HasError() && !isIgnored
+	})
+
+	retryPolicy.OnRetry(func(event failsafe.ExecutionEvent[protocol.ResponseHolder]) {
+		log.Error().
+			Err(event.LastResult().GetError()).
+			Msgf("error during validation '%s' of upstream '%s', iteration - %d", validationName, upstreamId, event.Retries())
+	})
+
+	retryPolicy.ReturnLastFailure()
+
+	return failsafe.NewExecutor[protocol.ResponseHolder](retryPolicy.Build())
+}
 
 type Validator[R any] interface {
 	Validate() R

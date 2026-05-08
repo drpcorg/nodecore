@@ -4,6 +4,8 @@ upstream-config:
       options:
         internal-timeout: 15s
         validate-syncing: true
+        validate-call-limit: true
+        call-limit-size: 2500000
   upstreams:
     - id: sei-upstream
       chain: sei

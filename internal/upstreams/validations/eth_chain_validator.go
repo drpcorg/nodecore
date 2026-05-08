@@ -8,33 +8,37 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 )
 
-type ChainValidator struct {
+type EthChainValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
+
+	executor failsafe.Executor[protocol.ResponseHolder]
 }
 
-func NewChainValidator(
+func NewEthChainValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	options *chains.Options,
-) *ChainValidator {
-	return &ChainValidator{
+) *EthChainValidator {
+	return &EthChainValidator{
 		upstreamId:      upstreamId,
 		connector:       connector,
 		chain:           chain,
 		internalTimeout: options.InternalTimeout,
+		executor:        validatorExecutor(upstreamId, "ethChainValidation", nil),
 	}
 }
 
-func (c *ChainValidator) Validate() ValidationSettingResult {
+func (c *EthChainValidator) Validate() ValidationSettingResult {
 	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
 	defer cancel()
 
@@ -87,13 +91,17 @@ func (c *ChainValidator) Validate() ValidationSettingResult {
 	return Valid
 }
 
-func (c *ChainValidator) getChainId(ctx context.Context) (string, error) {
+func (c *EthChainValidator) getChainId(ctx context.Context) (string, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, c.chain.Chain)
 	if err != nil {
 		return "", err
 	}
 
-	response := c.connector.SendRequest(ctx, request)
+	response, _ := c.executor.
+		Get(func() (protocol.ResponseHolder, error) {
+			return c.connector.SendRequest(ctx, request), nil
+		})
+
 	if response.HasError() {
 		return "", response.GetError()
 	}
@@ -101,13 +109,17 @@ func (c *ChainValidator) getChainId(ctx context.Context) (string, error) {
 	return response.ResponseResultString()
 }
 
-func (c *ChainValidator) getNetVersion(ctx context.Context) (string, error) {
+func (c *EthChainValidator) getNetVersion(ctx context.Context) (string, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, c.chain.Chain)
 	if err != nil {
 		return "", err
 	}
 
-	response := c.connector.SendRequest(ctx, request)
+	response, _ := c.executor.
+		Get(func() (protocol.ResponseHolder, error) {
+			return c.connector.SendRequest(ctx, request), nil
+		})
+
 	if response.HasError() {
 		return "", response.GetError()
 	}
@@ -115,4 +127,4 @@ func (c *ChainValidator) getNetVersion(ctx context.Context) (string, error) {
 	return response.ResponseResultString()
 }
 
-var _ SettingsValidator = (*ChainValidator)(nil)
+var _ SettingsValidator = (*EthChainValidator)(nil)

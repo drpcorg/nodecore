@@ -55,7 +55,6 @@ func NewBaseUpstream(
 	configuredChain *chains.ConfiguredChain,
 	upstreamIndex int,
 	creationData *upstreamCreationData,
-	processorAggregator *event_processors.UpstreamProcessorAggregator,
 ) (*BaseUpstream, error) {
 	upstreamIndexHex := fmt.Sprintf("%05x", upstreamIndex)
 
@@ -73,23 +72,37 @@ func NewBaseUpstream(
 	emitter := func(event protocol.AbstractUpstreamStateEvent) {
 		stateChan <- event
 	}
-	processorAggregator.SetEmitter(emitter)
 
 	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
-	return &BaseUpstream{
-		id:                  conf.Id,
-		chain:               configuredChain.Chain,
-		vendorType:          getUpstreamVendor(conf.Connectors),
-		apiConnectors:       creationData.upstreamConnectorsInfo.allConnectors,
-		upstreamCtx:         newUpstreamCtx(cancelFunc, mainLifecycle),
-		upstreamState:       upState,
-		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
-		upstreamIndexHex:    upstreamIndexHex,
-		upConfig:            conf,
-		processorAggregator: processorAggregator,
-		stateChan:           stateChan,
-		emitter:             emitter,
-	}, nil
+	upstream := &BaseUpstream{
+		id:               conf.Id,
+		chain:            configuredChain.Chain,
+		vendorType:       getUpstreamVendor(conf.Connectors),
+		apiConnectors:    creationData.upstreamConnectorsInfo.allConnectors,
+		upstreamCtx:      newUpstreamCtx(cancelFunc, mainLifecycle),
+		upstreamState:    upState,
+		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
+		upstreamIndexHex: upstreamIndexHex,
+		upConfig:         conf,
+		stateChan:        stateChan,
+		emitter:          emitter,
+	}
+
+	chainSpecific := getChainSpecific(ctx, upstream, conf.Options, creationData.upstreamConnectorsInfo, configuredChain)
+	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
+		[]event_processors.UpstreamStateEventProcessor{
+			CreateBlockEventProcessor(ctx, conf, creationData.upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain),
+			CreateHeadEventProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific, configuredChain.Chain),
+			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
+			CreateHealthEventProcessor(ctx, conf, chainSpecific),
+			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
+			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
+		},
+	)
+	processorAggregator.SetEmitter(emitter)
+	upstream.processorAggregator = processorAggregator
+
+	return upstream, nil
 }
 
 func NewBaseUpstreamWithParams(

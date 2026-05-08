@@ -106,6 +106,8 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			ValidateSyncing:             new(false),
 			ValidatePeers:               new(false),
 			MinPeers:                    1,
+			ValidateCallLimit:           new(false),
+			CallLimitSize:               1000000,
 		},
 	}
 
@@ -148,6 +150,8 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			ValidateSyncing:             new(false),
 			ValidatePeers:               new(false),
 			MinPeers:                    1,
+			ValidateCallLimit:           new(false),
+			CallLimitSize:               1000000,
 		},
 	}
 
@@ -190,6 +194,8 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			ValidateSyncing:             new(false),
 			ValidatePeers:               new(false),
 			MinPeers:                    1,
+			ValidateCallLimit:           new(false),
+			CallLimitSize:               1000000,
 		},
 	}
 
@@ -213,6 +219,8 @@ func TestSetStrictMode(t *testing.T) {
 		ValidateSyncing:             new(true),
 		ValidatePeers:               new(true),
 		MinPeers:                    1,
+		ValidateCallLimit:           new(true),
+		CallLimitSize:               1000000,
 	}
 
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
@@ -261,6 +269,8 @@ func TestDefaultMode(t *testing.T) {
 		ValidateSyncing:             new(false),
 		ValidatePeers:               new(false),
 		MinPeers:                    1,
+		ValidateCallLimit:           new(false),
+		CallLimitSize:               1000000,
 	}
 
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
@@ -337,6 +347,8 @@ func TestSetChainsDefault(t *testing.T) {
 						ValidateSyncing:             new(false),
 						ValidatePeers:               new(false),
 						MinPeers:                    1,
+						ValidateCallLimit:           new(false),
+						CallLimitSize:               1000000,
 					},
 				},
 			},
@@ -539,4 +551,6 @@ func TestUpstreamOptionsMergeWithChainsYaml(t *testing.T) {
 	assert.Equal(t, 30*time.Second, reqUp.Options.ValidationInterval)
 	assert.True(t, *reqUp.Options.ValidateSyncing)
 	assert.False(t, *reqUp.Options.ValidatePeers)
+	assert.True(t, *reqUp.Options.ValidateCallLimit)
+	assert.Equal(t, int64(2500000), reqUp.Options.CallLimitSize)
 }

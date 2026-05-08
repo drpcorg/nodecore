@@ -251,6 +251,8 @@ func TestReadFullConfig(t *testing.T) {
 						ValidateSyncing:             new(false),
 						ValidatePeers:               new(false),
 						MinPeers:                    1,
+						ValidateCallLimit:           new(false),
+						CallLimitSize:               1000000,
 					},
 				},
 				{
@@ -294,6 +296,8 @@ func TestReadFullConfig(t *testing.T) {
 						ValidateSyncing:             new(false),
 						ValidatePeers:               new(false),
 						MinPeers:                    1,
+						ValidateCallLimit:           new(false),
+						CallLimitSize:               1000000,
 					},
 				},
 			},

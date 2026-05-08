@@ -20,27 +20,30 @@ import (
 
 func TestChainValidator(t *testing.T) {
 	options := &chains.Options{
-		DisableChainValidation: lo.ToPtr(false),
+		DisableChainValidation: new(true),
+		ValidateCallLimit:      new(false),
 	}
 	connector := mocks.NewConnectorMock()
+	chain := chains.GetChain("ethereum")
 
-	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, chains.UnknownChain, options).SettingsValidators()
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, chain, options).SettingsValidators()
 
-	_, ok := lo.Find(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
-		_, ok := item.(*validations.ChainValidator)
+	assert.Len(t, validators, 0)
+
+	options.DisableChainValidation = new(false)
+	options.ValidateCallLimit = new(true)
+
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, chain, options).SettingsValidators()
+
+	assert.Len(t, validators, 2)
+	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
+		_, ok := item.(*validations.EthChainValidator)
 		return ok
-	})
-	assert.True(t, ok)
-
-	options.DisableChainValidation = lo.ToPtr(true)
-	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, chains.UnknownChain, options).SettingsValidators()
-
-	_, ok = lo.Find(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
-		_, ok := item.(*validations.ChainValidator)
+	}))
+	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
+		_, ok := item.(*validations.EthCallLimitValidator)
 		return ok
-	})
-
-	assert.False(t, ok)
+	}))
 }
 
 func TestEvmSubscribeHeadRequest(t *testing.T) {
