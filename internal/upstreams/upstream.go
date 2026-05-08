@@ -166,6 +166,7 @@ func (u *BaseUpstream) Start() {
 		u.startConnectors(ctx)
 
 		result, ok := u.processorAggregator.ValidateSettings()
+		initialValid := true
 		if !ok {
 			u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
 			u.Resume()
@@ -175,6 +176,7 @@ func (u *BaseUpstream) Start() {
 				log.Error().Msgf("failed to start upstream '%s' due to invalid upstream settings", u.id)
 				return errors.New("invalid upstream settings")
 			case validations.SettingsError:
+				initialValid = false
 				log.Warn().Msgf("non fatal settings error of upstream '%s', keep validating...", u.id)
 				u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)
 			case validations.Valid:
@@ -184,7 +186,7 @@ func (u *BaseUpstream) Start() {
 				log.Debug().Msgf("upstream '%s' has unknown result of settings validation, skipping", u.id)
 			}
 		}
-		go u.processStateEvents(ctx)
+		go u.processStateEvents(ctx, initialValid)
 		return nil
 	})
 }
