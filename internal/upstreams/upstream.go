@@ -135,6 +135,11 @@ func NewBaseUpstreamWithParams(
 	}
 }
 
+func (u *BaseUpstream) GetCurrentHeadHeight() uint64 {
+	state := u.GetUpstreamState()
+	return state.HeadData.Height
+}
+
 func (u *BaseUpstream) GetId() string {
 	return u.id
 }

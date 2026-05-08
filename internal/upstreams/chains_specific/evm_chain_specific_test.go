@@ -24,7 +24,7 @@ func TestChainValidator(t *testing.T) {
 	}
 	connector := mocks.NewConnectorMock()
 
-	validators := specific.NewEvmChainSpecific("id", connector, chains.UnknownChain, options).SettingsValidators()
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, chains.UnknownChain, options).SettingsValidators()
 
 	_, ok := lo.Find(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
 		_, ok := item.(*validations.ChainValidator)
@@ -33,7 +33,7 @@ func TestChainValidator(t *testing.T) {
 	assert.True(t, ok)
 
 	options.DisableChainValidation = lo.ToPtr(true)
-	validators = specific.NewEvmChainSpecific("id", connector, chains.UnknownChain, options).SettingsValidators()
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, chains.UnknownChain, options).SettingsValidators()
 
 	_, ok = lo.Find(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
 		_, ok := item.(*validations.ChainValidator)

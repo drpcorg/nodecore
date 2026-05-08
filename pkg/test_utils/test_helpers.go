@@ -22,7 +22,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -180,19 +179,19 @@ func TestEvmUpstream(
 }
 
 func NewEvmChainSpecific(connector connectors.ApiConnector) *specific.EvmChainSpecificObject {
-	return specific.NewEvmChainSpecific("id", connector, chains.GetChain("polygon"), nil)
+	return specific.NewEvmChainSpecific(context.Background(), "id", connector, chains.GetChain("polygon"), newTestChainOptions())
 }
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
-	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, 5*time.Second, 10*time.Second)
+	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, newTestChainOptions())
 }
 
 func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AztecChainSpecificObject {
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
 		ValidationInterval:      10 * time.Second,
-		DisableChainValidation:  lo.ToPtr(false),
-		DisableHealthValidation: lo.ToPtr(false),
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
 	}
 	return specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
 }
@@ -201,10 +200,25 @@ func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConne
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
 		ValidationInterval:      10 * time.Second,
-		DisableChainValidation:  lo.ToPtr(false),
-		DisableHealthValidation: lo.ToPtr(false),
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
 	}
 	return specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)
+}
+
+func newTestChainOptions() *chains.Options {
+	return &chains.Options{
+		InternalTimeout:             5 * time.Second,
+		ValidationInterval:          10 * time.Second,
+		DisableValidation:           new(false),
+		DisableSettingsValidation:   new(false),
+		DisableChainValidation:      new(false),
+		DisableHealthValidation:     new(false),
+		DisableLowerBoundsDetection: new(false),
+		DisableLabelsDetection:      new(false),
+		ValidateSyncing:             new(false),
+		ValidatePeers:               new(false),
+	}
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {

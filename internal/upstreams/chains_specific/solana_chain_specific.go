@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -25,9 +24,8 @@ type SolanaChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
 	connector       connectors.ApiConnector
-	internalTimeout time.Duration
-	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
+	options         *chains.Options
 
 	lastKnownHeights *utils.CMap[string, uint64]
 	lastCheckedSlots *utils.CMap[string, uint64]
@@ -35,22 +33,22 @@ type SolanaChainSpecificObject struct {
 
 func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, labels.NewSolanaClientLabelsDetector(), s.internalTimeout),
+		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, labels.NewSolanaClientLabelsDetector(), s.options.InternalTimeout),
 	}
 
-	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
 }
 
 func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
-		lower_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.internalTimeout, s.connector),
+		lower_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.options.InternalTimeout, s.connector),
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (s *SolanaChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
 	return []validations.Validator[protocol.AvailabilityStatus]{
-		validations.NewSolanaHealthValidator(s.upstreamId, s.connector, s.internalTimeout),
+		validations.NewSolanaHealthValidator(s.upstreamId, s.connector, s.options.InternalTimeout),
 	}
 }
 
@@ -118,15 +116,14 @@ func NewSolanaChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
-	internalTimeout, labelsDelay time.Duration,
+	options *chains.Options,
 ) *SolanaChainSpecificObject {
 	return &SolanaChainSpecificObject{
 		ctx:             ctx,
 		upstreamId:      upstreamId,
 		connector:       connector,
-		internalTimeout: internalTimeout,
 		configuredChain: configuredChain,
-		labelsDelay:     labelsDelay,
+		options:         options,
 
 		lastKnownHeights: utils.NewCMap[string, uint64](),
 		lastCheckedSlots: utils.NewCMap[string, uint64](),
@@ -134,7 +131,7 @@ func NewSolanaChainSpecificObject(
 }
 
 func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.Block, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, s.options.InternalTimeout)
 	defer cancel()
 
 	params := map[string]interface{}{

@@ -63,6 +63,7 @@ type Upstream interface {
 	GetUpstreamState() protocol.UpstreamState
 	GetConnector(connectorType protocol.ApiConnectorType) connectors.ApiConnector
 	GetHashIndex() string
+	GetCurrentHeadHeight() uint64
 
 	UpdateHead(height, slot uint64)
 	UpdateBlock(block protocol.Block, blockType protocol.BlockType)

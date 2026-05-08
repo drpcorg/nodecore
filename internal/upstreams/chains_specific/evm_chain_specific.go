@@ -32,6 +32,7 @@ type ChainSpecific interface {
 }
 
 type EvmChainSpecificObject struct {
+	ctx        context.Context
 	upstreamId string
 	connector  connectors.ApiConnector
 	chain      *chains.ConfiguredChain
@@ -39,7 +40,20 @@ type EvmChainSpecificObject struct {
 }
 
 func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	return nil
+	labelsDetectors := []labels.LabelsDetector{
+		labels.NewClientLabelDetectorHandler(
+			e.upstreamId,
+			e.connector,
+			labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, labels.EthMappingFunc),
+			e.options.InternalTimeout,
+		),
+		labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
+		labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+	}
+
+	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, labelsDetectors, e.options.ValidationInterval*5)
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -104,12 +118,14 @@ func (e *EvmChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder,
 }
 
 func NewEvmChainSpecific(
+	ctx context.Context,
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	options *chains.Options,
 ) *EvmChainSpecificObject {
 	return &EvmChainSpecificObject{
+		ctx:        ctx,
 		upstreamId: upstreamId,
 		connector:  connector,
 		chain:      chain,
