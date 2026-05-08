@@ -71,6 +71,7 @@ func (e *EthGasLabelsDetector) monadGasDetect() map[string]string {
 
 	resp := e.sendGasRequest(req)
 	if !resp.HasError() {
+		log.Error().Err(resp.GetError()).Msgf("unable to get monad eth_call response of upstream '%s' to detect gas labels", e.upstreamId)
 		return nil
 	}
 

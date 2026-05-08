@@ -38,7 +38,7 @@ func (e *EthArchiveLabelsDetector) DetectLabels() map[string]string {
 
 	resp := e.connector.SendRequest(ctx, req)
 	if resp.HasError() {
-		log.Error().Err(err).Msgf("unable to detect archival state of upstream '%s'", e.upstreamId)
+		log.Error().Err(resp.GetError()).Msgf("unable to detect archival state of upstream '%s'", e.upstreamId)
 		return map[string]string{
 			"archive": "false",
 		}
