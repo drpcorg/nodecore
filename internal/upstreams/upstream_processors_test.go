@@ -250,6 +250,7 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *chains.Options {
 		DisableLabelsDetection:      new(false),
 		ValidatePeers:               new(false),
 		ValidateSyncing:             new(false),
+		ValidateCallLimit:           new(false),
 	}
 
 	for _, mutate := range mutators {

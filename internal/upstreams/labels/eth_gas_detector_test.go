@@ -1,10 +1,10 @@
 package labels_test
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -38,11 +38,11 @@ func gasRequestMatcher(expected protocol.RequestHolder) func(protocol.RequestHol
 		}
 
 		var expectedJSON any
-		if err := json.Unmarshal(expectedBody, &expectedJSON); err != nil {
+		if err := sonic.Unmarshal(expectedBody, &expectedJSON); err != nil {
 			return false
 		}
 		var actualJSON any
-		if err := json.Unmarshal(actualBody, &actualJSON); err != nil {
+		if err := sonic.Unmarshal(actualBody, &actualJSON); err != nil {
 			return false
 		}
 

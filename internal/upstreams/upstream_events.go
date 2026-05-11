@@ -11,9 +11,9 @@ import (
 )
 
 // update upstream state through one pipeline
-func (u *BaseUpstream) processStateEvents(ctx context.Context) {
+func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
-	validUpstream := true
+	validUpstream := initialValid
 	for {
 		select {
 		case <-ctx.Done():

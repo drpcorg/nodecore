@@ -21,14 +21,18 @@ func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
-		Return(protocol.NewTotalFailure(chainIdRequest, protocol.RequestTimeoutError()))
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`result`), protocol.JsonRpc))
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewTotalFailure(chainIdRequest, protocol.RequestTimeoutError()),
+	)
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"1"`), protocol.JsonRpc),
+	)
 
-	validator := validations.NewChainValidator("id", connector, chains.UnknownChain, options)
+	validator := validations.NewEthChainValidator("id", connector, chains.UnknownChain, options)
 	actualResult := validator.Validate()
 
 	connector.AssertExpectations(t)
@@ -43,14 +47,18 @@ func TestChainValidatorNetVersionErrorThenSettingErrorResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
-		Return(protocol.NewTotalFailure(netVersionRequest, protocol.RequestTimeoutError()))
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`result`), protocol.JsonRpc))
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewTotalFailure(netVersionRequest, protocol.RequestTimeoutError()),
+	)
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc),
+	)
 
-	validator := validations.NewChainValidator("id", connector, chains.UnknownChain, options)
+	validator := validations.NewEthChainValidator("id", connector, chains.UnknownChain, options)
 	actualResult := validator.Validate()
 
 	connector.AssertExpectations(t)
@@ -65,14 +73,18 @@ func TestChainValidatorWrongChainSettingsThenFatalErrorResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc))
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc))
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),
+	)
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc),
+	)
 
-	validator := validations.NewChainValidator("id", connector, chains.GetChain("ethereum"), options)
+	validator := validations.NewEthChainValidator("id", connector, chains.GetChain("ethereum"), options)
 	actualResult := validator.Validate()
 
 	connector.AssertExpectations(t)
@@ -87,16 +99,37 @@ func TestChainValidatorValidResult(t *testing.T) {
 	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
 	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
 
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc))
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc))
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),
+	)
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc),
+	)
 
-	validator := validations.NewChainValidator("id", connector, chains.GetChain("bsc"), options)
+	validator := validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
 	actualResult := validator.Validate()
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.Valid, actualResult)
+}
+
+func expectEthValidationRequest(
+	connector *mocks.ConnectorMock,
+	request protocol.RequestHolder,
+	response protocol.ResponseHolder,
+) {
+	call := connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(request))).
+		Return(response)
+
+	if response.HasError() {
+		call.Times(validations.RetryMaxAttempts)
+		return
+	}
+
+	call.Once()
 }

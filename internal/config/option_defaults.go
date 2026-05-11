@@ -147,4 +147,18 @@ func setOptionsDefaults(
 			1,
 		)
 	}
+	if upstreamOptions.ValidateCallLimit == nil {
+		upstreamOptions.ValidateCallLimit = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
+			lo.Ternary(upstreamMode == StrictMode, true, false),
+		)
+	}
+	if upstreamOptions.CallLimitSize == 0 {
+		upstreamOptions.CallLimitSize = resolveInt64(
+			getInt64(defaultChainOptions, func(options *chains.Options) int64 { return options.CallLimitSize }),
+			getInt64(globalChainOptions, func(options *chains.Options) int64 { return options.CallLimitSize }),
+			1000000,
+		)
+	}
 }

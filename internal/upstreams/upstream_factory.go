@@ -13,7 +13,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
-	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
@@ -54,7 +53,6 @@ func CreateUpstream(
 		cancel()
 		return nil, err
 	}
-	chainSpecific := getChainSpecific(ctx, conf, upstreamConnectorsInfo, configuredChain)
 
 	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods)
 	if err != nil {
@@ -71,18 +69,7 @@ func CreateUpstream(
 		autoTune:               autoTune,
 	}
 
-	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
-		[]event_processors.UpstreamStateEventProcessor{
-			CreateBlockEventProcessor(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain),
-			CreateHeadEventProcessor(ctx, conf, upstreamConnectorsInfo.headConnector, chainSpecific, configuredChain.Chain),
-			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
-			CreateHealthEventProcessor(ctx, conf, chainSpecific),
-			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
-			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
-		},
-	)
-
-	return NewBaseUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData, processorAggregator)
+	return NewBaseUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
 }
 
 func createRateLimiter(
@@ -198,7 +185,8 @@ func createBlockProcessor(
 
 func getChainSpecific(
 	ctx context.Context,
-	conf *config.Upstream,
+	upstream Upstream,
+	options *chains.Options,
 	upstreamConnectorsInfo *connectorsInfo,
 	configuredChain *chains.ConfiguredChain,
 ) specific.ChainSpecific {
@@ -207,34 +195,34 @@ func getChainSpecific(
 	case chains.Ethereum:
 		return specific.NewEvmChainSpecific(
 			ctx,
-			conf.Id,
+			upstream.GetId(),
 			upstreamConnectorsInfo.internalRequestConnector,
 			configuredChain,
-			conf.Options,
+			options,
 		)
 	case chains.Aztec:
 		return specific.NewAztecChainSpecificObject(
 			ctx,
 			configuredChain,
-			conf.Id,
-			conf.Options,
+			upstream.GetId(),
+			options,
 			upstreamConnectorsInfo.internalRequestConnector,
 		)
 	case chains.Algorand:
 		return specific.NewAlgorandChainSpecificObject(
 			ctx,
 			configuredChain,
-			conf.Id,
+			upstream.GetId(),
 			upstreamConnectorsInfo.internalRequestConnector,
-			conf.Options,
+			options,
 		)
 	case chains.Solana:
 		return specific.NewSolanaChainSpecificObject(
 			ctx,
 			configuredChain,
-			conf.Id,
+			upstream.GetId(),
 			upstreamConnectorsInfo.internalRequestConnector,
-			conf.Options,
+			options,
 		)
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
