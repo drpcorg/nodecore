@@ -5,17 +5,25 @@ import (
 	"runtime"
 
 	"github.com/grafana/pyroscope-go"
+	"github.com/samber/lo"
 )
 
 type PyroConfig interface {
 	GetServerAddress() string
 	GetServerUsername() string
 	GetServerPassword() string
+	GetAdditionalTags() map[string]string
 }
 
 func InitPyroscope(namespace string, appName string, config PyroConfig) error {
 	runtime.SetMutexProfileFraction(5)
 	runtime.SetBlockProfileRate(5)
+
+	tags := map[string]string{
+		"host":      os.Getenv("HOSTNAME"),
+		"namespace": namespace,
+	}
+	mergedTags := lo.Assign(tags, config.GetAdditionalTags())
 
 	_, err := pyroscope.Start(pyroscope.Config{
 		ApplicationName: appName,
@@ -25,10 +33,7 @@ func InitPyroscope(namespace string, appName string, config PyroConfig) error {
 		BasicAuthUser:     config.GetServerUsername(),
 		BasicAuthPassword: config.GetServerPassword(),
 		// you can provide static tags via a map:
-		Tags: map[string]string{
-			"host":      os.Getenv("HOSTNAME"),
-			"namespace": namespace,
-		},
+		Tags: mergedTags,
 
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,

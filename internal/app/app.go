@@ -3,10 +3,11 @@ package app
 import (
 	"context"
 	"fmt"
-	"github.com/drpcorg/nodecore/internal/outbox"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"github.com/drpcorg/nodecore/internal/outbox"
 
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/caches"

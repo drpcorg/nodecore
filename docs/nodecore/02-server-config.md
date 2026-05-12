@@ -17,6 +17,8 @@ server:
     url: pyrosope-url
     username: pyro-username
     password: pyro-password
+    additional-tags:
+      - tag: value
 ```
 
 ## Fields
@@ -28,6 +30,7 @@ server:
   - `enabled` - Enable/disable Pyroscope integration. **_Default_**: `false`
   - `url`: URL of the Pyroscope server. **_Required_** if `enabled: true`
   - `username`, `password`: authentication credentials. **_Required_** if `enabled: true`
+  - `additional-tags` - a map with additional pyroscope tags (key: value)
 - `tls` - TLS configuration for serving requests securely
   - `enabled` - whether TLS is enabled. **_Default_**: `false`
   - `certificate` - Path to the TLS certificate file. **_Required_**
