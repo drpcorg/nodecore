@@ -5,7 +5,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/mock"
 )
@@ -40,14 +40,14 @@ func (m *MockDrpcHttpcConnector) LoadOwnerKeys(ownerId, apiToken string) ([]*drp
 
 type ConnectorMock struct {
 	mock.Mock
-	connectorType chains.ApiConnectorType
+	connectorType specs.ApiConnectorType
 }
 
 func NewConnectorMock() *ConnectorMock {
-	return &ConnectorMock{connectorType: chains.JsonRpcConnector}
+	return &ConnectorMock{connectorType: specs.JsonRpcConnector}
 }
 
-func NewConnectorMockWithType(connectorType chains.ApiConnectorType) *ConnectorMock {
+func NewConnectorMockWithType(connectorType specs.ApiConnectorType) *ConnectorMock {
 	return &ConnectorMock{connectorType: connectorType}
 }
 
@@ -90,7 +90,7 @@ func (c *ConnectorMock) Running() bool {
 	return args.Bool(0)
 }
 
-func (c *ConnectorMock) GetType() chains.ApiConnectorType {
+func (c *ConnectorMock) GetType() specs.ApiConnectorType {
 	return c.connectorType
 }
 
@@ -142,6 +142,6 @@ func (c *WsConnectorMock) Unsubscribe(opId string) {
 	c.Called(opId)
 }
 
-func (c *WsConnectorMock) GetType() chains.ApiConnectorType {
-	return chains.WebsocketConnector
+func (c *WsConnectorMock) GetType() specs.ApiConnectorType {
+	return specs.WebsocketConnector
 }

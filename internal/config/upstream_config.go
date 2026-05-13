@@ -13,6 +13,7 @@ import (
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/samber/lo"
 )
@@ -56,28 +57,28 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 }
 
-func (u *Upstream) GetHeadApiConnectorType() chains.ApiConnectorType {
-	return chains.GetApiConnectorType(u.HeadConnector)
+func (u *Upstream) GetHeadApiConnectorType() specs.ApiConnectorType {
+	return specs.GetApiConnectorType(u.HeadConnector)
 }
 
-type sortConnectorFunc func([]*ApiConnectorConfig) chains.ApiConnectorType
+type sortConnectorFunc func([]*ApiConnectorConfig) specs.ApiConnectorType
 
 var sortConnectorsFunc = map[UpstreamMode]sortConnectorFunc{
-	DefaultMode: func(configs []*ApiConnectorConfig) chains.ApiConnectorType {
+	DefaultMode: func(configs []*ApiConnectorConfig) specs.ApiConnectorType {
 		return lo.MinBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
 			return a.GetApiConnectorType() < b.GetApiConnectorType()
 		}).GetApiConnectorType()
 	},
-	StrictMode: func(configs []*ApiConnectorConfig) chains.ApiConnectorType {
+	StrictMode: func(configs []*ApiConnectorConfig) specs.ApiConnectorType {
 		return lo.MaxBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
 			return a.GetApiConnectorType() > b.GetApiConnectorType()
 		}).GetApiConnectorType()
 	},
 }
 
-func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) chains.ApiConnectorType {
+func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnectorType {
 	filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
-		return item.GetApiConnectorType() != chains.UnknownType
+		return item.GetApiConnectorType() != specs.UnknownType
 	})
 
 	if len(filteredConnectors) > 0 {
@@ -85,7 +86,7 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) chains.ApiConnect
 			return sortFunc(filteredConnectors)
 		}
 	}
-	return chains.UnknownType
+	return specs.UnknownType
 }
 
 type ChainDefaults struct {
@@ -118,8 +119,8 @@ type ApiConnectorConfig struct {
 	Ca      string            `yaml:"ca"`
 }
 
-func (a *ApiConnectorConfig) GetApiConnectorType() chains.ApiConnectorType {
-	return chains.GetApiConnectorType(a.Type)
+func (a *ApiConnectorConfig) GetApiConnectorType() specs.ApiConnectorType {
+	return specs.GetApiConnectorType(a.Type)
 }
 
 var registry = new(require.Registry)
@@ -327,7 +328,7 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 	}
 
-	connectorTypeSet := mapset.NewThreadUnsafeSet[chains.ApiConnectorType]()
+	connectorTypeSet := mapset.NewThreadUnsafeSet[specs.ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.GetApiConnectorType()) {
 			return fmt.Errorf("there can be only one connector of type '%s'", connector.Type)
@@ -338,7 +339,7 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		connectorTypeSet.Add(connector.GetApiConnectorType())
 	}
 
-	if err := chains.ValidateApiConnectorType(u.HeadConnector); err != nil {
+	if err := specs.ValidateApiConnectorType(u.HeadConnector); err != nil {
 		return fmt.Errorf("invalid head connector - '%s'", u.HeadConnector)
 	}
 
@@ -391,7 +392,7 @@ func (c *ChainDefaults) validate() error {
 }
 
 func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
-	if err := chains.ValidateApiConnectorType(a.Type); err != nil {
+	if err := specs.ValidateApiConnectorType(a.Type); err != nil {
 		return err
 	}
 

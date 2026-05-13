@@ -570,14 +570,14 @@ func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 }
 
 func TestBaseUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
-	httpConnector := mocks.NewConnectorMockWithType(chains.JsonRpcConnector)
-	wsConnector := mocks.NewConnectorMockWithType(chains.WebsocketConnector)
+	httpConnector := mocks.NewConnectorMockWithType(specs.JsonRpcConnector)
+	wsConnector := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 
 	upstream, _, _ := newTestBaseUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
 
-	assert.Same(t, httpConnector, upstream.GetConnector(chains.JsonRpcConnector))
-	assert.Same(t, wsConnector, upstream.GetConnector(chains.WebsocketConnector))
-	assert.Nil(t, upstream.GetConnector(chains.RestConnector))
+	assert.Same(t, httpConnector, upstream.GetConnector(specs.JsonRpcConnector))
+	assert.Same(t, wsConnector, upstream.GetConnector(specs.WebsocketConnector))
+	assert.Nil(t, upstream.GetConnector(specs.RestConnector))
 }
 
 func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {

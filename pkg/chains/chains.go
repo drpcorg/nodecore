@@ -13,6 +13,22 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type BlockchainType string
+
+const (
+	Algorand            BlockchainType = "avm"
+	Bitcoin             BlockchainType = "bitcoin"
+	Cosmos              BlockchainType = "cosmos"
+	Ethereum            BlockchainType = "eth"
+	EthereumBeaconChain BlockchainType = "eth-beacon-chain"
+	Near                BlockchainType = "near"
+	Polkadot            BlockchainType = "polkadot"
+	Solana              BlockchainType = "solana"
+	Starknet            BlockchainType = "starknet"
+	Ton                 BlockchainType = "ton"
+	Aztec               BlockchainType = "aztec"
+)
+
 //go:embed public/chains.yaml
 var chainsCfg []byte
 

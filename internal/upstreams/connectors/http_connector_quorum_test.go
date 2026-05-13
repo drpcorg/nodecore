@@ -12,6 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/jarcoal/httpmock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,7 @@ func TestHttpConnector_ForwardsQuorumParamsAndCapturesHeaders(t *testing.T) {
 	})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, chains.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 
 	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 2, QuorumOf: 3})
@@ -63,7 +64,7 @@ func TestHttpConnector_QuorumForcesUnary_EvenForStreamRequest(t *testing.T) {
 	})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, chains.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
 	streamReq := protocol.NewStreamUpstreamJsonRpcRequest("1", []byte(`"1"`), "eth_getLogs", nil, nil)
 
 	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 1, QuorumOf: 1})
@@ -87,7 +88,7 @@ func TestHttpConnector_NoQuorum_StreamRequestStaysStreamed(t *testing.T) {
 	})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, chains.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
 	streamReq := protocol.NewStreamUpstreamJsonRpcRequest("1", []byte(`"1"`), "eth_getLogs", nil, nil)
 
 	r := connector.SendRequest(context.Background(), streamReq)
@@ -107,7 +108,7 @@ func TestHttpConnector_MergesQuorumParamsWithExistingQuery(t *testing.T) {
 		})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080/rpc?apikey=abc"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, chains.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 
 	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 2, QuorumOf: 3})
@@ -133,7 +134,7 @@ func TestHttpConnector_NoQuorumParams_NoQueryAppended(t *testing.T) {
 	})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, chains.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 
 	_ = connector.SendRequest(context.Background(), req)

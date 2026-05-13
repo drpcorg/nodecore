@@ -226,9 +226,9 @@ func filterQuorumCapableUpstreams(
 func hasHttpConnector(up upstreams.Upstream, requestType protocol.RequestType) bool {
 	switch requestType {
 	case protocol.Rest:
-		return up.GetConnector(chains.RestConnector) != nil
+		return up.GetConnector(specs.RestConnector) != nil
 	default:
-		return up.GetConnector(chains.JsonRpcConnector) != nil
+		return up.GetConnector(specs.JsonRpcConnector) != nil
 	}
 }
 

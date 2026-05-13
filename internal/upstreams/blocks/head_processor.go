@@ -10,6 +10,7 @@ import (
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
@@ -135,9 +136,9 @@ func createHead(
 	options *chains.Options,
 ) Head {
 	switch headConnector.GetType() {
-	case chains.JsonRpcConnector, chains.RestConnector:
+	case specs.JsonRpcConnector, specs.RestConnector:
 		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
-	case chains.WebsocketConnector:
+	case specs.WebsocketConnector:
 		return NewSubHead(ctx, id, options.InternalTimeout, headConnector, specific)
 	default:
 		return nil

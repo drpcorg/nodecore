@@ -12,6 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
@@ -80,23 +81,23 @@ func TestObserverConnectorRetryRequest(t *testing.T) {
 func TestObserverConnectorTypeTheSameAsDelegate(t *testing.T) {
 	tests := []struct {
 		name          string
-		connectorType chains.ApiConnectorType
+		connectorType specs.ApiConnectorType
 	}{
 		{
 			name:          "json-rpc type",
-			connectorType: chains.JsonRpcConnector,
+			connectorType: specs.JsonRpcConnector,
 		},
 		{
 			name:          "ws type",
-			connectorType: chains.WebsocketConnector,
+			connectorType: specs.WebsocketConnector,
 		},
 		{
 			name:          "rest type",
-			connectorType: chains.RestConnector,
+			connectorType: specs.RestConnector,
 		},
 		{
 			name:          "grpc type",
-			connectorType: chains.GrpcConnector,
+			connectorType: specs.GrpcConnector,
 		},
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,17 +81,17 @@ func TestSetDefaultPollInterval(t *testing.T) {
 		Methods: &config.MethodsConfig{
 			BanDuration: 5 * time.Minute,
 		},
-		HeadConnector:  chains.JsonRpcConnector.String(),
+		HeadConnector:  specs.JsonRpcConnector.String(),
 		PollInterval:   1 * time.Minute,
 		ChainName:      "ethereum",
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: chains.JsonRpcConnector.String(),
+				Type: specs.JsonRpcConnector.String(),
 				Url:  "https://test.com",
 			},
 			{
-				Type: chains.WebsocketConnector.String(),
+				Type: specs.WebsocketConnector.String(),
 				Url:  "wss://test.com",
 			},
 		},
@@ -121,7 +122,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
-		HeadConnector: chains.JsonRpcConnector.String(),
+		HeadConnector: specs.JsonRpcConnector.String(),
 		PollInterval:  1 * time.Minute,
 		ChainName:     "ethereum",
 		Methods: &config.MethodsConfig{
@@ -130,11 +131,11 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: chains.JsonRpcConnector.String(),
+				Type: specs.JsonRpcConnector.String(),
 				Url:  "https://test.com",
 			},
 			{
-				Type: chains.RestConnector.String(),
+				Type: specs.RestConnector.String(),
 				Url:  "https://test.com",
 			},
 		},
@@ -165,7 +166,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
-		HeadConnector: chains.RestConnector.String(),
+		HeadConnector: specs.RestConnector.String(),
 		PollInterval:  1 * time.Minute,
 		ChainName:     "ethereum",
 		Methods: &config.MethodsConfig{
@@ -174,11 +175,11 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: chains.WebsocketConnector.String(),
+				Type: specs.WebsocketConnector.String(),
 				Url:  "https://test.com",
 			},
 			{
-				Type: chains.RestConnector.String(),
+				Type: specs.RestConnector.String(),
 				Url:  "https://test.com",
 			},
 		},
@@ -226,7 +227,7 @@ func TestSetStrictMode(t *testing.T) {
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
 	assert.Equal(t, expectedOptions, upstream.Options)
 	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
-	assert.Equal(t, chains.WebsocketConnector.String(), upstream.HeadConnector)
+	assert.Equal(t, specs.WebsocketConnector.String(), upstream.HeadConnector)
 	assert.Equal(t, chains.GetChain("ethereum").Settings.ExpectedBlockTime, upstream.PollInterval)
 }
 
@@ -234,22 +235,22 @@ func TestGetBestConnector(t *testing.T) {
 	upstream := &config.Upstream{
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: chains.RestConnector.String(),
+				Type: specs.RestConnector.String(),
 			},
 			{
-				Type: chains.GrpcConnector.String(),
+				Type: specs.GrpcConnector.String(),
 			},
 			{
-				Type: chains.JsonRpcConnector.String(),
+				Type: specs.JsonRpcConnector.String(),
 			},
 			{
-				Type: chains.WebsocketConnector.String(),
+				Type: specs.WebsocketConnector.String(),
 			},
 		},
 	}
 
-	assert.Equal(t, chains.JsonRpcConnector, upstream.GetBestConnector(config.DefaultMode))
-	assert.Equal(t, chains.WebsocketConnector, upstream.GetBestConnector(config.StrictMode))
+	assert.Equal(t, specs.JsonRpcConnector, upstream.GetBestConnector(config.DefaultMode))
+	assert.Equal(t, specs.WebsocketConnector, upstream.GetBestConnector(config.StrictMode))
 }
 
 func TestDefaultMode(t *testing.T) {
@@ -277,7 +278,7 @@ func TestDefaultMode(t *testing.T) {
 	assert.Equal(t, expectedOptions, upstream.Options)
 	assert.Equal(t, config.DefaultMode, appConfig.UpstreamConfig.Mode)
 	assert.Equal(t, 1*time.Minute, upstream.PollInterval)
-	assert.Equal(t, chains.JsonRpcConnector.String(), upstream.HeadConnector)
+	assert.Equal(t, specs.JsonRpcConnector.String(), upstream.HeadConnector)
 }
 
 func TestDefaultModeKeepsIntegrityEnabled(t *testing.T) {
@@ -325,13 +326,13 @@ func TestSetChainsDefault(t *testing.T) {
 					Methods: &config.MethodsConfig{
 						BanDuration: 5 * time.Minute,
 					},
-					HeadConnector:  chains.JsonRpcConnector.String(),
+					HeadConnector:  specs.JsonRpcConnector.String(),
 					PollInterval:   10 * time.Minute,
 					ChainName:      "ethereum",
 					FailsafeConfig: &config.FailsafeConfig{},
 					Connectors: []*config.ApiConnectorConfig{
 						{
-							Type: chains.JsonRpcConnector.String(),
+							Type: specs.JsonRpcConnector.String(),
 							Url:  "https://test.com",
 						},
 					},

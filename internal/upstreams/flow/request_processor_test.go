@@ -145,7 +145,7 @@ func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
-	apiConnector := mocks.NewConnectorMockWithType(chains.RestConnector)
+	apiConnector := mocks.NewConnectorMockWithType(specs.RestConnector)
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)

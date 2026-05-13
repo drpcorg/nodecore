@@ -61,7 +61,7 @@ type Upstream interface {
 	GetChain() chains.Chain
 	GetVendorType() UpstreamVendor
 	GetUpstreamState() protocol.UpstreamState
-	GetConnector(connectorType chains.ApiConnectorType) connectors.ApiConnector
+	GetConnector(connectorType specs.ApiConnectorType) connectors.ApiConnector
 	GetHashIndex() string
 	GetCurrentHeadHeight() uint64
 

@@ -17,7 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
-	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
@@ -27,7 +27,7 @@ type HttpConnector struct {
 	endpoint          string
 	httpClient        *http.Client
 	additionalHeaders map[string]string
-	connectorType     chains.ApiConnectorType
+	connectorType     specs.ApiConnectorType
 	torProxyUrl       string
 }
 
@@ -36,7 +36,7 @@ func (h *HttpConnector) Unsubscribe(_ string) {
 
 func NewHttpConnectorWithDefaultClient(
 	connectorConfig *config.ApiConnectorConfig,
-	connectorType chains.ApiConnectorType,
+	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
 ) *HttpConnector {
 	return &HttpConnector{
@@ -50,7 +50,7 @@ func NewHttpConnectorWithDefaultClient(
 
 func NewHttpConnector(
 	connectorConfig *config.ApiConnectorConfig,
-	connectorType chains.ApiConnectorType,
+	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
 ) (*HttpConnector, error) {
 	endpoint, err := url.Parse(connectorConfig.Url)
@@ -206,7 +206,7 @@ func (h *HttpConnector) receiveWholeResponse(
 		WithResponseHeaders(headers)
 }
 
-func (h *HttpConnector) GetType() chains.ApiConnectorType {
+func (h *HttpConnector) GetType() specs.ApiConnectorType {
 	return h.connectorType
 }
 
@@ -237,7 +237,7 @@ func appendQuery(rawURL, extraQuery string) (string, error) {
 }
 
 func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, string, error) {
-	if h.GetType() == chains.JsonRpcConnector {
+	if h.GetType() == specs.JsonRpcConnector {
 		return h.endpoint, protocol.Post.String(), nil
 	}
 	requestParams := strings.Split(request.Method(), protocol.MethodSeparator)

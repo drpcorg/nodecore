@@ -7,6 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 )
@@ -75,7 +76,7 @@ func (o *ObserverConnector) Subscribe(ctx context.Context, holder protocol.Reque
 	return o.delegate.Subscribe(ctx, holder)
 }
 
-func (o *ObserverConnector) GetType() chains.ApiConnectorType {
+func (o *ObserverConnector) GetType() specs.ApiConnectorType {
 	return o.delegate.GetType()
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -246,7 +247,7 @@ func (u *BaseUpstream) BanMethod(method string) {
 	u.emitter(&protocol.BanMethodUpstreamStateEvent{Method: method})
 }
 
-func (u *BaseUpstream) GetConnector(connectorType chains.ApiConnectorType) connectors.ApiConnector {
+func (u *BaseUpstream) GetConnector(connectorType specs.ApiConnectorType) connectors.ApiConnector {
 	connector, _ := lo.Find(u.apiConnectors, func(item connectors.ApiConnector) bool {
 		return item.GetType() == connectorType
 	})

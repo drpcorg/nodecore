@@ -7,7 +7,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
-	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
@@ -59,7 +59,7 @@ func TestWsConnectorType(t *testing.T) {
 	wsProcessor := mocks.NewWsProcessorMock()
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 
-	assert.Equal(t, chains.WebsocketConnector, wsConnector.GetType())
+	assert.Equal(t, specs.WebsocketConnector, wsConnector.GetType())
 }
 
 func TestWsConnectorSendSubThenError(t *testing.T) {

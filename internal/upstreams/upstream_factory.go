@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/drpcorg/nodecore/internal/stats/hook"
+	"github.com/drpcorg/nodecore/pkg/methods"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
@@ -112,9 +113,9 @@ func createConnector(
 	torProxyUrl string,
 ) (connectors.ApiConnector, error) {
 	switch connectorConfig.GetApiConnectorType() {
-	case chains.JsonRpcConnector:
-		return connectors.NewHttpConnector(connectorConfig, chains.JsonRpcConnector, torProxyUrl)
-	case chains.WebsocketConnector:
+	case specs.JsonRpcConnector:
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl)
+	case specs.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
 		reqRegistry := ws.NewBaseRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
@@ -131,8 +132,8 @@ func createConnector(
 			return nil, err
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
-	case chains.RestConnector:
-		return connectors.NewHttpConnector(connectorConfig, chains.RestConnector, torProxyUrl)
+	case specs.RestConnector:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}

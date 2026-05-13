@@ -6,6 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -192,7 +193,7 @@ func TestReadFullConfig(t *testing.T) {
 			Upstreams: []*config.Upstream{
 				{
 					Id:            "eth-upstream",
-					HeadConnector: chains.WebsocketConnector.String(),
+					HeadConnector: specs.WebsocketConnector.String(),
 					PollInterval:  3 * time.Minute,
 					ChainName:     "ethereum",
 					RateLimit: &config.RateLimiterConfig{
@@ -219,14 +220,14 @@ func TestReadFullConfig(t *testing.T) {
 					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
-							Type: chains.JsonRpcConnector.String(),
+							Type: specs.JsonRpcConnector.String(),
 							Url:  "https://test.com",
 							Headers: map[string]string{
 								"Key": "Value",
 							},
 						},
 						{
-							Type: chains.WebsocketConnector.String(),
+							Type: specs.WebsocketConnector.String(),
 							Url:  "wss://test.com",
 						},
 					},
@@ -256,7 +257,7 @@ func TestReadFullConfig(t *testing.T) {
 				},
 				{
 					Id:            "another",
-					HeadConnector: chains.RestConnector.String(),
+					HeadConnector: specs.RestConnector.String(),
 					PollInterval:  1 * time.Minute,
 					ChainName:     "polygon",
 					Methods: &config.MethodsConfig{
@@ -272,11 +273,11 @@ func TestReadFullConfig(t *testing.T) {
 					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
-							Type: chains.RestConnector.String(),
+							Type: specs.RestConnector.String(),
 							Url:  "https://test.com",
 						},
 						{
-							Type: chains.GrpcConnector.String(),
+							Type: specs.GrpcConnector.String(),
 							Url:  "https://test-grpc.com",
 							Headers: map[string]string{
 								"key": "value",

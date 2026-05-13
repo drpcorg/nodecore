@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 
@@ -66,7 +67,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 		// however there could be other connectors as well
 		// like http connector to support SSE
-		wsConn := upstream.GetConnector(chains.WebsocketConnector)
+		wsConn := upstream.GetConnector(specs.WebsocketConnector)
 
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
