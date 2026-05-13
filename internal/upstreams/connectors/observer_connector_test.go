@@ -80,23 +80,23 @@ func TestObserverConnectorRetryRequest(t *testing.T) {
 func TestObserverConnectorTypeTheSameAsDelegate(t *testing.T) {
 	tests := []struct {
 		name          string
-		connectorType protocol.ApiConnectorType
+		connectorType chains.ApiConnectorType
 	}{
 		{
 			name:          "json-rpc type",
-			connectorType: protocol.JsonRpcConnector,
+			connectorType: chains.JsonRpcConnector,
 		},
 		{
 			name:          "ws type",
-			connectorType: protocol.WsConnector,
+			connectorType: chains.WebsocketConnector,
 		},
 		{
 			name:          "rest type",
-			connectorType: protocol.RestConnector,
+			connectorType: chains.RestConnector,
 		},
 		{
 			name:          "grpc type",
-			connectorType: protocol.GrpcConnector,
+			connectorType: chains.GrpcConnector,
 		},
 	}
 

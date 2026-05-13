@@ -179,11 +179,11 @@ func executeUnaryRequest(
 func getUnaryCapableConnector(upstream upstreams.Upstream, requestType protocol.RequestType) connectors.ApiConnector {
 	switch requestType {
 	case protocol.Rest:
-		return upstream.GetConnector(protocol.RestConnector)
+		return upstream.GetConnector(chains.RestConnector)
 	case protocol.JsonRpc:
-		connector := upstream.GetConnector(protocol.JsonRpcConnector)
+		connector := upstream.GetConnector(chains.JsonRpcConnector)
 		if connector == nil {
-			connector = upstream.GetConnector(protocol.WsConnector)
+			connector = upstream.GetConnector(chains.WebsocketConnector)
 		}
 		return connector
 	default:

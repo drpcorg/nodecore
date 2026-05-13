@@ -111,10 +111,10 @@ func createConnector(
 	connectorConfig *config.ApiConnectorConfig,
 	torProxyUrl string,
 ) (connectors.ApiConnector, error) {
-	switch connectorConfig.Type {
-	case config.JsonRpc:
-		return connectors.NewHttpConnector(connectorConfig, protocol.JsonRpcConnector, torProxyUrl)
-	case config.Ws:
+	switch connectorConfig.GetApiConnectorType() {
+	case chains.JsonRpcConnector:
+		return connectors.NewHttpConnector(connectorConfig, chains.JsonRpcConnector, torProxyUrl)
+	case chains.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
 		reqRegistry := ws.NewBaseRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
@@ -131,8 +131,8 @@ func createConnector(
 			return nil, err
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
-	case config.Rest:
-		return connectors.NewHttpConnector(connectorConfig, protocol.RestConnector, torProxyUrl)
+	case chains.RestConnector:
+		return connectors.NewHttpConnector(connectorConfig, chains.RestConnector, torProxyUrl)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}
@@ -259,10 +259,10 @@ func createUpstreamConnectors(
 			hook.NewStatsHook(statsService),
 		}
 		apiConnector = connectors.NewObserverConnector(configuredChain.Chain, conf.Id, apiConnector, hooks, executor)
-		if connectorConfig.Type == conf.HeadConnector {
+		if connectorConfig.GetApiConnectorType() == conf.GetHeadApiConnectorType() {
 			headConnector = apiConnector
 		}
-		if connectorConfig.Type == conf.GetBestConnector(config.DefaultMode) {
+		if connectorConfig.GetApiConnectorType() == conf.GetBestConnector(config.DefaultMode) {
 			internalRequestConnector = apiConnector
 		}
 		apiConnectors = append(apiConnectors, apiConnector)

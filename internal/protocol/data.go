@@ -121,30 +121,6 @@ func (b BlockType) String() string {
 	}
 }
 
-type ApiConnectorType int
-
-const (
-	JsonRpcConnector ApiConnectorType = iota
-	RestConnector
-	GrpcConnector
-	WsConnector
-)
-
-func (a ApiConnectorType) String() string {
-	switch a {
-	case JsonRpcConnector:
-		return "JsonRpc"
-	case RestConnector:
-		return "REST"
-	case GrpcConnector:
-		return "GRPC"
-	case WsConnector:
-		return "WS"
-	default:
-		panic(fmt.Sprintf("unknown connector type %d", a))
-	}
-}
-
 type JsonRpcRequestBody struct {
 	Id      json.RawMessage `json:"id"`
 	Jsonrpc string          `json:"jsonrpc"`

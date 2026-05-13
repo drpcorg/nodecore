@@ -66,7 +66,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 		// however there could be other connectors as well
 		// like http connector to support SSE
-		wsConn := upstream.GetConnector(protocol.WsConnector)
+		wsConn := upstream.GetConnector(chains.WebsocketConnector)
 
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()

@@ -80,17 +80,17 @@ func TestSetDefaultPollInterval(t *testing.T) {
 		Methods: &config.MethodsConfig{
 			BanDuration: 5 * time.Minute,
 		},
-		HeadConnector:  config.JsonRpc,
+		HeadConnector:  chains.JsonRpcConnector.String(),
 		PollInterval:   1 * time.Minute,
 		ChainName:      "ethereum",
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: config.JsonRpc,
+				Type: chains.JsonRpcConnector.String(),
 				Url:  "https://test.com",
 			},
 			{
-				Type: config.Ws,
+				Type: chains.WebsocketConnector.String(),
 				Url:  "wss://test.com",
 			},
 		},
@@ -121,7 +121,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
-		HeadConnector: config.JsonRpc,
+		HeadConnector: chains.JsonRpcConnector.String(),
 		PollInterval:  1 * time.Minute,
 		ChainName:     "ethereum",
 		Methods: &config.MethodsConfig{
@@ -130,11 +130,11 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: config.JsonRpc,
+				Type: chains.JsonRpcConnector.String(),
 				Url:  "https://test.com",
 			},
 			{
-				Type: config.Rest,
+				Type: chains.RestConnector.String(),
 				Url:  "https://test.com",
 			},
 		},
@@ -165,7 +165,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
-		HeadConnector: config.Rest,
+		HeadConnector: chains.RestConnector.String(),
 		PollInterval:  1 * time.Minute,
 		ChainName:     "ethereum",
 		Methods: &config.MethodsConfig{
@@ -174,11 +174,11 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 		FailsafeConfig: &config.FailsafeConfig{},
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: config.Ws,
+				Type: chains.WebsocketConnector.String(),
 				Url:  "https://test.com",
 			},
 			{
-				Type: config.Rest,
+				Type: chains.RestConnector.String(),
 				Url:  "https://test.com",
 			},
 		},
@@ -226,7 +226,7 @@ func TestSetStrictMode(t *testing.T) {
 	upstream := appConfig.UpstreamConfig.Upstreams[0]
 	assert.Equal(t, expectedOptions, upstream.Options)
 	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
-	assert.Equal(t, config.Ws, upstream.HeadConnector)
+	assert.Equal(t, chains.WebsocketConnector.String(), upstream.HeadConnector)
 	assert.Equal(t, chains.GetChain("ethereum").Settings.ExpectedBlockTime, upstream.PollInterval)
 }
 
@@ -234,22 +234,22 @@ func TestGetBestConnector(t *testing.T) {
 	upstream := &config.Upstream{
 		Connectors: []*config.ApiConnectorConfig{
 			{
-				Type: config.Rest,
+				Type: chains.RestConnector.String(),
 			},
 			{
-				Type: config.Grpc,
+				Type: chains.GrpcConnector.String(),
 			},
 			{
-				Type: config.JsonRpc,
+				Type: chains.JsonRpcConnector.String(),
 			},
 			{
-				Type: config.Ws,
+				Type: chains.WebsocketConnector.String(),
 			},
 		},
 	}
 
-	assert.Equal(t, config.JsonRpc, upstream.GetBestConnector(config.DefaultMode))
-	assert.Equal(t, config.Ws, upstream.GetBestConnector(config.StrictMode))
+	assert.Equal(t, chains.JsonRpcConnector, upstream.GetBestConnector(config.DefaultMode))
+	assert.Equal(t, chains.WebsocketConnector, upstream.GetBestConnector(config.StrictMode))
 }
 
 func TestDefaultMode(t *testing.T) {
@@ -277,7 +277,7 @@ func TestDefaultMode(t *testing.T) {
 	assert.Equal(t, expectedOptions, upstream.Options)
 	assert.Equal(t, config.DefaultMode, appConfig.UpstreamConfig.Mode)
 	assert.Equal(t, 1*time.Minute, upstream.PollInterval)
-	assert.Equal(t, config.JsonRpc, upstream.HeadConnector)
+	assert.Equal(t, chains.JsonRpcConnector.String(), upstream.HeadConnector)
 }
 
 func TestDefaultModeKeepsIntegrityEnabled(t *testing.T) {
@@ -325,13 +325,13 @@ func TestSetChainsDefault(t *testing.T) {
 					Methods: &config.MethodsConfig{
 						BanDuration: 5 * time.Minute,
 					},
-					HeadConnector:  config.JsonRpc,
+					HeadConnector:  chains.JsonRpcConnector.String(),
 					PollInterval:   10 * time.Minute,
 					ChainName:      "ethereum",
 					FailsafeConfig: &config.FailsafeConfig{},
 					Connectors: []*config.ApiConnectorConfig{
 						{
-							Type: config.JsonRpc,
+							Type: chains.JsonRpcConnector.String(),
 							Url:  "https://test.com",
 						},
 					},

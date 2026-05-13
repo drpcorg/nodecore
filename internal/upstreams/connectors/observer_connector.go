@@ -75,7 +75,7 @@ func (o *ObserverConnector) Subscribe(ctx context.Context, holder protocol.Reque
 	return o.delegate.Subscribe(ctx, holder)
 }
 
-func (o *ObserverConnector) GetType() protocol.ApiConnectorType {
+func (o *ObserverConnector) GetType() chains.ApiConnectorType {
 	return o.delegate.GetType()
 }
 

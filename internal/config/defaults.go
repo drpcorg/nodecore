@@ -304,8 +304,8 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		}
 	}
 	if u.HeadConnector == "" && len(u.Connectors) > 0 {
-		if headConnector := u.GetBestConnector(upstreamMode); headConnector != "" {
-			u.HeadConnector = headConnector
+		if headConnector := u.GetBestConnector(upstreamMode); headConnector != chains.UnknownType {
+			u.HeadConnector = headConnector.String()
 		}
 	}
 	if u.RateLimitAutoTune != nil {

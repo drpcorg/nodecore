@@ -46,7 +46,7 @@ type Upstream struct {
 	Id                string                   `yaml:"id"`
 	ChainName         string                   `yaml:"chain"`
 	Connectors        []*ApiConnectorConfig    `yaml:"connectors"`
-	HeadConnector     ApiConnectorType         `yaml:"head-connector"`
+	HeadConnector     string                   `yaml:"head-connector"`
 	PollInterval      time.Duration            `yaml:"poll-interval"`
 	Methods           *MethodsConfig           `yaml:"methods"`
 	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config"`
@@ -56,25 +56,28 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 }
 
-type sortConnectorFunc func([]*ApiConnectorConfig) ApiConnectorType
+func (u *Upstream) GetHeadApiConnectorType() chains.ApiConnectorType {
+	return chains.GetApiConnectorType(u.HeadConnector)
+}
+
+type sortConnectorFunc func([]*ApiConnectorConfig) chains.ApiConnectorType
 
 var sortConnectorsFunc = map[UpstreamMode]sortConnectorFunc{
-	DefaultMode: func(configs []*ApiConnectorConfig) ApiConnectorType {
+	DefaultMode: func(configs []*ApiConnectorConfig) chains.ApiConnectorType {
 		return lo.MinBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
-			return connectorTypesRating[a.Type] < connectorTypesRating[b.Type]
-		}).Type
+			return a.GetApiConnectorType() < b.GetApiConnectorType()
+		}).GetApiConnectorType()
 	},
-	StrictMode: func(configs []*ApiConnectorConfig) ApiConnectorType {
+	StrictMode: func(configs []*ApiConnectorConfig) chains.ApiConnectorType {
 		return lo.MaxBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
-			return connectorTypesRating[a.Type] > connectorTypesRating[b.Type]
-		}).Type
+			return a.GetApiConnectorType() > b.GetApiConnectorType()
+		}).GetApiConnectorType()
 	},
 }
 
-func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) ApiConnectorType {
+func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) chains.ApiConnectorType {
 	filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
-		_, ok := connectorTypesRating[item.Type]
-		return ok
+		return item.GetApiConnectorType() != chains.UnknownType
 	})
 
 	if len(filteredConnectors) > 0 {
@@ -82,7 +85,7 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) ApiConnectorType 
 			return sortFunc(filteredConnectors)
 		}
 	}
-	return ""
+	return chains.UnknownType
 }
 
 type ChainDefaults struct {
@@ -109,26 +112,14 @@ type IntegrityConfig struct {
 }
 
 type ApiConnectorConfig struct {
-	Type    ApiConnectorType  `yaml:"type"`
+	Type    string            `yaml:"type"`
 	Url     string            `yaml:"url"`
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Ca      string            `yaml:"ca"`
 }
 
-type ApiConnectorType string
-
-const (
-	JsonRpc ApiConnectorType = "json-rpc"
-	Rest    ApiConnectorType = "rest"
-	Grpc    ApiConnectorType = "grpc"
-	Ws      ApiConnectorType = "websocket"
-)
-
-var connectorTypesRating = map[ApiConnectorType]int{
-	JsonRpc: 0,
-	Rest:    1,
-	Grpc:    2,
-	Ws:      3,
+func (a *ApiConnectorConfig) GetApiConnectorType() chains.ApiConnectorType {
+	return chains.GetApiConnectorType(a.Type)
 }
 
 var registry = new(require.Registry)
@@ -336,22 +327,22 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 	}
 
-	connectorTypeSet := mapset.NewThreadUnsafeSet[ApiConnectorType]()
+	connectorTypeSet := mapset.NewThreadUnsafeSet[chains.ApiConnectorType]()
 	for _, connector := range u.Connectors {
-		if connectorTypeSet.Contains(connector.Type) {
+		if connectorTypeSet.Contains(connector.GetApiConnectorType()) {
 			return fmt.Errorf("there can be only one connector of type '%s'", connector.Type)
 		}
 		if err := connector.validate(torProxyUrl); err != nil {
 			return err
 		}
-		connectorTypeSet.Add(connector.Type)
+		connectorTypeSet.Add(connector.GetApiConnectorType())
 	}
 
-	if err := u.HeadConnector.validate(); err != nil {
+	if err := chains.ValidateApiConnectorType(u.HeadConnector); err != nil {
 		return fmt.Errorf("invalid head connector - '%s'", u.HeadConnector)
 	}
 
-	if !connectorTypeSet.Contains(u.HeadConnector) {
+	if !connectorTypeSet.Contains(u.GetHeadApiConnectorType()) {
 		return fmt.Errorf("there is no '%s' connector for head", u.HeadConnector)
 	}
 
@@ -399,20 +390,20 @@ func (c *ChainDefaults) validate() error {
 	return nil
 }
 
-func (c *ApiConnectorConfig) validate(torProxyUrl string) error {
-	if err := c.Type.validate(); err != nil {
+func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
+	if err := chains.ValidateApiConnectorType(a.Type); err != nil {
 		return err
 	}
 
-	if c.Url == "" {
-		return fmt.Errorf("url must be specified for connector '%s'", c.Type)
+	if a.Url == "" {
+		return fmt.Errorf("url must be specified for connector '%s'", a.Type)
 	}
-	parsedUrl, err := url.Parse(c.Url)
+	parsedUrl, err := url.Parse(a.Url)
 	if err != nil {
-		return fmt.Errorf("invalid url for connector '%s' - %s", c.Type, err.Error())
+		return fmt.Errorf("invalid url for connector '%s' - %s", a.Type, err.Error())
 	}
 	if parsedUrl.Scheme == "" || parsedUrl.Host == "" {
-		return fmt.Errorf("invalid url for connector '%s' - scheme and host are required", c.Type)
+		return fmt.Errorf("invalid url for connector '%s' - scheme and host are required", a.Type)
 	}
 	if strings.HasSuffix(parsedUrl.Hostname(), ".onion") {
 		if torProxyUrl == "" {
@@ -420,14 +411,5 @@ func (c *ApiConnectorConfig) validate(torProxyUrl string) error {
 		}
 	}
 
-	return nil
-}
-
-func (t ApiConnectorType) validate() error {
-	switch t {
-	case Grpc, JsonRpc, Rest, Ws:
-	default:
-		return fmt.Errorf("invalid connector type - '%s'", t)
-	}
 	return nil
 }

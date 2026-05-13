@@ -135,9 +135,9 @@ func createHead(
 	options *chains.Options,
 ) Head {
 	switch headConnector.GetType() {
-	case protocol.JsonRpcConnector, protocol.RestConnector:
+	case chains.JsonRpcConnector, chains.RestConnector:
 		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
-	case protocol.WsConnector:
+	case chains.WebsocketConnector:
 		return NewSubHead(ctx, id, options.InternalTimeout, headConnector, specific)
 	default:
 		return nil
