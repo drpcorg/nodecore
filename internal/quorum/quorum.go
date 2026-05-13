@@ -298,9 +298,7 @@ func (r *Registry) Verify(providerID, upstreamID string, nonce uint64, signature
 	if !ok {
 		return &UnknownProviderError{ProviderID: providerID}
 	}
-	wrapped := WrapMessage(nonce, upstreamID, message)
-	digest := sha256.Sum256(wrapped)
-	if err := verifyDigest(pub, digest[:], signature); err != nil {
+	if err := verifyWithNonceFallback(pub, nonce, upstreamID, message, signature); err != nil {
 		return &InvalidSignatureError{ProviderID: providerID, Cause: err}
 	}
 	return nil
@@ -311,12 +309,24 @@ func (r *Registry) verifySignature(s Signature, result []byte) error {
 	if !ok {
 		return &UnknownProviderError{ProviderID: s.ProviderID, Index: s.Index}
 	}
-	wrapped := WrapMessage(s.Nonce, s.UpstreamID, result)
-	digest := sha256.Sum256(wrapped)
-	if err := verifyDigest(pub, digest[:], s.Raw); err != nil {
+	if err := verifyWithNonceFallback(pub, s.Nonce, s.UpstreamID, result, s.Raw); err != nil {
 		return &InvalidSignatureError{ProviderID: s.ProviderID, Index: s.Index, Cause: err}
 	}
 	return nil
+}
+
+func verifyWithNonceFallback(pub crypto.PublicKey, nonce uint64, source string, message, signature []byte) error {
+	var lastErr error
+	for _, nonceString := range nonceCandidates(nonce) {
+		wrapped := wrapMessageWithNonceString(nonceString, source, message)
+		digest := sha256.Sum256(wrapped)
+		if err := verifyDigest(pub, digest[:], signature); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // verifyDigest dispatches to the right verification primitive based on the
@@ -345,19 +355,31 @@ func verifyDigest(pub crypto.PublicKey, digest, signature []byte) error {
 // what dshackle passed as `source` — the upstream id (what's in parens in
 // the QR header prefix).
 func WrapMessage(nonce uint64, source string, message []byte) []byte {
+	return wrapMessageWithNonceString(strconv.FormatUint(nonce, 10), source, message)
+}
+
+func wrapMessageWithNonceString(nonceString, source string, message []byte) []byte {
 	digest := sha256.Sum256(message)
 	hexDigest := hex.EncodeToString(digest[:])
 
 	var b strings.Builder
-	b.Grow(len(msgPrefix) + 1 + 20 + 1 + len(source) + 1 + len(hexDigest))
+	b.Grow(len(msgPrefix) + 1 + len(nonceString) + 1 + len(source) + 1 + len(hexDigest))
 	b.WriteString(msgPrefix)
 	b.WriteString(msgSeparator)
-	b.WriteString(strconv.FormatUint(nonce, 10))
+	b.WriteString(nonceString)
 	b.WriteString(msgSeparator)
 	b.WriteString(source)
 	b.WriteString(msgSeparator)
 	b.WriteString(hexDigest)
 	return []byte(b.String())
+}
+
+func nonceCandidates(nonce uint64) []string {
+	candidates := []string{strconv.FormatUint(nonce, 10)}
+	if nonce >= 1<<63 {
+		candidates = append(candidates, strconv.FormatInt(int64(nonce), 10))
+	}
+	return candidates
 }
 
 func ExtractSignatures(headers http.Header) ([]Signature, error) {

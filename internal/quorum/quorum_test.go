@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/quorum"
@@ -56,6 +57,21 @@ func TestVerify_ValidSignature_RSA(t *testing.T) {
 	result := []byte(`"0xabc"`)
 	const nonce uint64 = 14484681713855751539
 	sig := signResultRSA(t, key, nonce, upstreamID, result)
+
+	require.NoError(t, reg.Verify(providerID, upstreamID, nonce, sig, result))
+}
+
+func TestVerify_ValidLegacySignedNonce_RSA(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	const providerID = "easy2stake@EU-West#1"
+	const upstreamID = "eth_vel-frank-n01"
+	reg := quorum.NewRegistry(map[string]crypto.PublicKey{providerID: &key.PublicKey})
+
+	result := []byte(`"0xabc"`)
+	const nonce uint64 = 14484681713855751539
+	sig := signResultRSALegacySignedNonce(t, key, nonce, upstreamID, result)
 
 	require.NoError(t, reg.Verify(providerID, upstreamID, nonce, sig, result))
 }
@@ -153,6 +169,26 @@ func TestVerifyHeaders_WithUpstreamID(t *testing.T) {
 	assert.Equal(t, providerID, sigs[0].ProviderID)
 	assert.Equal(t, upstreamID, sigs[0].UpstreamID)
 	assert.Equal(t, nonce, sigs[0].Nonce)
+}
+
+func TestVerifyHeaders_WithLegacySignedNonce(t *testing.T) {
+	const providerID = "easy2stake@EU-West#1"
+	const upstreamID = "eth_vel-frank-n01"
+	prefix := providerID + "(" + upstreamID + ")"
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	reg := quorum.NewRegistry(map[string]crypto.PublicKey{providerID: &key.PublicKey})
+
+	result := []byte(`"0xdeadbeef"`)
+	const nonce uint64 = 14484681713855751539
+	sig := signResultRSALegacySignedNonce(t, key, nonce, upstreamID, result)
+
+	headers := http.Header{}
+	headers.Set("QR0-id-abc",
+		fmt.Sprintf("%s_nonce_%d_sig_0x%s", prefix, nonce, hex.EncodeToString(sig)))
+
+	require.NoError(t, reg.VerifyHeaders(headers, result, "abc", 1))
 }
 
 func TestVerifyHeaders_ProviderPrefixIsNotSigned(t *testing.T) {
@@ -261,16 +297,16 @@ func TestExtractSignatures_MalformedHeaderValue(t *testing.T) {
 	cases := map[string]string{
 		"missing nonce separator": "pid(u)_sig_0xaa",
 		"missing sig separator":   "pid(u)_nonce_1",
-		"empty prefix":             "_nonce_1_sig_0xaa",
-		"missing parens":           "pid_nonce_1_sig_0xaa",
-		"empty provider id":        "(u)_nonce_1_sig_0xaa",
-		"empty upstream id":        "pid()_nonce_1_sig_0xaa",
-		"open paren only":          "pid(u_nonce_1_sig_0xaa",
-		"close paren only":         "pidu)_nonce_1_sig_0xaa",
-		"bad nonce":                "pid(u)_nonce_abc_sig_0xaa",
-		"negative nonce":           "pid(u)_nonce_-1_sig_0xaa",
-		"bad hex":                  "pid(u)_nonce_1_sig_0xzz",
-		"empty signature":          "pid(u)_nonce_1_sig_",
+		"empty prefix":            "_nonce_1_sig_0xaa",
+		"missing parens":          "pid_nonce_1_sig_0xaa",
+		"empty provider id":       "(u)_nonce_1_sig_0xaa",
+		"empty upstream id":       "pid()_nonce_1_sig_0xaa",
+		"open paren only":         "pid(u_nonce_1_sig_0xaa",
+		"close paren only":        "pidu)_nonce_1_sig_0xaa",
+		"bad nonce":               "pid(u)_nonce_abc_sig_0xaa",
+		"negative nonce":          "pid(u)_nonce_-1_sig_0xaa",
+		"bad hex":                 "pid(u)_nonce_1_sig_0xzz",
+		"empty signature":         "pid(u)_nonce_1_sig_",
 	}
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -503,6 +539,24 @@ func signResultRSA(t *testing.T, key *rsa.PrivateKey, nonce uint64, source strin
 	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
 	require.NoError(t, err)
 	return sig
+}
+
+func signResultRSALegacySignedNonce(t *testing.T, key *rsa.PrivateKey, nonce uint64, source string, message []byte) []byte {
+	t.Helper()
+	wrapped := legacySignedWrapMessage(nonce, source, message)
+	digest := sha256.Sum256(wrapped)
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	require.NoError(t, err)
+	return sig
+}
+
+func legacySignedWrapMessage(nonce uint64, source string, message []byte) []byte {
+	return []byte(fmt.Sprintf(
+		"DSHACKLESIG/%s/%s/%x",
+		strconv.FormatInt(int64(nonce), 10),
+		source,
+		sha256.Sum256(message),
+	))
 }
 
 func b64EncodePub(t *testing.T, pub any) string {
