@@ -247,7 +247,10 @@ func (b *BaseChainSupervisor) calculateHeadLags() {
 	state := b.state.Load()
 
 	b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
-		headLag := state.HeadData.Head.Height - val.HeadData.Height
+		var headLag uint64
+		if state.HeadData.Head.Height >= val.HeadData.Height {
+			headLag = state.HeadData.Head.Height - val.HeadData.Height
+		}
 		b.tracker.GetChainDimensions(b.chain, key).TrackHeadLag(headLag)
 		return true
 	})
