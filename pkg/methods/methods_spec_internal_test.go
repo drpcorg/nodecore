@@ -107,10 +107,19 @@ func TestEnrichSpecsDoesNotMutateImportedPlainSpecMethods(t *testing.T) {
 }
 
 func newInternalTestMethodSpec(name string, apiConnectors []string, imports []string, methods ...*MethodData) *MethodSpec {
+	specType := PlainSpec
+	typeName := "plain"
+	if len(apiConnectors) == 0 {
+		specType = BundleSpec
+		typeName = "bundle"
+	}
+
 	specData := &SpecData{
 		Name:          name,
 		ApiConnectors: apiConnectors,
+		Type:          typeName,
 		apiConnectors: make([]ApiConnectorType, 0, len(apiConnectors)),
+		specType:      specType,
 	}
 	for _, connectorName := range apiConnectors {
 		specData.apiConnectors = append(specData.apiConnectors, GetApiConnectorType(connectorName))

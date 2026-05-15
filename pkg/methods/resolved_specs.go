@@ -1,6 +1,9 @@
 package specs
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 type resolvedSpec struct {
 	// methods is the connector-agnostic view used by the current helpers.
@@ -55,7 +58,7 @@ func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[stri
 		return wrapSpecError(specName, err)
 	}
 
-	importedSpecs, err := resolveImportedSpecs(spec.SpecImports, specs, visiting, currentMethods)
+	importedSpecs, err := resolveImportedSpecs(spec, spec.SpecImports, specs, visiting, currentMethods)
 	if err != nil {
 		return wrapSpecError(specName, err)
 	}
@@ -76,12 +79,13 @@ func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[stri
 	return nil
 }
 
-func resolveImportedSpecs(importedSpecNames []string, specs map[string]*MethodSpec, visiting map[string]bool, currentMethods *methodGroups) (*importedSpecData, error) {
+func resolveImportedSpecs(currentSpec *MethodSpec, importedSpecNames []string, specs map[string]*MethodSpec, visiting map[string]bool, currentMethods *methodGroups) (*importedSpecData, error) {
 	importedSpecs := newImportedSpecData()
 	importedMethodOwners := map[string]string{}
 
 	for _, importedSpecName := range importedSpecNames {
-		if _, ok := specs[importedSpecName]; !ok {
+		importedSpecData, ok := specs[importedSpecName]
+		if !ok {
 			return nil, fmt.Errorf("imported spec %s not found", importedSpecName)
 		}
 		if err := enrichSpec(importedSpecName, specs, visiting); err != nil {
@@ -89,6 +93,9 @@ func resolveImportedSpecs(importedSpecNames []string, specs map[string]*MethodSp
 		}
 
 		importedSpec := resolvedSpecs[importedSpecName]
+		if err := validateImportedSpecCompatibility(currentSpec, importedSpecData, importedSpec); err != nil {
+			return nil, err
+		}
 		if err := mergeImportedSpecMethods(currentMethods, importedMethodOwners, importedSpecName, importedSpec); err != nil {
 			return nil, err
 		}
@@ -99,6 +106,25 @@ func resolveImportedSpecs(importedSpecNames []string, specs map[string]*MethodSp
 	}
 
 	return importedSpecs, nil
+}
+
+func validateImportedSpecCompatibility(currentSpec, importedSpecData *MethodSpec, importedSpec *resolvedSpec) error {
+	if currentSpec == nil || currentSpec.SpecData == nil || currentSpec.SpecData.specType == BundleSpec {
+		return nil
+	}
+
+	importedConnectorTypes := effectiveConnectorTypes(importedSpecData, importedSpec)
+	if sameConnectorTypes(currentSpec.SpecData.apiConnectors, importedConnectorTypes) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"plain spec %s cannot import spec %s because api connectors differ: current=%v imported=%v",
+		currentSpec.SpecData.Name,
+		importedSpecData.SpecData.Name,
+		connectorTypeNames(currentSpec.SpecData.apiConnectors),
+		connectorTypeNames(importedConnectorTypes),
+	)
 }
 
 func mergeImportedSpecMethods(currentMethods *methodGroups, importedMethodOwners map[string]string, importedSpecName string, importedSpec *resolvedSpec) error {
@@ -123,6 +149,46 @@ func resolveConnectorTypes(currentConnectorTypes []ApiConnectorType, importedCon
 	}
 
 	return resolvedConnectorTypes
+}
+
+func effectiveConnectorTypes(importedSpecData *MethodSpec, importedSpec *resolvedSpec) []ApiConnectorType {
+	if importedSpecData == nil || importedSpecData.SpecData == nil {
+		return nil
+	}
+	if importedSpecData.SpecData.specType == PlainSpec {
+		return slices.Clone(importedSpecData.SpecData.apiConnectors)
+	}
+	if importedSpec == nil || importedSpec.connectors == nil {
+		return nil
+	}
+
+	return slices.Clone(importedSpec.connectors.apiConnectors)
+}
+
+func sameConnectorTypes(left, right []ApiConnectorType) bool {
+	leftSet := connectorTypeSet(left)
+	rightSet := connectorTypeSet(right)
+	if len(leftSet) != len(rightSet) {
+		return false
+	}
+
+	for connectorType := range leftSet {
+		if _, ok := rightSet[connectorType]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+func connectorTypeNames(connectorTypes []ApiConnectorType) []string {
+	names := make([]string, 0, len(connectorTypes))
+	for _, connectorType := range connectorTypes {
+		names = append(names, connectorType.String())
+	}
+	slices.Sort(names)
+
+	return names
 }
 
 func validateSameLevelImportedMethods(importedMethodOwners map[string]string, importedSpecName string, importedMethods *methodGroups) error {

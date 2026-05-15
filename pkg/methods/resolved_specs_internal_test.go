@@ -121,7 +121,8 @@ func TestResolveImportedSpecsReturnsMissingImportError(t *testing.T) {
 		resolvedSpecs = nil
 	})
 
-	importedSpecs, err := resolveImportedSpecs([]string{"missing"}, map[string]*MethodSpec{}, map[string]bool{}, newMethodGroups())
+	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, nil)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"missing"}, map[string]*MethodSpec{}, map[string]bool{}, newMethodGroups())
 	require.Error(t, err)
 	assert.Nil(t, importedSpecs)
 	assert.EqualError(t, err, "imported spec missing not found")
@@ -143,7 +144,8 @@ func TestResolveImportedSpecsMergesMethodsAndCollectsConnectorTypes(t *testing.T
 	}
 
 	currentMethods := newMethodGroups()
-	importedSpecs, err := resolveImportedSpecs([]string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods)
+	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"rpc", "ws"})
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods)
 	require.NoError(t, err)
 	require.NotNil(t, importedSpecs)
 
@@ -170,10 +172,101 @@ func TestResolveImportedSpecsRejectsSameLevelDuplicateMethods(t *testing.T) {
 		),
 	}
 
-	importedSpecs, err := resolveImportedSpecs([]string{"left", "right"}, specs, map[string]bool{}, newMethodGroups())
+	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"left", "right"})
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"left", "right"}, specs, map[string]bool{}, newMethodGroups())
 	require.Error(t, err)
 	assert.Nil(t, importedSpecs)
 	assert.EqualError(t, err, "same-level imported specs left and right define method eth_call")
+}
+
+func TestResolveImportedSpecsRejectsPlainImportWithDifferentConnectors(t *testing.T) {
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
+
+	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, []string{"imported"})
+	specs := map[string]*MethodSpec{
+		"imported": newInternalTestMethodSpec("imported", []string{"websocket"}, nil,
+			newInternalTestMethod("eth_subscribe", "common", true, true),
+		),
+	}
+
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"imported"}, specs, map[string]bool{}, newMethodGroups())
+	require.Error(t, err)
+	assert.Nil(t, importedSpecs)
+	assert.ErrorContains(t, err, "plain spec current cannot import spec imported because api connectors differ")
+	assert.ErrorContains(t, err, "current=[json-rpc]")
+	assert.ErrorContains(t, err, "imported=[websocket]")
+}
+
+func TestResolveImportedSpecsAllowsPlainImportWithSameConnectors(t *testing.T) {
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
+
+	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc", "websocket"}, []string{"imported"})
+	specs := map[string]*MethodSpec{
+		"imported": newInternalTestMethodSpec("imported", []string{"websocket", "json-rpc"}, nil,
+			newInternalTestMethod("eth_call", "common", true, true),
+		),
+	}
+
+	currentMethods := newMethodGroups()
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"imported"}, specs, map[string]bool{}, currentMethods)
+	require.NoError(t, err)
+	require.NotNil(t, importedSpecs)
+	assert.Contains(t, currentMethods.defaultMethods(), "eth_call")
+}
+
+func TestResolveImportedSpecsAllowsBundleImportAcrossDifferentConnectors(t *testing.T) {
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
+
+	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"rpc", "ws"})
+	specs := map[string]*MethodSpec{
+		"rpc": newInternalTestMethodSpec("rpc", []string{"json-rpc"}, nil,
+			newInternalTestMethod("eth_call", "common", true, true),
+		),
+		"ws": newInternalTestMethodSpec("ws", []string{"websocket"}, nil,
+			newMethodDataWithSubscription("eth_subscribe", "common", true, true),
+		),
+	}
+
+	currentMethods := newMethodGroups()
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods)
+	require.NoError(t, err)
+	require.NotNil(t, importedSpecs)
+	assert.Contains(t, currentMethods.defaultMethods(), "eth_call")
+	assert.Contains(t, currentMethods.defaultMethods(), "eth_subscribe")
+}
+
+func TestResolveImportedSpecsRejectsPlainImportOfBundleWithDifferentEffectiveConnectors(t *testing.T) {
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
+
+	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, []string{"bundle"})
+	specs := map[string]*MethodSpec{
+		"left": newInternalTestMethodSpec("left", []string{"json-rpc"}, nil,
+			newInternalTestMethod("eth_call", "common", true, true),
+		),
+		"right": newInternalTestMethodSpec("right", []string{"websocket"}, nil,
+			newMethodDataWithSubscription("eth_subscribe", "common", true, true),
+		),
+		"bundle": newInternalTestMethodSpec("bundle", nil, []string{"left", "right"}),
+	}
+
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"bundle"}, specs, map[string]bool{}, newMethodGroups())
+	require.Error(t, err)
+	assert.Nil(t, importedSpecs)
+	assert.ErrorContains(t, err, "plain spec current cannot import spec bundle because api connectors differ")
+	assert.ErrorContains(t, err, "current=[json-rpc]")
+	assert.ErrorContains(t, err, "imported=[json-rpc websocket]")
 }
 
 func TestMergeImportedSpecMethodsIgnoresNilImportedSpec(t *testing.T) {
@@ -222,6 +315,101 @@ func TestResolveConnectorTypesFallsBackToImportedTypes(t *testing.T) {
 	)
 
 	assert.ElementsMatch(t, []ApiConnectorType{JsonRpcConnector, WebsocketConnector}, resolvedConnectorTypes)
+}
+
+func TestValidateImportedSpecCompatibilityAllowsBundleImporter(t *testing.T) {
+	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"imported"})
+	importedSpec := newInternalTestMethodSpec("imported", []string{"websocket"}, nil)
+
+	err := validateImportedSpecCompatibility(currentSpec, importedSpec, nil)
+	require.NoError(t, err)
+}
+
+func TestValidateImportedSpecCompatibilityAllowsSameEffectiveConnectors(t *testing.T) {
+	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc", "websocket"}, []string{"bundle"})
+	importedSpec := newInternalTestMethodSpec("bundle", nil, []string{"left", "right"})
+	importedResolvedSpec := newResolvedSpec(
+		nil,
+		newConnectorMethodsForTests(map[ApiConnectorType]map[string]*Method{
+			JsonRpcConnector: {
+				"eth_call": newMethodGroupTestMethod("eth_call", true, true),
+			},
+			WebsocketConnector: {
+				"eth_subscribe": newMethodGroupTestMethod("eth_subscribe", true, true),
+			},
+		}),
+	)
+	importedResolvedSpec.connectors.initConnectors()
+
+	err := validateImportedSpecCompatibility(currentSpec, importedSpec, importedResolvedSpec)
+	require.NoError(t, err)
+}
+
+func TestValidateImportedSpecCompatibilityRejectsDifferentEffectiveConnectors(t *testing.T) {
+	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, []string{"bundle"})
+	importedSpec := newInternalTestMethodSpec("bundle", nil, []string{"left", "right"})
+	importedResolvedSpec := newResolvedSpec(
+		nil,
+		newConnectorMethodsForTests(map[ApiConnectorType]map[string]*Method{
+			JsonRpcConnector: {
+				"eth_call": newMethodGroupTestMethod("eth_call", true, true),
+			},
+			WebsocketConnector: {
+				"eth_subscribe": newMethodGroupTestMethod("eth_subscribe", true, true),
+			},
+		}),
+	)
+	importedResolvedSpec.connectors.initConnectors()
+
+	err := validateImportedSpecCompatibility(currentSpec, importedSpec, importedResolvedSpec)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "plain spec current cannot import spec bundle because api connectors differ")
+}
+
+func TestEffectiveConnectorTypesUsesPlainSpecConnectors(t *testing.T) {
+	importedSpec := newInternalTestMethodSpec("imported", []string{"websocket", "json-rpc"}, nil)
+
+	connectorTypes := effectiveConnectorTypes(importedSpec, nil)
+
+	assert.Equal(t, []ApiConnectorType{WebsocketConnector, JsonRpcConnector}, connectorTypes)
+}
+
+func TestEffectiveConnectorTypesUsesResolvedBundleConnectors(t *testing.T) {
+	importedSpec := newInternalTestMethodSpec("bundle", nil, []string{"left", "right"})
+	importedResolvedSpec := newResolvedSpec(
+		nil,
+		newConnectorMethodsForTests(map[ApiConnectorType]map[string]*Method{
+			JsonRpcConnector: {
+				"eth_call": newMethodGroupTestMethod("eth_call", true, true),
+			},
+			WebsocketConnector: {
+				"eth_subscribe": newMethodGroupTestMethod("eth_subscribe", true, true),
+			},
+		}),
+	)
+	importedResolvedSpec.connectors.initConnectors()
+
+	connectorTypes := effectiveConnectorTypes(importedSpec, importedResolvedSpec)
+
+	assert.Equal(t, []ApiConnectorType{JsonRpcConnector, WebsocketConnector}, connectorTypes)
+}
+
+func TestSameConnectorTypesComparesSets(t *testing.T) {
+	assert.True(t, sameConnectorTypes(
+		[]ApiConnectorType{JsonRpcConnector, WebsocketConnector},
+		[]ApiConnectorType{WebsocketConnector, JsonRpcConnector, WebsocketConnector},
+	))
+	assert.False(t, sameConnectorTypes(
+		[]ApiConnectorType{JsonRpcConnector},
+		[]ApiConnectorType{JsonRpcConnector, WebsocketConnector},
+	))
+}
+
+func TestConnectorTypeNamesReturnsSortedNames(t *testing.T) {
+	assert.Equal(t, []string{"json-rpc", "websocket"}, connectorTypeNames([]ApiConnectorType{
+		WebsocketConnector,
+		JsonRpcConnector,
+	}))
 }
 
 func TestValidateSameLevelImportedMethodsTracksOwners(t *testing.T) {
