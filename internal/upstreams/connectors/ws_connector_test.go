@@ -17,7 +17,8 @@ func TestWsConnectorSendUnaryRequestThenReceiveError(t *testing.T) {
 	wsProcessor := mocks.NewWsProcessorMock()
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 	err := errors.New("req error")
 
 	wsProcessor.On("SendRpcRequest", ctx, request).Return(nil, err)
@@ -38,7 +39,8 @@ func TestWsConnectorSendUnaryRequestThenResponse(t *testing.T) {
 	wsProcessor := mocks.NewWsProcessorMock()
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 	result := []byte("result")
 	wsResponse := &protocol.WsResponse{Message: result}
 
@@ -66,7 +68,8 @@ func TestWsConnectorSendSubThenError(t *testing.T) {
 	wsProcessor := mocks.NewWsProcessorMock()
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 	err := errors.New("sub error")
 
 	wsProcessor.On("SendWsRequest", ctx, request).Return((chan *protocol.WsResponse)(nil), "", err)
@@ -82,7 +85,8 @@ func TestWsConnectorSendSubThenResponseChan(t *testing.T) {
 	wsProcessor := mocks.NewWsProcessorMock()
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 	responseChan := make(chan *protocol.WsResponse)
 	wsResponse := &protocol.WsResponse{Message: []byte("result")}
 	go func() {

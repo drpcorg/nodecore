@@ -55,7 +55,7 @@ func CreateUpstream(
 		return nil, err
 	}
 
-	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods)
+	upstreamMethods, err := methods.NewUpstreamMethods(configuredChain.MethodSpec, conf.Methods, conf.GetApiConnectorTypes())
 	if err != nil {
 		cancel()
 		return nil, err

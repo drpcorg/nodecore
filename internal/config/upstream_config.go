@@ -57,6 +57,12 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 }
 
+func (u *Upstream) GetApiConnectorTypes() []specs.ApiConnectorType {
+	return lo.Map(u.Connectors, func(item *ApiConnectorConfig, index int) specs.ApiConnectorType {
+		return item.GetApiConnectorType()
+	})
+}
+
 func (u *Upstream) GetHeadApiConnectorType() specs.ApiConnectorType {
 	return specs.GetApiConnectorType(u.HeadConnector)
 }

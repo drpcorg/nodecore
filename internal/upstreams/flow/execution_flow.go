@@ -164,7 +164,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 		return NewBaseStrategy(chainSupervisor)
 	}
 	_, quorumRequested := quorum.FromContext(ctx)
-	stickySend := specs.IsStickySendMethod(request.SpecMethod())
+	stickySend := request.SpecMethod() != nil && request.SpecMethod().IsStickySend()
 
 	// Quorum reads cannot piggyback on sticky-send methods: signatures are
 	// computed over a read result, not on a submission, and the sticky
@@ -237,6 +237,17 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 		defer e.wg.Done()
 		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 
+		if request.SpecMethod() == nil {
+			response := protocol.NewTotalFailure(request, protocol.NoSpecMethodError(request.Method()))
+			wrapper := &protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				Response:   response,
+				RequestId:  request.Id(),
+			}
+			e.sendResponse(ctx, wrapper, request)
+			return
+		}
+
 		reqObserver := request.RequestObserver().WithChain(e.chain)
 
 		execCtx := context.WithValue(ctx, resilience.RequestKey, request)
@@ -278,7 +289,7 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 
 	if request.IsSubscribe() {
 		requestProcessor = NewSubscriptionRequestProcessor(e.upstreamSupervisor, e.subCtx)
-	} else if isLocalRequest(e.chain, request.Method()) {
+	} else if request.SpecMethod().IsLocal() {
 		requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
 		reqObserver.WithRequestKind(protocol.Local)
 	} else if isStickyRequest(request.SpecMethod()) {
@@ -391,12 +402,8 @@ func (e *BaseExecutionFlow) verifyQuorumSignatures(
 	)
 }
 
-func isLocalRequest(chain chains.Chain, method string) bool {
-	return specs.IsLocalMethod(chains.GetMethodSpecNameByChain(chain), method)
-}
-
 func isStickyRequest(specMethod *specs.Method) bool {
-	return specs.IsStickyCreateMethod(specMethod) || specs.IsStickySendMethod(specMethod)
+	return specMethod.IsStickyCreate() || specMethod.IsStickySend()
 }
 
 func shouldEnforceIntegrity(specMethod *specs.Method, integrityConfig *config.IntegrityConfig) bool {

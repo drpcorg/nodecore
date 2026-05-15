@@ -76,36 +76,40 @@ func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chain
 	}, nil
 }
 
-func NewUpstreamJsonRpcRequest(
-	id string,
-	realId json.RawMessage,
-	method string,
-	params json.RawMessage,
-	isSub bool,
-	specMethod *specs.Method,
-) *UpstreamJsonRpcRequest {
+func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specMethod *specs.Method) *UpstreamJsonRpcRequest {
+	if specMethod == nil {
+		specMethod = specs.DefaultMethod(jsonRpcRequest.Method)
+	}
 	return &UpstreamJsonRpcRequest{
 		id:              id,
-		method:          method,
-		realId:          realId,
-		requestParams:   params,
+		method:          jsonRpcRequest.Method,
+		realId:          jsonRpcRequest.Id,
+		requestParams:   jsonRpcRequest.Params,
 		isSub:           isSub,
-		requestKey:      calculateJsonRpcHash(method, params),
+		requestKey:      calculateJsonRpcHash(jsonRpcRequest.Method, jsonRpcRequest.Params),
 		specMethod:      specMethod,
-		requestObserver: NewRequestObserver(isSub).WithMethod(method),
+		requestObserver: NewRequestObserver(isSub).WithMethod(jsonRpcRequest.Method),
 	}
 }
 
-func NewStreamUpstreamJsonRpcRequest(id string, realId json.RawMessage, method string, params json.RawMessage, specMethod *specs.Method) *UpstreamJsonRpcRequest {
+func NewUpstreamJsonRpcRequestWithSpecName(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specMethod *specs.Method, specName string) *UpstreamJsonRpcRequest {
+	if specMethod == nil {
+		//TODO: for unknown method now we use all the spec connectors; however it should be fixed with explicit method config in yaml
+		specMethod = specs.DefaultMethodWithConnectorTypes(jsonRpcRequest.Method, specs.GetSpecConnectors(specName))
+	}
+	return NewUpstreamJsonRpcRequest(id, jsonRpcRequest, isSub, specMethod)
+}
+
+func NewStreamUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, specMethod *specs.Method) *UpstreamJsonRpcRequest {
 	return &UpstreamJsonRpcRequest{
 		id:              id,
-		method:          method,
-		realId:          realId,
-		requestParams:   params,
+		method:          jsonRpcRequest.Method,
+		realId:          jsonRpcRequest.Id,
+		requestParams:   jsonRpcRequest.Params,
 		isStream:        true,
-		requestKey:      calculateJsonRpcHash(method, params),
+		requestKey:      calculateJsonRpcHash(jsonRpcRequest.Method, jsonRpcRequest.Params),
 		specMethod:      specMethod,
-		requestObserver: NewRequestObserver(false).WithMethod(method),
+		requestObserver: NewRequestObserver(false).WithMethod(jsonRpcRequest.Method),
 	}
 }
 

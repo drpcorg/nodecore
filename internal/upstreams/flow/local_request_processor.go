@@ -22,7 +22,7 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	_ UpstreamStrategy,
 	request protocol.RequestHolder,
 ) ProcessedResponse {
-	if !specs.IsLocalMethod(chains.GetMethodSpecNameByChain(l.chain), request.Method()) {
+	if !request.SpecMethod().IsLocal() {
 		return &UnaryResponse{processedServerError(request, fmt.Errorf("method '%s' is not local", request.Method()))}
 	}
 

@@ -15,15 +15,20 @@ import (
 )
 
 func testEthSubscribeRequest() protocol.RequestHolder {
-	specMethod := &specs.Method{
-		Name: "eth_subscribe",
-		Subscription: &specs.Subscription{
-			IsSubscribe: true,
-			Method:      "eth_subscription",
-			UnsubMethod: "eth_unsubscribe",
+	specMethod := specs.MethodWithSettings(
+		"eth_subscribe",
+		[]specs.ApiConnectorType{specs.WebsocketConnector},
+		&specs.MethodSettings{
+			Subscription: &specs.Subscription{
+				IsSubscribe: true,
+				Method:      "eth_subscription",
+				UnsubMethod: "eth_unsubscribe",
+			},
 		},
-	}
-	return protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_subscribe", []byte(`["newHeads"]`), false, specMethod)
+		nil,
+	)
+	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
+	return protocol.NewUpstreamJsonRpcRequest("223", body, false, specMethod)
 }
 
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {

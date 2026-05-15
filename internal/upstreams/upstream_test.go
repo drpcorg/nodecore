@@ -661,7 +661,7 @@ func newTestBaseUpstream(
 		upConfig = newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
 	}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods)
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods, nil)
 	require.NoError(t, err)
 
 	state := utils.NewAtomic[protocol.UpstreamState]()
@@ -784,7 +784,7 @@ func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) m
 		methodsConfig = &config.MethodsConfig{}
 	}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig)
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig, nil)
 	require.NoError(t, err)
 	return upstreamMethods
 }

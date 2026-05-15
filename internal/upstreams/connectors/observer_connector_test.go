@@ -26,7 +26,8 @@ func TestObserverConnectorSuccessfulResponse(t *testing.T) {
 	connectorMock := mocks.NewConnectorMock()
 	observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+	request := protocol.NewUpstreamJsonRpcRequest("223", body, false, nil)
 	request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.On("SendRequest", mock.Anything, request).Return(responseHolder)
@@ -54,7 +55,8 @@ func TestObserverConnectorRetryRequest(t *testing.T) {
 	connectorMock := mocks.NewConnectorMock()
 	observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+	request := protocol.NewUpstreamJsonRpcRequest("223", body, false, nil)
 	request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.
@@ -137,7 +139,8 @@ func TestObserverConnectorRetryableNonRetryableErrors(t *testing.T) {
 			connectorMock := mocks.NewConnectorMock()
 			observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
-			request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
+			request := protocol.NewUpstreamJsonRpcRequest("223", body, false, nil)
 			request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 			connectorMock.On("SendRequest", mock.Anything, request).Return(test.errorResponse)
 

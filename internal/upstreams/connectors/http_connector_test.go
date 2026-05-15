@@ -202,7 +202,8 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 		Url: "http://localhost:8080",
 	}
 	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
-	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
+	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, nil)
 
 	r := connector.SendRequest(context.Background(), req)
 
@@ -224,7 +225,8 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 		Url: "http://localhost:8080",
 	}
 	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
-	req := protocol.NewStreamUpstreamJsonRpcRequest("id", json.RawMessage(`"real"`), "eth_test", nil, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
+	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, nil)
 
 	r := connector.SendRequest(context.Background(), req)
 

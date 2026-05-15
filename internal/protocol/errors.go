@@ -10,6 +10,8 @@ const (
 	WrongChain
 	CtxErrorCode
 	WsTotalFailure
+	NoSpecMethod
+	NoApiConnectors
 	ClientErrorCode         = 400
 	AuthErrorCode           = 403
 	RequestTimeout          = 408
@@ -83,6 +85,20 @@ func CtxError(cause error) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("ctx error: %s", cause.Error()),
 		Code:    CtxErrorCode,
+	}
+}
+
+func NoSpecMethodError(method string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("no spec for method %s", method),
+		Code:    NoSpecMethod,
+	}
+}
+
+func NoApiConnectorsError(method string) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("no suitable api connectors to process method %s", method),
+		Code:    NoApiConnectors,
 	}
 }
 

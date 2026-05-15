@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -16,15 +17,19 @@ import (
 const newValue = "$newValue"
 
 type Method struct {
+	Name string
+
+	Subscription      *Subscription
+	sticky            *Sticky
+	apiConnectorTypes []ApiConnectorType
+
+	parser       *jqParser
+	modifyParser *modifyJqParser
+
 	enabled          bool
 	cacheable        bool
 	enforceIntegrity bool
 	local            bool
-	parser           *jqParser
-	modifyParser     *modifyJqParser
-	Subscription     *Subscription
-	Sticky           *Sticky
-	Name             string
 }
 
 type jqParser struct {
@@ -44,15 +49,24 @@ func DefaultMethod(name string) *Method {
 	}
 }
 
-func MethodWithSettings(name string, settings *MethodSettings, tagParser *TagParser) *Method {
+func DefaultMethodWithConnectorTypes(name string, apiConnectorTypes []ApiConnectorType) *Method {
+	return &Method{
+		Name:              name,
+		enabled:           true,
+		cacheable:         true,
+		apiConnectorTypes: apiConnectorTypes,
+	}
+}
+
+func MethodWithSettings(name string, apiConnectorTypes []ApiConnectorType, settings *MethodSettings, tagParser *TagParser) *Method {
 	methodData := &MethodData{
 		Name:      name,
-		Enabled:   lo.ToPtr(true),
+		Enabled:   new(true),
 		Settings:  settings,
 		TagParser: tagParser,
 	}
 
-	method, err := fromMethodData(methodData)
+	method, err := fromMethodData(methodData, apiConnectorTypes)
 	if err != nil {
 		return nil
 	}
@@ -75,6 +89,24 @@ func (m *Method) IsLocal() bool {
 	return m.local
 }
 
+func (m *Method) GetApiConnectorTypes() []ApiConnectorType {
+	return slices.Clone(m.apiConnectorTypes)
+}
+
+func (m *Method) IsStickySend() bool {
+	if m.sticky == nil {
+		return false
+	}
+	return m.sticky.SendSticky
+}
+
+func (m *Method) IsStickyCreate() bool {
+	if m.sticky == nil {
+		return false
+	}
+	return m.sticky.CreateSticky
+}
+
 func (m *Method) IsSubscribe() bool {
 	if m.Subscription == nil {
 		return false
@@ -82,7 +114,7 @@ func (m *Method) IsSubscribe() bool {
 	return m.Subscription.IsSubscribe
 }
 
-func fromMethodData(methodData *MethodData) (*Method, error) {
+func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType) (*Method, error) {
 	var parser *jqParser
 	if methodData.TagParser != nil {
 		jqQuery, err := gojq.Parse(methodData.TagParser.Path)
@@ -130,15 +162,16 @@ func fromMethodData(methodData *MethodData) (*Method, error) {
 	}
 
 	return &Method{
-		enabled:          lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
-		cacheable:        cacheable,
-		local:            local,
-		enforceIntegrity: enforceIntegrity,
-		Name:             methodData.Name,
-		parser:           parser,
-		modifyParser:     modifyParser,
-		Sticky:           sticky,
-		Subscription:     sub,
+		enabled:           lo.Ternary(methodData.Enabled == nil, true, *methodData.Enabled),
+		cacheable:         cacheable,
+		local:             local,
+		enforceIntegrity:  enforceIntegrity,
+		Name:              methodData.Name,
+		parser:            parser,
+		modifyParser:      modifyParser,
+		sticky:            sticky,
+		Subscription:      sub,
+		apiConnectorTypes: apiConnectorTypes,
 	}, nil
 }
 

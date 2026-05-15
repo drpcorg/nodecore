@@ -140,14 +140,8 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 	}
 
 	specMethod := chainSupervisor.GetMethod(mappedMethod)
-	subscribeRequest := protocol.NewUpstreamJsonRpcRequest(
-		"0",
-		[]byte("0"),
-		mappedMethod,
-		mappedPayload,
-		true,
-		specMethod,
-	)
+	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
+	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, specMethod)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
 
 	executionFlow := flow.NewBaseExecutionFlow(
@@ -257,23 +251,11 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 			specMethod = chainSupervisor.GetMethod(item.GetMethod())
 		}
 		requestID := strconv.FormatUint(uint64(item.GetId()), 10)
+		jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte(requestID), Method: item.GetMethod(), Params: payload}
 		if request.ChunkSize > 0 {
-			requests = append(requests, protocol.NewStreamUpstreamJsonRpcRequest(
-				requestID,
-				[]byte(requestID),
-				item.GetMethod(),
-				payload,
-				specMethod,
-			))
+			requests = append(requests, protocol.NewStreamUpstreamJsonRpcRequest(requestID, jsonRpcRequestBody, specMethod))
 		} else {
-			requests = append(requests, protocol.NewUpstreamJsonRpcRequest(
-				requestID,
-				[]byte(requestID),
-				item.GetMethod(),
-				payload,
-				false,
-				specMethod,
-			))
+			requests = append(requests, protocol.NewUpstreamJsonRpcRequest(requestID, jsonRpcRequestBody, false, specMethod))
 		}
 	}
 

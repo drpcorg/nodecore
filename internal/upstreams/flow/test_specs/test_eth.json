@@ -5,7 +5,9 @@
     "version": "1.0.0"
   },
   "spec": {
-    "name": "eth"
+    "api-connectors": ["json-rpc", "websocket"],
+    "name": "eth",
+    "type": "plain"
   },
   "methods": [
     {

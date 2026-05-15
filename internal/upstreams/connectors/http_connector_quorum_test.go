@@ -65,7 +65,8 @@ func TestHttpConnector_QuorumForcesUnary_EvenForStreamRequest(t *testing.T) {
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
 	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
-	streamReq := protocol.NewStreamUpstreamJsonRpcRequest("1", []byte(`"1"`), "eth_getLogs", nil, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getLogs", Params: nil}
+	streamReq := protocol.NewStreamUpstreamJsonRpcRequest("1", jsonBody, nil)
 
 	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 1, QuorumOf: 1})
 	r := connector.SendRequest(ctx, streamReq)
@@ -89,7 +90,8 @@ func TestHttpConnector_NoQuorum_StreamRequestStaysStreamed(t *testing.T) {
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
 	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
-	streamReq := protocol.NewStreamUpstreamJsonRpcRequest("1", []byte(`"1"`), "eth_getLogs", nil, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getLogs", Params: nil}
+	streamReq := protocol.NewStreamUpstreamJsonRpcRequest("1", jsonBody, nil)
 
 	r := connector.SendRequest(context.Background(), streamReq)
 	require.False(t, r.HasError())
