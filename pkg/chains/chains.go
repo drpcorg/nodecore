@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -100,6 +101,13 @@ var grpcChains map[int]*ConfiguredChain
 // registered.
 var nextDynamicChainId = dynamicChainBaseId
 
+// extraChainsMu serializes LoadExtraChains calls and protects mutation of
+// the package-level chain registry. extraChainsLoadedFlag flips to true
+// only on a *successful* load so that callers can retry with corrected
+// input after a validation failure.
+var extraChainsMu sync.Mutex
+var extraChainsLoadedFlag bool
+
 func init() {
 	result, grpcResult, err := configureChainsFromBytes(chainsCfg)
 	if err != nil {
@@ -115,6 +123,9 @@ func init() {
 // are allocated a new Chain int (>= dynamicChainBaseId) so they round-trip
 // through Chain.String() correctly.
 //
+// LoadExtraChains must be called once, at startup, before any consumer of
+// the chain registry runs. Repeat calls return an error.
+//
 // Returns an error if the YAML is malformed, if any extra chain re-uses an
 // existing short-name, or if an extra chain's grpcId collides with an
 // existing one.
@@ -122,14 +133,26 @@ func LoadExtraChains(extraYaml []byte) error {
 	if len(extraYaml) == 0 {
 		return nil
 	}
+	extraChainsMu.Lock()
+	defer extraChainsMu.Unlock()
+	if extraChainsLoadedFlag {
+		return fmt.Errorf("LoadExtraChains already succeeded once; the chain registry is locked after first successful load")
+	}
+	if err := loadExtraChainsLocked(extraYaml); err != nil {
+		return err
+	}
+	extraChainsLoadedFlag = true
+	return nil
+}
 
+func loadExtraChainsLocked(extraYaml []byte) error {
 	extraConfigured, extraGrpc, err := configureChainsFromBytes(extraYaml)
 	if err != nil {
 		return err
 	}
 
 	for shortName, configured := range extraConfigured {
-		if _, exists := chains[shortName]; exists {
+		if existing, exists := chains[shortName]; exists && existing != configured {
 			return fmt.Errorf("extra chain short-name %q already registered", shortName)
 		}
 		if _, exists := grpcChains[configured.GrpcId]; exists && configured.GrpcId != 0 {
