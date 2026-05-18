@@ -58,6 +58,26 @@ chain-settings:
           grpcId: %d
 `
 
+const secondLoadYaml = `
+chain-settings:
+  default:
+    expected-block-time: 2s
+  protocols:
+    - type: eth
+      settings:
+        method-spec: "eth"
+      chains:
+        - id: AnotherOne
+          short-names: [another-private-test]
+          chain-id: "0xfeed"
+          grpcId: 60002
+`
+
+// Tests that exercise validation must run BEFORE the happy-path test
+// (TestLoadExtraChains_RegistersNewChain) since that one flips the
+// process-wide "loaded" flag. Go runs tests within a file in source
+// order, so we order the cases here intentionally.
+
 func TestLoadExtraChains_EmptyInputIsNoop(t *testing.T) {
 	before := len(GetAllChains())
 	require.NoError(t, LoadExtraChains(nil))
@@ -65,18 +85,9 @@ func TestLoadExtraChains_EmptyInputIsNoop(t *testing.T) {
 	assert.Equal(t, before, len(GetAllChains()))
 }
 
-func TestLoadExtraChains_RegistersNewChain(t *testing.T) {
-	require.NoError(t, LoadExtraChains([]byte(validExtraYaml)))
-
-	c := GetChain("besu-private-test")
-	require.NotEqual(t, UnknownChain, c, "extra chain should be registered")
-	assert.Equal(t, "0xdeadbeef", c.ChainId)
-	assert.Equal(t, "eth", c.MethodSpec, "method-spec should resolve to eth via protocol type")
-	assert.True(t, c.Chain >= dynamicChainBaseId, "extra chain should be allocated a dynamic Chain id")
-	assert.Equal(t, "besu-private-test", c.Chain.String(), "Chain.String() should round-trip the short-name")
-
-	byGrpc := GetChainByGrpcId(60001)
-	assert.Equal(t, c, byGrpc)
+func TestLoadExtraChains_InvalidYamlReturnsError(t *testing.T) {
+	err := LoadExtraChains([]byte("chain-settings:\n  protocols:\n   - id: bad\n     short-names:\n      - x\n  -malformed"))
+	require.Error(t, err)
 }
 
 func TestLoadExtraChains_DuplicateShortNameRejected(t *testing.T) {
@@ -95,8 +106,25 @@ func TestLoadExtraChains_GrpcIdCollisionRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "grpcId")
 }
 
-func TestLoadExtraChains_InvalidYamlReturnsError(t *testing.T) {
-	// Mismatched indentation produces a yaml.Unmarshal error.
-	err := LoadExtraChains([]byte("chain-settings:\n  protocols:\n   - id: bad\n     short-names:\n      - x\n  -malformed"))
+func TestLoadExtraChains_RegistersNewChain(t *testing.T) {
+	require.NoError(t, LoadExtraChains([]byte(validExtraYaml)))
+
+	c := GetChain("besu-private-test")
+	require.NotEqual(t, UnknownChain, c, "extra chain should be registered")
+	assert.Equal(t, "0xdeadbeef", c.ChainId)
+	assert.Equal(t, "eth", c.MethodSpec, "method-spec should resolve to eth via protocol type")
+	assert.True(t, c.Chain >= dynamicChainBaseId, "extra chain should be allocated a dynamic Chain id")
+	assert.Equal(t, "besu-private-test", c.Chain.String(), "Chain.String() should round-trip the short-name")
+
+	byGrpc := GetChainByGrpcId(60001)
+	assert.Equal(t, c, byGrpc)
+}
+
+func TestLoadExtraChains_SecondCallIsRejected(t *testing.T) {
+	// Previous successful load flipped extraChainsLoadedFlag.
+	err := LoadExtraChains([]byte(secondLoadYaml))
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already")
+	assert.Equal(t, UnknownChain, GetChain("another-private-test"),
+		"second-load chain must NOT be registered")
 }
