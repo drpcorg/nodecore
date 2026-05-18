@@ -87,6 +87,61 @@ It brings together:
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, and (4) apply rate limiting to control request throughput.
 
+## Extending the chain registry at startup
+
+NodeCore ships with the public chain registry embedded from
+[`drpcorg/public`](https://github.com/drpcorg/public). For private or
+consortium chains (e.g. a Besu network with a customer-specific chain id),
+two environment variables let you extend the registry at startup without
+forking:
+
+| Env var | Purpose |
+|---------|---------|
+| `NODECORE_EXTRA_CHAINS_PATH` | Path to a YAML file using the same schema as `chains.yaml`. Its entries are merged on top of the embedded registry. |
+| `NODECORE_EXTRA_SPECS_PATH` | Directory of JSON method-spec files (same schema as `pkg/methods/specs/*.json`). Files in this directory are loaded instead of the embedded specs. |
+
+A minimal extra-chains file for a single Besu network:
+
+```yaml
+chain-settings:
+  default:
+    expected-block-time: 2s
+    lags:
+      lagging: 5
+      syncing: 10
+  protocols:
+    - type: eth
+      settings:
+        method-spec: "eth"
+      chains:
+        - id: BesuPrivate
+          short-names: [besu-acme-prod]
+          chain-id: "0xdeadbeef"
+          grpcId: 60001
+```
+
+Then point an upstream at it like any other chain:
+
+```yaml
+upstreams:
+  - id: besu-acme
+    chain: besu-acme-prod
+    connectors:
+      - type: json-rpc
+        url: http://besu.internal:8545
+```
+
+NodeCore will:
+
+- Allocate an internal `Chain` id for any extra short-name that isn't
+  already registered (ids start at 2³⁰ to avoid colliding with generated
+  values).
+- Return the correct `eth_chainId` and `net_version` for the extra chain
+  because both methods read from the configured `chain-id` rather than
+  forwarding upstream.
+- Reject duplicate short-names or `grpcId` collisions with already-known
+  chains at startup.
+
 ## integrity
 
 ```yaml

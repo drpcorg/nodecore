@@ -2,6 +2,7 @@ package chains
 
 import (
 	_ "embed"
+	"fmt"
 	"maps"
 	"math"
 	"math/big"
@@ -93,13 +94,59 @@ var UnknownChain = &ConfiguredChain{
 var chains map[string]*ConfiguredChain
 var grpcChains map[int]*ConfiguredChain
 
+// nextDynamicChainId tracks the next Chain int to allocate for chains
+// registered via LoadExtraChains. It starts at dynamicChainBaseId (defined
+// in the generated chains_data.go) and is incremented as extra chains are
+// registered.
+var nextDynamicChainId = dynamicChainBaseId
+
 func init() {
-	result, grpcResult, err := configureChains()
+	result, grpcResult, err := configureChainsFromBytes(chainsCfg)
 	if err != nil {
 		panic(err)
 	}
 	chains = result
 	grpcChains = grpcResult
+}
+
+// LoadExtraChains parses an additional chain registry YAML (same schema as
+// the bundled drpcorg/public chains.yaml) and merges its entries into the
+// running chain registry. Chains whose short-name isn't already registered
+// are allocated a new Chain int (>= dynamicChainBaseId) so they round-trip
+// through Chain.String() correctly.
+//
+// Returns an error if the YAML is malformed, if any extra chain re-uses an
+// existing short-name, or if an extra chain's grpcId collides with an
+// existing one.
+func LoadExtraChains(extraYaml []byte) error {
+	if len(extraYaml) == 0 {
+		return nil
+	}
+
+	extraConfigured, extraGrpc, err := configureChainsFromBytes(extraYaml)
+	if err != nil {
+		return err
+	}
+
+	for shortName, configured := range extraConfigured {
+		if _, exists := chains[shortName]; exists {
+			return fmt.Errorf("extra chain short-name %q already registered", shortName)
+		}
+		if _, exists := grpcChains[configured.GrpcId]; exists && configured.GrpcId != 0 {
+			return fmt.Errorf("extra chain grpcId %d (%q) collides with an existing chain", configured.GrpcId, shortName)
+		}
+	}
+
+	for shortName, configured := range extraConfigured {
+		chains[shortName] = configured
+	}
+	for grpcId, configured := range extraGrpc {
+		if grpcId != 0 {
+			grpcChains[grpcId] = configured
+		}
+	}
+
+	return nil
 }
 
 func (c *ConfiguredChain) AverageRemoveSpeed() float64 {
@@ -149,12 +196,12 @@ func GetMethodSpecNameByChainName(chainName string) string {
 	return GetChain(chainName).MethodSpec
 }
 
-func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, error) {
+func configureChainsFromBytes(rawYaml []byte) (map[string]*ConfiguredChain, map[int]*ConfiguredChain, error) {
 	configuredChains := make(map[string]*ConfiguredChain)
 	configuredGrpcChains := make(map[int]*ConfiguredChain)
 
 	var config ChainConfig
-	if err := yaml.Unmarshal(chainsCfg, &config); err != nil {
+	if err := yaml.Unmarshal(rawYaml, &config); err != nil {
 		return nil, nil, err
 	}
 
@@ -175,31 +222,44 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 				log.Panic().Msgf("expected block time of chain %s is zero", chain.ShortNames[0])
 			}
 
-			if network, ok := chainsMap[chain.ShortNames[0]]; ok {
-				netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(chain.ChainId))
-				methodSpec := lo.Ternary(
-					chain.MethodSpec != "",
-					getMethodSpecName(protocol.Type, chain.MethodSpec),
-					getMethodSpecName(protocol.Type, settings.MethodSpec),
-				)
-
-				configuredChain := &ConfiguredChain{
-					GrpcId:               chain.GrpcId,
-					ChainId:              strings.ToLower(chain.ChainId),
-					ShortNames:           chain.ShortNames,
-					NetVersion:           strings.ToLower(netVersion),
-					Type:                 protocol.Type,
-					Settings:             settings,
-					Chain:                network,
-					MethodSpec:           methodSpec,
-					CallValidateContract: chain.CallValidateContract,
-				}
-
-				for _, shortName := range chain.ShortNames {
-					configuredChains[shortName] = configuredChain
-				}
-				configuredGrpcChains[configuredChain.GrpcId] = configuredChain
+			if len(chain.ShortNames) == 0 {
+				return nil, nil, fmt.Errorf("chain entry has no short-names")
 			}
+
+			// For chains not present in the build-time chainsMap, allocate a
+			// dynamic Chain id and register the primary short-name so that
+			// Chain.String() round-trips correctly.
+			network, ok := chainsMap[chain.ShortNames[0]]
+			if !ok {
+				network = nextDynamicChainId
+				nextDynamicChainId++
+				chainsMap[chain.ShortNames[0]] = network
+				dynamicChainNames[network] = chain.ShortNames[0]
+			}
+
+			netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(chain.ChainId))
+			methodSpec := lo.Ternary(
+				chain.MethodSpec != "",
+				getMethodSpecName(protocol.Type, chain.MethodSpec),
+				getMethodSpecName(protocol.Type, settings.MethodSpec),
+			)
+
+			configuredChain := &ConfiguredChain{
+				GrpcId:               chain.GrpcId,
+				ChainId:              strings.ToLower(chain.ChainId),
+				ShortNames:           chain.ShortNames,
+				NetVersion:           strings.ToLower(netVersion),
+				Type:                 protocol.Type,
+				Settings:             settings,
+				Chain:                network,
+				MethodSpec:           methodSpec,
+				CallValidateContract: chain.CallValidateContract,
+			}
+
+			for _, shortName := range chain.ShortNames {
+				configuredChains[shortName] = configuredChain
+			}
+			configuredGrpcChains[configuredChain.GrpcId] = configuredChain
 		}
 	}
 
