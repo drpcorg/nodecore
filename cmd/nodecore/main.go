@@ -10,7 +10,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/app"
 	"github.com/drpcorg/nodecore/internal/config"
-	_ "github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	_ "github.com/drpcorg/nodecore/pkg/errors_config"
 	_ "github.com/drpcorg/nodecore/pkg/logger"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -18,14 +18,42 @@ import (
 	_ "go.uber.org/automaxprocs"
 )
 
+const (
+	// envExtraChainsPath points at an additional chain-registry YAML (same
+	// schema as drpcorg/public chains.yaml) that gets merged into the
+	// embedded registry at startup. Empty/unset = embedded only.
+	envExtraChainsPath = "NODECORE_EXTRA_CHAINS_PATH"
+
+	// envExtraSpecsPath points at a directory of JSON method-spec files that
+	// extend or override the embedded specs. Empty/unset = embedded only.
+	envExtraSpecsPath = "NODECORE_EXTRA_SPECS_PATH"
+)
+
 func main() {
 	flag.Parse()
+
+	if path := os.Getenv(envExtraChainsPath); path != "" {
+		extra, err := os.ReadFile(path)
+		if err != nil {
+			log.Panic().Err(err).Str("path", path).Msg("unable to read extra chains file")
+		}
+		if err := chains.LoadExtraChains(extra); err != nil {
+			log.Panic().Err(err).Str("path", path).Msg("unable to merge extra chains")
+		}
+		log.Info().Str("path", path).Msg("loaded extra chain definitions")
+	}
 
 	appConfig, err := config.NewAppConfig()
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to parse the config file")
 	}
-	err = specs.NewMethodSpecLoader().Load()
+
+	specLoader := specs.NewMethodSpecLoader()
+	if path := os.Getenv(envExtraSpecsPath); path != "" {
+		specLoader = specs.NewMethodSpecLoaderWithFs(os.DirFS(path))
+		log.Info().Str("path", path).Msg("loading method specs from external directory")
+	}
+	err = specLoader.Load()
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to load method specs")
 	}
