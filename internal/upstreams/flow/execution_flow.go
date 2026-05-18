@@ -238,7 +238,7 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 
 		if request.SpecMethod() == nil {
-			response := protocol.NewTotalFailure(request, protocol.NoSpecMethodError(request.Method()))
+			response := protocol.NewTotalFailure(request, protocol.NotSupportedMethodError(request.Method()))
 			wrapper := &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				Response:   response,
