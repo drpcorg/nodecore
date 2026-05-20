@@ -131,8 +131,8 @@ func (c *EthChainValidator) getNetVersion(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	if strings.Contains(result, "x") {
-		n, ok := new(big.Int).SetString(strings.TrimPrefix(result, "0x"), 16)
+	if strings.Contains(strings.ToLower(result), "x") {
+		n, ok := new(big.Int).SetString(strings.TrimPrefix(strings.ToLower(result), "0x"), 16)
 		if !ok {
 			return "", fmt.Errorf("invalid hex netVersion %q", result)
 		}

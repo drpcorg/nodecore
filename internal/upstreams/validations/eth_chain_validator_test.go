@@ -133,7 +133,7 @@ func TestChainValidatorHexNetVersionConvertedThenValid(t *testing.T) {
 	expectEthValidationRequest(
 		connector,
 		netVersionRequest,
-		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0X38"`), protocol.JsonRpc),
 	)
 
 	validator := validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
