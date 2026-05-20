@@ -117,6 +117,85 @@ func TestChainValidatorValidResult(t *testing.T) {
 	assert.Equal(t, validations.Valid, actualResult)
 }
 
+func TestChainValidatorHexNetVersionConvertedThenValid(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	options := &chains.Options{
+		InternalTimeout: time.Second,
+	}
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
+
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),
+	)
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0X38"`), protocol.JsonRpc),
+	)
+
+	validator := validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
+	actualResult := validator.Validate()
+
+	connector.AssertExpectations(t)
+	assert.Equal(t, validations.Valid, actualResult)
+}
+
+func TestChainValidatorLargeHexNetVersionConvertedThenFatalErrorResult(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	options := &chains.Options{
+		InternalTimeout: time.Second,
+	}
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
+
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),
+	)
+	// 0xffffffffffffffffff overflows uint64 — proves big.Int path works (won't match BSC's "56" so result is FatalSettingError, but conversion itself must not error).
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0xffffffffffffffffff"`), protocol.JsonRpc),
+	)
+
+	validator := validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
+	actualResult := validator.Validate()
+
+	connector.AssertExpectations(t)
+	assert.Equal(t, validations.FatalSettingError, actualResult)
+}
+
+func TestChainValidatorInvalidHexNetVersionThenSettingErrorResult(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	options := &chains.Options{
+		InternalTimeout: time.Second,
+	}
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
+
+	expectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc),
+	)
+	expectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0xzz"`), protocol.JsonRpc),
+	)
+
+	validator := validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
+	actualResult := validator.Validate()
+
+	connector.AssertExpectations(t)
+	assert.Equal(t, validations.SettingsError, actualResult)
+}
+
 func expectEthValidationRequest(
 	connector *mocks.ConnectorMock,
 	request protocol.RequestHolder,
