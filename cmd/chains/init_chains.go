@@ -44,6 +44,15 @@ var chainsMap = map[string]Chain{
 {{- end }}
 }
 
+// dynamicChainBaseId is the starting Chain int for chains registered via
+// LoadExtraChains. Picked well above any value the generator emits so that
+// extra chains can be allocated without colliding with the generated enum.
+const dynamicChainBaseId Chain = 1 << 30
+
+// dynamicChainNames maps Chain ints allocated by LoadExtraChains to their
+// canonical short-name. Populated only at runtime; empty in default builds.
+var dynamicChainNames = map[Chain]string{}
+
 func (c Chain) String() string {
 	switch c {
 	case Unknown:
@@ -53,6 +62,9 @@ func (c Chain) String() string {
 		return "{{ .ShortName }}"
 	{{- end }}
 	default:
+		if name, ok := dynamicChainNames[c]; ok {
+			return name
+		}
 		return "unknown"
 	}
 }
