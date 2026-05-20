@@ -2,6 +2,8 @@ package validations
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 	"strings"
 	"time"
 
@@ -124,7 +126,20 @@ func (c *EthChainValidator) getNetVersion(ctx context.Context) (string, error) {
 		return "", response.GetError()
 	}
 
-	return response.ResponseResultString()
+	result, err := response.ResponseResultString()
+	if err != nil {
+		return "", err
+	}
+
+	if strings.Contains(result, "x") {
+		n, ok := new(big.Int).SetString(strings.TrimPrefix(result, "0x"), 16)
+		if !ok {
+			return "", fmt.Errorf("invalid hex netVersion %q", result)
+		}
+		return n.String(), nil
+	}
+
+	return result, nil
 }
 
 var _ SettingsValidator = (*EthChainValidator)(nil)
