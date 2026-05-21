@@ -87,6 +87,28 @@ It brings together:
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, and (4) apply rate limiting to control request throughput.
 
+## Chains without a finalized block tag
+
+Some EVM-compatible networks do not expose a finalized block (Hyperledger Besu QBFT, classic Clique / PoA networks, consortium chains). Calling `eth_getBlockByNumber("finalized", ...)` against those networks returns `-39001: Unknown block`. NodeCore's upstream lifecycle normally promotes upstreams to `Available` only after both head and finalized bounds are known, so on a no-finality chain upstreams never become available and the router responds with `no available upstreams to process a request` to every call beyond `eth_chainId`.
+
+Set `no-finality: true` in the chain's `settings` block to opt out of finalized-block expectations. NodeCore then skips the finalized-block poll loop entirely (no error logs, no wasted RPC calls) and piggybacks a `StateUpstreamEvent` on the first head publication so the chain supervisor learns the upstream exists from head data alone.
+
+```yaml
+chain-settings:
+  protocols:
+    - type: eth
+      chains:
+        - id: MyBesu
+          short-names: [my-besu]
+          chain-id: "0xbb1a"
+          grpcId: 60001
+          settings:
+            expected-block-time: 2s
+            no-finality: true
+```
+
+The flag defaults to `false`; existing chains are unaffected. Cache policies that key on `finalization-type: finalized` do not cache on no-finality chains because no finalized event ever fires; configure a TTL-based cache policy if you need caching for these chains.
+
 ## integrity
 
 ```yaml

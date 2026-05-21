@@ -21,3 +21,24 @@ func TestGetChainByGrpcIdUnknown(t *testing.T) {
 	unknown := GetChainByGrpcId(-1)
 	assert.Equal(t, UnknownChain, unknown)
 }
+
+func TestIsNoFinalityChain_DefaultsFalseForKnownChain(t *testing.T) {
+	ethereum := GetChain("ethereum")
+	assert.NotEqual(t, UnknownChain, ethereum)
+	assert.False(t, IsNoFinalityChain(ethereum.Chain))
+}
+
+func TestIsNoFinalityChain_UnknownChainReturnsFalse(t *testing.T) {
+	assert.False(t, IsNoFinalityChain(UnknownChain.Chain))
+}
+
+func TestIsNoFinalityChain_TrueWhenSettingsFlagSet(t *testing.T) {
+	ethereum := GetChain("ethereum")
+	assert.NotEqual(t, UnknownChain, ethereum)
+
+	original := ethereum.Settings.NoFinality
+	ethereum.Settings.NoFinality = true
+	t.Cleanup(func() { ethereum.Settings.NoFinality = original })
+
+	assert.True(t, IsNoFinalityChain(ethereum.Chain))
+}

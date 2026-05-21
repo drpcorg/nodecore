@@ -32,7 +32,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector), false)
 	go processor.Start()
 
 	sub := processor.Subscribe("sub")
@@ -83,7 +83,7 @@ func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector), false)
 	go processor.Start()
 
 	sub := processor.Subscribe("sub")
@@ -96,4 +96,24 @@ func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
 	connector.AssertExpectations(t)
 	assert.False(t, ok)
 	assert.True(t, processor.DisabledBlocks().Contains(protocol.FinalizedBlock))
+}
+
+func TestEthLikeBlockProcessorSkipsFinalizedPollWhenNoFinality(t *testing.T) {
+	upConfig := &config.Upstream{Id: "1", PollInterval: 50 * time.Millisecond, Options: &chains.Options{InternalTimeout: 5 * time.Second}}
+	ctx := context.Background()
+	connector := mocks.NewConnectorMock()
+
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector), true)
+	go processor.Start()
+
+	sub := processor.Subscribe("sub")
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		sub.Unsubscribe()
+	}()
+	_, ok := <-sub.Events
+
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+	assert.False(t, ok)
+	assert.True(t, processor.DisabledBlocks().IsEmpty())
 }

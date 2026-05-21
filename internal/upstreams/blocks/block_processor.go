@@ -49,6 +49,11 @@ type EthLikeBlockProcessor struct {
 	blocks           map[protocol.BlockType]protocol.Block
 	lifecycle        *utils.BaseLifecycle
 	internalTimeout  time.Duration
+	// noFinality is set when the configured chain has no finalized block tag
+	// (e.g. Besu QBFT). When true, the finalized-block poll loop is skipped
+	// entirely: the upstream still tracks head, but never tries to call
+	// eth_getBlockByNumber(finalized) which would log "Unknown block" forever.
+	noFinality bool
 }
 
 func (b *EthLikeBlockProcessor) Running() bool {
@@ -65,6 +70,7 @@ func NewEthLikeBlockProcessor(
 	upConfig *config.Upstream,
 	connector connectors.ApiConnector,
 	chainSpecific specific.ChainSpecific,
+	noFinality bool,
 ) *EthLikeBlockProcessor {
 	name := fmt.Sprintf("%s_block_processor", upConfig.Id)
 	return &EthLikeBlockProcessor{
@@ -77,6 +83,7 @@ func NewEthLikeBlockProcessor(
 		blocks:           make(map[protocol.BlockType]protocol.Block),
 		lifecycle:        utils.NewBaseLifecycle(name, ctx),
 		internalTimeout:  upConfig.Options.InternalTimeout,
+		noFinality:       noFinality,
 	}
 }
 
@@ -95,7 +102,9 @@ func (b *EthLikeBlockProcessor) DisabledBlocks() mapset.Set[protocol.BlockType] 
 func (b *EthLikeBlockProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		go func() {
-			b.poll(protocol.FinalizedBlock)
+			if !b.noFinality {
+				b.poll(protocol.FinalizedBlock)
+			}
 			for {
 				select {
 				case <-ctx.Done():
@@ -106,6 +115,9 @@ func (b *EthLikeBlockProcessor) Start() {
 						b.subManager.Publish(*event)
 					}
 				case <-time.After(b.upConfig.PollInterval):
+					if b.noFinality {
+						continue
+					}
 					b.poll(protocol.FinalizedBlock)
 				}
 			}

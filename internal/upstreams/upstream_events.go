@@ -7,6 +7,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 )
 
@@ -14,6 +15,15 @@ import (
 func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
 	validUpstream := initialValid
+	// noFinality chains never publish a BlockUpstreamStateEvent for the
+	// finalized block (there isn't one) and the health validator emits
+	// StatusUpstreamStateEvent{Status: Available}, which deduplicates against
+	// the initial state. Without anything publishing a StateUpstreamEvent the
+	// chain supervisor never registers the upstream and the router cannot
+	// route requests. Force a one-shot StateUpstreamEvent piggyback on the
+	// first head publication so the supervisor learns the upstream exists.
+	noFinality := chains.IsNoFinalityChain(u.chain)
+	stateBroadcast := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -59,6 +69,10 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 			case *protocol.HeadUpstreamStateEvent:
 				state = stateEvent.ProcessEvent(state)
 				eventType = &protocol.HeadUpstreamEvent{Status: state.Status, Head: state.HeadData}
+				if noFinality && !stateBroadcast && validUpstream {
+					u.publishUpstreamEvent(state, &protocol.StateUpstreamEvent{State: &state})
+					stateBroadcast = true
+				}
 			default:
 				if stateEvent.Same(state) {
 					continue
@@ -68,6 +82,9 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 
 			if validUpstream {
 				u.publishUpstreamEvent(state, eventType)
+				if _, isState := eventType.(*protocol.StateUpstreamEvent); isState {
+					stateBroadcast = true
+				}
 			}
 		}
 	}
