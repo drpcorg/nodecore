@@ -40,9 +40,8 @@ func TestRpcHead(t *testing.T) {
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))
-	go headProcessor.Start()
-
 	sub := headProcessor.Subscribe("test")
+	go headProcessor.Start()
 
 	event, ok := <-sub.Events
 	expected := protocol.Block{
@@ -124,9 +123,8 @@ func TestSubHeadSubscribe(t *testing.T) {
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
-	go headProcessor.Start()
-
 	sub := headProcessor.Subscribe("test")
+	go headProcessor.Start()
 
 	event, ok := <-sub.Events
 	expected := protocol.Block{
@@ -162,9 +160,9 @@ func TestSubHeadManualUpdate(t *testing.T) {
 	}
 
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	sub := headProcessor.Subscribe("test")
 	go headProcessor.Start()
 
-	sub := headProcessor.Subscribe("test")
 	headProcessor.UpdateHead(79195275, 0)
 
 	event, ok := <-sub.Events

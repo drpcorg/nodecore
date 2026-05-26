@@ -27,7 +27,8 @@ func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
 	chain := chains.ALEPHZERO
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_subscribe", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_subscribe"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 
 	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
 	response := processor.ProcessRequest(context.Background(), strategy, request)
@@ -55,7 +56,8 @@ func TestUnaryRequestProcessorReceiveFromCache(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	result := []byte("result")
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return(result, true)
 
@@ -87,7 +89,8 @@ func TestUnaryRequestProcessor_QuorumSkipsCacheReadAndStore(t *testing.T) {
 	cacheProcessor := mocks.NewCacheProcessorMock()
 	chain := chains.POLYGON
 	err := errors.New("select err")
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 
 	// No cacheProcessor.On("Receive", ...) / ("Store", ...) — if the processor
 	// touches the cache when quorum is requested, the mock will fail.
@@ -115,7 +118,8 @@ func TestUnaryRequestProcessorCantGetUpstreamThenError(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	err := errors.New("selection error")
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
@@ -145,11 +149,12 @@ func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	cacheProcessor := mocks.NewCacheProcessorMock()
-	apiConnector := mocks.NewConnectorMockWithType(protocol.RestConnector)
+	apiConnector := mocks.NewConnectorMockWithType(specs.RestConnector)
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
 
 	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
@@ -172,7 +177,7 @@ func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
 	assert.Equal(t, "223", unaryRespWrapper.RequestId)
 	assert.True(t, unaryRespWrapper.Response.HasError())
-	assert.Equal(t, protocol.ResponseErrorWithData(500, "internal server error: unable to process a json-rpc request", nil), unaryRespWrapper.Response.GetError())
+	assert.Equal(t, protocol.ResponseErrorWithData(protocol.NoApiConnectors, "no suitable api connectors to process method eth_call", nil), unaryRespWrapper.Response.GetError())
 }
 
 func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
@@ -183,7 +188,9 @@ func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	request := protocol.NewUpstreamJsonRpcRequest("223", []byte(`1`), "eth_call", nil, false, nil)
+	specMethod := specs.DefaultMethodWithConnectorTypes("eth_call", []specs.ApiConnectorType{apiConnector.GetType()})
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, specMethod)
 	result := []byte("result")
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", result, protocol.JsonRpc)
 

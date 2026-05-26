@@ -17,7 +17,9 @@ import (
 
 func TestNotStickyRequestThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil, chains.POLYGON)
+	specMethod := specs.DefaultMethodWithConnectorTypes("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector})
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, specMethod)
 	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 	result := processor.ProcessRequest(context.Background(), nil, request)
 
@@ -37,7 +39,7 @@ func TestNotStickyRequestThenError(t *testing.T) {
 
 func TestStickySendNoNothingToParseThenRequestAsIs(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	specMethod := specs.MethodWithSettings("method", &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, nil)
+	specMethod := specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, nil)
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewConnectorMock()
@@ -71,7 +73,7 @@ func TestStickySendNoNothingToParseThenRequestAsIs(t *testing.T) {
 func TestStickySendModifyRequest(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	tagParser := &specs.TagParser{ReturnType: specs.StringType, Path: ".[1]"}
-	specMethod := specs.MethodWithSettings("method", &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, tagParser)
+	specMethod := specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, tagParser)
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", []any{12, "123456789"}, specMethod)
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewConnectorMock()
@@ -113,11 +115,11 @@ func TestStickyRequestError(t *testing.T) {
 	}{
 		{
 			name:       "send-sticky",
-			specMethod: specs.MethodWithSettings("method", &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, nil),
+			specMethod: specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, nil),
 		},
 		{
 			name:       "create-sticky",
-			specMethod: specs.MethodWithSettings("method", &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil),
+			specMethod: specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil),
 		},
 	}
 
@@ -150,7 +152,7 @@ func TestStickyRequestError(t *testing.T) {
 
 func TestCreateStickyModifyResponse(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	specMethod := specs.MethodWithSettings("method", &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil)
+	specMethod := specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil)
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 	strategy := mocks.NewMockStrategy()
 	apiConnector := mocks.NewConnectorMock()

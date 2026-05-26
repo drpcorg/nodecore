@@ -570,14 +570,14 @@ func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 }
 
 func TestBaseUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
-	httpConnector := mocks.NewConnectorMockWithType(protocol.JsonRpcConnector)
-	wsConnector := mocks.NewConnectorMockWithType(protocol.WsConnector)
+	httpConnector := mocks.NewConnectorMockWithType(specs.JsonRpcConnector)
+	wsConnector := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 
 	upstream, _, _ := newTestBaseUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
 
-	assert.Same(t, httpConnector, upstream.GetConnector(protocol.JsonRpcConnector))
-	assert.Same(t, wsConnector, upstream.GetConnector(protocol.WsConnector))
-	assert.Nil(t, upstream.GetConnector(protocol.RestConnector))
+	assert.Same(t, httpConnector, upstream.GetConnector(specs.JsonRpcConnector))
+	assert.Same(t, wsConnector, upstream.GetConnector(specs.WebsocketConnector))
+	assert.Nil(t, upstream.GetConnector(specs.RestConnector))
 }
 
 func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
@@ -661,7 +661,7 @@ func newTestBaseUpstream(
 		upConfig = newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
 	}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods)
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods, nil)
 	require.NoError(t, err)
 
 	state := utils.NewAtomic[protocol.UpstreamState]()
@@ -784,7 +784,7 @@ func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) m
 		methodsConfig = &config.MethodsConfig{}
 	}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig)
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig, nil)
 	require.NoError(t, err)
 	return upstreamMethods
 }

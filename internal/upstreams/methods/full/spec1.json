@@ -5,7 +5,9 @@
     "version": "1.0.0"
   },
   "spec": {
-    "name": "spec1"
+    "name": "spec1",
+    "api-connectors": ["json-rpc", "websocket"],
+    "type": "plain"
   },
   "methods": [
     {

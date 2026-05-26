@@ -5,7 +5,9 @@
     "version": "1.0.0"
   },
   "spec": {
-    "name": "harmony0"
+    "name": "harmony0",
+    "api-connectors": ["json-rpc", "websocket"],
+    "type": "plain"
   },
   "spec-imports": [
     "harmony1"

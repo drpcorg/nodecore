@@ -6,7 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/samber/lo"
+	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,20 +30,20 @@ func TestReadFullConfig(t *testing.T) {
 					Address:  "localhost:6379",
 					Username: "username",
 					Password: "password",
-					DB:       lo.ToPtr(2),
+					DB:       new(2),
 					Timeouts: &config.RedisStorageTimeoutsConfig{
-						ConnectTimeout: lo.ToPtr(1 * time.Second),
-						ReadTimeout:    lo.ToPtr(2 * time.Second),
-						WriteTimeout:   lo.ToPtr(3 * time.Second),
+						ConnectTimeout: new(1 * time.Second),
+						ReadTimeout:    new(2 * time.Second),
+						WriteTimeout:   new(3 * time.Second),
 					},
 					Pool: &config.RedisStoragePoolConfig{
 						Size:            35,
-						PoolTimeout:     lo.ToPtr(5 * time.Second),
+						PoolTimeout:     new(5 * time.Second),
 						MinIdleConns:    10,
 						MaxIdleConns:    50,
 						MaxActiveConns:  45,
-						ConnMaxIdleTime: lo.ToPtr(60 * time.Second),
-						ConnMaxLifeTime: lo.ToPtr(60 * time.Minute),
+						ConnMaxIdleTime: new(60 * time.Second),
+						ConnMaxLifeTime: new(60 * time.Minute),
 					},
 				},
 			},
@@ -147,7 +147,7 @@ func TestReadFullConfig(t *testing.T) {
 					Driver: config.Postgres,
 					Postgres: &config.PostgresCacheConnectorConfig{
 						StorageName:           "postgres-storage-1",
-						QueryTimeout:          lo.ToPtr(5 * time.Second),
+						QueryTimeout:          new(5 * time.Second),
 						CacheTable:            "cache",
 						ExpiredRemoveInterval: 10 * time.Second,
 					},
@@ -177,8 +177,8 @@ func TestReadFullConfig(t *testing.T) {
 				RetryConfig: &config.RetryConfig{
 					Attempts: 10,
 					Delay:    2 * time.Second,
-					MaxDelay: lo.ToPtr(5 * time.Second),
-					Jitter:   lo.ToPtr(3 * time.Second),
+					MaxDelay: new(5 * time.Second),
+					Jitter:   new(3 * time.Second),
 				},
 				HedgeConfig: &config.HedgeConfig{
 					Delay: 500 * time.Millisecond,
@@ -193,7 +193,7 @@ func TestReadFullConfig(t *testing.T) {
 			Upstreams: []*config.Upstream{
 				{
 					Id:            "eth-upstream",
-					HeadConnector: config.Ws,
+					HeadConnector: specs.WebsocketConnector.String(),
 					PollInterval:  3 * time.Minute,
 					ChainName:     "ethereum",
 					RateLimit: &config.RateLimiterConfig{
@@ -220,23 +220,23 @@ func TestReadFullConfig(t *testing.T) {
 					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
-							Type: config.JsonRpc,
+							Type: specs.JsonRpcConnector.String(),
 							Url:  "https://test.com",
 							Headers: map[string]string{
 								"Key": "Value",
 							},
 						},
 						{
-							Type: config.Ws,
+							Type: specs.WebsocketConnector.String(),
 							Url:  "wss://test.com",
 						},
 					},
 					FailsafeConfig: &config.FailsafeConfig{
 						RetryConfig: &config.RetryConfig{
-							MaxDelay: lo.ToPtr(1 * time.Second),
+							MaxDelay: new(1 * time.Second),
 							Attempts: 5,
 							Delay:    500 * time.Millisecond,
-							Jitter:   lo.ToPtr(6 * time.Second),
+							Jitter:   new(6 * time.Second),
 						},
 					},
 					Options: &chains.Options{
@@ -257,7 +257,7 @@ func TestReadFullConfig(t *testing.T) {
 				},
 				{
 					Id:            "another",
-					HeadConnector: config.Rest,
+					HeadConnector: specs.RestConnector.String(),
 					PollInterval:  1 * time.Minute,
 					ChainName:     "polygon",
 					Methods: &config.MethodsConfig{
@@ -273,11 +273,11 @@ func TestReadFullConfig(t *testing.T) {
 					},
 					Connectors: []*config.ApiConnectorConfig{
 						{
-							Type: config.Rest,
+							Type: specs.RestConnector.String(),
 							Url:  "https://test.com",
 						},
 						{
-							Type: config.Grpc,
+							Type: specs.GrpcConnector.String(),
 							Url:  "https://test-grpc.com",
 							Headers: map[string]string{
 								"key": "value",

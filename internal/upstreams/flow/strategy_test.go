@@ -135,7 +135,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			name:   "no available sub method",
 			method: "eth_getBalance",
 			requestFunc: func(method string) protocol.RequestHolder {
-				request := protocol.NewUpstreamJsonRpcRequest("id", []byte("1"), "eth_getBalance", nil, true, nil)
+				request := protocol.NewUpstreamJsonRpcRequest("id", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getBalance"}, true, nil)
 				return request
 			},
 			publishEventFunc: func(chSup upstreams.ChainSupervisor) {
@@ -195,7 +195,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 				test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 			},
 			requestFunc: func(method string) protocol.RequestHolder {
-				request := protocol.NewUpstreamJsonRpcRequest("id", []byte("1"), "eth_getBalance", nil, true, nil)
+				request := protocol.NewUpstreamJsonRpcRequest("id", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getBalance"}, true, nil)
 				return request
 			},
 			expectedErr: protocol.NotSupportedMethodError("eth_getBalance"),
@@ -245,7 +245,7 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 func TestBaseStrategyWithWsCap(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
-	request := protocol.NewUpstreamJsonRpcRequest("id", []byte("1"), "eth_getBalance", nil, true, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("id", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getBalance"}, true, nil)
 	baseStrategy := flow.NewBaseStrategy(chSup)
 
 	upId, err := baseStrategy.SelectUpstream(request)

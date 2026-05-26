@@ -13,9 +13,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed public/chains.yaml
-var chainsCfg []byte
-
 type BlockchainType string
 
 const (
@@ -31,6 +28,9 @@ const (
 	Ton                 BlockchainType = "ton"
 	Aztec               BlockchainType = "aztec"
 )
+
+//go:embed public/chains.yaml
+var chainsCfg []byte
 
 type ChainConfig struct {
 	ChainSettings ChainSettings `yaml:"chain-settings"`

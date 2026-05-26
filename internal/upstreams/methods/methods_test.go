@@ -12,7 +12,7 @@ import (
 )
 
 func TestUpstreamMethodsNoSpecThenError(t *testing.T) {
-	_, err := methods.NewUpstreamMethods("test", nil)
+	_, err := methods.NewUpstreamMethods("test", nil, nil)
 
 	assert.ErrorContains(t, err, "no method spec with name 'test'")
 }
@@ -21,7 +21,7 @@ func TestUpstreamMethodsOnlyFromSpec(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
-	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{})
+	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{}, nil)
 	assert.NoError(t, err)
 
 	expected := mapset.NewThreadUnsafeSet[string]("test", "test_another", "test2")
@@ -32,7 +32,7 @@ func TestUpstreamMethodsAndEnabledMethodInConfig(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
-	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{EnableMethods: []string{"newMethod"}})
+	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{EnableMethods: []string{"newMethod"}}, nil)
 	assert.NoError(t, err)
 
 	expected := mapset.NewThreadUnsafeSet[string]("test", "test_another", "test2", "newMethod")
@@ -43,7 +43,7 @@ func TestUpstreamMethodsAndDisableDefaultGroup(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load()
 	assert.NoError(t, err)
 
-	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{DisableMethods: []string{specs.DefaultMethodGroup}})
+	upstreamMethods, err := methods.NewUpstreamMethods("test", &config.MethodsConfig{DisableMethods: []string{specs.DefaultMethodGroup}}, nil)
 	assert.NoError(t, err)
 
 	assert.True(t, upstreamMethods.GetSupportedMethods().IsEmpty())
@@ -55,7 +55,7 @@ func TestUpstreamMethodsAndDisableDefaultGroupAndEnableCustomMethod(t *testing.T
 
 	methodsConfig := &config.MethodsConfig{EnableMethods: []string{"newMethod"}, DisableMethods: []string{specs.DefaultMethodGroup}}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("test", methodsConfig)
+	upstreamMethods, err := methods.NewUpstreamMethods("test", methodsConfig, nil)
 	assert.NoError(t, err)
 
 	expected := mapset.NewThreadUnsafeSet[string]("newMethod")
@@ -68,7 +68,7 @@ func TestUpstreamMethodsAndDisableDefaultGroupAndEnableAnotherGroup(t *testing.T
 
 	methodsConfig := &config.MethodsConfig{EnableMethods: []string{"trace"}, DisableMethods: []string{specs.DefaultMethodGroup}}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("test", methodsConfig)
+	upstreamMethods, err := methods.NewUpstreamMethods("test", methodsConfig, nil)
 	assert.NoError(t, err)
 
 	expected := mapset.NewThreadUnsafeSet[string]("test", "test_another")
@@ -81,7 +81,7 @@ func TestUpstreamMethodsAndDisableOneMethod(t *testing.T) {
 
 	methodsConfig := &config.MethodsConfig{DisableMethods: []string{"test_another"}}
 
-	upstreamMethods, err := methods.NewUpstreamMethods("test", methodsConfig)
+	upstreamMethods, err := methods.NewUpstreamMethods("test", methodsConfig, nil)
 	assert.NoError(t, err)
 
 	expected := mapset.NewThreadUnsafeSet[string]("test", "test2")
@@ -95,9 +95,9 @@ func TestChainMethodsMergeAllDelegates(t *testing.T) {
 	methodsConfig1 := &config.MethodsConfig{DisableMethods: []string{"test2"}}
 	methodsConfig2 := &config.MethodsConfig{EnableMethods: []string{"newMethod"}}
 
-	upstreamMethods1, err := methods.NewUpstreamMethods("test", methodsConfig1)
+	upstreamMethods1, err := methods.NewUpstreamMethods("test", methodsConfig1, nil)
 	assert.NoError(t, err)
-	upstreamMethods2, err := methods.NewUpstreamMethods("test", methodsConfig2)
+	upstreamMethods2, err := methods.NewUpstreamMethods("test", methodsConfig2, nil)
 	assert.NoError(t, err)
 
 	chainMethods := methods.NewChainMethods([]methods.Methods{upstreamMethods1, upstreamMethods2})

@@ -151,14 +151,15 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 		}
 		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
 
-		isSub := j.isWsCtx && specs.IsSubscribeMethod(chains.GetMethodSpecNameByChainName(j.preReq.Chain), jsonRpcReq.Method)
-		specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChainName(j.preReq.Chain), jsonRpcReq.Method)
+		specName := chains.GetMethodSpecNameByChainName(j.preReq.Chain)
+		isSub := j.isWsCtx && specs.IsSubscribeMethod(specName, jsonRpcReq.Method)
+		specMethod := specs.GetSpecMethod(specName, jsonRpcReq.Method)
 
 		var upstreamReq protocol.RequestHolder
 		if protocol.IsStream(jsonRpcReq.Method) { // for tests
-			upstreamReq = protocol.NewStreamUpstreamJsonRpcRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params, specMethod)
+			upstreamReq = protocol.NewStreamUpstreamJsonRpcRequest(id.String(), jsonRpcReq, specMethod)
 		} else {
-			upstreamReq = protocol.NewUpstreamJsonRpcRequest(id.String(), jsonRpcReq.Id, jsonRpcReq.Method, jsonRpcReq.Params, isSub, specMethod)
+			upstreamReq = protocol.NewUpstreamJsonRpcRequestWithSpecName(id.String(), jsonRpcReq, isSub, specMethod, specName)
 		}
 		upstreamRequests = append(upstreamRequests, upstreamReq)
 	}

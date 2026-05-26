@@ -176,19 +176,13 @@ func executeUnaryRequest(
 	return result, err
 }
 
-func getUnaryCapableConnector(upstream upstreams.Upstream, requestType protocol.RequestType) connectors.ApiConnector {
-	switch requestType {
-	case protocol.Rest:
-		return upstream.GetConnector(protocol.RestConnector)
-	case protocol.JsonRpc:
-		connector := upstream.GetConnector(protocol.JsonRpcConnector)
-		if connector == nil {
-			connector = upstream.GetConnector(protocol.WsConnector)
+func getMethodConnector(upstream upstreams.Upstream, method *specs.Method) connectors.ApiConnector {
+	for _, connector := range method.GetApiConnectorTypes() {
+		if upConnector := upstream.GetConnector(connector); upConnector != nil {
+			return upConnector
 		}
-		return connector
-	default:
-		return nil
 	}
+	return nil
 }
 
 func sendUnaryRequest(
@@ -198,14 +192,9 @@ func sendUnaryRequest(
 ) (*protocol.ResponseHolderWrapper, error) {
 	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.GetId())
 
-	var apiConnector connectors.ApiConnector
-
-	switch request.(type) {
-	case *protocol.UpstreamJsonRpcRequest:
-		apiConnector = getUnaryCapableConnector(upstream, request.RequestType())
-	}
+	apiConnector := getMethodConnector(upstream, request.SpecMethod())
 	if apiConnector == nil {
-		return nil, fmt.Errorf("unable to process a %s request", request.RequestType())
+		return nil, protocol.NoApiConnectorsError(request.Method())
 	}
 
 	response := apiConnector.SendRequest(ctx, request)

@@ -8,7 +8,7 @@ import (
 
 var opts = []cmp.Option{
 	cmp.AllowUnexported(protocol.UpstreamJsonRpcRequest{}),
-	cmpopts.IgnoreFields(protocol.UpstreamJsonRpcRequest{}, "requestObserver", "mu"),
+	cmpopts.IgnoreFields(protocol.UpstreamJsonRpcRequest{}, "requestObserver", "mu", "specMethod"),
 }
 
 func UpstreamJsonRpcRequestMatcher(request protocol.RequestHolder) func(protocol.RequestHolder) bool {

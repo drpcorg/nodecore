@@ -31,7 +31,7 @@ func (s *StickyRequestProcessor) ProcessRequest(
 	var response *protocol.ResponseHolderWrapper
 	var err error
 
-	if specs.IsStickySendMethod(request.SpecMethod()) {
+	if request.SpecMethod().IsStickySend() {
 		methodParam := request.ParseParams(ctx)
 		switch param := methodParam.(type) {
 		case *specs.StringParam:
@@ -48,7 +48,7 @@ func (s *StickyRequestProcessor) ProcessRequest(
 				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
 		}
-	} else if specs.IsStickyCreateMethod(request.SpecMethod()) {
+	} else if request.SpecMethod().IsStickyCreate() {
 		response, err = executeUnaryRequest(ctx, s.chain, request, s.upstreamSupervisor, upstreamStrategy)
 		if err != nil {
 			response = &protocol.ResponseHolderWrapper{

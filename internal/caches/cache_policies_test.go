@@ -26,7 +26,7 @@ import (
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
-	specMethod := specs.MethodWithSettings("eth_superTest", &specs.MethodSettings{Cacheable: lo.ToPtr(false)}, nil)
+	specMethod := specs.MethodWithSettings("eth_superTest", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(false)}, nil)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
@@ -168,8 +168,9 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 			policyCfg := test_utils.PolicyConfigFinalized("polygon", "*", "conn-id", "10KB", "5s", true)
 			policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
 
-			method := specs.MethodWithSettings(test.method, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &test.tagParser)
-			request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), test.method, test.params, false, method)
+			method := specs.MethodWithSettings(test.method, []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &test.tagParser)
+			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: test.method, Params: test.params}
+			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, method)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -336,7 +337,7 @@ func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testi
 
 func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
-	method := specs.MethodWithSettings("eth_call", &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
+	method := specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
 
 	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
@@ -394,7 +395,8 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			request := protocol.NewUpstreamJsonRpcRequest("1", []byte(`1`), "eth_call", []byte(`[false, "0x3"]`), false, method)
+			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: []byte(`[false, "0x3"]`)}
+			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, method)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 			assert.True(t, ok)
