@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0",
   "info": {
-    "title": "Ethereum JSON-RPC methods",
+    "title": "Ethereum Test JSON-RPC methods",
     "version": "1.0.0"
   },
   "spec": {
