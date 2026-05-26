@@ -98,7 +98,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 
 	outboxStorage, err := outbox.NewOutboxStorage(appConfig.StatsConfig, storageRegistry)
 	if err != nil {
-		return nil, fmt.Errorf("unable to create the outbox storage: %w", err)
+		return nil, fmt.Errorf("unable to create the outbox storagee: %w", err)
 	}
 	return &App{
 		ctx:                ctx,
