@@ -84,7 +84,7 @@ var sortConnectorsFunc = map[UpstreamMode]sortConnectorFunc{
 
 func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnectorType {
 	filteredConnectors := lo.Filter(u.Connectors, func(item *ApiConnectorConfig, index int) bool {
-		return item.GetApiConnectorType() != specs.UnknownType
+		return item.GetApiConnectorType() != specs.UnknownType && !specs.IsAdditionalApiConnectorType(item.GetApiConnectorType())
 	})
 
 	if len(filteredConnectors) > 0 {
@@ -334,6 +334,15 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 	}
 
+	onlyAdditional := len(u.Connectors) == 1 && specs.IsAdditionalApiConnectorType(u.Connectors[0].GetApiConnectorType())
+	if onlyAdditional {
+		return fmt.Errorf(
+			"additional api connector %s can't be the only upstream connector, there must be at least one plain connector %s",
+			u.Connectors[0].GetApiConnectorType(),
+			specs.GetPlainApiConnectorType(),
+		)
+	}
+
 	connectorTypeSet := mapset.NewThreadUnsafeSet[specs.ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.GetApiConnectorType()) {
@@ -345,8 +354,8 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		connectorTypeSet.Add(connector.GetApiConnectorType())
 	}
 
-	if err := specs.ValidateApiConnectorType(u.HeadConnector); err != nil {
-		return fmt.Errorf("invalid head connector - '%s'", u.HeadConnector)
+	if err := u.validateHeadConnector(); err != nil {
+		return err
 	}
 
 	if !connectorTypeSet.Contains(u.GetHeadApiConnectorType()) {
@@ -365,6 +374,16 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (u *Upstream) validateHeadConnector() error {
+	if err := specs.ValidateApiConnectorType(u.HeadConnector); err != nil {
+		return fmt.Errorf("invalid head connector, %s", err.Error())
+	}
+	if specs.IsAdditionalApiConnectorType(u.GetHeadApiConnectorType()) {
+		return fmt.Errorf("additional api connector type '%s' is forbidden for head connector", u.GetHeadApiConnectorType())
+	}
 	return nil
 }
 

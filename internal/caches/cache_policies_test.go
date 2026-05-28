@@ -168,9 +168,9 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 			policyCfg := test_utils.PolicyConfigFinalized("polygon", "*", "conn-id", "10KB", "5s", true)
 			policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
 
-			method := specs.MethodWithSettings(test.method, []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &test.tagParser)
+			_ = specs.NewMethodSpecLoader().Load()
 			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: test.method, Params: test.params}
-			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, method)
+			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 
@@ -337,7 +337,7 @@ func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testi
 
 func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
-	method := specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
+	_ = specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
 
 	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
 	methodsMock := mocks.NewMethodsMock()
@@ -395,8 +395,9 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
+			_ = specs.NewMethodSpecLoader().Load()
 			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: []byte(`[false, "0x3"]`)}
-			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, method)
+			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
 			assert.True(t, ok)

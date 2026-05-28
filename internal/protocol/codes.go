@@ -5,10 +5,10 @@ import (
 )
 
 func ToHttpCode(response ResponseHolder) int {
-	replyErr, ok := response.(*ReplyError)
 	code := http.StatusOK
-	if ok {
-		err := replyErr.GetError()
+	switch resp := response.(type) {
+	case *ReplyError:
+		err := resp.GetError()
 		switch err.Code {
 		case ClientErrorCode, WrongChain, NoSupportedMethod:
 			code = http.StatusBadRequest
@@ -22,6 +22,10 @@ func ToHttpCode(response ResponseHolder) int {
 			code = http.StatusTooManyRequests
 		default:
 			code = http.StatusInternalServerError
+		}
+	case *BaseUpstreamResponse:
+		if resp.requestType == Rest {
+			return resp.ResponseCode()
 		}
 	}
 

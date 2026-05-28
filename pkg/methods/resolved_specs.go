@@ -3,6 +3,9 @@ package specs
 import (
 	"fmt"
 	"slices"
+	"strings"
+
+	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type resolvedSpec struct {
@@ -10,6 +13,9 @@ type resolvedSpec struct {
 	// connectors keeps the same spec projected per connector type.
 	methods    *methodGroups
 	connectors *connectorMethods
+	// restMatcher resolves a literal "VERB#/path" against every REST-style
+	// method name in this spec. Nil when the spec defines no REST methods.
+	restMatcher *utils.PathMatcher
 }
 
 type importedSpecData struct {
@@ -77,6 +83,26 @@ func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[stri
 	currentConnectors.initConnectors()
 	resolvedSpecs[specName] = newResolvedSpec(currentMethods, currentConnectors)
 	return nil
+}
+
+// buildRestMatcher collects every method name that looks like a REST template
+// ("VERB#/...") and turns them into a single PathMatcher. Returns nil if the
+// spec has no REST methods, so the helper can short-circuit on JSON-RPC-only
+// specs without paying for a trie walk.
+func buildRestMatcher(methods *methodGroups) *utils.PathMatcher {
+	if methods == nil {
+		return nil
+	}
+	var templates []string
+	for name := range methods.defaultMethods() {
+		if strings.Contains(name, "#") {
+			templates = append(templates, name)
+		}
+	}
+	if len(templates) == 0 {
+		return nil
+	}
+	return utils.NewPathMatcher(templates)
 }
 
 func resolveImportedSpecs(currentSpec *MethodSpec, importedSpecNames []string, specs map[string]*MethodSpec, visiting map[string]bool, currentMethods *methodGroups) (*importedSpecData, error) {
@@ -210,8 +236,9 @@ func validateSameLevelImportedMethods(importedMethodOwners map[string]string, im
 
 func newResolvedSpec(methods *methodGroups, connectors *connectorMethods) *resolvedSpec {
 	return &resolvedSpec{
-		methods:    methods,
-		connectors: connectors,
+		methods:     methods,
+		connectors:  connectors,
+		restMatcher: buildRestMatcher(methods),
 	}
 }
 

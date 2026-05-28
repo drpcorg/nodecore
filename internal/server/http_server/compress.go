@@ -1,4 +1,4 @@
-package server
+package http_server
 
 // the package is copied from echo's compress middleware
 // with replacement of gzip library

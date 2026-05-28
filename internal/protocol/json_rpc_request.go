@@ -76,10 +76,8 @@ func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chain
 	}, nil
 }
 
-func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specMethod *specs.Method) *UpstreamJsonRpcRequest {
-	if specMethod == nil {
-		specMethod = specs.DefaultMethod(jsonRpcRequest.Method)
-	}
+func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specName string) *UpstreamJsonRpcRequest {
+	specMethod := specs.GetSpecMethodWithFallback(specName, jsonRpcRequest.Method)
 	return &UpstreamJsonRpcRequest{
 		id:              id,
 		method:          jsonRpcRequest.Method,
@@ -92,25 +90,10 @@ func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isS
 	}
 }
 
-func NewUpstreamJsonRpcRequestWithSpecName(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specMethod *specs.Method, specName string) *UpstreamJsonRpcRequest {
-	if specMethod == nil {
-		//TODO: for unknown method now we use all the spec connectors; however it should be fixed with explicit method config in yaml
-		specMethod = specs.DefaultMethodWithConnectorTypes(jsonRpcRequest.Method, specs.GetSpecConnectors(specName))
-	}
-	return NewUpstreamJsonRpcRequest(id, jsonRpcRequest, isSub, specMethod)
-}
-
-func NewStreamUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, specMethod *specs.Method) *UpstreamJsonRpcRequest {
-	return &UpstreamJsonRpcRequest{
-		id:              id,
-		method:          jsonRpcRequest.Method,
-		realId:          jsonRpcRequest.Id,
-		requestParams:   jsonRpcRequest.Params,
-		isStream:        true,
-		requestKey:      calculateJsonRpcHash(jsonRpcRequest.Method, jsonRpcRequest.Params),
-		specMethod:      specMethod,
-		requestObserver: NewRequestObserver(false).WithMethod(jsonRpcRequest.Method),
-	}
+func NewStreamUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, specName string) *UpstreamJsonRpcRequest {
+	request := NewUpstreamJsonRpcRequest(id, jsonRpcRequest, false, specName)
+	request.isStream = true
+	return request
 }
 
 func calculateJsonRpcHash(method string, params json.RawMessage) string {
@@ -240,6 +223,10 @@ func (u *UpstreamJsonRpcRequest) SpecMethod() *specs.Method {
 
 func (u *UpstreamJsonRpcRequest) RequestObserver() *RequestObserver {
 	return u.requestObserver
+}
+
+func (u *UpstreamJsonRpcRequest) RequestParams() *RequestParams {
+	return nil
 }
 
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)

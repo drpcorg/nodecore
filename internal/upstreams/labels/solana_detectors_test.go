@@ -27,7 +27,7 @@ func TestSolanaClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 
 	assert.Equal(t, "1", request.Id())
 	assert.Equal(t, "getVersion", request.Method())
-	assert.Nil(t, request.Headers())
+	assert.Nil(t, request.RequestParams())
 	assert.Equal(t, protocol.JsonRpc, request.RequestType())
 	assert.False(t, request.IsStream())
 	assert.False(t, request.IsSubscribe())

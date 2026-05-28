@@ -111,50 +111,145 @@ func (h *HttpConnector) SubscribeStates(_ string) *utils.Subscription[protocol.S
 	return nil
 }
 
+// SendRequest dispatches into the JSON-RPC or REST flow based on the
+// connector type. Each flow is responsible for building its own *http.Request
+// and applying its own URL/header semantics; the shared dispatch helper
+// only handles network execution and response framing.
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	url, httpMethod, err := h.requestParams(request)
-	if err != nil {
-		return protocol.NewTotalFailure(
-			request,
-			protocol.ClientError(err),
-		)
+	if h.GetType() == specs.JsonRpcConnector {
+		return h.sendJsonRpc(ctx, request)
 	}
-	// Forward quorum params (quorum=N&quorum_required=n) to the upstream when the
-	// client requested quorum reads. The upstream (e.g. drpc astream) responds
-	// with QR<N>-id-<req-id> signature headers that we verify after receiving.
-	// Quorum signatures are computed over the full response body, so streaming
-	// is force-disabled below: we need the whole payload buffered to hash.
+	return h.sendRest(ctx, request)
+}
+
+// sendJsonRpc forwards a JSON-RPC call. Always POST to the configured
+// endpoint, body verbatim, no per-request path/header rewriting.
+func (h *HttpConnector) sendJsonRpc(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
+	body, err := request.Body()
+	if err != nil {
+		return clientFailure(request, fmt.Errorf("error parsing a request body: %v", err))
+	}
+
+	quorumParams, quorumRequested := quorum.FromContext(ctx)
+	endpoint := h.endpoint
+	if quorumRequested {
+		endpoint, err = appendQuery(endpoint, quorumParams.EncodeQuery())
+		if err != nil {
+			return clientFailure(request, fmt.Errorf("invalid upstream url %q: %w", h.endpoint, err))
+		}
+	}
+
+	req, err := http.NewRequestWithContext(ctx, protocol.Post.String(), endpoint, bytes.NewReader(body))
+	if err != nil {
+		return clientFailure(request, fmt.Errorf("error creating an http request: %v", err))
+	}
+	h.applyConfigHeaders(req)
+
+	// JSON-RPC streaming requires peeking the body to distinguish an error
+	// envelope from a result value before we commit to streaming it.
+	return h.dispatch(ctx, request, req, quorumRequested, jsonRpcCanStream)
+}
+
+// sendRest forwards a REST call. Expands the request's method template
+// using its captured path params, layers on the client query and headers,
+// and POSTs/GETs/... at the upstream as appropriate.
+func (h *HttpConnector) sendRest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
+	restReq, ok := request.(*protocol.UpstreamRestRequest)
+	if !ok {
+		return clientFailure(request, errors.New("rest connector received a non-rest request"))
+	}
+
+	rp := restReq.RequestParams()
+	var pathParams []string
+	if rp != nil {
+		pathParams = rp.PathParams
+	}
+	verb, path, err := utils.BuildRestURL(restReq.Method(), pathParams)
+	if err != nil {
+		return clientFailure(request, err)
+	}
+	if verb == "" || path == "" {
+		return clientFailure(request, errors.New("no method and url path specified for an http request"))
+	}
+
+	target := joinEndpointAndPath(h.endpoint, path)
+	if rp != nil && len(rp.QueryParams) > 0 {
+		target, err = appendQuery(target, encodeMultiValuedQuery(rp.QueryParams))
+		if err != nil {
+			return clientFailure(request, fmt.Errorf("invalid upstream url %q: %w", target, err))
+		}
+	}
 	quorumParams, quorumRequested := quorum.FromContext(ctx)
 	if quorumRequested {
-		url, err = appendQuery(url, quorumParams.EncodeQuery())
+		target, err = appendQuery(target, quorumParams.EncodeQuery())
 		if err != nil {
-			return protocol.NewTotalFailure(
-				request,
-				protocol.ClientError(fmt.Errorf("invalid upstream url %q: %w", url, err)),
-			)
+			return clientFailure(request, fmt.Errorf("invalid upstream url %q: %w", target, err))
 		}
 	}
 
 	body, err := request.Body()
 	if err != nil {
-		return protocol.NewTotalFailure(
-			request,
-			protocol.ClientError(fmt.Errorf("error parsing a request body: %v", err)),
-		)
+		return clientFailure(request, fmt.Errorf("error parsing a request body: %v", err))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, httpMethod, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, verb, target, bytes.NewReader(body))
 	if err != nil {
-		return protocol.NewTotalFailure(
-			request,
-			protocol.ClientError(fmt.Errorf("error creating an http request: %v", err)),
-		)
+		return clientFailure(request, fmt.Errorf("error creating an http request: %v", err))
 	}
-	req.Header.Set("Content-Type", "application/json")
-	for headerKey, headerValue := range h.additionalHeaders {
-		req.Header.Set(headerKey, headerValue)
+	h.applyConfigHeaders(req)
+	if rp != nil {
+		h.applyClientHeaders(req, rp.Headers)
 	}
 
+	// REST bodies are opaque pass-through; if the caller asked for streaming
+	// we hand them whatever the upstream gave us.
+	return h.dispatch(ctx, request, req, quorumRequested, alwaysStream)
+}
+
+// applyConfigHeaders sets the connector's configured headers plus the
+// JSON Content-Type default. Used by both flows.
+func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range h.additionalHeaders {
+		req.Header.Set(k, v)
+	}
+}
+
+// applyClientHeaders forwards per-request client headers onto the upstream
+// request, except keys the connector config already owns - those are
+// typically auth tokens that a curious client must not be able to override.
+func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string) {
+	for k, vs := range headers {
+		if _, taken := h.additionalHeaders[k]; taken {
+			continue
+		}
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+}
+
+// canStreamFunc decides, after we've started reading the response body,
+// whether it's safe to stream the rest to the client. REST bodies are
+// always streamable; JSON-RPC needs a peek to rule out an error envelope.
+type canStreamFunc func(*bufio.Reader) bool
+
+func alwaysStream(_ *bufio.Reader) bool { return true }
+
+func jsonRpcCanStream(r *bufio.Reader) bool {
+	return protocol.ResponseCanBeStreamed(r, protocol.MaxChunkSize)
+}
+
+// dispatch executes the prepared *http.Request and frames the response as
+// either a streaming or fully-buffered ResponseHolder. Quorum reads always
+// buffer because the signature is computed over the full body.
+func (h *HttpConnector) dispatch(
+	ctx context.Context,
+	request protocol.RequestHolder,
+	req *http.Request,
+	quorumRequested bool,
+	allowStream canStreamFunc,
+) protocol.ResponseHolder {
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -168,21 +263,17 @@ func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.Reques
 
 	if request.IsStream() && resp.StatusCode == 200 && !quorumRequested {
 		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
-		// if this is a REST request then it can be streamed as is
-		// if this is a JSON-RPC request, first it's necessary to understand if there is an error or not
-		canBeStreamed := request.RequestType() == protocol.Rest || protocol.ResponseCanBeStreamed(bufReader, protocol.MaxChunkSize)
-		if canBeStreamed {
+		if allowStream(bufReader) {
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
 			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
 			return streamResp.WithResponseHeaders(resp.Header)
-		} else {
-			defer utils.CloseBodyReader(ctx, resp.Body)
-			return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, bufReader)
 		}
-	} else {
 		defer utils.CloseBodyReader(ctx, resp.Body)
-		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, resp.Body)
+		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, bufReader)
 	}
+
+	defer utils.CloseBodyReader(ctx, resp.Body)
+	return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, resp.Body)
 }
 
 func (h *HttpConnector) receiveWholeResponse(
@@ -214,6 +305,45 @@ func (h *HttpConnector) Subscribe(_ context.Context, _ protocol.RequestHolder) (
 	return nil, nil
 }
 
+// clientFailure is shorthand for the recurring "client error, total failure"
+// branch the send paths use when they can't build a usable request.
+func clientFailure(request protocol.RequestHolder, cause error) protocol.ResponseHolder {
+	return protocol.NewTotalFailure(request, protocol.ClientError(cause))
+}
+
+// encodeMultiValuedQuery turns a multi-valued query map into "k1=v1&k1=v2&k2=v3".
+// Free function so the send paths can use it without aliasing "net/url"
+// around local variables named url/target.
+func encodeMultiValuedQuery(params map[string][]string) string {
+	if len(params) == 0 {
+		return ""
+	}
+	values := make(url.Values, len(params))
+	for k, vs := range params {
+		values[k] = vs
+	}
+	return values.Encode()
+}
+
+// joinEndpointAndPath splices a literal request path into the connector's
+// base URL while preserving any query the base already carries (e.g. an
+// API key baked into the endpoint config):
+//
+//	"https://api.example.com/v1?key=x" + "/accounts/abc"
+//	  -> "https://api.example.com/v1/accounts/abc?key=x"
+//
+// We split on "?" manually rather than going through url.Parse so the
+// literal path components reach the upstream byte-for-byte - some upstreams
+// compare the original path bytes in signature pre-images.
+func joinEndpointAndPath(endpoint, path string) string {
+	base, query, hasQuery := strings.Cut(endpoint, "?")
+	full := base + path
+	if hasQuery && query != "" {
+		full += "?" + query
+	}
+	return full
+}
+
 // appendQuery merges an already-encoded query string into a URL, preserving
 // any existing query/fragment/userinfo. `extraQuery` wins on duplicate keys.
 func appendQuery(rawURL, extraQuery string) (string, error) {
@@ -234,30 +364,6 @@ func appendQuery(rawURL, extraQuery string) (string, error) {
 	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
-}
-
-func (h *HttpConnector) requestParams(request protocol.RequestHolder) (string, string, error) {
-	if h.GetType() == specs.JsonRpcConnector {
-		return h.endpoint, protocol.Post.String(), nil
-	}
-	requestParams := strings.Split(request.Method(), protocol.MethodSeparator)
-	if len(requestParams) == 0 || !strings.Contains(request.Method(), protocol.MethodSeparator) {
-		return "", "", errors.New("no method and url path specified for an http request")
-	}
-	httpMethod := requestParams[0]
-	endpointParams := strings.Split(h.endpoint, "?")
-
-	url := endpointParams[0] + requestParams[1]
-	if len(endpointParams) == 2 {
-		queryParams := endpointParams[1]
-		if strings.Contains(requestParams[1], "?") {
-			url = fmt.Sprintf("%s&%s", url, queryParams)
-		} else {
-			url = fmt.Sprintf("%s?%s", url, queryParams)
-		}
-	}
-
-	return url, httpMethod, nil
 }
 
 var _ ApiConnector = (*HttpConnector)(nil)

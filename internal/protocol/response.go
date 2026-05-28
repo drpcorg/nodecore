@@ -11,8 +11,6 @@ import (
 	"testing/iotest"
 
 	"github.com/bytedance/sonic"
-	"github.com/bytedance/sonic/ast"
-	"github.com/samber/lo"
 )
 
 // HasResponseHeaders is an optional capability for response holders that
@@ -339,13 +337,14 @@ func (h *BaseUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	if h.requestType == JsonRpc {
 		if h.HasError() {
 			return jsonRpcResponseReader(realId, "error", h.ResponseResult())
-		} else {
-			if h.stream != nil {
-				return h.stream
-			} else {
-				return jsonRpcResponseReader(realId, "result", h.ResponseResult())
-			}
 		}
+		if h.stream != nil {
+			return h.stream
+		}
+		return jsonRpcResponseReader(realId, "result", h.ResponseResult())
+	}
+	if h.stream != nil {
+		return h.stream
 	}
 	return bytes.NewReader(h.result)
 }
@@ -392,144 +391,6 @@ func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestTy
 	}
 	response.requestType = requestType
 	return response
-}
-
-func parseHttpResponse(id string, body []byte, responseCode int) *BaseUpstreamResponse {
-	var err *ResponseError
-	result := body
-	if responseCode != 200 {
-		err, result = parseError(body, Rest), body
-	}
-	return &BaseUpstreamResponse{
-		id:           id,
-		result:       result,
-		error:        err,
-		responseCode: responseCode,
-	}
-}
-
-func parseJsonRpcBody(id string, body []byte, responseCode int) *BaseUpstreamResponse {
-	var upstreamError *ResponseError
-	var result []byte
-
-	searcher := astSearcher(body)
-
-	if resultNode, err := searcher.GetByPath("result"); err == nil {
-		if rawResult, err := resultNode.Raw(); err == nil {
-			result = []byte(rawResult)
-		}
-	}
-	if errorNode, err := searcher.GetByPath("error"); err == nil {
-		if errorRaw, err := errorNode.Raw(); err == nil {
-			bodyBytes := []byte(errorRaw)
-			if errorNode.TypeSafe() == ast.V_STRING {
-				upstreamError, result = ResponseErrorWithMessage(errorRaw[1:len(errorRaw)-1]), bodyBytes
-			} else {
-				upstreamError, result = parseError([]byte(errorRaw), JsonRpc), bodyBytes
-			}
-		}
-	}
-
-	if upstreamError == nil && len(result) == 0 {
-		upstreamError, result = incorrectJsonRpcBody()
-	}
-
-	return &BaseUpstreamResponse{
-		id:           id,
-		result:       result,
-		responseCode: responseCode,
-		error:        upstreamError,
-	}
-}
-
-func incorrectJsonRpcBody() (*ResponseError, []byte) {
-	err := IncorrectResponseBodyError(errors.New("wrong json-rpc response - there is neither result nor error"))
-	jsonRpcErr := jsonRpcError{Message: err.Message, Code: lo.ToPtr(err.Code)}
-	errBytes, _ := sonic.Marshal(jsonRpcErr)
-	return err, errBytes
-}
-
-func parseError(errorRaw []byte, reqType RequestType) *ResponseError {
-	jsonRpcErr := jsonRpcError{}
-	if err := sonic.Unmarshal(errorRaw, &jsonRpcErr); err == nil {
-		message := "internal server error"
-		if jsonRpcErr.Message != "" {
-			message = jsonRpcErr.Message
-		} else if jsonRpcErr.Error != "" {
-			message = jsonRpcErr.Message
-		}
-
-		code := lo.Ternary(reqType == JsonRpc, -32000, 500)
-		if jsonRpcErr.Code != nil {
-			code = *jsonRpcErr.Code
-		}
-
-		return ResponseErrorWithData(code, message, jsonRpcErr.Data)
-	}
-	return ServerError()
-}
-
-func astSearcher(body []byte) *ast.Searcher {
-	searcher := ast.NewSearcher(string(body))
-	searcher.ConcurrentRead = false
-	searcher.CopyReturn = false
-
-	return searcher
-}
-
-type jsonRpcWsParams struct {
-	Result       json.RawMessage `json:"result"`
-	Subscription json.RawMessage `json:"subscription"`
-}
-
-type jsonRpcWsMessage struct {
-	Id     string           `json:"id"`
-	Result json.RawMessage  `json:"result"`
-	Params *jsonRpcWsParams `json:"params"`
-	Error  json.RawMessage  `json:"error"`
-}
-
-func ParseJsonRpcWsMessage(body []byte) *WsResponse {
-	var id string
-	var responseType = Unknown
-	var subId string
-	var upstreamError *ResponseError
-	message := body
-
-	wsMessage := jsonRpcWsMessage{}
-	err := sonic.Unmarshal(body, &wsMessage)
-	if err == nil {
-		id = wsMessage.Id
-
-		if wsMessage.Params != nil {
-			responseType = Ws
-			subId = ResultAsString(wsMessage.Params.Subscription)
-			message = wsMessage.Params.Result
-		} else {
-			if len(wsMessage.Result) > 0 {
-				responseType = JsonRpc
-				message = wsMessage.Result
-			}
-			if len(wsMessage.Error) > 0 {
-				responseType = JsonRpc
-				message = wsMessage.Error
-				upstreamError = parseError(wsMessage.Error, JsonRpc)
-			}
-		}
-	}
-
-	if id == "" && subId == "" && upstreamError == nil {
-		upstreamError = IncorrectResponseBodyError(errors.New("wrong json-rpc ws response"))
-	}
-
-	return &WsResponse{
-		Id:      id,
-		Type:    responseType,
-		Message: message,
-		SubId:   subId,
-		Error:   upstreamError,
-		Event:   body,
-	}
 }
 
 var quote = byte('"')

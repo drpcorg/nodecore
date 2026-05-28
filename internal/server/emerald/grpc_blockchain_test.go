@@ -1,11 +1,14 @@
-package server
+package emerald
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -38,7 +41,7 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 		assert.Contains(te, err.Error(), "invalid subscribe payload format")
 	})
 
-	t.Run("maps dproxy style method to eth_subscribe", func(te *testing.T) {
+	t.Run("maps api style method to eth_subscribe", func(te *testing.T) {
 		method, payload, err := mapNativeSubscribeMethod("eth", nil, "newHeads", []byte(`[{"foo":"bar"}]`))
 		require.NoError(te, err)
 		assert.Equal(te, "eth_subscribe", method)
@@ -52,16 +55,19 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 	})
 }
 
-func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
+func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 
 	request := &dshackle.NativeCallRequest{
 		Items: []*dshackle.NativeCallItem{
 			{
 				Id:     1,
-				Method: "eth_call",
+				Method: "GET#/v1/blocks/123",
 				Data: &dshackle.NativeCallItem_RestData{
-					RestData: &dshackle.RestData{},
+					RestData: &dshackle.RestData{
+						QueryParams: []*dshackle.KeyValue{{Key: "verbose", Value: "true"}},
+					},
 				},
 			},
 			{
@@ -74,8 +80,65 @@ func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
 		},
 	}
 
-	requests, failures := service.buildNativeCallRequests(request, nil)
-	require.Len(t, requests, 1)
+	requests, adapters, failures := service.buildNativeCallRequests(configuredChain, request)
+	require.Empty(t, failures)
+	require.Len(t, requests, 2)
+	require.Len(t, adapters, 2)
+
+	assert.Equal(t, protocol.Rest, requests[0].RequestType())
+	assert.IsType(t, restNativeCallAdapter{}, adapters[requests[0].Id()])
+	// Method is the canonical name as sent by the gRPC client; query
+	// params live on RequestParams now, not baked into the path.
+	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method())
+	restReq := requests[0].(*protocol.UpstreamRestRequest)
+	assert.Equal(t, []string{"true"}, restReq.RequestParams().QueryParams["verbose"])
+
+	assert.Equal(t, protocol.JsonRpc, requests[1].RequestType())
+	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()])
+}
+
+func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
+
+	request := &dshackle.NativeCallRequest{
+		Items: []*dshackle.NativeCallItem{
+			{
+				Id:     1,
+				Method: "eth_call",
+				Data: &dshackle.NativeCallItem_Payload{
+					Payload: []byte(`not-json`),
+				},
+			},
+		},
+	}
+
+	requests, _, failures := service.buildNativeCallRequests(configuredChain, request)
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, uint32(1), failures[0].GetId())
+	assert.False(t, failures[0].GetSucceed())
+	assert.Equal(t, int32(400), failures[0].GetItemErrorCode())
+}
+
+func TestBuildNativeCallRequestsRejectsMalformedRestMethod(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "algorand"}
+
+	request := &dshackle.NativeCallRequest{
+		Items: []*dshackle.NativeCallItem{
+			{
+				Id:     1,
+				Method: "no-verb-separator",
+				Data: &dshackle.NativeCallItem_RestData{
+					RestData: &dshackle.RestData{},
+				},
+			},
+		},
+	}
+
+	requests, _, failures := service.buildNativeCallRequests(configuredChain, request)
+	require.Empty(t, requests)
 	require.Len(t, failures, 1)
 	assert.Equal(t, uint32(1), failures[0].GetId())
 	assert.False(t, failures[0].GetSucceed())
@@ -84,6 +147,7 @@ func TestBuildNativeCallRequestsRestDataFail(t *testing.T) {
 
 func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		ChunkSize: 100,
 		Items: []*dshackle.NativeCallItem{
@@ -97,38 +161,56 @@ func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 		},
 	}
 
-	requests, failures := service.buildNativeCallRequests(request, nil)
+	requests, _, failures := service.buildNativeCallRequests(configuredChain, request)
 	require.Empty(t, failures)
 	require.Len(t, requests, 1)
 	assert.True(t, requests[0].IsStream())
 }
 
-func TestStreamNativeCallPayloadChunking(t *testing.T) {
+func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
 	reader := strings.NewReader(`{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`)
-	items := make([]*dshackle.NativeCallReplyItem, 0)
+	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallPayload(7, "upstream-1", reader, 4, func(item *dshackle.NativeCallReplyItem) error {
-		items = append(items, item)
-		return nil
-	})
+	err := streamNativeCallBody(7, "upstream-1", reader, 4, unwrapJsonRpcResultStream, nil, stream)
 	require.NoError(t, err)
-	require.Len(t, items, 3)
+	require.Len(t, stream.sent, 3)
 
-	assert.Equal(t, "[1,2", string(items[0].GetPayload()))
-	assert.True(t, items[0].GetChunked())
-	assert.False(t, items[0].GetFinalChunk())
+	assert.Equal(t, "[1,2", string(stream.sent[0].GetPayload()))
+	assert.True(t, stream.sent[0].GetChunked())
+	assert.False(t, stream.sent[0].GetFinalChunk())
 
-	assert.Equal(t, ",3,4", string(items[1].GetPayload()))
-	assert.True(t, items[1].GetChunked())
-	assert.False(t, items[1].GetFinalChunk())
+	assert.Equal(t, ",3,4", string(stream.sent[1].GetPayload()))
+	assert.True(t, stream.sent[1].GetChunked())
+	assert.False(t, stream.sent[1].GetFinalChunk())
 
-	assert.Equal(t, "]", string(items[2].GetPayload()))
-	assert.True(t, items[2].GetChunked())
-	assert.True(t, items[2].GetFinalChunk())
+	assert.Equal(t, "]", string(stream.sent[2].GetPayload()))
+	assert.True(t, stream.sent[2].GetChunked())
+	assert.True(t, stream.sent[2].GetFinalChunk())
+}
+
+func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
+	reader := strings.NewReader(`{"hello":"world"}`)
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	err := streamNativeCallBody(7, "upstream-1", reader, 8, passThroughStream, nil, stream)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 3)
+
+	assert.Equal(t, `{"hello"`, string(stream.sent[0].GetPayload()))
+	assert.True(t, stream.sent[0].GetChunked())
+	assert.False(t, stream.sent[0].GetFinalChunk())
+
+	assert.Equal(t, `:"world"`, string(stream.sent[1].GetPayload()))
+	assert.True(t, stream.sent[1].GetChunked())
+	assert.False(t, stream.sent[1].GetFinalChunk())
+
+	assert.Equal(t, `}`, string(stream.sent[2].GetPayload()))
+	assert.True(t, stream.sent[2].GetChunked())
+	assert.True(t, stream.sent[2].GetFinalChunk())
 }
 
 func TestNativeCallSuccessItemsChunking(t *testing.T) {
-	items := nativeCallSuccessItems(7, "upstream-1", []byte("0123456789"), 4)
+	items := nativeCallSuccessItems(7, "upstream-1", []byte("0123456789"), 4, nil)
 	require.Len(t, items, 3)
 
 	assert.True(t, items[0].GetChunked())
@@ -142,6 +224,40 @@ func TestNativeCallSuccessItemsChunking(t *testing.T) {
 	assert.True(t, items[2].GetChunked())
 	assert.True(t, items[2].GetFinalChunk())
 	assert.Equal(t, "89", string(items[2].GetPayload()))
+}
+
+// REST GET responses carry meaningful headers (Content-Type, CORS,
+// quorum signatures, ...). Streaming + error replies already forwarded
+// them; this test pins the unary-success path so a future refactor
+// can't silently drop them again.
+func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
+	upstreamHeaders := http.Header{
+		"Content-Type":    {"application/json"},
+		"X-Custom-Header": {"alpha", "beta"},
+	}
+	resp := protocol.NewSimpleHttpUpstreamResponse("42", []byte(`{"ok":true}`), protocol.Rest).
+		WithResponseHeaders(upstreamHeaders)
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId: "upstream-1",
+		RequestId:  "42",
+		Response:   resp,
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	err := restNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 1)
+
+	got := stream.sent[0].GetResponseHeaders()
+	require.NotEmpty(t, got, "unary REST success must forward upstream headers")
+
+	flattened := make(map[string][]string)
+	for _, kv := range got {
+		flattened[kv.GetKey()] = append(flattened[kv.GetKey()], kv.GetValue())
+	}
+	assert.Equal(t, []string{"application/json"}, flattened["Content-Type"])
+	assert.ElementsMatch(t, []string{"alpha", "beta"}, flattened["X-Custom-Header"],
+		"repeated header values must round-trip through the gRPC reply")
 }
 
 func TestNativeCallUnauthenticated(t *testing.T) {

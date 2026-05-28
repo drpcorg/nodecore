@@ -100,9 +100,8 @@ func NewStatusMatcher() *StatusMatcher {
 func (s *StatusMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
 	if state.Status == protocol.Available {
 		return SuccessResponse{}
-	} else {
-		return AvailabilityResponse{}
 	}
+	return AvailabilityResponse{}
 }
 
 var _ Matcher = (*StatusMatcher)(nil)
@@ -114,9 +113,8 @@ type MethodMatcher struct {
 func (m *MethodMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
 	if state.UpstreamMethods.HasMethod(m.method) {
 		return SuccessResponse{}
-	} else {
-		return MethodResponse{method: m.method}
 	}
+	return MethodResponse{method: m.method}
 }
 
 func NewMethodMatcher(method string) *MethodMatcher {
@@ -132,9 +130,8 @@ type WsCapMatcher struct {
 func (w *WsCapMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
 	if state.Caps.ContainsOne(protocol.WsCap) {
 		return SuccessResponse{}
-	} else {
-		return MethodResponse{method: w.method}
 	}
+	return MethodResponse{method: w.method}
 }
 
 var _ Matcher = (*WsCapMatcher)(nil)

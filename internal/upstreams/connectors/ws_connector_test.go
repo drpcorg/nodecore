@@ -18,7 +18,7 @@ func TestWsConnectorSendUnaryRequestThenReceiveError(t *testing.T) {
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 	err := errors.New("req error")
 
 	wsProcessor.On("SendRpcRequest", ctx, request).Return(nil, err)
@@ -40,7 +40,7 @@ func TestWsConnectorSendUnaryRequestThenResponse(t *testing.T) {
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 	result := []byte("result")
 	wsResponse := &protocol.WsResponse{Message: result}
 
@@ -69,7 +69,7 @@ func TestWsConnectorSendSubThenError(t *testing.T) {
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 	err := errors.New("sub error")
 
 	wsProcessor.On("SendWsRequest", ctx, request).Return((chan *protocol.WsResponse)(nil), "", err)
@@ -86,7 +86,7 @@ func TestWsConnectorSendSubThenResponseChan(t *testing.T) {
 	wsConnector := connectors.NewWsConnector(wsProcessor)
 	ctx := context.Background()
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 	responseChan := make(chan *protocol.WsResponse)
 	wsResponse := &protocol.WsResponse{Message: []byte("result")}
 	go func() {

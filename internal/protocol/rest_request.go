@@ -2,69 +2,74 @@ package protocol
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
-	"github.com/google/uuid"
 )
 
 type UpstreamRestRequest struct {
-	id         string
-	method     string
-	path       string
-	body       []byte
-	headers    map[string]string
-	specMethod *specs.Method
-	observer   *RequestObserver
+	id            string
+	method        string
+	body          []byte
+	requestParams *RequestParams
+	specMethod    *specs.Method
+	observer      *RequestObserver
+	isStream      bool
 }
 
 func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain) *UpstreamRestRequest {
 	verb := normaliseVerb(httpMethod)
-	cleanPath := normalisePath(path)
-	combined := verb + MethodSeparator + cleanPath
+	cleanPath, queryParams := extractQuery(normalisePath(path))
+	method := verb + MethodSeparator + cleanPath
+	var rp *RequestParams
+	if len(queryParams) > 0 {
+		rp = &RequestParams{QueryParams: queryParams}
+	}
+	specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChain(chain), method)
 	return &UpstreamRestRequest{
-		id:       "1",
-		method:   combined,
-		path:     cleanPath,
-		observer: NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(combined),
+		id:            "1",
+		method:        method,
+		requestParams: rp,
+		observer:      NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
+		specMethod:    specMethod,
 	}
 }
 
 func NewInternalUpstreamRestRequestWithQuery(httpMethod, path string, query map[string]string, chain chains.Chain) *UpstreamRestRequest {
+	req := NewInternalUpstreamRestRequest(httpMethod, path, chain)
 	if len(query) == 0 {
-		return NewInternalUpstreamRestRequest(httpMethod, path, chain)
+		return req
 	}
-	values := url.Values{}
+	if req.requestParams == nil {
+		req.requestParams = &RequestParams{}
+	}
+	if req.requestParams.QueryParams == nil {
+		req.requestParams.QueryParams = make(map[string][]string, len(query))
+	}
 	for k, v := range query {
-		values.Set(k, v)
+		req.requestParams.QueryParams[k] = append(req.requestParams.QueryParams[k], v)
 	}
-	separator := "?"
-	if strings.Contains(path, "?") {
-		separator = "&"
-	}
-	full := fmt.Sprintf("%s%s%s", path, separator, values.Encode())
-	return NewInternalUpstreamRestRequest(httpMethod, full, chain)
+	return req
 }
 
-// NewUpstreamRestRequest builds an external-facing REST request from an
-// incoming HTTP call. Encodes method as "<VERB>#<path>" so the shared
-// HttpConnector can split on MethodSeparator and forward the call to the
-// upstream. Always initialises the observer to avoid a nil deref in
-// ObserverConnector.
-func NewUpstreamRestRequest(httpMethod, path string, body []byte) *UpstreamRestRequest {
-	verb := normaliseVerb(httpMethod)
-	cleanPath := normalisePath(path)
-	combined := verb + MethodSeparator + cleanPath
+func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string) *UpstreamRestRequest {
+	specMethod := specs.GetSpecMethodWithFallback(specName, methodTemplate)
 	return &UpstreamRestRequest{
-		id:       uuid.NewString(),
-		method:   combined,
-		path:     cleanPath,
-		body:     body,
-		observer: NewRequestObserver(false).WithRequestKind(Unary).WithMethod(combined),
+		id:            id,
+		method:        methodTemplate,
+		body:          body,
+		requestParams: requestParams,
+		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(methodTemplate),
+		specMethod:    specMethod,
 	}
+}
+
+func NewStreamUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string) *UpstreamRestRequest {
+	request := NewUpstreamRestRequest(id, methodTemplate, requestParams, body, specName)
+	request.isStream = true
+	return request
 }
 
 func normaliseVerb(httpMethod string) string {
@@ -80,6 +85,22 @@ func normalisePath(path string) string {
 		return "/" + path
 	}
 	return path
+}
+
+// extractQuery splits "?k=v&..." off the end of a path. A malformed query
+// is dropped silently - internal callers build these strings themselves
+// from format specifiers, so a parse error is a programmer bug, not a
+// user-supplied payload to surface.
+func extractQuery(path string) (cleanPath string, query map[string][]string) {
+	base, raw, hasQuery := strings.Cut(path, "?")
+	if !hasQuery || raw == "" {
+		return path, nil
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil || len(values) == 0 {
+		return base, nil
+	}
+	return base, values
 }
 
 func (u *UpstreamRestRequest) RequestObserver() *RequestObserver {
@@ -100,10 +121,6 @@ func (u *UpstreamRestRequest) Method() string {
 	return u.method
 }
 
-func (u *UpstreamRestRequest) Headers() map[string]string {
-	return u.headers
-}
-
 func (u *UpstreamRestRequest) Body() ([]byte, error) {
 	return u.body, nil
 }
@@ -113,7 +130,7 @@ func (u *UpstreamRestRequest) ParseParams(_ context.Context) specs.MethodParam {
 }
 
 func (u *UpstreamRestRequest) IsStream() bool {
-	return false
+	return u.isStream
 }
 
 func (u *UpstreamRestRequest) IsSubscribe() bool {
@@ -126,6 +143,10 @@ func (u *UpstreamRestRequest) RequestType() RequestType {
 
 func (u *UpstreamRestRequest) RequestHash() string {
 	return calculateHash([]byte(u.method))
+}
+
+func (u *UpstreamRestRequest) RequestParams() *RequestParams {
+	return u.requestParams
 }
 
 var _ RequestHolder = (*UpstreamRestRequest)(nil)

@@ -14,6 +14,23 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// hasHeaderOnly asserts the request carries the algorand-specific
+// ?header-only=true switch in RequestParams. Internal REST helpers now
+// stash the query off the path, so the matcher checks the structured
+// field instead of asserting on a baked-in URL string.
+func hasHeaderOnly(r protocol.RequestHolder) bool {
+	rp := r.RequestParams()
+	if rp == nil {
+		return false
+	}
+	for _, v := range rp.QueryParams["header-only"] {
+		if v == "true" {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAlgorandSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewAlgorandChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
@@ -84,7 +101,7 @@ func TestAlgorandGetLatestBlockUsesBlockHeader(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/99999?header-only=true"
+		return r.Method() == "GET#/v2/blocks/99999" && hasHeaderOnly(r)
 	})).Return(blockResp).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -116,7 +133,7 @@ func TestAlgorandGetLatestBlockFallsBackToRoundBytes(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/99999?header-only=true"
+		return r.Method() == "GET#/v2/blocks/99999" && hasHeaderOnly(r)
 	})).Return(blockResp).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -165,7 +182,7 @@ func TestAlgorandGetLatestBlockBlockFetchError(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/42?header-only=true"
+		return r.Method() == "GET#/v2/blocks/42" && hasHeaderOnly(r)
 	})).Return(blockErr).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -198,7 +215,7 @@ func TestAlgorandGetFinalizedBlockDelegatesToLatest(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/77777?header-only=true"
+		return r.Method() == "GET#/v2/blocks/77777" && hasHeaderOnly(r)
 	})).Return(blockResp).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetFinalizedBlock(ctx)

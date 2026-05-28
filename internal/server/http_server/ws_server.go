@@ -1,4 +1,4 @@
-package server
+package http_server
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
@@ -45,7 +46,7 @@ func HandleWebsocket(
 	conn *websocket.Conn,
 	chain string,
 	authPayload auth.AuthPayload,
-	appCtx *ApplicationContext,
+	appCtx *server_ctx.ApplicationServerContext,
 ) {
 	log := zerolog.Ctx(ctx)
 

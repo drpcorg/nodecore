@@ -1,10 +1,10 @@
-package server
+package emerald
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +12,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/server/emerald"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -31,12 +31,12 @@ var errSubscribeMappingNotSupported = errors.New("unsupported subscribe method m
 type GrpcBlockchainService struct {
 	dshackle.UnimplementedBlockchainServer
 
-	appCtx            *ApplicationContext
+	appCtx            *server_ctx.ApplicationServerContext
 	sessionAuth       *grpcSessionAuth
 	heartbeatInterval time.Duration
 }
 
-func NewGrpcBlockchainService(appCtx *ApplicationContext, sessionAuth *grpcSessionAuth) *GrpcBlockchainService {
+func NewGrpcBlockchainService(appCtx *server_ctx.ApplicationServerContext, sessionAuth *grpcSessionAuth) *GrpcBlockchainService {
 	return &GrpcBlockchainService{
 		appCtx:            appCtx,
 		sessionAuth:       sessionAuth,
@@ -51,11 +51,11 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 	if request == nil {
 		return status.Error(codes.Internal, "request is nil")
 	}
-	if s.appCtx == nil || s.appCtx.upstreamSupervisor == nil {
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
 		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
 	}
 
-	return emerald.SubscribeChainStatus(s.appCtx.upstreamSupervisor, stream)
+	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream)
 }
 
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {
@@ -63,21 +63,21 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		return err
 	}
 	if request == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil")), flow.NoUpstream, nil))
+		return stream.Send(nativeCallErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil")), flow.NoUpstream, nil, nil))
 	}
-	if s.appCtx == nil || s.appCtx.upstreamSupervisor == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil))
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
+		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
 	}
 
 	configuredChain, chainSupervisor := s.resolveChain(request.GetChain())
 	if configuredChain == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.WrongChainError(strconv.Itoa(int(request.GetChain()))), flow.NoUpstream, nil))
+		return stream.Send(nativeCallErrorItem(0, protocol.WrongChainError(strconv.Itoa(int(request.GetChain()))), flow.NoUpstream, nil, nil))
 	}
 	if chainSupervisor == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil))
+		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
 	}
 
-	requests, preResponses := s.buildNativeCallRequests(request, chainSupervisor)
+	requests, adapters, preResponses := s.buildNativeCallRequests(configuredChain, request)
 	for _, preResponse := range preResponses {
 		if err := stream.Send(preResponse); err != nil {
 			return err
@@ -89,22 +89,26 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 
 	executionFlow := flow.NewBaseExecutionFlow(
 		configuredChain.Chain,
-		s.appCtx.upstreamSupervisor,
-		s.appCtx.cacheProcessor,
-		s.appCtx.registry,
-		s.appCtx.appConfig,
+		s.appCtx.UpstreamSupervisor,
+		s.appCtx.CacheProcessor,
+		s.appCtx.Registry,
+		s.appCtx.AppConfig,
 		flow.NewSubCtx(),
-		s.appCtx.quorumRegistry,
+		s.appCtx.QuorumRegistry,
 	)
 	executionFlow.AddHooks(
-		flow.NewMethodBanHook(s.appCtx.upstreamSupervisor),
-		dimensions.NewDimensionHook(s.appCtx.dimensionTracker),
+		flow.NewMethodBanHook(s.appCtx.UpstreamSupervisor),
+		dimensions.NewDimensionHook(s.appCtx.DimensionTracker),
 	)
 
 	go executionFlow.Execute(stream.Context(), requests)
 
 	for wrapper := range executionFlow.GetResponses() {
-		if err := sendNativeCallReplyItems(stream, wrapper, request.GetChunkSize()); err != nil {
+		adapter, ok := adapters[wrapper.RequestId]
+		if !ok {
+			adapter = jsonRpcNativeCallAdapter{}
+		}
+		if err := adapter.SendReply(stream, wrapper, request.GetChunkSize()); err != nil {
 			return err
 		}
 	}
@@ -119,7 +123,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 	if request == nil {
 		return status.Error(codes.Internal, "request is nil")
 	}
-	if s.appCtx == nil || s.appCtx.upstreamSupervisor == nil {
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
 		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
 	}
 
@@ -139,21 +143,20 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Internal, err.Error())
 	}
 
-	specMethod := chainSupervisor.GetMethod(mappedMethod)
 	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
-	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, specMethod)
+	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
 
 	executionFlow := flow.NewBaseExecutionFlow(
 		configuredChain.Chain,
-		s.appCtx.upstreamSupervisor,
-		s.appCtx.cacheProcessor,
-		s.appCtx.registry,
-		s.appCtx.appConfig,
+		s.appCtx.UpstreamSupervisor,
+		s.appCtx.CacheProcessor,
+		s.appCtx.Registry,
+		s.appCtx.AppConfig,
 		subCtx,
-		s.appCtx.quorumRegistry,
+		s.appCtx.QuorumRegistry,
 	)
-	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.upstreamSupervisor))
+	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.UpstreamSupervisor))
 
 	go executionFlow.Execute(stream.Context(), []protocol.RequestHolder{subscribeRequest})
 
@@ -180,7 +183,6 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 			if !ok {
 				return status.Error(codes.Internal, "unexpected subscription response type")
 			}
-			// Skip subscription ACK frame. dproxy expects only event payload.
 			if !subscriptionResponse.IsEventFrame() {
 				continue
 			}
@@ -208,124 +210,32 @@ func (s *GrpcBlockchainService) resolveChain(chainRef dshackle.ChainRef) (*chain
 	if configuredChain == nil || configuredChain.Chain < 0 {
 		return nil, nil
 	}
-	if s.appCtx == nil || s.appCtx.upstreamSupervisor == nil {
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
 		return configuredChain, nil
 	}
-	return configuredChain, s.appCtx.upstreamSupervisor.GetChainSupervisor(configuredChain.Chain)
+	return configuredChain, s.appCtx.UpstreamSupervisor.GetChainSupervisor(configuredChain.Chain)
 }
 
 func (s *GrpcBlockchainService) buildNativeCallRequests(
+	configuredChain *chains.ConfiguredChain,
 	request *dshackle.NativeCallRequest,
-	chainSupervisor upstreams.ChainSupervisor,
-) ([]protocol.RequestHolder, []*dshackle.NativeCallReplyItem) {
+) ([]protocol.RequestHolder, map[string]nativeCallAdapter, []*dshackle.NativeCallReplyItem) {
 	requests := make([]protocol.RequestHolder, 0, len(request.GetItems()))
+	adapters := make(map[string]nativeCallAdapter, len(request.GetItems()))
 	preResponses := make([]*dshackle.NativeCallReplyItem, 0)
 
 	for _, item := range request.GetItems() {
-		if item.GetRestData() != nil {
-			preResponses = append(preResponses, nativeCallErrorItem(
-				item.GetId(),
-				protocol.ClientError(fmt.Errorf("rest_data is not supported")),
-				flow.NoUpstream,
-				nil,
-			))
+		adapter := adapterFor(item)
+		builtRequest, failure := adapter.BuildRequest(configuredChain, item, request.GetChunkSize())
+		if failure != nil {
+			preResponses = append(preResponses, failure)
 			continue
 		}
-
-		payload := item.GetPayload()
-		if len(payload) == 0 {
-			payload = []byte("[]")
-		}
-		if !json.Valid(payload) {
-			preResponses = append(preResponses, nativeCallErrorItem(
-				item.GetId(),
-				protocol.ClientError(fmt.Errorf("payload is not a valid JSON value")),
-				flow.NoUpstream,
-				nil,
-			))
-			continue
-		}
-
-		specMethod := (*specs.Method)(nil)
-		if chainSupervisor != nil {
-			specMethod = chainSupervisor.GetMethod(item.GetMethod())
-		}
-		requestID := strconv.FormatUint(uint64(item.GetId()), 10)
-		jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte(requestID), Method: item.GetMethod(), Params: payload}
-		if request.ChunkSize > 0 {
-			requests = append(requests, protocol.NewStreamUpstreamJsonRpcRequest(requestID, jsonRpcRequestBody, specMethod))
-		} else {
-			requests = append(requests, protocol.NewUpstreamJsonRpcRequest(requestID, jsonRpcRequestBody, false, specMethod))
-		}
+		requests = append(requests, builtRequest)
+		adapters[builtRequest.Id()] = adapter
 	}
 
-	return requests, preResponses
-}
-
-func sendNativeCallReplyItems(
-	stream dshackle.Blockchain_NativeCallServer,
-	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
-) error {
-	if wrapper == nil || wrapper.Response == nil {
-		return fmt.Errorf("response wrapper is empty")
-	}
-
-	requestID := parseCallItemID(wrapper.RequestId)
-	if wrapper.Response.HasError() {
-		return stream.Send(nativeCallErrorItem(requestID, wrapper.Response.GetError(), wrapper.UpstreamId, wrapper.Response.ResponseResult()))
-	}
-
-	if wrapper.Response.HasStream() {
-		err := streamNativeCallPayload(
-			requestID,
-			wrapper.UpstreamId,
-			wrapper.Response.EncodeResponse([]byte("0")),
-			chunkSize,
-			func(item *dshackle.NativeCallReplyItem) error {
-				return stream.Send(item)
-			},
-		)
-		if err != nil {
-			return stream.Send(nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil))
-		}
-		return nil
-	}
-
-	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
-	for _, replyItem := range nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize) {
-		if err := stream.Send(replyItem); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func streamNativeCallPayload(
-	requestID uint32,
-	upstreamID string,
-	reader io.Reader,
-	chunkSize uint32,
-	send func(*dshackle.NativeCallReplyItem) error,
-) error {
-	effectiveChunkSize := int(chunkSize)
-	if effectiveChunkSize <= 0 {
-		effectiveChunkSize = protocol.MaxChunkSize
-	}
-	emitter := newNativeCallChunkEmitter(effectiveChunkSize, func(chunk []byte, final bool) error {
-		return send(&dshackle.NativeCallReplyItem{
-			Id:         requestID,
-			Succeed:    true,
-			Payload:    chunk,
-			Chunked:    true,
-			FinalChunk: final,
-			UpstreamId: upstreamID,
-		})
-	})
-	if err := streamJsonRPCResult(reader, emitter); err != nil {
-		return err
-	}
-	return emitter.Flush()
+	return requests, adapters, preResponses
 }
 
 func nativeCallSuccessItems(
@@ -333,14 +243,17 @@ func nativeCallSuccessItems(
 	upstreamID string,
 	payload []byte,
 	chunkSize uint32,
+	headers http.Header,
 ) []*dshackle.NativeCallReplyItem {
+	responseHeaders := mapHeaders(headers)
 	if chunkSize == 0 || len(payload) <= int(chunkSize) {
 		return []*dshackle.NativeCallReplyItem{
 			{
-				Id:         requestID,
-				Succeed:    true,
-				Payload:    payload,
-				UpstreamId: upstreamID,
+				Id:              requestID,
+				Succeed:         true,
+				Payload:         payload,
+				UpstreamId:      upstreamID,
+				ResponseHeaders: responseHeaders,
 			},
 		}
 	}
@@ -352,12 +265,13 @@ func nativeCallSuccessItems(
 			end = len(payload)
 		}
 		replyItems = append(replyItems, &dshackle.NativeCallReplyItem{
-			Id:         requestID,
-			Succeed:    true,
-			Payload:    payload[start:end],
-			Chunked:    true,
-			FinalChunk: end == len(payload),
-			UpstreamId: upstreamID,
+			Id:              requestID,
+			Succeed:         true,
+			Payload:         payload[start:end],
+			Chunked:         true,
+			FinalChunk:      end == len(payload),
+			UpstreamId:      upstreamID,
+			ResponseHeaders: responseHeaders,
 		})
 	}
 	return replyItems
@@ -427,17 +341,19 @@ func nativeCallErrorItem(
 	responseError *protocol.ResponseError,
 	upstreamID string,
 	errorAsIs []byte,
+	headers http.Header,
 ) *dshackle.NativeCallReplyItem {
 	if responseError == nil {
 		responseError = protocol.ServerError()
 	}
 
 	replyItem := &dshackle.NativeCallReplyItem{
-		Id:            requestID,
-		Succeed:       false,
-		ErrorMessage:  responseError.Message,
-		ItemErrorCode: int32(responseError.Code),
-		UpstreamId:    upstreamID,
+		Id:              requestID,
+		Succeed:         false,
+		ErrorMessage:    responseError.Message,
+		ItemErrorCode:   int32(responseError.Code),
+		UpstreamId:      upstreamID,
+		ResponseHeaders: mapHeaders(headers),
 	}
 	if responseError.Data != nil {
 		replyItem.ErrorData = nativeCallErrorData(responseError.Data)
@@ -447,6 +363,17 @@ func nativeCallErrorItem(
 	}
 
 	return replyItem
+}
+
+func mapHeaders(headers http.Header) []*dshackle.KeyValue {
+	keyValueHeaders := make([]*dshackle.KeyValue, 0, len(headers))
+	for key, values := range headers {
+		for _, value := range values {
+			keyValueHeaders = append(keyValueHeaders, &dshackle.KeyValue{Key: key, Value: value})
+		}
+	}
+
+	return keyValueHeaders
 }
 
 func nativeCallErrorData(data any) string {

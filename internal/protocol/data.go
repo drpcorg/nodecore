@@ -137,10 +137,24 @@ func newJsonRpcRequestBody(id json.RawMessage, method string, params json.RawMes
 	}
 }
 
+// RequestParams carries the non-body components of a REST request as the
+// proxy sees them. Headers and QueryParams use []string values so that
+// repeated keys (e.g. "?ids=a&ids=b" or a header appearing twice) survive the
+// round-trip - the upstream sees them just like the client sent them.
+//
+// PathParams holds the wildcard captures from the spec's URL template in path
+// order. For HTTP requests they come out of PathMatcher; for gRPC NativeCall
+// they come straight from the protobuf RestData.path_params field.
+type RequestParams struct {
+	Headers     map[string][]string
+	QueryParams map[string][]string
+	PathParams  []string
+}
+
 type RequestHolder interface {
 	Id() string
 	Method() string
-	Headers() map[string]string
+	RequestParams() *RequestParams
 	Body() ([]byte, error)
 	ParseParams(ctx context.Context) specs.MethodParam
 	RequestType() RequestType

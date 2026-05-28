@@ -95,7 +95,7 @@ func TestInternalRequests(t *testing.T) {
 
 func TestRequestObserverWithUnaryResult(t *testing.T) {
 	body := protocol.JsonRpcRequestBody{Method: "method"}
-	request := protocol.NewUpstreamJsonRpcRequest("id", body, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("id", body, false, "")
 	observer := request.RequestObserver().
 		WithChain(chains.OPTIMISM).
 		WithRequestKind(protocol.Unary).
@@ -137,7 +137,7 @@ func TestRequestObserverWithUnaryResult(t *testing.T) {
 
 func TestRequestObserverWithParallelUpstreamUnaryResult(t *testing.T) {
 	body := protocol.JsonRpcRequestBody{Method: "method"}
-	request := protocol.NewUpstreamJsonRpcRequest("id", body, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("id", body, false, "")
 	observer := request.RequestObserver().
 		WithChain(chains.OPTIMISM).
 		WithRequestKind(protocol.Unary).
