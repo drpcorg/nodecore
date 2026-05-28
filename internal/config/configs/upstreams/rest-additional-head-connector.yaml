@@ -1,0 +1,10 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      head-connector: rest-additional
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+        - type: rest-additional
+          url: https://test.com

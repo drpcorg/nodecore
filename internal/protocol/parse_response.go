@@ -158,7 +158,7 @@ func parseJsonRpcError(errorRaw []byte) *ResponseError {
 		if jsonRpcErr.Message != "" {
 			message = jsonRpcErr.Message
 		} else if jsonRpcErr.Error != "" {
-			message = jsonRpcErr.Message
+			message = jsonRpcErr.Error
 		}
 
 		code := -32000
