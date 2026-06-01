@@ -17,9 +17,9 @@ import (
 
 func TestNotStickyRequestThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	specMethod := specs.DefaultMethodWithConnectorTypes("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector})
+	_ = specs.DefaultMethodWithConnectorTypes("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector})
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, specMethod)
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
 	result := processor.ProcessRequest(context.Background(), nil, request)
 

@@ -253,6 +253,77 @@ func TestGetBestConnector(t *testing.T) {
 	assert.Equal(t, specs.WebsocketConnector, upstream.GetBestConnector(config.StrictMode))
 }
 
+// rest-additional is a marker type for connectors that augment a chain
+// with extra REST endpoints; it must NOT be picked as the upstream's
+// "best" connector, otherwise routing would land on a connector that
+// can't serve the bulk of methods.
+func TestGetBestConnectorSkipsAdditionalConnectorType(t *testing.T) {
+	upstream := &config.Upstream{
+		Connectors: []*config.ApiConnectorConfig{
+			{Type: specs.RestAdditional.String()},
+			{Type: specs.JsonRpcConnector.String()},
+			{Type: specs.WebsocketConnector.String()},
+		},
+	}
+
+	assert.Equal(t, specs.JsonRpcConnector, upstream.GetBestConnector(config.DefaultMode),
+		"default mode must pick the lowest plain-connector type and skip rest-additional")
+	assert.Equal(t, specs.WebsocketConnector, upstream.GetBestConnector(config.StrictMode),
+		"strict mode must pick the highest plain-connector type and skip rest-additional")
+}
+
+// When every configured connector is an additional type, there's nothing
+// for the proxy to actually route through - GetBestConnector signals that
+// by returning UnknownType.
+func TestGetBestConnectorOnlyAdditionalReturnsUnknown(t *testing.T) {
+	upstream := &config.Upstream{
+		Connectors: []*config.ApiConnectorConfig{
+			{Type: specs.RestAdditional.String()},
+		},
+	}
+
+	assert.Equal(t, specs.UnknownType, upstream.GetBestConnector(config.DefaultMode),
+		"no plain connectors -> no best connector to pick")
+	assert.Equal(t, specs.UnknownType, upstream.GetBestConnector(config.StrictMode))
+}
+
+// An upstream that lists only a rest-additional connector has no usable
+// transport for the chain's bulk methods - reject the config at load time
+// rather than letting it deploy a half-broken upstream.
+func TestOnlyRestAdditionalConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/only-rest-additional.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err,
+		"additional api connector rest-additional can't be the only upstream connector",
+		"single rest-additional connector must be rejected with a self-explanatory error")
+}
+
+// rest-additional must never be chosen as the head connector - head
+// probes go through this connector and the additional one only serves
+// extra REST methods, not the chain-head poll surface.
+func TestRestAdditionalHeadConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/rest-additional-head-connector.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err,
+		"additional api connector type 'rest-additional' is forbidden for head connector",
+		"head-connector pointing at rest-additional must be rejected")
+}
+
+// rest-additional alongside at least one plain connector is the
+// supported shape (e.g. hyperliquid: eth json-rpc + extra POST endpoints).
+// Confirm the validator accepts it instead of bouncing on the additional
+// type alone.
+func TestPlainPlusRestAdditionalConnectorThenSuccess(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/plain-plus-rest-additional.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err, "rest-additional next to a plain connector must be a valid config")
+
+	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	require.Len(t, upstream.Connectors, 2)
+	assert.Equal(t, specs.JsonRpcConnector.String(), upstream.HeadConnector,
+		"head-connector defaults must pick the plain connector and skip rest-additional")
+}
+
 func TestDefaultMode(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-poll-interval.yaml")
 	appConfig, err := config.NewAppConfig()

@@ -1,4 +1,4 @@
-package server
+package http_server
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
@@ -25,36 +26,49 @@ type RequestHandler interface {
 }
 
 type RestHandler struct {
-	preReq      *Request
-	httpMethod  string
-	path        string
-	requestBody []byte
+	preReq         *Request
+	methodTemplate string
+	requestBody    []byte
+	requestParams  *protocol.RequestParams
 }
 
 // NewRestHandler builds a REST handler from an incoming HTTP request.
-// httpMethod is the verb (GET/POST/...), restPath is the path under
-// /queries/{chain}/ (already URL-decoded by echo). For GETs and other
-// no-body verbs the request body is allowed to be empty; only non-empty
-// bodies are validated as JSON so callers like algod's REST API don't get
-// rejected at parse time.
-func NewRestHandler(preReq *Request, httpMethod, restPath string, requestBody io.Reader) (*RestHandler, error) {
-	body, err := io.ReadAll(requestBody)
+// restPath is the path under /queries/{chain}/ (already URL-decoded by
+// echo, with the query string stripped). The query string and headers are
+// carried on req so the parser can promote them into RequestParams. For
+// GETs and other no-body verbs the request body is allowed to be empty;
+// only non-empty bodies are validated as JSON so callers like algod's REST
+// API don't get rejected at parse time.
+func NewRestHandler(preReq *Request, req *http.Request, restPath string) (*RestHandler, error) {
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
 	}
 	if len(body) > 0 && !sonic.Valid(body) {
 		return nil, errors.New("no valid json")
 	}
+	specName := chains.GetMethodSpecNameByChainName(preReq.Chain)
+	template, requestParams, err := parseRestRequest(req, restPath, specName)
+	if err != nil {
+		return nil, err
+	}
 	return &RestHandler{
-		preReq:      preReq,
-		httpMethod:  httpMethod,
-		path:        restPath,
-		requestBody: body,
+		preReq:         preReq,
+		methodTemplate: template,
+		requestBody:    body,
+		requestParams:  requestParams,
 	}, nil
 }
 
 func (r *RestHandler) RequestDecode(_ context.Context) (*Request, error) {
-	upstreamReq := protocol.NewUpstreamRestRequest(r.httpMethod, r.path, r.requestBody)
+	specName := chains.GetMethodSpecNameByChainName(r.preReq.Chain)
+	upstreamReq := protocol.NewUpstreamRestRequest(
+		"1",
+		r.methodTemplate,
+		r.requestParams,
+		r.requestBody,
+		specName,
+	)
 	return &Request{
 		Chain:            r.preReq.Chain,
 		UpstreamRequests: []protocol.RequestHolder{upstreamReq},
@@ -153,13 +167,12 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 
 		specName := chains.GetMethodSpecNameByChainName(j.preReq.Chain)
 		isSub := j.isWsCtx && specs.IsSubscribeMethod(specName, jsonRpcReq.Method)
-		specMethod := specs.GetSpecMethod(specName, jsonRpcReq.Method)
 
 		var upstreamReq protocol.RequestHolder
 		if protocol.IsStream(jsonRpcReq.Method) { // for tests
-			upstreamReq = protocol.NewStreamUpstreamJsonRpcRequest(id.String(), jsonRpcReq, specMethod)
+			upstreamReq = protocol.NewStreamUpstreamJsonRpcRequest(id.String(), jsonRpcReq, specName)
 		} else {
-			upstreamReq = protocol.NewUpstreamJsonRpcRequestWithSpecName(id.String(), jsonRpcReq, isSub, specMethod, specName)
+			upstreamReq = protocol.NewUpstreamJsonRpcRequest(id.String(), jsonRpcReq, isSub, specName)
 		}
 		upstreamRequests = append(upstreamRequests, upstreamReq)
 	}

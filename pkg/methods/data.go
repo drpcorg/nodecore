@@ -3,8 +3,10 @@ package specs
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/bytedance/sonic"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/samber/lo"
 )
 
@@ -197,6 +199,7 @@ const (
 	RestConnector
 	GrpcConnector
 	WebsocketConnector
+	RestAdditional // is used for connectors that provide extra REST methods, but they can't be used for chain-specific
 )
 
 func (a ApiConnectorType) String() string {
@@ -211,15 +214,34 @@ func (a ApiConnectorType) String() string {
 		return "websocket"
 	case UnknownType:
 		return "unknown"
+	case RestAdditional:
+		return "rest-additional"
 	}
 	return ""
 }
 
 var apiConnectors = map[string]ApiConnectorType{
-	"json-rpc":  JsonRpcConnector,
-	"rest":      RestConnector,
-	"grpc":      GrpcConnector,
-	"websocket": WebsocketConnector,
+	"json-rpc":        JsonRpcConnector,
+	"rest":            RestConnector,
+	"grpc":            GrpcConnector,
+	"websocket":       WebsocketConnector,
+	"rest-additional": RestAdditional,
+}
+var plainApiConnectorTypes = []ApiConnectorType{
+	JsonRpcConnector,
+	RestConnector,
+	GrpcConnector,
+	WebsocketConnector,
+}
+
+var additionalApiConnectors = mapset.NewThreadUnsafeSet[ApiConnectorType](RestAdditional)
+
+func IsAdditionalApiConnectorType(apiConnectorType ApiConnectorType) bool {
+	return additionalApiConnectors.Contains(apiConnectorType)
+}
+
+func GetPlainApiConnectorType() []ApiConnectorType {
+	return slices.Clone(plainApiConnectorTypes)
 }
 
 func GetApiConnectorType(name string) ApiConnectorType {

@@ -1,4 +1,4 @@
-package server
+package emerald
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
@@ -23,11 +24,11 @@ type GrpcServer struct {
 	port     int
 }
 
-func NewGrpcServer(appCtx *ApplicationContext) (*GrpcServer, error) {
-	if appCtx == nil || appCtx.appConfig == nil || appCtx.appConfig.ServerConfig == nil {
+func NewGrpcServer(appCtx *server_ctx.ApplicationServerContext) (*GrpcServer, error) {
+	if appCtx == nil || appCtx.AppConfig == nil || appCtx.AppConfig.ServerConfig == nil {
 		return nil, nil
 	}
-	serverConfig := appCtx.appConfig.ServerConfig
+	serverConfig := appCtx.AppConfig.ServerConfig
 	if serverConfig.GrpcPort == 0 {
 		return nil, nil
 	}

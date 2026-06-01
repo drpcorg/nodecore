@@ -1,0 +1,15 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Hyperliquid methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "hyperliquid",
+    "type": "bundle"
+  },
+  "spec-imports": [
+    "hyperliquid-rest-additional",
+    "eth"
+  ]
+}

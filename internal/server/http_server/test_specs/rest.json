@@ -1,0 +1,44 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "REST parser test methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "rest-test",
+    "api-connectors": ["rest-additional"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "POST#/exchange",
+      "params": [],
+      "settings": {"cacheable": false}
+    },
+    {
+      "name": "POST#/info",
+      "params": [],
+      "settings": {"cacheable": false}
+    },
+    {
+      "name": "GET#/v2/accounts/*",
+      "params": [],
+      "settings": {"cacheable": false}
+    },
+    {
+      "name": "GET#/v2/accounts/latest",
+      "params": [],
+      "settings": {"cacheable": false}
+    },
+    {
+      "name": "GET#/v2/blocks/*/tx/*",
+      "params": [],
+      "settings": {"cacheable": false}
+    },
+    {
+      "name": "DELETE#/v2/sessions/*",
+      "params": [],
+      "settings": {"cacheable": false}
+    }
+  ]
+}

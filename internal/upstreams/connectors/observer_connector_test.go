@@ -27,7 +27,7 @@ func TestObserverConnectorSuccessfulResponse(t *testing.T) {
 	observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-	request := protocol.NewUpstreamJsonRpcRequest("223", body, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("223", body, false, "")
 	request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.On("SendRequest", mock.Anything, request).Return(responseHolder)
@@ -56,7 +56,7 @@ func TestObserverConnectorRetryRequest(t *testing.T) {
 	observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-	request := protocol.NewUpstreamJsonRpcRequest("223", body, false, nil)
+	request := protocol.NewUpstreamJsonRpcRequest("223", body, false, "")
 	request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte("res"), protocol.JsonRpc)
 	connectorMock.
@@ -140,7 +140,7 @@ func TestObserverConnectorRetryableNonRetryableErrors(t *testing.T) {
 			observerConnector := connectors.NewObserverConnector(chains.ARBITRUM, "id", connectorMock, hooks, executor)
 
 			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
-			request := protocol.NewUpstreamJsonRpcRequest("223", body, false, nil)
+			request := protocol.NewUpstreamJsonRpcRequest("223", body, false, "")
 			request.RequestObserver().WithRequestKind(protocol.InternalUnary)
 			connectorMock.On("SendRequest", mock.Anything, request).Return(test.errorResponse)
 

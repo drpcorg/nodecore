@@ -1,25 +1,22 @@
-package server
+package http_server
 
 import (
 	"context"
-	"github.com/drpcorg/nodecore/internal/stats/hook"
 	"io"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	"github.com/drpcorg/nodecore/internal/stats/hook"
+
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/nodecore/internal/auth"
-	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
-	"github.com/drpcorg/nodecore/internal/rating"
-	"github.com/drpcorg/nodecore/internal/stats"
-	"github.com/drpcorg/nodecore/internal/storages"
-	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -66,42 +63,6 @@ type Response struct {
 	Order          int
 }
 
-type ApplicationContext struct {
-	upstreamSupervisor upstreams.UpstreamSupervisor
-	cacheProcessor     caches.CacheProcessor
-	registry           *rating.RatingRegistry
-	authProcessor      auth.AuthProcessor
-	appConfig          *config.AppConfig
-	storageRegistry    *storages.StorageRegistry
-	statsService       stats.StatsService
-	dimensionTracker   dimensions.DimensionTracker
-	quorumRegistry     *quorum.Registry
-}
-
-func NewApplicationContext(
-	upstreamSupervisor upstreams.UpstreamSupervisor,
-	cacheProcessor caches.CacheProcessor,
-	registry *rating.RatingRegistry,
-	authProcessor auth.AuthProcessor,
-	appConfig *config.AppConfig,
-	storageRegistry *storages.StorageRegistry,
-	statsService stats.StatsService,
-	dimensionTracker dimensions.DimensionTracker,
-	quorumRegistry *quorum.Registry,
-) *ApplicationContext {
-	return &ApplicationContext{
-		upstreamSupervisor: upstreamSupervisor,
-		cacheProcessor:     cacheProcessor,
-		registry:           registry,
-		authProcessor:      authProcessor,
-		appConfig:          appConfig,
-		storageRegistry:    storageRegistry,
-		statsService:       statsService,
-		dimensionTracker:   dimensionTracker,
-		quorumRegistry:     quorumRegistry,
-	}
-}
-
 type FastJSONSerializer struct{}
 
 func (FastJSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
@@ -125,7 +86,7 @@ func configureServer(ctx context.Context, server *http.Server) {
 	server.WriteTimeout = 2 * time.Minute
 }
 
-func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
+func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
 	httpServer := echo.New()
 	httpServer.HideBanner = true
 	configureServer(ctx, httpServer.Server)
@@ -149,7 +110,7 @@ func NewHttpServer(ctx context.Context, appCtx *ApplicationContext) *echo.Echo {
 		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
 
-		err := appCtx.authProcessor.Authenticate(c.Request().Context(), authPayload)
+		err := appCtx.AuthProcessor.Authenticate(c.Request().Context(), authPayload)
 		if err != nil {
 			resp := protocol.NewTotalFailureFromErr("0", protocol.AuthError(err), reqType)
 			return writeResponse(
@@ -203,7 +164,7 @@ func handleHttp(
 	restPath string,
 	reqType protocol.RequestType,
 	authPayload auth.AuthPayload,
-	appCtx *ApplicationContext,
+	appCtx *server_ctx.ApplicationServerContext,
 ) error {
 	preRequest := &Request{
 		Chain: chain,
@@ -215,9 +176,8 @@ func handleHttp(
 	} else {
 		requestHandler, err = NewRestHandler(
 			preRequest,
-			reqCtx.Request().Method,
-			restPathWithQuery(reqCtx, restPath),
-			reqCtx.Request().Body,
+			reqCtx.Request(),
+			restPath,
 		)
 	}
 
@@ -232,16 +192,6 @@ func handleHttp(
 	handleResp := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
 
 	return handleResponse(ctx, requestHandler, reqCtx, handleResp)
-}
-
-// restPathWithQuery returns the REST path with the original query string
-// re-attached so the upstream sees the same query parameters that were
-// supplied by the client. echo's c.Param("*") strips the query.
-func restPathWithQuery(c echo.Context, path string) string {
-	if rawQuery := c.Request().URL.RawQuery; rawQuery != "" {
-		return path + "?" + rawQuery
-	}
-	return path
 }
 
 func handleResponse(
@@ -272,6 +222,8 @@ func handleResponse(
 				httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
 				code = protocol.ToHttpCode(responseWrapper.Response)
 				responseReader = requestHandler.ResponseEncode(responseWrapper.Response).ResponseReader
+
+				copyUpstreamResponseHeaders(httpResponse.Header(), responseWrapper.Response)
 			}
 		}
 	}
@@ -279,6 +231,23 @@ func handleResponse(
 	setCorsHeaders(reqCtx, handleResp.corsOrigins)
 
 	return writeResponse(httpResponse, code, responseReader)
+}
+
+// copyUpstreamResponseHeaders forwards an upstream's response headers onto
+// the outgoing HTTP response. Used so REST clients see the upstream's
+// Content-Type, quorum signature headers, CORS hints, etc. verbatim.
+// Responses that don't implement HasResponseHeaders (e.g. ReplyError)
+// silently contribute nothing.
+func copyUpstreamResponseHeaders(dst http.Header, response protocol.ResponseHolder) {
+	carrier, ok := response.(protocol.HasResponseHeaders)
+	if !ok {
+		return
+	}
+	for key, values := range carrier.ResponseHeaders() {
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
 }
 
 func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
@@ -297,7 +266,9 @@ func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
 }
 
 func writeResponse(httpResponse *echo.Response, code int, responseReader io.Reader) error {
-	httpResponse.Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	if httpResponse.Header().Get(echo.HeaderContentType) == "" {
+		httpResponse.Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	}
 	httpResponse.WriteHeader(code)
 	_, err := io.Copy(httpResponse, responseReader)
 	return err
@@ -307,12 +278,12 @@ func handleRequest(
 	ctx context.Context,
 	requestHandler RequestHandler,
 	authPayload auth.AuthPayload,
-	appCtx *ApplicationContext,
+	appCtx *server_ctx.ApplicationServerContext,
 	subCtx *flow.SubCtx,
 ) *HandleResponse {
 	var request *Request
 
-	corsOrigins, err := appCtx.authProcessor.PreKeyValidate(ctx, authPayload)
+	corsOrigins, err := appCtx.AuthProcessor.PreKeyValidate(ctx, authPayload)
 	if err != nil {
 		return NewHandleResponse(
 			createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
@@ -332,7 +303,7 @@ func handleRequest(
 	}
 	chain := chains.GetChain(request.Chain).Chain
 
-	if appCtx.upstreamSupervisor.GetChainSupervisor(chain) == nil {
+	if appCtx.UpstreamSupervisor.GetChainSupervisor(chain) == nil {
 		return NewHandleResponse(
 			createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType()),
 			nil,
@@ -340,7 +311,7 @@ func handleRequest(
 	}
 
 	for _, requestHolder := range request.UpstreamRequests {
-		err = appCtx.authProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
+		err = appCtx.AuthProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
 		if err != nil {
 			return NewHandleResponse(
 				createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
@@ -348,22 +319,22 @@ func handleRequest(
 			)
 		}
 		requestHolder.RequestObserver().
-			WithApiKey(appCtx.authProcessor.GetKeyValue(authPayload))
+			WithApiKey(appCtx.AuthProcessor.GetKeyValue(authPayload))
 	}
 
 	executionFlow := flow.NewBaseExecutionFlow(
 		chain,
-		appCtx.upstreamSupervisor,
-		appCtx.cacheProcessor,
-		appCtx.registry,
-		appCtx.appConfig,
+		appCtx.UpstreamSupervisor,
+		appCtx.CacheProcessor,
+		appCtx.Registry,
+		appCtx.AppConfig,
 		subCtx,
-		appCtx.quorumRegistry,
+		appCtx.QuorumRegistry,
 	)
 	executionFlow.AddHooks(
-		flow.NewMethodBanHook(appCtx.upstreamSupervisor),
-		dimensions.NewDimensionHook(appCtx.dimensionTracker),
-		hook.NewStatsHook(appCtx.statsService),
+		flow.NewMethodBanHook(appCtx.UpstreamSupervisor),
+		dimensions.NewDimensionHook(appCtx.DimensionTracker),
+		hook.NewStatsHook(appCtx.StatsService),
 	)
 
 	go executionFlow.Execute(ctx, request.UpstreamRequests)

@@ -36,7 +36,7 @@ func TestRpcHead(t *testing.T) {
 	upConfig := config.Upstream{
 		ChainName:    "ethereum",
 		Id:           "id",
-		PollInterval: 10 * time.Millisecond,
+		PollInterval: 50 * time.Millisecond,
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
 	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))

@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/outbox"
+	"github.com/drpcorg/nodecore/internal/server/emerald"
+	"github.com/drpcorg/nodecore/internal/server/http_server"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/caches"
@@ -17,7 +20,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
-	"github.com/drpcorg/nodecore/internal/server"
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -39,7 +41,7 @@ type App struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
 
 	httpServer *echo.Echo
-	grpcServer *server.GrpcServer
+	grpcServer *emerald.GrpcServer
 }
 
 func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
@@ -78,7 +80,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		return nil, fmt.Errorf("unable to load quorum provider keys: %w", err)
 	}
 
-	appCtx := server.NewApplicationContext(
+	appCtx := server_ctx.NewApplicationServerContext(
 		upstreamSupervisor,
 		cacheProcessor,
 		ratingRegistry,
@@ -90,11 +92,11 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		quorumRegistry,
 	)
 
-	httpServer := server.NewHttpServer(ctx, appCtx)
-	grpcServer, err := server.NewGrpcServer(appCtx)
+	grpcServer, err := emerald.NewGrpcServer(appCtx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create grpc server: %w", err)
 	}
+	httpServer := http_server.NewHttpServer(ctx, appCtx)
 
 	outboxStorage, err := outbox.NewOutboxStorage(appConfig.StatsConfig, storageRegistry)
 	if err != nil {
@@ -150,7 +152,7 @@ func (a *App) Start() {
 			metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
 			metricsServer.GET("/metrics", echoprometheus.NewHandler())
 
-			if metricsServerErr := server.StartEcho(metricsServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.MetricsPort), nil); metricsServerErr != nil {
+			if metricsServerErr := http_server.StartEcho(metricsServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.MetricsPort), nil); metricsServerErr != nil {
 				log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
 			}
 		} else {
@@ -159,7 +161,7 @@ func (a *App) Start() {
 	}()
 
 	go func() {
-		if httpServerErr := server.StartEcho(a.httpServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.Port), a.appConfig.ServerConfig.TlsConfig); httpServerErr != nil {
+		if httpServerErr := http_server.StartEcho(a.httpServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.Port), a.appConfig.ServerConfig.TlsConfig); httpServerErr != nil {
 			if !shuttingDown.Load() {
 				log.Panic().Err(httpServerErr).Msg("http server couldn't start")
 			}

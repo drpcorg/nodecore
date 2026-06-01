@@ -134,6 +134,8 @@ func createConnector(
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.RestConnector:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl)
+	case specs.RestAdditional:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}

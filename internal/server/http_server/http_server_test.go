@@ -1,4 +1,4 @@
-package server_test
+package http_server_test
 
 import (
 	"bytes"
@@ -9,7 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	servernodecore "github.com/drpcorg/nodecore/internal/server"
+	"github.com/drpcorg/nodecore/internal/server/http_server"
+	servernodecore "github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
@@ -73,7 +74,7 @@ func TestHttpServerOptionsRequest(t *testing.T) {
 		},
 	}
 
-	server := servernodecore.NewHttpServer(context.Background(), nil)
+	server := http_server.NewHttpServer(context.Background(), nil)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -126,8 +127,8 @@ func TestHttpServerCantAuthenticate(t *testing.T) {
 	}
 
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
-	server := servernodecore.NewHttpServer(context.Background(), appCtx)
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -155,8 +156,8 @@ func TestHttpServerCantAuthenticate(t *testing.T) {
 
 func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
-	server := servernodecore.NewHttpServer(context.Background(), appCtx)
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -181,8 +182,8 @@ func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 
 func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
-	server := servernodecore.NewHttpServer(context.Background(), appCtx)
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -208,8 +209,8 @@ func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 
 func TestHttpServerNotSupportedChainThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
-	server := servernodecore.NewHttpServer(context.Background(), appCtx)
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -236,8 +237,8 @@ func TestHttpServerNotSupportedChainThenErr(t *testing.T) {
 func TestHttpServerChainSupervisorIsNilThenErr(t *testing.T) {
 	upSup := mocks.NewUpstreamSupervisorMock()
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil)
-	server := servernodecore.NewHttpServer(context.Background(), appCtx)
+	appCtx := servernodecore.NewApplicationServerContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -266,8 +267,8 @@ func TestHttpServerChainSupervisorIsNilThenErr(t *testing.T) {
 func TestHttpServerPostKeyValidateWithErr(t *testing.T) {
 	upSup := mocks.NewUpstreamSupervisorMock()
 	authProc := mocks.NewMockAuthProcessor()
-	appCtx := servernodecore.NewApplicationContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil)
-	server := servernodecore.NewHttpServer(context.Background(), appCtx)
+	appCtx := servernodecore.NewApplicationServerContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
