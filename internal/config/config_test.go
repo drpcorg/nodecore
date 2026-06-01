@@ -225,6 +225,10 @@ func TestReadFullConfig(t *testing.T) {
 							Headers: map[string]string{
 								"Key": "Value",
 							},
+							ResponseHeaderDeny: []string{
+								"trace-header",
+								"test",
+							},
 						},
 						{
 							Type: specs.WebsocketConnector.String(),

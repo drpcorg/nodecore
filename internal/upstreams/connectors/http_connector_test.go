@@ -416,10 +416,10 @@ func TestRestRequest_ConfigHeadersWinOverClientHeaders(t *testing.T) {
 	httpmock.Activate(t)
 	defer httpmock.Deactivate()
 
-	var gotHeader string
+	var gotValues []string
 	httpmock.RegisterResponder("POST", "=~^http://localhost:8080/.*",
 		func(req *http.Request) (*http.Response, error) {
-			gotHeader = req.Header.Get("Authorization")
+			gotValues = req.Header.Values("Authorization")
 			return httpmock.NewBytesResponse(200, []byte(`{}`)), nil
 		})
 
@@ -439,8 +439,62 @@ func TestRestRequest_ConfigHeadersWinOverClientHeaders(t *testing.T) {
 	r := connector.SendRequest(context.Background(), req)
 
 	require.False(t, r.HasError())
-	assert.Equal(t, "Bearer config-token", gotHeader,
-		"client-supplied headers must NOT override connector-config auth headers")
+	assert.Equal(t, []string{"Bearer config-token"}, gotValues,
+		"client-supplied headers must NOT override connector-config auth headers, "+
+			"and there must be exactly one value on the wire (no smuggled second slot)")
+}
+
+// HTTP headers are case-insensitive. A client sending "authorization"
+// must be rejected against a config "Authorization" - if the map lookup
+// were case-sensitive, both values would end up canonicalised into the
+// same slot by req.Header.Add and leak the client-supplied token onto the
+// wire alongside the trusted config value.
+func TestRestRequest_ConfigHeadersWinAcrossCasing(t *testing.T) {
+	cases := []struct {
+		name        string
+		configKey   string
+		clientKey   string
+		configValue string
+		clientValue string
+	}{
+		{"config-canonical-client-lowercase", "Authorization", "authorization", "Bearer config", "Bearer attacker"},
+		{"config-lowercase-client-canonical", "authorization", "Authorization", "Bearer config", "Bearer attacker"},
+		{"config-screaming-client-canonical", "AUTHORIZATION", "Authorization", "Bearer config", "Bearer attacker"},
+		{"config-mixed-client-mixed", "AuThOrIzAtIoN", "aUtHoRiZaTiOn", "Bearer config", "Bearer attacker"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(te *testing.T) {
+			httpmock.Activate(te)
+			defer httpmock.Deactivate()
+
+			var gotValues []string
+			httpmock.RegisterResponder("POST", "=~^http://localhost:8080/.*",
+				func(req *http.Request) (*http.Response, error) {
+					gotValues = req.Header.Values("Authorization")
+					return httpmock.NewBytesResponse(200, []byte(`{}`)), nil
+				})
+
+			connector := newRestConnector(te, &config.ApiConnectorConfig{
+				Url:     "http://localhost:8080",
+				Headers: map[string]string{tc.configKey: tc.configValue},
+			})
+			req := protocol.NewUpstreamRestRequest(
+				"1",
+				"POST#/exchange",
+				&protocol.RequestParams{
+					Headers: map[string][]string{tc.clientKey: {tc.clientValue}},
+				},
+				nil, "",
+			)
+
+			r := connector.SendRequest(context.Background(), req)
+			require.False(te, r.HasError())
+			assert.Equal(te, []string{tc.configValue}, gotValues,
+				"config %q must win across casing, with no second value smuggled in by client %q",
+				tc.configKey, tc.clientKey)
+		})
+	}
 }
 
 // REST treats anything in 2xx as success - 200, 201, 204 etc. Earlier
@@ -534,6 +588,32 @@ func TestRestRequest_StreamRequestReturnsStreamingResponse(t *testing.T) {
 		"REST streaming requests must always come back as streams - no envelope peek")
 }
 
+// Stream-gate must match the parser's 2xx success window - a 201 or 204
+// upstream reply on a streaming request must come back as a stream, not
+// silently fall through to the buffered path because the gate was pinned
+// to == 200.
+func TestRestRequest_StreamReturnsStreamingResponseAcrossAllTwoHundredCodes(t *testing.T) {
+	for _, code := range []int{200, 201, 202, 204, 299} {
+		t.Run(http.StatusText(code), func(te *testing.T) {
+			httpmock.Activate(te)
+			defer httpmock.Deactivate()
+
+			httpmock.RegisterResponder("GET", "=~^http://localhost:8080/.*",
+				func(req *http.Request) (*http.Response, error) {
+					return httpmock.NewBytesResponse(code, []byte(`{"hello":"world"}`)), nil
+				})
+
+			connector := newRestConnector(te, &config.ApiConnectorConfig{Url: "http://localhost:8080"})
+			streamReq := protocol.NewStreamUpstreamRestRequest("1", "GET#/status", nil, nil, "")
+
+			r := connector.SendRequest(context.Background(), streamReq)
+			require.False(te, r.HasError(), "HTTP %d must be a success", code)
+			assert.True(te, r.HasStream(),
+				"HTTP %d must produce a streaming response (gate must mirror the 2xx success window)", code)
+		})
+	}
+}
+
 // REST responses must carry upstream headers (Content-Type, signatures,
 // CORS, ...) back via the HasResponseHeaders interface so the HTTP-server
 // layer can copy them onto the client response.
@@ -561,6 +641,113 @@ func TestRestRequest_UpstreamHeadersAttachedToResponse(t *testing.T) {
 	assert.Equal(t, "trace-1", carrier.ResponseHeaders().Get("X-Trace-Id"))
 	assert.Equal(t, []string{"one", "two"}, carrier.ResponseHeaders().Values("X-Multi"),
 		"multi-valued upstream headers must reach the client response")
+}
+
+// Default response-header deny list strips RFC 7230 hop-by-hop headers,
+// Set-Cookie (would leak upstream session state to the client), and
+// Server (would fingerprint the backend). Anything not in the list
+// passes through unchanged.
+func TestRestRequest_DefaultResponseHeaderDenyList(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "=~^http://localhost:8080/.*",
+		func(req *http.Request) (*http.Response, error) {
+			resp := httpmock.NewBytesResponse(200, []byte(`{}`))
+			// Default-denied
+			resp.Header.Set("Set-Cookie", "session=abc; HttpOnly")
+			resp.Header.Set("Server", "nginx/1.21")
+			resp.Header.Set("Connection", "keep-alive")
+			resp.Header.Set("Transfer-Encoding", "chunked")
+			// Should pass through
+			resp.Header.Set("X-Trace-Id", "trace-1")
+			resp.Header.Set("Content-Type", "application/json")
+			return resp, nil
+		})
+
+	connector := newRestConnector(t, &config.ApiConnectorConfig{Url: "http://localhost:8080"})
+	req := protocol.NewUpstreamRestRequest("1", "POST#/exchange", nil, nil, "")
+
+	r := connector.SendRequest(context.Background(), req)
+	require.False(t, r.HasError())
+	carrier, ok := r.(protocol.HasResponseHeaders)
+	require.True(t, ok)
+	hdr := carrier.ResponseHeaders()
+
+	assert.Empty(t, hdr.Values("Set-Cookie"),
+		"Set-Cookie must be stripped to avoid leaking upstream sessions")
+	assert.Empty(t, hdr.Values("Server"),
+		"Server must be stripped so the upstream isn't fingerprinted")
+	assert.Empty(t, hdr.Values("Connection"),
+		"RFC 7230 hop-by-hop: Connection must not be forwarded by a proxy")
+	assert.Empty(t, hdr.Values("Transfer-Encoding"),
+		"RFC 7230 hop-by-hop: Transfer-Encoding must not be forwarded by a proxy")
+
+	assert.Equal(t, "trace-1", hdr.Get("X-Trace-Id"),
+		"non-denied headers must pass through unchanged")
+	assert.Equal(t, "application/json", hdr.Get("Content-Type"))
+}
+
+// Operator-supplied entries extend the default deny list. Matching is
+// case-insensitive: a config "x-internal-route" entry must strip the
+// upstream's "X-Internal-Route" header.
+func TestRestRequest_ConfigExtendsResponseHeaderDenyList(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "=~^http://localhost:8080/.*",
+		func(req *http.Request) (*http.Response, error) {
+			resp := httpmock.NewBytesResponse(200, []byte(`{}`))
+			resp.Header.Set("X-Internal-Route", "ingress-1")
+			resp.Header.Set("X-Trace-Id", "trace-1")
+			return resp, nil
+		})
+
+	connector := newRestConnector(t, &config.ApiConnectorConfig{
+		Url:                "http://localhost:8080",
+		ResponseHeaderDeny: []string{"x-internal-route"},
+	})
+	req := protocol.NewUpstreamRestRequest("1", "POST#/exchange", nil, nil, "")
+
+	r := connector.SendRequest(context.Background(), req)
+	require.False(t, r.HasError())
+	carrier, _ := r.(protocol.HasResponseHeaders)
+	hdr := carrier.ResponseHeaders()
+
+	assert.Empty(t, hdr.Values("X-Internal-Route"),
+		"operator-supplied deny entries must strip the header (case-insensitive)")
+	assert.Equal(t, "trace-1", hdr.Get("X-Trace-Id"),
+		"non-denied headers must still pass through")
+}
+
+// JSON-RPC path goes through the same dispatch as REST, so the deny list
+// applies equally - quorum-style QR<N> headers stay, Set-Cookie disappears.
+func TestJsonRpc_ResponseHeaderDenyListApplies(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "",
+		func(req *http.Request) (*http.Response, error) {
+			resp := httpmock.NewBytesResponse(200, []byte(`{"id":1,"jsonrpc":"2.0","result":"0x1"}`))
+			resp.Header.Set("Set-Cookie", "session=abc")
+			resp.Header.Set("QR0-id-abc", "drpc-core_nonce_1_sig_0xaa")
+			return resp, nil
+		})
+
+	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
+
+	r := connector.SendRequest(context.Background(), req)
+	require.False(t, r.HasError())
+	carrier, ok := r.(protocol.HasResponseHeaders)
+	require.True(t, ok)
+	hdr := carrier.ResponseHeaders()
+
+	assert.Empty(t, hdr.Values("Set-Cookie"),
+		"deny list applies equally to JSON-RPC responses")
+	assert.Equal(t, "drpc-core_nonce_1_sig_0xaa", hdr.Get("QR0-id-abc"),
+		"quorum signature headers are not in the deny list and must survive")
 }
 
 // REST connector type-asserts on *UpstreamRestRequest. A non-REST request

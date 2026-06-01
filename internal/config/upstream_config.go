@@ -123,6 +123,11 @@ type ApiConnectorConfig struct {
 	Url     string            `yaml:"url"`
 	Headers map[string]string `yaml:"headers,omitempty"`
 	Ca      string            `yaml:"ca"`
+	// ResponseHeaderDeny lists upstream response-header names that must
+	// NOT be forwarded to the client, in addition to the connector's
+	// hard-coded defaults (hop-by-hop per RFC 7230 plus Set-Cookie /
+	// Server). Matching is case-insensitive (HTTP header rules).
+	ResponseHeaderDeny []string `yaml:"response-header-deny,omitempty"`
 }
 
 func (a *ApiConnectorConfig) GetApiConnectorType() specs.ApiConnectorType {

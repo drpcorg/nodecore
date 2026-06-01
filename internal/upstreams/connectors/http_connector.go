@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
@@ -24,11 +25,32 @@ import (
 )
 
 type HttpConnector struct {
-	endpoint          string
-	httpClient        *http.Client
-	additionalHeaders map[string]string
-	connectorType     specs.ApiConnectorType
-	torProxyUrl       string
+	endpoint              string
+	httpClient            *http.Client
+	additionalHeaders     map[string]string
+	connectorType         specs.ApiConnectorType
+	torProxyUrl           string
+	deniedResponseHeaders mapset.Set[string]
+}
+
+// defaultResponseHeaderDeny is the always-stripped set: RFC 7230 §6.1
+// hop-by-hop headers (which a conforming proxy MUST NOT forward) plus
+// Set-Cookie / Server (would leak upstream session state or fingerprint
+// the backend). Operators extend via ApiConnectorConfig.ResponseHeaderDeny.
+var defaultResponseHeaderDeny = []string{
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",
+	"Trailers",
+	"Transfer-Encoding",
+	"Content-Length",
+	"Content-Encoding",
+	"Upgrade",
+	"Set-Cookie",
+	"Set-Cookie2",
+	"Server",
 }
 
 func (h *HttpConnector) Unsubscribe(_ string) {
@@ -40,11 +62,12 @@ func NewHttpConnectorWithDefaultClient(
 	torProxyUrl string,
 ) *HttpConnector {
 	return &HttpConnector{
-		endpoint:          connectorConfig.Url,
-		httpClient:        http.DefaultClient,
-		connectorType:     connectorType,
-		additionalHeaders: connectorConfig.Headers,
-		torProxyUrl:       torProxyUrl,
+		endpoint:              connectorConfig.Url,
+		httpClient:            http.DefaultClient,
+		connectorType:         connectorType,
+		additionalHeaders:     canonicalizeHeaders(connectorConfig.Headers),
+		torProxyUrl:           torProxyUrl,
+		deniedResponseHeaders: buildDeniedResponseHeaders(connectorConfig.ResponseHeaderDeny),
 	}
 }
 
@@ -89,11 +112,12 @@ func NewHttpConnector(
 	client.Transport = transport
 
 	return &HttpConnector{
-		endpoint:          connectorConfig.Url,
-		httpClient:        client,
-		connectorType:     connectorType,
-		additionalHeaders: connectorConfig.Headers,
-		torProxyUrl:       torProxyUrl,
+		endpoint:              connectorConfig.Url,
+		httpClient:            client,
+		connectorType:         connectorType,
+		additionalHeaders:     canonicalizeHeaders(connectorConfig.Headers),
+		torProxyUrl:           torProxyUrl,
+		deniedResponseHeaders: buildDeniedResponseHeaders(connectorConfig.ResponseHeaderDeny),
 	}, nil
 }
 
@@ -218,15 +242,76 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 // applyClientHeaders forwards per-request client headers onto the upstream
 // request, except keys the connector config already owns - those are
 // typically auth tokens that a curious client must not be able to override.
+// HTTP headers are case-insensitive, so the conflict check canonicalises
+// both sides via http.CanonicalHeaderKey; without this, a config
+// "Authorization" + a client "authorization" would slip past as distinct
+// strings and both end up on the wire after req.Header.Add canonicalises.
 func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string) {
 	for k, vs := range headers {
-		if _, taken := h.additionalHeaders[k]; taken {
+		if _, taken := h.additionalHeaders[http.CanonicalHeaderKey(k)]; taken {
 			continue
 		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
 	}
+}
+
+// canonicalizeHeaders normalises configured-header keys via
+// http.CanonicalHeaderKey ("Mime-Version" form). Done once at construction
+// time so the per-request applyClientHeaders lookup is a single map hit and
+// case-insensitive collisions between config and client headers are caught.
+// Returns nil for empty input so the connector struct keeps its empty-map
+// zero value instead of an empty allocation.
+func canonicalizeHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(headers))
+	for k, v := range headers {
+		out[http.CanonicalHeaderKey(k)] = v
+	}
+	return out
+}
+
+// buildDeniedResponseHeaders merges the always-on default deny list with
+// any operator-supplied additions from ApiConnectorConfig. Keys are
+// canonicalised so the per-response lookup matches against http.Header's
+// canonical form regardless of the casing the operator wrote in yaml.
+func buildDeniedResponseHeaders(extra []string) mapset.Set[string] {
+	set := mapset.NewThreadUnsafeSet[string]()
+	for _, k := range defaultResponseHeaderDeny {
+		set.Add(http.CanonicalHeaderKey(k))
+	}
+	for _, k := range extra {
+		set.Add(http.CanonicalHeaderKey(k))
+	}
+	return set
+}
+
+// filterResponseHeaders returns a copy of src with every key in the
+// connector's deny set removed. Keys produced by Go's HTTP transport are
+// already canonical, but the lookup canonicalises defensively so a
+// hand-built http.Header doesn't slip a denied header through.
+func (h *HttpConnector) filterResponseHeaders(src http.Header) http.Header {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(http.Header, len(src))
+	for k, vs := range src {
+		if h.deniedResponseHeaders.Contains(http.CanonicalHeaderKey(k)) {
+			continue
+		}
+		out[k] = vs
+	}
+	return out
+}
+
+// isSuccessStatus mirrors parseHttpResponse's view of "success" - any 2xx.
+// The connector uses it to gate the streaming path so it can't disagree
+// with the parser on whether a 201 or 204 should be treated as success.
+func isSuccessStatus(code int) bool {
+	return code >= 200 && code < 300
 }
 
 // canStreamFunc decides, after we've started reading the response body,
@@ -261,12 +346,12 @@ func (h *HttpConnector) dispatch(
 		)
 	}
 
-	if request.IsStream() && resp.StatusCode == 200 && !quorumRequested {
+	if request.IsStream() && isSuccessStatus(resp.StatusCode) && !quorumRequested {
 		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
 		if allowStream(bufReader) {
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
 			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
-			return streamResp.WithResponseHeaders(resp.Header)
+			return streamResp.WithResponseHeaders(h.filterResponseHeaders(resp.Header))
 		}
 		defer utils.CloseBodyReader(ctx, resp.Body)
 		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, bufReader)
@@ -294,7 +379,7 @@ func (h *HttpConnector) receiveWholeResponse(
 		)
 	}
 	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).
-		WithResponseHeaders(headers)
+		WithResponseHeaders(h.filterResponseHeaders(headers))
 }
 
 func (h *HttpConnector) GetType() specs.ApiConnectorType {

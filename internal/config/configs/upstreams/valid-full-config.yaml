@@ -145,6 +145,9 @@ upstream-config:
           url: https://test.com
           headers:
             Key: Value
+          response-header-deny:
+            - trace-header
+            - test
         - type: websocket
           url: wss://test.com
     - id: another
