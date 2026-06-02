@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
@@ -82,7 +83,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 		var stateChan chan protocol.SubscribeConnectorState
 		connectorStatesSub := wsConn.SubscribeStates(
-			fmt.Sprintf("%s_%s_request_%s_%d", upstream.GetId(), request.Method(), request.Id(), time.Now().UnixNano()),
+			fmt.Sprintf("%s_%s_request_%s_%d", upstream.GetId(), request.Method(), uuid.NewString(), time.Now().UnixNano()),
 		)
 		if connectorStatesSub != nil {
 			stateChan = connectorStatesSub.Events
