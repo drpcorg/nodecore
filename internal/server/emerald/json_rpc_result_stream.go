@@ -1,234 +1,109 @@
 package emerald
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+
+	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
+// streamJsonRPCResult extracts the bytes of the "result" field from a
+// JSON-RPC response read from reader and writes them verbatim to output.
+//
+// The first up-to-MaxChunkSize bytes are buffered and inspected with a
+// tokenizer just long enough to locate the result value's start offset and
+// classify its JSON type. From that offset onward, bytes flow through
+// unmodified, with a small byte-level state machine
+// (protocol.ResultCounter) tracking bracket nesting / string escapes /
+// scalar termination to decide when the value ends. No JSON tokens are
+// allocated for the result body — it is copied byte-for-byte.
 func streamJsonRPCResult(reader io.Reader, output io.Writer) error {
-	decoder := json.NewDecoder(reader)
-	decoder.UseNumber()
-
-	token, err := decoder.Token()
-	if err != nil {
+	prefix := make([]byte, protocol.MaxChunkSize)
+	n, err := io.ReadFull(reader, prefix)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("unable to parse stream response: %w", err)
 	}
-	objectStart, ok := token.(json.Delim)
-	if !ok || objectStart != '{' {
-		return fmt.Errorf("unable to parse stream response: expected json object")
-	}
+	prefix = prefix[:n]
+	exhausted := err != nil // io.ReadFull only stops short on EOF / UnexpectedEOF
 
-	resultFound := false
-	for decoder.More() {
-		keyToken, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("unable to parse stream response: %w", err)
-		}
-		key, ok := keyToken.(string)
-		if !ok {
-			return fmt.Errorf("unable to parse stream response: invalid json key token %T", keyToken)
-		}
-
-		valueToken, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("unable to parse stream response: %w", err)
-		}
-		if key == "result" {
-			resultFound = true
-			if err := writeJSONValue(output, decoder, valueToken); err != nil {
-				return err
-			}
-		} else {
-			if err := skipJSONValue(decoder, valueToken); err != nil {
-				return err
-			}
-		}
-	}
-
-	objectEnd, err := decoder.Token()
-	if err != nil {
-		return fmt.Errorf("unable to parse stream response: %w", err)
-	}
-	endDelim, ok := objectEnd.(json.Delim)
-	if !ok || endDelim != '}' {
-		return fmt.Errorf("unable to parse stream response: expected json object end")
-	}
-	if !resultFound {
-		return fmt.Errorf("unable to parse stream response: result field is missing")
-	}
-	return nil
-}
-
-func skipJSONValue(decoder *json.Decoder, token json.Token) error {
-	delim, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-
-	switch delim {
-	case '{':
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("unable to parse stream response: %w", err)
-			}
-			if _, ok := keyToken.(string); !ok {
-				return fmt.Errorf("unable to parse stream response: invalid json key token %T", keyToken)
-			}
-			valueToken, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("unable to parse stream response: %w", err)
-			}
-			if err := skipJSONValue(decoder, valueToken); err != nil {
-				return err
-			}
-		}
-		end, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("unable to parse stream response: %w", err)
-		}
-		endDelim, ok := end.(json.Delim)
-		if !ok || endDelim != '}' {
-			return fmt.Errorf("unable to parse stream response: expected json object end")
-		}
-	case '[':
-		for decoder.More() {
-			valueToken, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("unable to parse stream response: %w", err)
-			}
-			if err := skipJSONValue(decoder, valueToken); err != nil {
-				return err
-			}
-		}
-		end, err := decoder.Token()
-		if err != nil {
-			return fmt.Errorf("unable to parse stream response: %w", err)
-		}
-		endDelim, ok := end.(json.Delim)
-		if !ok || endDelim != ']' {
-			return fmt.Errorf("unable to parse stream response: expected json array end")
-		}
-	default:
-		return fmt.Errorf("unable to parse stream response: unexpected json delimiter %q", delim)
-	}
-
-	return nil
-}
-
-func writeJSONValue(output io.Writer, decoder *json.Decoder, token json.Token) error {
-	delim, ok := token.(json.Delim)
-	if ok {
-		switch delim {
-		case '{':
-			if _, err := output.Write([]byte{'{'}); err != nil {
-				return err
-			}
-			first := true
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				if err != nil {
-					return fmt.Errorf("unable to parse stream response: %w", err)
-				}
-				key, ok := keyToken.(string)
-				if !ok {
-					return fmt.Errorf("unable to parse stream response: invalid json key token %T", keyToken)
-				}
-				if !first {
-					if _, err := output.Write([]byte{','}); err != nil {
-						return err
-					}
-				}
-				keyBytes, err := json.Marshal(key)
-				if err != nil {
-					return err
-				}
-				if _, err := output.Write(keyBytes); err != nil {
-					return err
-				}
-				if _, err := output.Write([]byte{':'}); err != nil {
-					return err
-				}
-
-				valueToken, err := decoder.Token()
-				if err != nil {
-					return fmt.Errorf("unable to parse stream response: %w", err)
-				}
-				if err := writeJSONValue(output, decoder, valueToken); err != nil {
-					return err
-				}
-				first = false
-			}
-
-			end, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("unable to parse stream response: %w", err)
-			}
-			endDelim, ok := end.(json.Delim)
-			if !ok || endDelim != '}' {
-				return fmt.Errorf("unable to parse stream response: expected json object end")
-			}
-			_, err = output.Write([]byte{'}'})
-			return err
-		case '[':
-			if _, err := output.Write([]byte{'['}); err != nil {
-				return err
-			}
-			first := true
-			for decoder.More() {
-				if !first {
-					if _, err := output.Write([]byte{','}); err != nil {
-						return err
-					}
-				}
-				valueToken, err := decoder.Token()
-				if err != nil {
-					return fmt.Errorf("unable to parse stream response: %w", err)
-				}
-				if err := writeJSONValue(output, decoder, valueToken); err != nil {
-					return err
-				}
-				first = false
-			}
-
-			end, err := decoder.Token()
-			if err != nil {
-				return fmt.Errorf("unable to parse stream response: %w", err)
-			}
-			endDelim, ok := end.(json.Delim)
-			if !ok || endDelim != ']' {
-				return fmt.Errorf("unable to parse stream response: expected json array end")
-			}
-			_, err = output.Write([]byte{']'})
-			return err
-		default:
-			return fmt.Errorf("unable to parse stream response: unexpected json delimiter %q", delim)
-		}
-	}
-
-	primitive, err := jsonTokenBytes(token)
+	start, counter, err := protocol.FindResultStart(prefix)
 	if err != nil {
 		return err
 	}
-	_, err = output.Write(primitive)
-	return err
+
+	done, err := emitFromBuffer(output, prefix[start:], &counter)
+	if err != nil {
+		return err
+	}
+
+	if !done {
+		if exhausted {
+			return errors.New("unable to parse stream response: result value truncated")
+		}
+		if err := emitFromReader(output, reader, &counter); err != nil {
+			return err
+		}
+	}
+
+	// Drain whatever envelope tail remains so the protocol.CloseReader
+	// wrapping the upstream body observes EOF and closes resp.Body. The
+	// tail is small (a few bytes of trailing keys plus '}').
+	_, _ = io.Copy(io.Discard, reader)
+	return nil
 }
 
-func jsonTokenBytes(token json.Token) ([]byte, error) {
-	switch value := token.(type) {
-	case nil:
-		return []byte("null"), nil
-	case bool:
-		if value {
-			return []byte("true"), nil
+// emitFromBuffer feeds bytes from buf into counter, writing the consumed
+// bytes to output. Returns done=true once the result value's end is
+// observed.
+func emitFromBuffer(output io.Writer, buf []byte, counter *protocol.ResultCounter) (bool, error) {
+	flushStart := 0
+	for i := 0; i < len(buf); i++ {
+		switch counter.Step(buf[i]) {
+		case protocol.StepContinue:
+			continue
+		case protocol.StepFinishHere:
+			if _, err := output.Write(buf[flushStart : i+1]); err != nil {
+				return false, err
+			}
+			return true, nil
+		case protocol.StepStopBefore:
+			if i > flushStart {
+				if _, err := output.Write(buf[flushStart:i]); err != nil {
+					return false, err
+				}
+			}
+			return true, nil
 		}
-		return []byte("false"), nil
-	case string:
-		return json.Marshal(value)
-	case json.Number:
-		return []byte(value.String()), nil
-	default:
-		return json.Marshal(value)
+	}
+	if len(buf) > flushStart {
+		if _, err := output.Write(buf[flushStart:]); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+// emitFromReader reads further chunks from reader and feeds them through
+// counter until the result value's end is observed or reader is exhausted.
+func emitFromReader(output io.Writer, reader io.Reader, counter *protocol.ResultCounter) error {
+	chunk := make([]byte, protocol.MaxChunkSize)
+	for {
+		n, err := reader.Read(chunk)
+		if n > 0 {
+			done, werr := emitFromBuffer(output, chunk[:n], counter)
+			if werr != nil {
+				return werr
+			}
+			if done {
+				return nil
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return errors.New("unable to parse stream response: result value truncated")
+			}
+			return fmt.Errorf("unable to parse stream response: %w", err)
+		}
 	}
 }
