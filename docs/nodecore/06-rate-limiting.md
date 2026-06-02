@@ -39,10 +39,10 @@ rate-limit:
 ### Budget Configuration Fields
 
 - `rate-limit` - Array of budget group definitions. Each group contains:
-  - `default-storage` - The Redis storage name to use for budgets in this group (optional, defaults to in-memory rate limiting)
+  - `default-engine` - Default storage backend for budgets in this group. The value must be the name of a Redis entry in `app-storages`. When omitted, budgets in this group default to in-memory rate limiting
   - `budgets` - Array of budget definitions. Each budget contains:
     - `name` - Unique identifier for the budget. **Required**, **Unique**
-    - `storage` - Override the default storage for this specific budget (optional). Must reference a Redis storage from `app-storages`
+    - `storage` - Storage backend override for this specific budget (optional). Must reference a Redis entry in `app-storages`; non-Redis storage is rejected at startup. Takes precedence over `default-engine`
     - `config` - Rate limiting rules configuration. **Required**
       - `rules` - Array of rate limit rules (see Rules section below)
 
@@ -77,7 +77,7 @@ app-storages:
       address: localhost:6379
 
 rate-limit:
-  - default-storage: redis-storage
+  - default-engine: redis-storage
     budgets:
       - name: redis-budget
         config:
@@ -251,7 +251,7 @@ app-storages:
       address: localhost:6379
 
 rate-limit:
-  - default-storage: redis-storage
+  - default-engine: redis-storage
     budgets:
       - name: redis-budget
         config:
@@ -362,7 +362,7 @@ upstream-config:
 - `period` - How often to recalculate the rate limit (e.g., `30s`, `1m`, `5m`). **Optional**, defaults to `1m`
 - `error-threshold` - Error rate threshold (0.0 to 1.0) that triggers limit reduction. **Optional**, defaults to `0.1` (10%)
 - `init-rate-limit` - Initial rate limit to start with. **Optional**, defaults to `100`
-- `init-rate-limit-period` - Time window for the rate limit (e.g., `1s`, `100ms`). **Optional**, defaults to `1s`
+- `init-rate-limit-period` - Time window for the rate limit (e.g., `1s`, `100ms`). **Optional**, defaults to `1s`. Must be less than or equal to `period`
 
 ## Error Response
 

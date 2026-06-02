@@ -27,10 +27,4 @@ To enable NodeCore ↔ DRPC integration, you must complete the Quickstart guide 
 
 ### Current DRPC Features
 
-1. DRPC-managed API keys — create and maintain nodecore keys directly in DRPC, and have nodecore automatically fetch them and enforce all associated restrictions (see [DRPC Key Management](03-auth.md#drpc-keys))
-
-**Future updates on the DRPC side will introduce:**
-
-1. Request stats (request counts, latency, error rate, etc).
-2. Error stats.
-3. Tracing stats.
+1. **DRPC-managed API keys** — create and maintain nodecore keys directly in DRPC, and have nodecore automatically fetch them and enforce all associated restrictions. See [DRPC Key Management](03-auth.md#drpc-keys).
