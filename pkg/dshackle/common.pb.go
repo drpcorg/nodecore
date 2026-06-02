@@ -192,6 +192,9 @@ const (
 	ChainRef_CHAIN_PHAROS__MAINNET              ChainRef = 1162
 	ChainRef_CHAIN_EDGE__MAINNET                ChainRef = 1163
 	ChainRef_CHAIN_BOTANIX__MAINNET             ChainRef = 1164
+	ChainRef_CHAIN_ROBINHOOD__MAINNET           ChainRef = 1165
+	ChainRef_CHAIN_KITE__MAINNET                ChainRef = 1166
+	ChainRef_CHAIN_HUMANITY__MAINNET            ChainRef = 1167
 	// Testnets start with 10_000
 	ChainRef_CHAIN_ETHEREUM__MORDEN                    ChainRef = 10001
 	ChainRef_CHAIN_ETHEREUM__KOVAN                     ChainRef = 10002
@@ -545,6 +548,9 @@ var (
 		1162:   "CHAIN_PHAROS__MAINNET",
 		1163:   "CHAIN_EDGE__MAINNET",
 		1164:   "CHAIN_BOTANIX__MAINNET",
+		1165:   "CHAIN_ROBINHOOD__MAINNET",
+		1166:   "CHAIN_KITE__MAINNET",
+		1167:   "CHAIN_HUMANITY__MAINNET",
 		10001:  "CHAIN_ETHEREUM__MORDEN",
 		10002:  "CHAIN_ETHEREUM__KOVAN",
 		10003:  "CHAIN_BITCOIN__TESTNET",
@@ -893,6 +899,9 @@ var (
 		"CHAIN_PHAROS__MAINNET":                     1162,
 		"CHAIN_EDGE__MAINNET":                       1163,
 		"CHAIN_BOTANIX__MAINNET":                    1164,
+		"CHAIN_ROBINHOOD__MAINNET":                  1165,
+		"CHAIN_KITE__MAINNET":                       1166,
+		"CHAIN_HUMANITY__MAINNET":                   1167,
 		"CHAIN_ETHEREUM__MORDEN":                    10001,
 		"CHAIN_ETHEREUM__KOVAN":                     10002,
 		"CHAIN_BITCOIN__TESTNET":                    10003,
@@ -1769,7 +1778,7 @@ const file_common_proto_rawDesc = "" +
 	"\ttimestamp\x18\x03 \x01(\x04R\ttimestamp\"Y\n" +
 	"\x10FinalizationData\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x04R\x06height\x12-\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x19.emerald.FinalizationTypeR\x04type*\xfeO\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x19.emerald.FinalizationTypeR\x04type*\xd5P\n" +
 	"\bChainRef\x12\x15\n" +
 	"\x11CHAIN_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CHAIN_BITCOIN__MAINNET\x10\x01\x12\x1b\n" +
@@ -1938,7 +1947,10 @@ const file_common_proto_rawDesc = "" +
 	"\x14CHAIN_JOVAY__MAINNET\x10\x89\t\x12\x1a\n" +
 	"\x15CHAIN_PHAROS__MAINNET\x10\x8a\t\x12\x18\n" +
 	"\x13CHAIN_EDGE__MAINNET\x10\x8b\t\x12\x1b\n" +
-	"\x16CHAIN_BOTANIX__MAINNET\x10\x8c\t\x12\x1b\n" +
+	"\x16CHAIN_BOTANIX__MAINNET\x10\x8c\t\x12\x1d\n" +
+	"\x18CHAIN_ROBINHOOD__MAINNET\x10\x8d\t\x12\x18\n" +
+	"\x13CHAIN_KITE__MAINNET\x10\x8e\t\x12\x1c\n" +
+	"\x17CHAIN_HUMANITY__MAINNET\x10\x8f\t\x12\x1b\n" +
 	"\x16CHAIN_ETHEREUM__MORDEN\x10\x91N\x12\x1a\n" +
 	"\x15CHAIN_ETHEREUM__KOVAN\x10\x92N\x12\x1b\n" +
 	"\x16CHAIN_BITCOIN__TESTNET\x10\x93N\x12\x1c\n" +
