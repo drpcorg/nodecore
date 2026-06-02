@@ -373,6 +373,7 @@ const (
 	ChainRef_CHAIN_PHAROS_ATLANTIC__TESTNET            ChainRef = 10199
 	ChainRef_CHAIN_EDGE__TESTNET                       ChainRef = 10200
 	ChainRef_CHAIN_BOTANIX__TESTNET                    ChainRef = 10201
+	ChainRef_CHAIN_HUMANITY__TESTNET                   ChainRef = 10202
 	// Virtual chains (no real blockchain)
 	ChainRef_CHAIN_LAMBDA__VIRTUAL ChainRef = 100000 // P2P Lambda REST API synthetic provider
 )
@@ -728,6 +729,7 @@ var (
 		10199:  "CHAIN_PHAROS_ATLANTIC__TESTNET",
 		10200:  "CHAIN_EDGE__TESTNET",
 		10201:  "CHAIN_BOTANIX__TESTNET",
+		10202:  "CHAIN_HUMANITY__TESTNET",
 		100000: "CHAIN_LAMBDA__VIRTUAL",
 	}
 	ChainRef_value = map[string]int32{
@@ -1079,6 +1081,7 @@ var (
 		"CHAIN_PHAROS_ATLANTIC__TESTNET":            10199,
 		"CHAIN_EDGE__TESTNET":                       10200,
 		"CHAIN_BOTANIX__TESTNET":                    10201,
+		"CHAIN_HUMANITY__TESTNET":                   10202,
 		"CHAIN_LAMBDA__VIRTUAL":                     100000,
 	}
 )
@@ -1778,7 +1781,7 @@ const file_common_proto_rawDesc = "" +
 	"\ttimestamp\x18\x03 \x01(\x04R\ttimestamp\"Y\n" +
 	"\x10FinalizationData\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x04R\x06height\x12-\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x19.emerald.FinalizationTypeR\x04type*\xd5P\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x19.emerald.FinalizationTypeR\x04type*\xf3P\n" +
 	"\bChainRef\x12\x15\n" +
 	"\x11CHAIN_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CHAIN_BITCOIN__MAINNET\x10\x01\x12\x1b\n" +
@@ -2127,7 +2130,8 @@ const file_common_proto_rawDesc = "" +
 	"\x15CHAIN_PHAROS__TESTNET\x10\xd6O\x12#\n" +
 	"\x1eCHAIN_PHAROS_ATLANTIC__TESTNET\x10\xd7O\x12\x18\n" +
 	"\x13CHAIN_EDGE__TESTNET\x10\xd8O\x12\x1b\n" +
-	"\x16CHAIN_BOTANIX__TESTNET\x10\xd9O\x12\x1b\n" +
+	"\x16CHAIN_BOTANIX__TESTNET\x10\xd9O\x12\x1c\n" +
+	"\x17CHAIN_HUMANITY__TESTNET\x10\xdaO\x12\x1b\n" +
 	"\x15CHAIN_LAMBDA__VIRTUAL\x10\xa0\x8d\x06\"\x04\b\x02\x10\x02\"\x06\b\xe9\a\x10\xe9\a\"\x06\b\x94N\x10\x94N\"\x06\b\x95N\x10\x95N\"\x06\b\x99N\x10\x99N\"\x06\b\x9aN\x10\x9aN\"\x06\b\x9bN\x10\x9bN\"\x06\b\x9cN\x10\x9cN\"\x06\b\x9dN\x10\x9dN\"\x06\b\x9eN\x10\x9eN\"\x06\b\x9fN\x10\x9fN\"\x06\b\xa3N\x10\xa3N\"\x06\b\xa4N\x10\xa4N\"\x06\b\xa6N\x10\xa6N\"\x06\b\xa7N\x10\xa7N\"\x06\b\xafN\x10\xafN\"\x06\b\xb3N\x10\xb3N\"\x06\b\xbbN\x10\xbbN\"\x06\b\xbdN\x10\xbdN\"\x06\b\xc4N\x10\xc4N\"\x06\b\xd5N\x10\xd5N\"\x06\b\xf1N\x10\xf1N*\x96\x01\n" +
 	"\x10AvailabilityEnum\x12\x11\n" +
 	"\rAVAIL_UNKNOWN\x10\x00\x12\f\n" +
