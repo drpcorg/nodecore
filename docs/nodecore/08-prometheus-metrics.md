@@ -1,12 +1,13 @@
 # Prometheus Metrics Documentation
 
-This document describes all Prometheus metrics exposed by dSheltie (NodeCore).
+This document describes all Prometheus metrics exposed by nodecore on the `metrics-port` defined in [Server config](02-server-config.md). The endpoint is `GET /metrics`.
 
 ## Table of Contents
 
 - [HTTP Metrics](#http-metrics)
 - [Request Metrics](#request-metrics)
 - [Upstream Metrics](#upstream-metrics)
+- [Quorum Metrics](#quorum-metrics)
 - [Rate Limiter Metrics](#rate-limiter-metrics)
 - [Cache Metrics](#cache-metrics)
 - [WebSocket Metrics](#websocket-metrics)
@@ -24,7 +25,7 @@ This document describes all Prometheus metrics exposed by dSheltie (NodeCore).
 
 **Labels:** None
 
-**Source:** `internal/server/http_server.go`
+**Source:** `internal/server/http_server/http_server.go`
 
 **Use Case:** Monitor HTTP response latency and identify slow requests.
 
@@ -111,7 +112,7 @@ This document describes all Prometheus metrics exposed by dSheltie (NodeCore).
 
 - `chain` - The blockchain network
 
-**Source:** `internal/server/ws_server.go`
+**Source:** `internal/server/http_server/ws_server.go`
 
 **Use Case:** Monitor the number of concurrent websocket connections per chain.
 
@@ -329,6 +330,27 @@ This document describes all Prometheus metrics exposed by dSheltie (NodeCore).
 **Source:** `internal/rating/registry.go`
 
 **Use Case:** Monitor upstream quality scores used for intelligent request routing.
+
+---
+
+## Quorum Metrics
+
+### `nodecore_quorum_verifications_total`
+
+**Type:** Counter
+
+**Description:** Outcomes of QR signature verification for client-requested quorum reads. Incremented once per verified response signature. See [Quorum](10-quorum.md) for the request shape that produces these counters.
+
+**Labels:**
+
+- `chain` - The blockchain network
+- `method` - The RPC method name
+- `status` - `ok` or `fail`
+- `reason` - Failure reason when `status=fail`. Possible values include `missing_signatures`, `insufficient_signatures`, `invalid_signature`, `unknown_provider`, `malformed_header`, `request_id_mismatch`, `not_supported`
+
+**Source:** `internal/upstreams/flow/execution_flow.go`
+
+**Use Case:** Monitor how often quorum verification succeeds vs. fails, and break down failures by reason to spot provider-key drift or signature format issues.
 
 ---
 

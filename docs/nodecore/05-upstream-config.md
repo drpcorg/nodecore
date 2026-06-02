@@ -4,6 +4,7 @@ This `upstream-config` section defines how nodecore discovers, evaluates, and in
 
 ```yaml
 upstream-config:
+  mode: default
   integrity:
     enabled: true
   failsafe-config:
@@ -23,6 +24,14 @@ upstream-config:
         disable-validation: false
         disable-settings-validation: false
         disable-chain-validation: false
+        disable-health-validation: false
+        disable-lower-bounds-detection: false
+        disable-labels-detection: false
+        validate-syncing: true
+        validate-peers: true
+        min-peers: 5
+        validate-call-limit: true
+        call-limit-size: 131072
       poll-interval: 45s
     polygon:
       poll-interval: 30s
@@ -39,6 +48,8 @@ upstream-config:
           url: https://path-to-eth-provider.com
           headers:
             my-header: my-header-value
+          response-header-deny:
+            - X-Provider-Name
     - id: full-upstream
       chain: polygon
       connectors:
@@ -79,13 +90,56 @@ upstream-config:
 
 It brings together:
 
-1. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter) and hedging (duplicate a slow request after a delay, with a cap on parallel hedges).
-2. Chain defaults (`chain-defaults`) - Per-chain operational defaults, such as poll-interval used for chain-specific activities (e.g., head/finality polling).
-3. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
-4. Upstreams (`upstreams`) - The actual provider entries.
-5. Integrity (`integrity`) ensures that methods like eth_blockNumber and eth_getBlockByNumber never return stale data. When enabled, NodeCore guarantees non-decreasing block numbers by validating responses against the current head and retrying with the highest-synced upstream if needed.
+1. Mode (`mode`) - Picks the overall operating profile. `default` is the cost-conscious profile: heads are polled lazily over HTTP, most periodic validators are off, and the [integrity](#integrity) feature is the recommended opt-in to compensate for stale reads. `strict` is the high-fidelity profile: heads are tracked over WebSocket when configured (or polled at the chain's block time when only HTTP is available), every validator runs, and `integrity` is forcibly off because real-time tracking makes it redundant. See [mode](#mode) below.
+2. Integrity (`integrity`) - Guarantees that methods like `eth_blockNumber` and `eth_getBlockByNumber` never return stale data. When enabled, nodecore validates responses against the current head and retries with the highest-synced upstream if needed.
+3. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter), hedging (duplicate a slow request after a delay, with a cap on parallel hedges), and a per-request `timeout` budget.
+4. Chain defaults (`chain-defaults`) - Per-chain operational defaults: poll interval, validation toggles, and detector toggles. See [Validators and labels](#validators-and-labels) below.
+5. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
+6. Upstreams (`upstreams`) - The actual provider entries.
 
-Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, and (4) apply rate limiting to control request throughput.
+Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, (4) apply rate limiting to control request throughput, and (5) toggle the validators and label detectors that observe each upstream's health.
+
+## mode
+
+```yaml
+upstream-config:
+  mode: default
+```
+
+`mode` chooses the overall operating profile for every upstream. It is more than a connector preference - it also shifts the default values of several `chain-defaults.options.*` flags and the default `poll-interval`. Anything you set explicitly under `chain-defaults` or on an individual upstream still wins; `mode` only changes what unset fields *fall back to*.
+
+### `mode: default` (default)
+
+The cost-conscious profile. nodecore deliberately runs lazy and minimises the amount of work it does against each upstream:
+
+- **Head tracking via HTTP polling at `1m`.** When `head-connector` is not set, nodecore picks the *simplest* connector available (`json-rpc` over `rest` over `grpc` over `websocket`). For an upstream with both `json-rpc` and `websocket` connectors, the WebSocket is left dormant and heads are pulled by polling JSON-RPC.
+- **Most periodic validators are off by default.** With no explicit overrides, the following fall back to *disabled*: `disable-lower-bounds-detection`, `disable-labels-detection`, `validate-syncing`, `validate-peers`, `validate-call-limit`. Only the cheap, structural validators run (chain id / net version, health).
+- **Stale-read protection is opt-in.** Because heads are polled lazily, `eth_blockNumber` and `eth_getBlockByNumber` can return values older than the actual tip. To compensate, enable the [integrity](#integrity) feature (`integrity.enabled: true`) - it cross-checks responses against the most-advanced upstream and retries when they look stale. Integrity is the recommended way to get consistency in `default` mode.
+
+This mode is the right choice when upstreams are expensive (paid RPCs, metered providers) and you care more about cost / request-count than about being on the exact-current head.
+
+### `mode: strict`
+
+The high-fidelity profile. nodecore tracks upstream state as aggressively as it can:
+
+- **Head tracking via WebSocket when available.** When `head-connector` is not set, nodecore picks the *most capable* connector (`websocket` over `grpc` over `rest` over `json-rpc`). If a WebSocket connector is configured, heads come from `newHeads`-style subscriptions in real time. If the upstream only exposes HTTP, the fallback `poll-interval` is the chain's `expected-block-time` from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml) rather than `1m`, so even HTTP-only upstreams stay close to the tip.
+- **All validators run by default.** With no explicit overrides, the following fall back to *enabled*: lower-bounds detection, labels detection, `eth_syncing`, `net_peerCount` (with the `min-peers` threshold), and the `eth_call` return-data limit probe. This produces an accurate, real-time view of each upstream's capabilities for routing decisions.
+- **[Integrity](#integrity) is forcibly disabled.** Real-time head tracking (or block-time polling) makes the lazy stale-read compensation unnecessary. Setting `integrity.enabled: true` together with `mode: strict` is accepted by the parser but logged as a warning, and the feature is turned off.
+
+This mode is the right choice when upstreams are self-hosted or unmetered, when you need accurate label-based routing (e.g. archive vs. full nodes), or when always-current data matters more than minimising upstream traffic.
+
+### Per-mode defaults at a glance
+
+| Field | `default` mode fallback | `strict` mode fallback |
+|---|---|---|
+| `head-connector` (when unset) | simplest connector type | most capable connector type |
+| `poll-interval` (when unset) | `1m` | chain's `expected-block-time` |
+| `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
+| `disable-labels-detection` | `true` (off) | `false` (on) |
+| `validate-syncing` | `false` (off) | `true` (on) |
+| `validate-peers` | `false` (off) | `true` (on) |
+| `validate-call-limit` | `false` (off) | `true` (on) |
+| `integrity.enabled` | as configured (default `false`) | forced to `false` |
 
 ## integrity
 
@@ -157,7 +211,7 @@ To eliminate these issues, nodecore implements a pure hedging strategy with clea
    - `jitter` - Adds randomization to each backoff
 2. The `hedge` section:
    - `delay` - How long to wait after sending the initial request before launching hedged requests. Can't be less than 50ms. **_Default_**: `1s`
-   - max - Maximum number of additional parallel hedged requests to launch once the delay has elapsed. **_Default_**: `2`
+   - `max` - Maximum number of additional parallel hedged requests to launch once the delay has elapsed. **_Default_**: `2`
 
 ## chain-defaults
 
@@ -170,6 +224,14 @@ chain-defaults:
       disable-validation: false
       disable-settings-validation: false
       disable-chain-validation: false
+      disable-health-validation: false
+      disable-lower-bounds-detection: false
+      disable-labels-detection: false
+      validate-syncing: true
+      validate-peers: true
+      min-peers: 5
+      validate-call-limit: true
+      call-limit-size: 131072
     poll-interval: 45s
   polygon:
     poll-interval: 30s
@@ -179,28 +241,26 @@ The `chain-defaults` section defines per-chain baseline settings that apply to a
 
 `chain-defaults` fields:
 
-* `<chain>.options` - Defines global behavioral and validation options for upstreams of this chain
-  * `internal-timeout` - Maximum time allowed for internal nodecore requests. **_Defaults_**: `5s`
-  * `validation-interval` - How frequently nodecore performs validation checks for the upstream. **_Defaults_**: `30s`
-  * `disable-validation` - If true, completely disables *all* validation logic. **_Defaults_**: `false`
-  * `disable-settings-validation` - If true, disables *all* validation of upstream configuration settings. **_Defaults_**: `false`
-  * `disable-chain-validation` - If true, disables chain validation logic. **_Defaults_**: `false`
-* `<chain>.poll-interval` - Defines how often nodecore polls the upstreams for that chain to fetch new head/finality information
-  * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** `poll-interval` value globally is `1m` (1 minute)
+* `<chain>.options` - Behavioral, validation, and detector toggles for all upstreams of this chain. Several of the boolean toggles fall back to different values depending on [`mode`](#mode); see the per-mode defaults table there for the exact fallbacks. Leaving a `*bool` field unset means "use the mode-dependent fallback":
+  * `internal-timeout` - Maximum time allowed for internal nodecore probes (head poll, settings validators, label detectors). **_Default_**: `5s`
+  * `validation-interval` - How frequently nodecore re-runs validators and label detectors against the upstream. **_Default_**: `30s`
+  * `disable-validation` - Master switch. When `true`, no validators of any kind run. **_Default_**: `false`
+  * `disable-settings-validation` - Disables the settings validators as a group (chain id / net version, peers, syncing, call-limit). **_Default_**: `false`
+  * `disable-chain-validation` - Disables only the chain-id / net-version validator. **_Default_**: `false`
+  * `disable-health-validation` - Disables only the health validators (per chain family). **_Default_**: `false`
+  * `disable-lower-bounds-detection` - Disables the earliest-available-block detector. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `disable-labels-detection` - Disables the EVM label detectors (client/version, archive, gas, flashblock, etc.). Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `min-peers` - Minimum acceptable peer count when `validate-peers` is on. **_Default_**: `1`
+  * `validate-call-limit` - For EVM chains, periodically probes the upstream's `eth_call` return-data limit and marks the upstream unhealthy when its observed limit is below `call-limit-size`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
+* `<chain>.poll-interval` - How often nodecore polls upstreams of that chain for new head / finality information
+  * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** is `1m` in `mode: default`, and the chain's expected block time in `mode: strict`
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
-### Validations
-
-Nodecore can perform different types of validations with their own logic.
-
-#### Settings validations
-
-Settings validation is a group of checks that verify the correctness of upstream configuration and its compatibility with the target blockchain. These checks ensure that each upstream is properly configured and connected to the right network. If a validation fails, the upstream can be temporarily removed from the active pool until it becomes valid again.
-
-Types:
-* `chain validation` - It verifies whether an upstream is actually linked to the correct blockchain. For Ethereum-like chains, this is done by checking the `eth_chainId` and `net_version` values.
-  If these values are incorrect during application startup, the upstream is not started. If a mismatch is detected at runtime, the upstream is removed from the pool to prevent invalid requests.
+See [Validators and labels](#validators-and-labels) below for what each validator does and how it maps to these flags.
 
 ## score-policy-config
 
@@ -313,31 +373,26 @@ Each upstream belongs to a specific chain, declares one or more connectors (HTTP
 
 ### connectors
 
-Each upstream can expose multiple interfaces for communication. A blockchain network may support various protocols such as JSON-RPC, WebSocket, REST, or gRPC.
-nodecore is designed to support all of these, so that depending on the request type, the most suitable connector can be used automatically.
+Each upstream can expose multiple interfaces for communication. A blockchain network may support various transports - JSON-RPC, WebSocket, REST, or gRPC - and the set of transports available for any given chain is declared by that chain's method spec (see [Method specs](11-method-specs.md)).
 
-Currently supported:
+Supported connector types:
 
-- `json-rpc`– standard HTTP-based JSON-RPC API
-- `websocket` – WebSocket-based JSON-RPC API, required for subscriptions and certain streaming requests
+- `json-rpc` - HTTP-based JSON-RPC. Available on every chain family
+- `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
+- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand)
+- `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
+- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: an upstream cannot consist of only `rest-additional` connectors - at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket`) must also be configured
 
-Planned support:
+By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each incoming request.
 
-- `rest` – REST endpoints for chains that expose REST APIs (e.g., Cosmos chains, beacon chains, etc.)
-- `grpc` – gRPC endpoints for chains/protocols where it is available
+Every upstream must also track its head (latest block / finalization state). The connector used for head tracking is selected as follows:
 
-By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each request.
+- If `head-connector` is set explicitly, that type is used
+- Otherwise nodecore picks the best connector available on the upstream, where "best" depends on [`mode`](#mode):
+  - `mode: default` - prefers the simplest type, in order `json-rpc` → `rest` → `grpc` → `websocket`
+  - `mode: strict` - prefers the most capable type, in reverse order `websocket` → `grpc` → `rest` → `json-rpc`
 
-In addition, every upstream must track its head (latest block / finalization state). For this, nodecore needs to know which connector should be used:
-
-- You can explicitly specify this via `head-connector`
-- If not specified and multiple connectors are defined, nodecore chooses based on the following priority:
-  - `json-rpc`
-  - `rest`
-  - `grpc`
-  - `websocket`
-
-This ensures that the most stable/compatible connector is used for head tracking by default, but you can override the behavior when needed.
+`rest-additional` connectors are never chosen as the head connector.
 
 ### Tor .onion upstreams
 
@@ -372,21 +427,47 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 `upstreams` fields:
 
 - `id` - Unique identifier of the upstream. **_Required_**, **_Unique_**
-- `chain` - The chain this upstream serves, (e.g. `ethereum`, `polygon`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
-- `connectors` - Defines the access endpoints for this upstream. **_Required_**. Each connector has:
-  - `type` - supported values: `json-rpc`, `websocket`. **_Required_**
+- `chain` - The chain this upstream serves (e.g. `ethereum`, `polygon`, `solana`, `algorand`, `aztec-mainnet`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
+- `connectors` - The access endpoints for this upstream. **_Required_**, **_at least one_**. There can be only one connector of each type per upstream, and at least one connector must be a plain type (not `rest-additional`). Each connector has:
+  - `type` - one of `json-rpc`, `websocket`, `rest`, `grpc`, `rest-additional`. **_Required_**
   - `url` - full endpoint URL. **_Required_**
   - `headers` - optional key/value map of extra headers to send with requests
   - `ca` - Path to a Certificate Authority (CA) certificate file to validate client certificates (for example, if you use self-signed certificates)
-- `head-connector` - Specifies which connector is used to fetch chain head/finality values
+  - `response-header-deny` - list of upstream response-header names that must *not* be forwarded back to the client, on top of the built-in deny list (RFC 7230 hop-by-hop headers plus `Set-Cookie` and `Server`). Matching is case-insensitive
+- `head-connector` - Connector type used to fetch chain head / finality information. Must match one of the connector types configured under `connectors`, and cannot be `rest-additional`
   - Example: `head-connector: websocket`
-  - If not set, nodecore picks a default depending on connector types
-- `poll-interval` - Overrides the `chain-defaults.poll-interval` for this specific upstream. **_Default_**: `1m` (1 minute)
-- - `options` - Overrides the `chain-defaults.options` for this specific upstream.
-- `methods` - Allows per-upstream method overrides. A method cannot be listed in both `enable` and `disable`:
-  - `enable` – list of methods to explicitly allow
-  - `disable` – list of methods to disable for this upstream
-  - `ban-duration` - specifies how long a method should remain banned for a given upstream after encountering an error that indicates the method does not exist or is unavailable. During this period, NodeCore will not send requests for that method to the affected upstream. **_Default_**: `5m` (5 minutes)
+  - If not set, nodecore picks one according to the current [`mode`](#mode)
+- `poll-interval` - Overrides the chain-default `poll-interval` for this specific upstream
+- `options` - Overrides the chain-default `options` for this specific upstream. See [chain-defaults](#chain-defaults) for the full set of fields
+- `methods` - Per-upstream method overrides. A method cannot be listed in both `enable` and `disable`:
+  - `enable` - list of methods to explicitly allow
+  - `disable` - list of methods to disable for this upstream
+  - `ban-duration` - How long a method is excluded from this upstream after the upstream returns an error indicating the method does not exist or is unavailable. **_Default_**: `5m`
+
+  > **⚠️ Connector scope (current limitation)**: Every entry in `enable` is applied to **all** of the API connectors declared by the chain's [method spec](11-method-specs.md). There is no per-connector targeting today, so on a chain that exposes the same method on multiple transports (e.g. EVM chains where the spec has both `json-rpc` and `websocket`), you cannot enable a method only on `json-rpc` while leaving it off on `websocket` - the flag toggles every connector at once.
+  >
+  > nodecore is chain-agnostic, and for chains that legitimately use several transports this is a real limitation: methods that are valid on one transport but not the other still need an explicit `api-connector` selector here. A future revision of this field will accept an `api-connector` qualifier so an entry like `eth_call@json-rpc` (or an equivalent structured form) can be scoped to a single transport. Until then, only configure `enable` for methods that share the same shape across every connector the chain advertises.
 - `rate-limit-budget` - Reference to a shared rate limit budget defined in the top-level `rate-limit` section. See [Rate Limiting](06-rate-limiting.md) for details
 - `rate-limit` - Inline rate limiting configuration specific to this upstream. Cannot be used together with `rate-limit-budget`. See [Rate Limiting](06-rate-limiting.md) for details
-- `failsafe-config` - failsafe-config that is applied on the upstream level. Only the `retry` policy can be specified
+- `rate-limit-auto-tune` - Automatically adjusts the upstream's outgoing rate limit based on observed error rate and utilization. See [Rate Limiting](06-rate-limiting.md#auto-tune-rate-limiting) for the field semantics
+- `failsafe-config` - Upstream-level failsafe configuration. Only the `retry` policy can be specified at this level (hedging and timeouts are configured globally on `upstream-config.failsafe-config`)
+
+## Validators and labels
+
+Validators and label detectors run periodically (every `validation-interval`) against each upstream and feed into the availability / routing decision. They are toggled through the `chain-defaults.<chain>.options.*` flags listed above. The following table lists the validators that nodecore ships today and which flag turns each one off.
+
+| Validator / detector | Chains | Flag to disable | What it does |
+|---|---|---|---|
+| Chain id / `net_version` | EVM | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Confirms the upstream is actually serving the configured chain. Fails at startup remove the upstream from the pool; runtime drift triggers re-removal |
+| Aztec chain validator | Aztec | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the Aztec node's chain-id endpoint |
+| `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
+| `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers` |
+| `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
+| Health validator (EVM) | EVM | `disable-health-validation` | Generic liveness check appropriate to the chain family |
+| Health validator (Solana) | Solana | `disable-health-validation` | Calls the Solana `getHealth` RPC and propagates the result |
+| Health validator (Aztec) | Aztec | `disable-health-validation` | Probes Aztec node health |
+| Health validator (Algorand) | Algorand | `disable-health-validation` | Probes Algorand node health |
+| Lower-bound detector | Solana, Algorand, Aztec | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
+| Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
+
+`disable-validation` is the master switch and overrides every per-validator flag.

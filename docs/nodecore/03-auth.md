@@ -162,7 +162,6 @@ Use DRPC-managed keys if you want:
 - Centralized management of all nodecore keys across multiple nodecore instances.
 - Separation of keys by project/team (each owner has its own namespace).
 - Automatic synchronization: once an owner updates/deletes a key in DRPC, nodecore sees the change without requiring configuration edits.
-- (**_Future feature_**) Aggregated analytics in DRPC: dashboards with nodecore stats: request counts, latency, error rate, per-key insights, etc.
 
 If `type: drpc`, you mush provide:
 ```yaml
