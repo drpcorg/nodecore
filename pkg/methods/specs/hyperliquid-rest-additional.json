@@ -12,6 +12,7 @@
   "methods": [
     {
       "name": "POST#/info",
+      "group": "additional",
       "params": [],
       "settings": {
         "cacheable": false
@@ -19,6 +20,7 @@
     },
     {
       "name": "POST#/exchange",
+      "group": "additional",
       "params": [],
       "settings": {
         "cacheable": false
