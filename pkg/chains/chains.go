@@ -67,6 +67,12 @@ type Settings struct {
 	MethodSpec        string        `yaml:"method-spec"`
 	Lags              LagConfig     `yaml:"lags"`
 	Options           *Options      `yaml:"options"`
+	// NoFinality marks chains whose consensus protocol does not expose a
+	// finalized block tag (e.g. Hyperledger Besu QBFT, classic PoA networks).
+	// When true, the upstream pipeline skips finalized-block polling and the
+	// chain supervisor promotes upstreams to Available using only head
+	// information. Defaults to false; opt-in per chain.
+	NoFinality bool `yaml:"no-finality"`
 }
 
 type ConfiguredChain struct {
@@ -143,6 +149,18 @@ func GetChainByChainIdAndVersion(chainId, netVersion string) *ConfiguredChain {
 func GetMethodSpecNameByChain(chain Chain) string {
 	configuredChain := GetChain(chain.String())
 	return configuredChain.MethodSpec
+}
+
+// IsNoFinalityChain reports whether the given chain is marked as having no
+// finalized block tag in its chain-settings (e.g. Besu QBFT, classic PoA).
+// Callers in the upstream lifecycle use this to skip finalized-block polling
+// and to promote upstreams to Available using only head information.
+func IsNoFinalityChain(chain Chain) bool {
+	configuredChain := GetChain(chain.String())
+	if configuredChain == UnknownChain {
+		return false
+	}
+	return configuredChain.Settings.NoFinality
 }
 
 func GetMethodSpecNameByChainName(chainName string) string {

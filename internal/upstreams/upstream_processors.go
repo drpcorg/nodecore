@@ -81,7 +81,7 @@ func CreateBlockEventProcessor(
 	chainSpecific specific.ChainSpecific,
 	configuredChain *chains.ConfiguredChain,
 ) event_processors.UpstreamStateEventProcessor {
-	blockProcessor := createBlockProcessor(ctx, conf, requestConnector, chainSpecific, configuredChain.Type)
+	blockProcessor := createBlockProcessor(ctx, conf, requestConnector, chainSpecific, configuredChain)
 	eventProcessor := event_processors.NewBaseBlockEventProcessor(ctx, conf.Id, configuredChain.Chain, blockProcessor)
 	if eventProcessor == nil {
 		return nil

@@ -176,11 +176,11 @@ func createBlockProcessor(
 	upConfig *config.Upstream,
 	connector connectors.ApiConnector,
 	chainSpecific specific.ChainSpecific,
-	blockchainType chains.BlockchainType,
+	configuredChain *chains.ConfiguredChain,
 ) blocks.BlockProcessor {
-	switch blockchainType {
+	switch configuredChain.Type {
 	case chains.Ethereum:
-		return blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, chainSpecific)
+		return blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, chainSpecific, configuredChain.Settings.NoFinality)
 	default:
 		return nil
 	}
