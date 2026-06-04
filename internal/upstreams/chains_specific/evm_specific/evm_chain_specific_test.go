@@ -133,3 +133,28 @@ func TestEvmLowerBoundProcessor(t *testing.T) {
 
 	assert.NotNil(t, processor)
 }
+
+func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
+	ctx := context.Background()
+	connector := mocks.NewConnectorMock()
+	body := []byte(`{
+	  "jsonrpc": "2.0",
+	  "result": {
+		"number": "0x5a",
+		"hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+		"parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
+	  }
+	}`)
+	response := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
+
+	connector.On("SendRequest", ctx, mock.MatchedBy(func(request protocol.RequestHolder) bool {
+		reqBody, err := request.Body()
+		return err == nil && assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["safe",false]}`, string(reqBody))
+	})).Return(response)
+
+	block, err := test_utils.NewEvmChainSpecific(connector).GetSafeBlock(ctx)
+
+	assert.NoError(t, err)
+	connector.AssertExpectations(t)
+	assert.Equal(t, uint64(90), block.Height)
+}

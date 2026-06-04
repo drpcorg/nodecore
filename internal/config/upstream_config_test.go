@@ -216,6 +216,7 @@ func TestSetStrictMode(t *testing.T) {
 		DisableChainValidation:      new(false),
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(false),
+		DisableSafeBlockDetection:   new(false),
 		DisableLabelsDetection:      new(false),
 		ValidateSyncing:             new(true),
 		ValidatePeers:               new(true),

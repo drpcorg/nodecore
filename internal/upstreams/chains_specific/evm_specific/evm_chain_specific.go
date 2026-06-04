@@ -31,11 +31,13 @@ type EvmChainSpecificObject struct {
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
+	disableSafeBlockDetection := e.options.DisableSafeBlockDetection != nil && *e.options.DisableSafeBlockDetection
 	return blocks.NewEthLikeBlockProcessor(
 		e.ctx,
 		e.upstreamId,
 		e.pollInterval,
 		e.options.InternalTimeout,
+		disableSafeBlockDetection,
 		e.connector,
 		e,
 	)
@@ -100,6 +102,10 @@ func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.B
 
 func (e *EvmChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
 	return e.getBlockByTag(ctx, e.connector, rpc.FinalizedBlockNumber)
+}
+
+func (e *EvmChainSpecificObject) GetSafeBlock(ctx context.Context) (protocol.Block, error) {
+	return e.getBlockByTag(ctx, e.connector, rpc.SafeBlockNumber)
 }
 
 func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
