@@ -125,3 +125,9 @@ func TestEvmGetLatestBlockWithError(t *testing.T) {
 	assert.Equal(t, 1, upErr.Code)
 	assert.Equal(t, "block error", upErr.Message)
 }
+
+func TestEvmLowerBoundProcessor(t *testing.T) {
+	processor := test_utils.NewEvmChainSpecific(mocks.NewConnectorMock()).LowerBoundProcessor()
+
+	assert.NotNil(t, processor)
+}
