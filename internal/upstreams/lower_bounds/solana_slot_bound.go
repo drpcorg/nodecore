@@ -80,12 +80,12 @@ func (s *SolanaLowerBoundDetector) getBlock(number int64) (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
 	defer cancel()
 
-	params := map[string]interface{}{
+	params := map[string]any{
 		"showRewards":                    false,
 		"transactionDetails":             "none",
 		"maxSupportedTransactionVersion": 0,
 	}
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlock", []interface{}{number, params}, chains.SOLANA)
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getBlock", []any{number, params}, chains.SOLANA)
 	if err != nil {
 		return 0, err
 	}
@@ -109,7 +109,7 @@ func NewSolanaLowerBoundDetector(upstreamId string, internalTimeout time.Duratio
 		upstreamId:      upstreamId,
 		connector:       connector,
 		internalTimeout: internalTimeout,
-		executor:        failsafe.NewExecutor[solanaLowerBound](createDetectionRetryPolicy(upstreamId)),
+		executor:        failsafe.NewExecutor(createDetectionRetryPolicy(upstreamId)),
 	}
 }
 

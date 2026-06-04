@@ -77,6 +77,10 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesEarliestAvailableBlock(t *testi
 		Return(evmOK(`null`)).
 		Once()
 	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x4"`))).
+		Return(evmOK(`{"number":"0x4","transactions":[]}`)).
+		Once()
+	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x3"`))).
 		Return(evmOK(`{"number":"0x3","transactions":[]}`)).
 		Once()
@@ -248,89 +252,9 @@ func TestEvmStateLowerBoundDetectorParsesStateOverrideResult(t *testing.T) {
 
 func TestEvmTxLowerBoundDetectorParsesLiveBlockAndTransactionShapes(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	expectLatest(connector, "0x100001")
+	expectLatest(connector, "0x100000")
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x80001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xc0001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xe0001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xf0001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xf8001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfc001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfe001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xff001"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xff801"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xffc01"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xffe01"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfff01"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfff81"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfffc1"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfffe1"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xffff1"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xffff9"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xffffd"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0xfffff"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x100000"`))).
 		Return(evmOK(liveEvmBlockWithHashTransactions)).
 		Once()
 	connector.
@@ -345,7 +269,7 @@ func TestEvmTxLowerBoundDetectorParsesLiveBlockAndTransactionShapes(t *testing.T
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Equal(t, protocol.TxBound, result[0].Type)
-	assert.Equal(t, int64(0x100000), result[0].Bound)
+	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
 }
 
@@ -378,7 +302,7 @@ func TestEvmLowerBoundDetectorReturnsUnexpectedErrors(t *testing.T) {
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom"))).
-		Once()
+		Times(3)
 
 	detector := lower_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
@@ -386,6 +310,28 @@ func TestEvmLowerBoundDetectorReturnsUnexpectedErrors(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
+	connector.AssertExpectations(t)
+}
+
+func TestEvmLowerBoundDetectorRetriesUnexpectedErrors(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, "0x3")
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("temporary"))).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		Return(evmOK(`{"number":"0x1","transactions":[]}`)).
+		Once()
+
+	detector := lower_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
 }
 

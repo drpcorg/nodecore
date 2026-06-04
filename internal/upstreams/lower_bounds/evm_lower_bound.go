@@ -25,8 +25,6 @@ const (
 	stateCheckerBytecode = "0x6080604052348015600e575f5ffd5b50600436106026575f3560e01c80631eaf190c14602a575b5f5ffd5b60306044565b604051603b91906078565b60405180910390f35b5f5f73ffffffffffffffffffffffffffffffffffffffff1631905090565b5f819050919050565b6072816062565b82525050565b5f60208201905060895f830184606b565b9291505056fea2646970667358221220251f5b4d2ed1abe77f66fde198a57ada08562dc3b0afbc6bac0261d1bf516b5d64736f6c634300081e0033"
 )
 
-type evmLowerBoundProbe func(height int64) (bool, error)
-
 type evmStateOverrideSupport int32
 
 const (
@@ -36,14 +34,11 @@ const (
 )
 
 type EvmLowerBoundDetector struct {
-	upstreamId      string
+	*LowerBoundSearchCalculator
+
 	connector       connectors.ApiConnector
 	chain           chains.Chain
 	internalTimeout time.Duration
-	boundType       protocol.LowerBoundType
-	probe           evmLowerBoundProbe
-
-	lastBound atomic.Int64
 
 	stateOverrideSupport atomic.Int32
 }
@@ -54,9 +49,7 @@ func NewEvmBlockLowerBoundDetector(
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *EvmLowerBoundDetector {
-	d := newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.BlockBound)
-	d.probe = d.hasBlock
-	return d
+	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.BlockBound)
 }
 
 func NewEvmStateLowerBoundDetector(
@@ -65,9 +58,7 @@ func NewEvmStateLowerBoundDetector(
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *EvmLowerBoundDetector {
-	d := newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.StateBound)
-	d.probe = d.hasState
-	return d
+	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.StateBound)
 }
 
 func NewEvmTxLowerBoundDetector(
@@ -76,9 +67,7 @@ func NewEvmTxLowerBoundDetector(
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *EvmLowerBoundDetector {
-	d := newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.TxBound)
-	d.probe = d.hasTx
-	return d
+	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.TxBound)
 }
 
 func NewEvmReceiptsLowerBoundDetector(
@@ -87,9 +76,7 @@ func NewEvmReceiptsLowerBoundDetector(
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *EvmLowerBoundDetector {
-	d := newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.ReceiptsBound)
-	d.probe = d.hasReceipts
-	return d
+	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.ReceiptsBound)
 }
 
 func newEvmLowerBoundDetector(
@@ -100,93 +87,34 @@ func newEvmLowerBoundDetector(
 	boundType protocol.LowerBoundType,
 ) *EvmLowerBoundDetector {
 	return &EvmLowerBoundDetector{
-		upstreamId:      upstreamId,
-		connector:       connector,
-		chain:           chain,
-		internalTimeout: internalTimeout,
-		boundType:       boundType,
+		LowerBoundSearchCalculator: NewLowerBoundSearchCalculator(upstreamId, boundType, evmLowerBoundPeriod),
+		connector:                  connector,
+		chain:                      chain,
+		internalTimeout:            internalTimeout,
 	}
 }
 
 func (e *EvmLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	latest, err := e.fetchLatestHeight()
-	if err != nil {
-		return nil, fmt.Errorf("cannot fetch latest EVM height for upstream '%s': %w", e.upstreamId, err)
-	}
-	if latest <= 0 {
-		return nil, fmt.Errorf("EVM upstream '%s' returned non-positive latest height %d", e.upstreamId, latest)
-	}
-
-	bound, err := e.locateBound(e.lastBound.Load(), latest)
-	if err != nil {
-		return nil, err
-	}
-	e.lastBound.Store(bound)
-
-	return []protocol.LowerBoundData{protocol.NewLowerBoundDataNow(bound, e.boundType)}, nil
+	return e.LowerBoundSearchCalculator.DetectLowerBound(e.fetchLatestHeight, e.probe)
 }
 
-func (e *EvmLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
-	return []protocol.LowerBoundType{e.boundType}
-}
-
-func (e *EvmLowerBoundDetector) Period() time.Duration {
-	return evmLowerBoundPeriod
-}
-
-func (e *EvmLowerBoundDetector) locateBound(cached, latest int64) (int64, error) {
-	if cached > 0 {
-		available, err := e.probe(cached)
-		if err != nil {
-			return 0, err
-		}
-		if available {
-			return cached, nil
-		}
-		return e.binarySearchLower(cached+1, latest)
+func (e *EvmLowerBoundDetector) probe(height int64) (bool, error) {
+	switch e.boundType {
+	case protocol.StateBound:
+		return e.hasState(height)
+	case protocol.BlockBound:
+		return e.hasBlock(height)
+	case protocol.TxBound:
+		return e.hasTx(height)
+	case protocol.ReceiptsBound:
+		return e.hasReceipts(height)
+	default:
+		return false, fmt.Errorf("unsupported EVM lower-bound type %s", e.boundType.String())
 	}
-
-	available, err := e.probe(1)
-	if err != nil {
-		return 0, err
-	}
-	if available {
-		return 1, nil
-	}
-	if latest < 2 {
-		return 0, fmt.Errorf("EVM upstream '%s' retains no %s data (latest=%d)", e.upstreamId, e.boundType.String(), latest)
-	}
-	return e.binarySearchLower(2, latest)
-}
-
-func (e *EvmLowerBoundDetector) binarySearchLower(lo, hi int64) (int64, error) {
-	if lo > hi {
-		return 0, fmt.Errorf("EVM upstream '%s' empty %s lower-bound range [%d, %d]", e.upstreamId, e.boundType.String(), lo, hi)
-	}
-
-	left, right := lo, hi
-	var result int64
-	for left <= right {
-		mid := left + (right-left)/2
-		available, err := e.probe(mid)
-		if err != nil {
-			return 0, err
-		}
-		if available {
-			result = mid
-			right = mid - 1
-		} else {
-			left = mid + 1
-		}
-	}
-	if result == 0 {
-		return 0, fmt.Errorf("EVM upstream '%s' has no retained %s data in [%d, %d]", e.upstreamId, e.boundType.String(), lo, hi)
-	}
-	return result, nil
 }
 
 func (e *EvmLowerBoundDetector) fetchLatestHeight() (int64, error) {
-	raw, available, err := e.call("eth_blockNumber", []interface{}{})
+	raw, available, err := e.call("eth_blockNumber", []any{})
 	if err != nil {
 		return 0, err
 	}
@@ -197,7 +125,7 @@ func (e *EvmLowerBoundDetector) fetchLatestHeight() (int64, error) {
 }
 
 func (e *EvmLowerBoundDetector) hasBlock(height int64) (bool, error) {
-	raw, available, err := e.call("eth_getBlockByNumber", []interface{}{evmBlockTag(height), false})
+	raw, available, err := e.call("eth_getBlockByNumber", []any{evmBlockTag(height), false})
 	if err != nil || !available {
 		return available, err
 	}
@@ -225,7 +153,7 @@ func (e *EvmLowerBoundDetector) hasStateWithOverride(height int64) (bool, error)
 }
 
 func (e *EvmLowerBoundDetector) hasStateWithBalance(height int64) (bool, error) {
-	raw, available, err := e.call("eth_getBalance", []interface{}{evmZeroAddress, evmBlockTag(height)})
+	raw, available, err := e.call("eth_getBalance", []any{evmZeroAddress, evmBlockTag(height)})
 	if err != nil || !available {
 		return available, err
 	}
@@ -237,7 +165,7 @@ func (e *EvmLowerBoundDetector) hasTx(height int64) (bool, error) {
 	if err != nil || !available {
 		return available, err
 	}
-	raw, available, err := e.call("eth_getTransactionByHash", []interface{}{txHash})
+	raw, available, err := e.call("eth_getTransactionByHash", []any{txHash})
 	if err != nil || !available {
 		return available, err
 	}
@@ -249,7 +177,7 @@ func (e *EvmLowerBoundDetector) hasReceipts(height int64) (bool, error) {
 	if err != nil || !available {
 		return available, err
 	}
-	raw, available, err := e.call("eth_getTransactionReceipt", []interface{}{txHash})
+	raw, available, err := e.call("eth_getTransactionReceipt", []any{txHash})
 	if err != nil || !available {
 		return available, err
 	}
@@ -257,7 +185,7 @@ func (e *EvmLowerBoundDetector) hasReceipts(height int64) (bool, error) {
 }
 
 func (e *EvmLowerBoundDetector) firstTxHash(height int64) (string, bool, error) {
-	raw, available, err := e.call("eth_getBlockByNumber", []interface{}{evmBlockTag(height), false})
+	raw, available, err := e.call("eth_getBlockByNumber", []any{evmBlockTag(height), false})
 	if err != nil || !available || isEvmNullResult(raw) {
 		return "", available && !isEvmNullResult(raw), err
 	}
@@ -343,15 +271,15 @@ func (b evmBlockEnvelope) firstTxHash() (string, bool) {
 	return tx.Hash, true
 }
 
-func stateOverrideParams(block string) []interface{} {
-	return []interface{}{
-		map[string]interface{}{
+func stateOverrideParams(block string) []any {
+	return []any{
+		map[string]any{
 			"to":   stateCheckerAddress,
 			"data": stateCheckerCallData,
 		},
 		block,
-		map[string]interface{}{
-			stateCheckerAddress: map[string]interface{}{
+		map[string]any{
+			stateCheckerAddress: map[string]any{
 				"code": stateCheckerBytecode,
 			},
 		},
