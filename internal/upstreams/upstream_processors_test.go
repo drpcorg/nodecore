@@ -139,7 +139,7 @@ func TestCreateSettingsEventProcessor_ReturnsSettingsProcessor(t *testing.T) {
 	assert.Equal(t, event_processors.SettingsValidatorProcessorType, processor.Type())
 }
 
-func TestCreateLowerBoundsEventProcessor_ReturnsNilWithoutProcessor(t *testing.T) {
+func TestCreateLowerBoundsEventProcessor_ReturnsProcessorForEvm(t *testing.T) {
 	conf := &config.Upstream{
 		Id:      "upstream-id",
 		Options: testUpstreamOptions(),
@@ -149,7 +149,9 @@ func TestCreateLowerBoundsEventProcessor_ReturnsNilWithoutProcessor(t *testing.T
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
-	assert.Nil(t, processor)
+	assert.NotNil(t, processor)
+	assert.IsType(t, &event_processors.BaseLowerBoundEventProcessor{}, processor)
+	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
 func TestCreateLowerBoundsEventProcessor_ReturnsNilWhenDisabled(t *testing.T) {
