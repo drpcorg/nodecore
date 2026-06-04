@@ -14,6 +14,7 @@ const (
 	AvailabilityType
 	RateLimiterType
 	UpstreamIndexType
+	SelectorType
 	SuccessType
 )
 
@@ -177,4 +178,229 @@ func (m *MultiMatcher) Match(upId string, state *protocol.UpstreamState) MatchRe
 
 func NewMultiMatcher(matchers ...Matcher) *MultiMatcher {
 	return &MultiMatcher{matchers: matchers}
+}
+
+type LabelResponse struct {
+	name   string
+	values []string
+}
+
+func (l LabelResponse) Type() MatchResponseType { return SelectorType }
+func (l LabelResponse) Cause() string {
+	return fmt.Sprintf("No label `%s` with values %v", l.name, l.values)
+}
+
+type ExistsResponse struct{ name string }
+
+func (e ExistsResponse) Type() MatchResponseType { return SelectorType }
+func (e ExistsResponse) Cause() string           { return fmt.Sprintf("Label %s does not exist", e.name) }
+
+type HeightResponse struct{ height, currentHeight int64 }
+
+func (h HeightResponse) Type() MatchResponseType { return SelectorType }
+func (h HeightResponse) Cause() string {
+	return fmt.Sprintf("Upstream height %d is less than %d", h.currentHeight, h.height)
+}
+
+type SlotHeightResponse struct{ slot, currentSlotHeight int64 }
+
+func (s SlotHeightResponse) Type() MatchResponseType { return SelectorType }
+func (s SlotHeightResponse) Cause() string {
+	return fmt.Sprintf("Upstream slot height %d is less than %d", s.currentSlotHeight, s.slot)
+}
+
+type LowerHeightResponse struct {
+	lowerHeight, predictedHeight int64
+	boundType                    protocol.LowerBoundType
+}
+
+func (l LowerHeightResponse) Type() MatchResponseType { return SelectorType }
+func (l LowerHeightResponse) Cause() string {
+	if l.predictedHeight == 0 {
+		return fmt.Sprintf("Upstream lower height of type %s cannot be predicted", l.boundType.String())
+	}
+	return fmt.Sprintf("Upstream lower height %d of type %s is greater than %d", l.predictedHeight, l.boundType.String(), l.lowerHeight)
+}
+
+type SelectorUnsupportedResponse struct{ reason string }
+
+func (s SelectorUnsupportedResponse) Type() MatchResponseType { return SelectorType }
+func (s SelectorUnsupportedResponse) Cause() string           { return s.reason }
+
+type NotMatchedResponse struct{ response MatchResponse }
+
+func (n NotMatchedResponse) Type() MatchResponseType { return SelectorType }
+func (n NotMatchedResponse) Cause() string           { return "Not matched - " + n.response.Cause() }
+
+type MultiResponse struct{ responses []MatchResponse }
+
+func (m MultiResponse) Type() MatchResponseType { return SelectorType }
+func (m MultiResponse) Cause() string {
+	parts := make([]string, 0)
+	for _, r := range flattenResponses(m.responses) {
+		if r.Type() != SuccessType {
+			parts = append(parts, r.Cause())
+		}
+	}
+	return joinCauses(parts)
+}
+func flattenResponses(responses []MatchResponse) []MatchResponse {
+	out := make([]MatchResponse, 0, len(responses))
+	for _, r := range responses {
+		if m, ok := r.(MultiResponse); ok {
+			out = append(out, flattenResponses(m.responses)...)
+		} else {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+func joinCauses(parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	out := parts[0]
+	for _, p := range parts[1:] {
+		out += "; " + p
+	}
+	return out
+}
+
+type LabelMatcher struct {
+	name   string
+	values []string
+}
+
+func NewLabelMatcher(name string, values []string) *LabelMatcher {
+	return &LabelMatcher{name: name, values: values}
+}
+func (l *LabelMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if state == nil || state.Labels == nil {
+		return LabelResponse{l.name, l.values}
+	}
+	value, ok := state.Labels.GetLabel(l.name)
+	if !ok {
+		return LabelResponse{l.name, l.values}
+	}
+	if len(l.values) == 0 {
+		return SuccessResponse{}
+	}
+	for _, expected := range l.values {
+		if value == expected {
+			return SuccessResponse{}
+		}
+	}
+	return LabelResponse{l.name, l.values}
+}
+
+type LabelExistsMatcher struct{ name string }
+
+func NewLabelExistsMatcher(name string) *LabelExistsMatcher { return &LabelExistsMatcher{name: name} }
+func (l *LabelExistsMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if state != nil && state.Labels != nil {
+		if _, ok := state.Labels.GetLabel(l.name); ok {
+			return SuccessResponse{}
+		}
+	}
+	return ExistsResponse{l.name}
+}
+
+type HeightMatcher struct{ height int64 }
+
+func NewHeightMatcher(height int64) *HeightMatcher { return &HeightMatcher{height: height} }
+func (h *HeightMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	cur := int64(0)
+	if state != nil {
+		cur = int64(state.HeadData.Height)
+	}
+	if cur >= h.height {
+		return SuccessResponse{}
+	}
+	return HeightResponse{h.height, cur}
+}
+
+type SlotHeightMatcher struct{ slotHeight int64 }
+
+func NewSlotHeightMatcher(slotHeight int64) *SlotHeightMatcher {
+	return &SlotHeightMatcher{slotHeight: slotHeight}
+}
+func (s *SlotHeightMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	cur := int64(0)
+	if state != nil {
+		cur = int64(state.HeadData.Slot)
+	}
+	if cur >= s.slotHeight {
+		return SuccessResponse{}
+	}
+	return SlotHeightResponse{s.slotHeight, cur}
+}
+
+type LowerHeightPredictor func(upstreamId string, boundType protocol.LowerBoundType, timeOffset int64) int64
+
+type LowerHeightMatcher struct {
+	height     int64
+	boundType  protocol.LowerBoundType
+	timeOffset int64
+	delta      int64
+	predict    LowerHeightPredictor
+}
+
+func NewLowerHeightMatcher(height int64, boundType protocol.LowerBoundType, timeOffset, delta int64, predict LowerHeightPredictor) *LowerHeightMatcher {
+	return &LowerHeightMatcher{height: height, boundType: boundType, timeOffset: timeOffset, delta: delta, predict: predict}
+}
+func (l *LowerHeightMatcher) Match(upId string, _ *protocol.UpstreamState) MatchResponse {
+	predicted := int64(0)
+	if l.predict != nil {
+		predicted = l.predict(upId, l.boundType, l.timeOffset)
+	}
+	if predicted != 0 && l.height >= predicted-l.delta {
+		return SuccessResponse{}
+	}
+	return LowerHeightResponse{l.height, predicted, l.boundType}
+}
+
+type SelectorAndMatcher struct{ matchers []Matcher }
+
+func (a *SelectorAndMatcher) Match(upId string, state *protocol.UpstreamState) MatchResponse {
+	responses := make([]MatchResponse, 0, len(a.matchers))
+	for _, m := range a.matchers {
+		r := m.Match(upId, state)
+		if r.Type() != SuccessType {
+			responses = append(responses, r)
+		}
+	}
+	if len(responses) == 0 {
+		return SuccessResponse{}
+	}
+	return MultiResponse{responses}
+}
+
+type SelectorOrMatcher struct{ matchers []Matcher }
+
+func (o *SelectorOrMatcher) Match(upId string, state *protocol.UpstreamState) MatchResponse {
+	responses := make([]MatchResponse, 0, len(o.matchers))
+	for _, m := range o.matchers {
+		r := m.Match(upId, state)
+		if r.Type() == SuccessType {
+			return SuccessResponse{}
+		}
+		responses = append(responses, r)
+	}
+	return MultiResponse{responses}
+}
+
+type SelectorNotMatcher struct{ matcher Matcher }
+
+func (n *SelectorNotMatcher) Match(upId string, state *protocol.UpstreamState) MatchResponse {
+	r := n.matcher.Match(upId, state)
+	if r.Type() != SuccessType {
+		return SuccessResponse{}
+	}
+	return NotMatchedResponse{r}
+}
+
+type UnsupportedSelectorMatcher struct{ reason string }
+
+func (u *UnsupportedSelectorMatcher) Match(_ string, _ *protocol.UpstreamState) MatchResponse {
+	return SelectorUnsupportedResponse{u.reason}
 }

@@ -22,6 +22,7 @@ type nativeCallAdapter interface {
 	BuildRequest(
 		chain *chains.ConfiguredChain,
 		item *dshackle.NativeCallItem,
+		requestSelector *dshackle.Selector,
 		chunkSize uint32,
 	) (protocol.RequestHolder, *dshackle.NativeCallReplyItem)
 
@@ -39,11 +40,21 @@ func adapterFor(item *dshackle.NativeCallItem) nativeCallAdapter {
 	return jsonRpcNativeCallAdapter{}
 }
 
+func mapNativeCallSelectors(requestSelector *dshackle.Selector, itemSelectors []*dshackle.Selector) ([]protocol.RequestSelector, error) {
+	selectors := make([]protocol.RequestSelector, 0, 1+len(itemSelectors))
+	if requestSelector != nil {
+		selectors = append(selectors, mapDshackleSelector(requestSelector))
+	}
+	selectors = append(selectors, mapDshackleSelectors(itemSelectors)...)
+	return rejectConflictingSortSelectors(selectors)
+}
+
 type jsonRpcNativeCallAdapter struct{}
 
 func (jsonRpcNativeCallAdapter) BuildRequest(
 	chain *chains.ConfiguredChain,
 	item *dshackle.NativeCallItem,
+	requestSelector *dshackle.Selector,
 	chunkSize uint32,
 ) (protocol.RequestHolder, *dshackle.NativeCallReplyItem) {
 	payload := item.GetPayload()
@@ -62,10 +73,14 @@ func (jsonRpcNativeCallAdapter) BuildRequest(
 
 	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
 	body := protocol.JsonRpcRequestBody{Id: []byte(requestID), Method: item.GetMethod(), Params: payload}
-	if chunkSize > 0 {
-		return protocol.NewStreamUpstreamJsonRpcRequest(requestID, body, chain.MethodSpec), nil
+	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
+	if err != nil {
+		return nil, nativeCallErrorItem(item.GetId(), protocol.ClientError(err), flow.NoUpstream, nil, nil)
 	}
-	return protocol.NewUpstreamJsonRpcRequest(requestID, body, false, chain.MethodSpec), nil
+	if chunkSize > 0 {
+		return protocol.WithSelectors(protocol.NewStreamUpstreamJsonRpcRequest(requestID, body, chain.MethodSpec), selectors), nil
+	}
+	return protocol.WithSelectors(protocol.NewUpstreamJsonRpcRequest(requestID, body, false, chain.MethodSpec), selectors), nil
 }
 
 func (jsonRpcNativeCallAdapter) SendReply(
@@ -81,6 +96,7 @@ type restNativeCallAdapter struct{}
 func (restNativeCallAdapter) BuildRequest(
 	chain *chains.ConfiguredChain,
 	item *dshackle.NativeCallItem,
+	requestSelector *dshackle.Selector,
 	chunkSize uint32,
 ) (protocol.RequestHolder, *dshackle.NativeCallReplyItem) {
 	restData := item.GetRestData()
@@ -116,10 +132,14 @@ func (restNativeCallAdapter) BuildRequest(
 	}
 
 	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
-	if chunkSize > 0 {
-		return protocol.NewStreamUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec), nil
+	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
+	if err != nil {
+		return nil, nativeCallErrorItem(item.GetId(), protocol.ClientError(err), flow.NoUpstream, nil, nil)
 	}
-	return protocol.NewUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec), nil
+	if chunkSize > 0 {
+		return protocol.WithSelectors(protocol.NewStreamUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec), selectors), nil
+	}
+	return protocol.WithSelectors(protocol.NewUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec), selectors), nil
 }
 
 func (restNativeCallAdapter) SendReply(

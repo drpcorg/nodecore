@@ -95,6 +95,7 @@ func TestLowerBoundsToApi(t *testing.T) {
 func TestBlocksToApi(t *testing.T) {
 	event := emerald.BlocksToApi(map[protocol.BlockType]protocol.Block{
 		protocol.FinalizedBlock: protocol.NewBlockWithHeight(123),
+		protocol.SafeBlock:      protocol.NewBlockWithHeight(321),
 		protocol.BlockType(99):  protocol.NewBlockWithHeight(456),
 	})
 
@@ -102,6 +103,7 @@ func TestBlocksToApi(t *testing.T) {
 	require.NotNil(t, finalizationEvent)
 	assert.ElementsMatch(t, []*dshackle.FinalizationData{
 		{Height: 123, Type: dshackle.FinalizationType_FINALIZATION_FINALIZED_BLOCK},
+		{Height: 321, Type: dshackle.FinalizationType_FINALIZATION_SAFE_BLOCK},
 		{Height: 456, Type: dshackle.FinalizationType_FINALIZATION_UNSPECIFIED},
 	}, finalizationEvent.FinalizationData)
 }

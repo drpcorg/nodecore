@@ -52,6 +52,20 @@ func (u *UpstreamProcessorAggregator) UpdateBlock(data BlockUpdateData) {
 	}
 }
 
+func (u *UpstreamProcessorAggregator) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
+	processor, ok := u.eventProcessors[LowerBoundEventProcessorType]
+	if !ok {
+		return 0
+	}
+	lowerBoundProcessor, ok := processor.(interface {
+		PredictLowerBound(protocol.LowerBoundType, int64) int64
+	})
+	if !ok {
+		return 0
+	}
+	return lowerBoundProcessor.PredictLowerBound(boundType, timeOffset)
+}
+
 func (u *UpstreamProcessorAggregator) ValidateSettings() (validations.ValidationSettingResult, bool) {
 	if processor, ok := u.eventProcessors[SettingsValidatorProcessorType]; ok {
 		if settingsProcessor, ok := processor.(SettingsEventProcessor); ok {

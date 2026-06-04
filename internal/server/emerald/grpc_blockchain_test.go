@@ -71,8 +71,9 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 				},
 			},
 			{
-				Id:     2,
-				Method: "eth_chainId",
+				Id:        2,
+				Method:    "eth_chainId",
+				Selectors: []*dshackle.Selector{{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}}},
 				Data: &dshackle.NativeCallItem_Payload{
 					Payload: []byte(`[]`),
 				},
@@ -90,11 +91,14 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	// Method is the canonical name as sent by the gRPC client; query
 	// params live on RequestParams now, not baked into the path.
 	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method())
-	restReq := requests[0].(*protocol.UpstreamRestRequest)
+	restReq := protocol.UnwrapRequestHolder(requests[0]).(*protocol.UpstreamRestRequest)
 	assert.Equal(t, []string{"true"}, restReq.RequestParams().QueryParams["verbose"])
 
 	assert.Equal(t, protocol.JsonRpc, requests[1].RequestType())
 	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()])
+	selectorCarrier, ok := requests[1].(protocol.SelectorCarrier)
+	require.True(t, ok)
+	assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, selectorCarrier.Selectors())
 }
 
 func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
@@ -348,4 +352,84 @@ func (t *testNativeSubscribeStream) SendMsg(_ any) error {
 
 func (t *testNativeSubscribeStream) RecvMsg(_ any) error {
 	return nil
+}
+
+func TestBuildNativeCallRequestsPropagatesRequestSelectorToJsonRpcAndRestItems(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
+	request := &dshackle.NativeCallRequest{
+		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}},
+		Items: []*dshackle.NativeCallItem{
+			{
+				Id:     1,
+				Method: "eth_chainId",
+				Data:   &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)},
+			},
+			{
+				Id:     2,
+				Method: "GET#/v1/blocks/123",
+				Data: &dshackle.NativeCallItem_RestData{RestData: &dshackle.RestData{
+					QueryParams: []*dshackle.KeyValue{{Key: "verbose", Value: "true"}},
+				}},
+			},
+		},
+	}
+
+	requests, _, failures := service.buildNativeCallRequests(configuredChain, request)
+
+	require.Empty(t, failures)
+	require.Len(t, requests, 2)
+	for _, builtRequest := range requests {
+		selectorCarrier, ok := builtRequest.(protocol.SelectorCarrier)
+		require.True(t, ok)
+		assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, selectorCarrier.Selectors())
+	}
+}
+
+func TestBuildNativeCallRequestsAppendsRequestAndItemSelectors(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
+	request := &dshackle.NativeCallRequest{
+		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}},
+		Items: []*dshackle.NativeCallItem{{
+			Id:        1,
+			Method:    "eth_chainId",
+			Selectors: []*dshackle.Selector{{SelectorType: &dshackle.Selector_ExistsSelector{ExistsSelector: &dshackle.ExistsSelector{Name: "archive"}}}},
+			Data:      &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)},
+		}},
+	}
+
+	requests, _, failures := service.buildNativeCallRequests(configuredChain, request)
+
+	require.Empty(t, failures)
+	require.Len(t, requests, 1)
+	selectorCarrier, ok := requests[0].(protocol.SelectorCarrier)
+	require.True(t, ok)
+	assert.Equal(t, []protocol.RequestSelector{
+		protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}},
+		protocol.RequestExistsSelector{Name: "archive"},
+	}, selectorCarrier.Selectors())
+}
+
+func TestBuildNativeCallRequestsRejectsConflictingRequestAndItemSortSelectorsAtMapping(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil)
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
+	request := &dshackle.NativeCallRequest{
+		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_SAFE}}}},
+		Items: []*dshackle.NativeCallItem{{
+			Id:        1,
+			Method:    "eth_chainId",
+			Selectors: []*dshackle.Selector{{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_FINALIZED}}}}},
+			Data:      &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)},
+		}},
+	}
+
+	requests, _, failures := service.buildNativeCallRequests(configuredChain, request)
+
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, uint32(1), failures[0].GetId())
+	assert.False(t, failures[0].GetSucceed())
+	assert.Equal(t, int32(400), failures[0].GetItemErrorCode())
+	assert.Contains(t, failures[0].GetErrorMessage(), "conflicting selector sort hints")
 }

@@ -64,6 +64,7 @@ type Upstream interface {
 	GetConnector(connectorType specs.ApiConnectorType) connectors.ApiConnector
 	GetHashIndex() string
 	GetCurrentHeadHeight() uint64
+	PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64
 
 	UpdateHead(height, slot uint64)
 	UpdateBlock(block protocol.Block, blockType protocol.BlockType)

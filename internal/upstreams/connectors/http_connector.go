@@ -178,7 +178,7 @@ func (h *HttpConnector) sendJsonRpc(ctx context.Context, request protocol.Reques
 // using its captured path params, layers on the client query and headers,
 // and POSTs/GETs/... at the upstream as appropriate.
 func (h *HttpConnector) sendRest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	restReq, ok := request.(*protocol.UpstreamRestRequest)
+	restReq, ok := protocol.UnwrapRequestHolder(request).(*protocol.UpstreamRestRequest)
 	if !ok {
 		return clientFailure(request, errors.New("rest connector received a non-rest request"))
 	}

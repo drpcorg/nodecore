@@ -115,6 +115,16 @@ func NoAvailableUpstreamsError() *ResponseError {
 	}
 }
 
+func NoAvailableUpstreamsErrorWithCause(cause string) *ResponseError {
+	if cause == "" {
+		return NoAvailableUpstreamsError()
+	}
+	return &ResponseError{
+		Message: fmt.Sprintf("no available upstreams to process a request. Cause - %s", cause),
+		Code:    NoAvailableUpstreams,
+	}
+}
+
 func NotSupportedMethodError(method string) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("the method %s does not exist/is not available", method),
