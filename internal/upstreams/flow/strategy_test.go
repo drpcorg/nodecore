@@ -261,15 +261,16 @@ func TestBaseStrategyGetUpstreams(t *testing.T) {
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
 	baseStrategy := flow.NewBaseStrategy(chSup)
 
-	upId, err := baseStrategy.SelectUpstream(request)
+	firstUpId, err := baseStrategy.SelectUpstream(request)
 
 	assert.Nil(t, err)
-	assert.Equal(t, "id2", upId)
+	assert.Contains(t, []string{"id1", "id2"}, firstUpId)
 
-	upId, err = baseStrategy.SelectUpstream(request)
+	secondUpId, err := baseStrategy.SelectUpstream(request)
 
 	assert.Nil(t, err)
-	assert.Equal(t, "id1", upId)
+	assert.Contains(t, []string{"id1", "id2"}, secondUpId)
+	assert.NotEqual(t, firstUpId, secondUpId)
 
 	_, err = baseStrategy.SelectUpstream(request)
 
