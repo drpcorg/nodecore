@@ -13,17 +13,38 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
+
+func ExpectEthValidationRequest(
+	connector *mocks.ConnectorMock,
+	request protocol.RequestHolder,
+	response protocol.ResponseHolder,
+) {
+	call := connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(UpstreamJsonRpcRequestMatcher(request))).
+		Return(response)
+
+	if response.HasError() {
+		call.Times(validations.RetryMaxAttempts)
+		return
+	}
+
+	call.Once()
+}
 
 func BuildLocalKeyConfig(key string, allowedIps []string, methods *config.AuthMethods, contracts *config.AuthContracts) *config.LocalKeyConfig {
 	return &config.LocalKeyConfig{
@@ -178,32 +199,39 @@ func TestEvmUpstream(
 	)
 }
 
-func NewEvmChainSpecific(connector connectors.ApiConnector) *specific.EvmChainSpecificObject {
-	return specific.NewEvmChainSpecific(context.Background(), "id", connector, chains.GetChain("polygon"), newTestChainOptions())
+func NewEvmChainSpecific(connector connectors.ApiConnector) *evm_specific.EvmChainSpecificObject {
+	return evm_specific.NewEvmChainSpecific(
+		context.Background(),
+		"id",
+		connector,
+		chains.GetChain("polygon"),
+		1*time.Second,
+		newTestChainOptions(),
+	)
 }
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
 	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, newTestChainOptions())
 }
 
-func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AztecChainSpecificObject {
+func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aztec_specific.AztecChainSpecificObject {
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
 		ValidationInterval:      10 * time.Second,
 		DisableChainValidation:  new(false),
 		DisableHealthValidation: new(false),
 	}
-	return specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
+	return aztec_specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
 }
 
-func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.AlgorandChainSpecificObject {
+func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *algorand_specific.AlgorandChainSpecificObject {
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
 		ValidationInterval:      10 * time.Second,
 		DisableChainValidation:  new(false),
 		DisableHealthValidation: new(false),
 	}
-	return specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)
+	return algorand_specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)
 }
 
 func newTestChainOptions() *chains.Options {

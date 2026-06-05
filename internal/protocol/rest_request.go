@@ -20,6 +20,10 @@ type UpstreamRestRequest struct {
 }
 
 func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain) *UpstreamRestRequest {
+	return NewInternalUpstreamRestRequestWithBody(httpMethod, path, nil, chain)
+}
+
+func NewInternalUpstreamRestRequestWithBody(httpMethod, path string, body []byte, chain chains.Chain) *UpstreamRestRequest {
 	verb := normaliseVerb(httpMethod)
 	cleanPath, queryParams := extractQuery(normalisePath(path))
 	method := verb + MethodSeparator + cleanPath
@@ -34,6 +38,7 @@ func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain)
 		requestParams: rp,
 		observer:      NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
 		specMethod:    specMethod,
+		body:          body,
 	}
 }
 

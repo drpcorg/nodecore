@@ -379,7 +379,7 @@ Supported connector types:
 
 - `json-rpc` - HTTP-based JSON-RPC. Available on every chain family
 - `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
-- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand)
+- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`
 - `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
 - `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: an upstream cannot consist of only `rest-additional` connectors - at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket`) must also be configured
 

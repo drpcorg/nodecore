@@ -25,7 +25,7 @@ const (
 	RetryMaxAttempts = 3
 )
 
-func validatorExecutor(upstreamId, validationName string, ignoreErrors []string) failsafe.Executor[protocol.ResponseHolder] {
+func ValidatorExecutor(upstreamId, validationName string, ignoreErrors []string) failsafe.Executor[protocol.ResponseHolder] {
 	retryPolicy := retrypolicy.Builder[protocol.ResponseHolder]()
 
 	retryPolicy.WithMaxAttempts(RetryMaxAttempts)

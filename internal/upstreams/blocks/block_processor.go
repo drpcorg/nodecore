@@ -8,9 +8,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
@@ -40,15 +38,16 @@ type BlockEvent struct {
 }
 
 type EthLikeBlockProcessor struct {
-	upConfig         *config.Upstream
+	upstreamId       string
 	connector        connectors.ApiConnector
-	chainSpecific    specific.ChainSpecific
+	chainSpecific    BlockChainSpecific
 	subManager       *utils.SubscriptionManager[BlockEvent]
 	disableDetection mapset.Set[protocol.BlockType]
 	manualBlockChan  chan *BlockEvent
 	blocks           map[protocol.BlockType]protocol.Block
 	lifecycle        *utils.BaseLifecycle
 	internalTimeout  time.Duration
+	pollInterval     time.Duration
 }
 
 func (b *EthLikeBlockProcessor) Running() bool {
@@ -56,19 +55,20 @@ func (b *EthLikeBlockProcessor) Running() bool {
 }
 
 func (b *EthLikeBlockProcessor) Stop() {
-	log.Info().Msgf("stopping block processor of upstream '%s'", b.upConfig.Id)
+	log.Info().Msgf("stopping block processor of upstream '%s'", b.upstreamId)
 	b.lifecycle.Stop()
 }
 
 func NewEthLikeBlockProcessor(
 	ctx context.Context,
-	upConfig *config.Upstream,
+	upstreamId string,
+	pollInterval, internalTimeout time.Duration,
 	connector connectors.ApiConnector,
-	chainSpecific specific.ChainSpecific,
+	chainSpecific BlockChainSpecific,
 ) *EthLikeBlockProcessor {
-	name := fmt.Sprintf("%s_block_processor", upConfig.Id)
+	name := fmt.Sprintf("%s_block_processor", upstreamId)
 	return &EthLikeBlockProcessor{
-		upConfig:         upConfig,
+		upstreamId:       upstreamId,
 		connector:        connector,
 		chainSpecific:    chainSpecific,
 		disableDetection: mapset.NewSet[protocol.BlockType](),
@@ -76,7 +76,8 @@ func NewEthLikeBlockProcessor(
 		subManager:       utils.NewSubscriptionManager[BlockEvent](name),
 		blocks:           make(map[protocol.BlockType]protocol.Block),
 		lifecycle:        utils.NewBaseLifecycle(name, ctx),
-		internalTimeout:  upConfig.Options.InternalTimeout,
+		internalTimeout:  internalTimeout,
+		pollInterval:     pollInterval,
 	}
 }
 
@@ -105,7 +106,7 @@ func (b *EthLikeBlockProcessor) Start() {
 					if !ok || event.Block.Height > currentBlock.Height {
 						b.subManager.Publish(*event)
 					}
-				case <-time.After(b.upConfig.PollInterval):
+				case <-time.After(b.pollInterval):
 					b.poll(protocol.FinalizedBlock)
 				}
 			}
@@ -130,7 +131,7 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 					}
 				}
 			}
-			log.Error().Err(err).Msgf("couldn't detect finalized block of upstream %s", b.upConfig.Id)
+			log.Error().Err(err).Msgf("couldn't detect finalized block of upstream %s", b.upstreamId)
 		} else {
 			b.blocks[blockType] = block
 			b.subManager.Publish(BlockEvent{Block: block, BlockType: blockType})
