@@ -34,11 +34,13 @@ type TronRestSpecific struct {
 }
 
 func (t *TronRestSpecific) BlockProcessor() blocks.BlockProcessor {
+	disableSafeBlockDetection := t.options.DisableSafeBlockDetection != nil && *t.options.DisableSafeBlockDetection
 	return blocks.NewEthLikeBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,
 		t.options.InternalTimeout,
+		disableSafeBlockDetection,
 		t.connector,
 		t,
 	)

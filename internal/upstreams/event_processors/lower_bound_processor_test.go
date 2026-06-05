@@ -96,3 +96,12 @@ func TestBaseLowerBoundEventProcessorStopStopsUnderlyingProcessor(t *testing.T) 
 	assert.False(t, processor.Running())
 	lowerBoundProcessor.AssertExpectations(t)
 }
+
+func TestBaseLowerBoundEventProcessorPredictLowerBound(t *testing.T) {
+	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
+	lowerBoundProcessor.On("PredictLowerBound", protocol.StateBound, int64(12)).Return(int64(345))
+	processor := event_processors.NewBaseLowerBoundEventProcessor(context.Background(), "id", lowerBoundProcessor)
+
+	assert.Equal(t, int64(345), processor.PredictLowerBound(protocol.StateBound, 12))
+	lowerBoundProcessor.AssertExpectations(t)
+}

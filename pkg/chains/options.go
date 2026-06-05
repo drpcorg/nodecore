@@ -13,6 +13,7 @@ type Options struct {
 	DisableChainValidation      *bool         `yaml:"disable-chain-validation"`
 	DisableHealthValidation     *bool         `yaml:"disable-health-validation"`
 	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
+	DisableSafeBlockDetection   *bool         `yaml:"disable-safe-block-detection"`
 	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
 	ValidatePeers               *bool         `yaml:"validate-peers"`

@@ -113,6 +113,8 @@ func blockTypeToApi(blockType protocol.BlockType) dshackle.FinalizationType {
 	switch blockType {
 	case protocol.FinalizedBlock:
 		return dshackle.FinalizationType_FINALIZATION_FINALIZED_BLOCK
+	case protocol.SafeBlock:
+		return dshackle.FinalizationType_FINALIZATION_SAFE_BLOCK
 	default:
 		return dshackle.FinalizationType_FINALIZATION_UNSPECIFIED
 	}

@@ -159,9 +159,12 @@ func (e *BaseExecutionFlow) AddHooks(hooks ...any) {
 
 func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol.RequestHolder) UpstreamStrategy {
 	chainSupervisor := e.upstreamSupervisor.GetChainSupervisor(e.chain)
+	additionalMatchers := make([]Matcher, 0)
+	matchers, order := buildSelectorRouting(request.Selectors(), e.upstreamSupervisor, chainSupervisor)
+	additionalMatchers = append(additionalMatchers, matchers...)
 	if request.IsSubscribe() {
 		// TODO: calculate rating of subscription methods
-		return NewBaseStrategy(chainSupervisor)
+		return NewBaseStrategyWithOptions(chainSupervisor, additionalMatchers, order)
 	}
 	_, quorumRequested := quorum.FromContext(ctx)
 	stickySend := request.SpecMethod() != nil && request.SpecMethod().IsStickySend()
@@ -173,7 +176,6 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 		return NewFailingStrategy(protocol.QuorumNotSupportedError("sticky-send methods"))
 	}
 
-	additionalMatchers := make([]Matcher, 0)
 	if stickySend {
 		upstreamIndex := ""
 		methodParam := request.ParseParams(ctx)
@@ -193,9 +195,9 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 		if len(drpcIds) == 0 {
 			return NewFailingStrategy(protocol.QuorumNotSupportedError("no DRPC upstream with an HTTP connector available for this chain"))
 		}
-		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor)
+		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor).WithAdditionalMatchers(additionalMatchers).WithOrder(order)
 	}
-	return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry)
+	return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
 }
 
 // filterQuorumCapableUpstreams keeps only DRPC upstreams that expose a

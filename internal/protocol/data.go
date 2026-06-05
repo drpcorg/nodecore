@@ -110,12 +110,15 @@ type BlockType int
 
 const (
 	FinalizedBlock BlockType = iota
+	SafeBlock
 )
 
 func (b BlockType) String() string {
 	switch b {
 	case FinalizedBlock:
 		return "finalized"
+	case SafeBlock:
+		return "safe"
 	default:
 		panic(fmt.Sprintf("unknown blockType %d", b))
 	}
@@ -161,6 +164,7 @@ type RequestHolder interface {
 	RequestHash() string
 	SpecMethod() *specs.Method
 	RequestObserver() *RequestObserver
+	Selectors() []RequestSelector
 
 	ModifyParams(ctx context.Context, newValue any)
 
@@ -182,6 +186,103 @@ type ResponseHolder interface {
 type SubscriptionResponseHolder interface {
 	ResponseHolder
 	IsEventFrame() bool
+}
+
+type RequestBlockTag int
+
+const (
+	BlockTagLatest RequestBlockTag = iota
+	BlockTagSafe
+	BlockTagFinalized
+)
+
+// RequestSelector is a sealed protocol-neutral selector sum type. Keep concrete
+// selector payloads separate so invalid field combinations (for example both a
+// block tag and numeric height) cannot be represented by construction.
+type RequestSelector interface {
+	isRequestSelector()
+}
+
+type RequestAnySelector struct{}
+
+func (RequestAnySelector) isRequestSelector() {}
+
+type RequestLabelSelector struct {
+	Name   string
+	Values []string
+}
+
+func (RequestLabelSelector) isRequestSelector() {}
+
+type RequestExistsSelector struct {
+	Name string
+}
+
+func (RequestExistsSelector) isRequestSelector() {}
+
+type RequestAndSelector struct {
+	Children []RequestSelector
+}
+
+func (RequestAndSelector) isRequestSelector() {}
+
+type RequestOrSelector struct {
+	Children []RequestSelector
+}
+
+func (RequestOrSelector) isRequestSelector() {}
+
+type RequestNotSelector struct {
+	Child RequestSelector
+}
+
+func (RequestNotSelector) isRequestSelector() {}
+
+type RequestHeightSelector struct {
+	Height int64
+}
+
+func (RequestHeightSelector) isRequestSelector() {}
+
+type RequestBlockTagSelector struct {
+	Tag RequestBlockTag
+}
+
+func (RequestBlockTagSelector) isRequestSelector() {}
+
+type RequestSlotHeightSelector struct {
+	SlotHeight int64
+}
+
+func (RequestSlotHeightSelector) isRequestSelector() {}
+
+type RequestLowerHeightSelector struct {
+	Height         int64
+	LowerBoundType LowerBoundType
+	TimeOffset     int64
+	HeightDelta    int64
+}
+
+func (RequestLowerHeightSelector) isRequestSelector() {}
+
+type RequestUnsupportedSelector struct {
+	Reason string
+}
+
+func (RequestUnsupportedSelector) isRequestSelector() {}
+
+type requestSelectorSetter interface {
+	setSelectors([]RequestSelector)
+}
+
+func WithSelectors(request RequestHolder, selectors []RequestSelector) RequestHolder {
+	if request == nil || len(selectors) == 0 {
+		return request
+	}
+	if setter, ok := request.(requestSelectorSetter); ok {
+		setter.setSelectors(selectors)
+	}
+	return request
 }
 
 type UpstreamSubscriptionResponse interface {

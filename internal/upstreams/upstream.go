@@ -152,6 +152,13 @@ func NewBaseUpstreamWithParams(
 	}
 }
 
+func (u *BaseUpstream) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
+	if u.processorAggregator == nil {
+		return 0
+	}
+	return u.processorAggregator.PredictLowerBound(boundType, timeOffset)
+}
+
 func (u *BaseUpstream) GetCurrentHeadHeight() uint64 {
 	state := u.GetUpstreamState()
 	return state.HeadData.Height

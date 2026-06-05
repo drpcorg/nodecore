@@ -21,6 +21,10 @@ type BaseLowerBoundEventProcessor struct {
 	emitter             Emitter
 }
 
+func (b *BaseLowerBoundEventProcessor) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
+	return b.lowerBoundProcessor.PredictLowerBound(boundType, timeOffset)
+}
+
 func (b *BaseLowerBoundEventProcessor) Type() EventProcessorType {
 	return LowerBoundEventProcessorType
 }
