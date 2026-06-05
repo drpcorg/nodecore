@@ -164,6 +164,7 @@ type RequestHolder interface {
 	RequestHash() string
 	SpecMethod() *specs.Method
 	RequestObserver() *RequestObserver
+	Selectors() []RequestSelector
 
 	ModifyParams(ctx context.Context, newValue any)
 
@@ -270,40 +271,18 @@ type RequestUnsupportedSelector struct {
 
 func (RequestUnsupportedSelector) isRequestSelector() {}
 
-type SelectorCarrier interface {
-	Selectors() []RequestSelector
-}
-
-type RequestHolderWithSelectors struct {
-	RequestHolder
-	selectors []RequestSelector
+type requestSelectorSetter interface {
+	setSelectors([]RequestSelector)
 }
 
 func WithSelectors(request RequestHolder, selectors []RequestSelector) RequestHolder {
 	if request == nil || len(selectors) == 0 {
 		return request
 	}
-	return &RequestHolderWithSelectors{
-		RequestHolder: request,
-		selectors:     append([]RequestSelector(nil), selectors...),
+	if setter, ok := request.(requestSelectorSetter); ok {
+		setter.setSelectors(selectors)
 	}
-}
-
-func (r *RequestHolderWithSelectors) Selectors() []RequestSelector {
-	if r == nil {
-		return nil
-	}
-	return append([]RequestSelector(nil), r.selectors...)
-}
-
-func UnwrapRequestHolder(request RequestHolder) RequestHolder {
-	for {
-		wrapper, ok := request.(*RequestHolderWithSelectors)
-		if !ok || wrapper == nil {
-			return request
-		}
-		request = wrapper.RequestHolder
-	}
+	return request
 }
 
 type UpstreamSubscriptionResponse interface {

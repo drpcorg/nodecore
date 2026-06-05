@@ -91,14 +91,12 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	// Method is the canonical name as sent by the gRPC client; query
 	// params live on RequestParams now, not baked into the path.
 	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method())
-	restReq := protocol.UnwrapRequestHolder(requests[0]).(*protocol.UpstreamRestRequest)
+	restReq := requests[0].(*protocol.UpstreamRestRequest)
 	assert.Equal(t, []string{"true"}, restReq.RequestParams().QueryParams["verbose"])
 
 	assert.Equal(t, protocol.JsonRpc, requests[1].RequestType())
 	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()])
-	selectorCarrier, ok := requests[1].(protocol.SelectorCarrier)
-	require.True(t, ok)
-	assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, selectorCarrier.Selectors())
+	assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, requests[1].Selectors())
 }
 
 func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
@@ -380,9 +378,7 @@ func TestBuildNativeCallRequestsPropagatesRequestSelectorToJsonRpcAndRestItems(t
 	require.Empty(t, failures)
 	require.Len(t, requests, 2)
 	for _, builtRequest := range requests {
-		selectorCarrier, ok := builtRequest.(protocol.SelectorCarrier)
-		require.True(t, ok)
-		assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, selectorCarrier.Selectors())
+		assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, builtRequest.Selectors())
 	}
 }
 
@@ -403,12 +399,10 @@ func TestBuildNativeCallRequestsAppendsRequestAndItemSelectors(t *testing.T) {
 
 	require.Empty(t, failures)
 	require.Len(t, requests, 1)
-	selectorCarrier, ok := requests[0].(protocol.SelectorCarrier)
-	require.True(t, ok)
 	assert.Equal(t, []protocol.RequestSelector{
 		protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}},
 		protocol.RequestExistsSelector{Name: "archive"},
-	}, selectorCarrier.Selectors())
+	}, requests[0].Selectors())
 }
 
 func TestBuildNativeCallRequestsRejectsConflictingRequestAndItemSortSelectorsAtMapping(t *testing.T) {

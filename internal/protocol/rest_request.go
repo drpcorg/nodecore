@@ -16,6 +16,7 @@ type UpstreamRestRequest struct {
 	requestParams *RequestParams
 	specMethod    *specs.Method
 	observer      *RequestObserver
+	selectors     []RequestSelector
 	isStream      bool
 }
 
@@ -152,6 +153,14 @@ func (u *UpstreamRestRequest) RequestHash() string {
 
 func (u *UpstreamRestRequest) RequestParams() *RequestParams {
 	return u.requestParams
+}
+
+func (u *UpstreamRestRequest) Selectors() []RequestSelector {
+	return append([]RequestSelector(nil), u.selectors...)
+}
+
+func (u *UpstreamRestRequest) setSelectors(selectors []RequestSelector) {
+	u.selectors = append([]RequestSelector(nil), selectors...)
 }
 
 var _ RequestHolder = (*UpstreamRestRequest)(nil)

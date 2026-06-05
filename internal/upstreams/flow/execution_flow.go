@@ -160,12 +160,8 @@ func (e *BaseExecutionFlow) AddHooks(hooks ...any) {
 func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol.RequestHolder) UpstreamStrategy {
 	chainSupervisor := e.upstreamSupervisor.GetChainSupervisor(e.chain)
 	additionalMatchers := make([]Matcher, 0)
-	var order UpstreamOrder
-	if carrier, ok := request.(protocol.SelectorCarrier); ok {
-		matchers, selectorOrder := buildSelectorRouting(carrier.Selectors(), e.upstreamSupervisor, chainSupervisor)
-		additionalMatchers = append(additionalMatchers, matchers...)
-		order = selectorOrder
-	}
+	matchers, order := buildSelectorRouting(request.Selectors(), e.upstreamSupervisor, chainSupervisor)
+	additionalMatchers = append(additionalMatchers, matchers...)
 	if request.IsSubscribe() {
 		// TODO: calculate rating of subscription methods
 		return NewBaseStrategyWithOptions(chainSupervisor, additionalMatchers, order)

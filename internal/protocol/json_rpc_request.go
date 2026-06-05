@@ -21,6 +21,7 @@ type UpstreamJsonRpcRequest struct {
 	requestKey      string
 	specMethod      *specs.Method
 	requestObserver *RequestObserver
+	selectors       []RequestSelector
 
 	parsed   bool
 	isStream bool
@@ -227,6 +228,14 @@ func (u *UpstreamJsonRpcRequest) RequestObserver() *RequestObserver {
 
 func (u *UpstreamJsonRpcRequest) RequestParams() *RequestParams {
 	return nil
+}
+
+func (u *UpstreamJsonRpcRequest) Selectors() []RequestSelector {
+	return append([]RequestSelector(nil), u.selectors...)
+}
+
+func (u *UpstreamJsonRpcRequest) setSelectors(selectors []RequestSelector) {
+	u.selectors = append([]RequestSelector(nil), selectors...)
 }
 
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)
