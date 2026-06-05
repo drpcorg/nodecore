@@ -120,11 +120,11 @@ func setOptionsDefaults(
 		)
 	}
 	if upstreamOptions.DisableSafeBlockDetection == nil {
-		defaultValue := getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection })
-		chainValue := getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection })
-		if defaultValue != nil || chainValue != nil || upstreamMode == StrictMode {
-			upstreamOptions.DisableSafeBlockDetection = resolveBool(defaultValue, chainValue, false)
-		}
+		upstreamOptions.DisableSafeBlockDetection = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection }),
+			lo.Ternary(upstreamMode == StrictMode, false, true),
+		)
 	}
 	if upstreamOptions.DisableLabelsDetection == nil {
 		upstreamOptions.DisableLabelsDetection = resolveBool(

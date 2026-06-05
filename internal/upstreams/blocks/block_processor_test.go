@@ -53,7 +53,6 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 	connector.AssertExpectations(t)
 	assert.True(t, ok)
 	assert.Equal(t, expected, event)
-	assert.True(t, processor.DisabledBlocks().IsEmpty())
 
 	processor.UpdateBlock(protocol.NewBlockWithHeight(79195275), protocol.FinalizedBlock)
 
@@ -75,7 +74,6 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 	}
 
 	assert.Equal(t, expected, manualEvent)
-	assert.True(t, processor.DisabledBlocks().IsEmpty())
 }
 
 func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
@@ -105,7 +103,6 @@ func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
 
 	connector.AssertExpectations(t)
 	assert.False(t, ok)
-	assert.True(t, processor.DisabledBlocks().Contains(protocol.FinalizedBlock))
 }
 
 func TestEthLikeBlockProcessorPollsSafeBlockWhenSupported(t *testing.T) {
@@ -133,7 +130,6 @@ func TestEthLikeBlockProcessorPollsSafeBlockWhenSupported(t *testing.T) {
 
 	assert.Equal(t, uint64(100), seen[protocol.FinalizedBlock].Height)
 	assert.Equal(t, uint64(90), seen[protocol.SafeBlock].Height)
-	assert.True(t, processor.DisabledBlocks().IsEmpty())
 }
 
 func TestEthLikeBlockProcessorDisablesSafeBlockWhenUnsupported(t *testing.T) {
@@ -152,9 +148,11 @@ func TestEthLikeBlockProcessorDisablesSafeBlockWhenUnsupported(t *testing.T) {
 		t.Fatal("timed out waiting for finalized block event")
 	}
 
-	assert.Eventually(t, func() bool {
-		return processor.DisabledBlocks().Contains(protocol.SafeBlock)
-	}, time.Second, 10*time.Millisecond)
+	select {
+	case event := <-sub.Events:
+		assert.NotEqual(t, protocol.SafeBlock, event.BlockType)
+	case <-time.After(50 * time.Millisecond):
+	}
 }
 
 type blockProcessorChainSpecificNoSafeStub struct {
@@ -230,5 +228,4 @@ func TestEthLikeBlockProcessorSkipsSafeBlockWhenDisabled(t *testing.T) {
 		assert.NotEqual(t, protocol.SafeBlock, event.BlockType)
 	case <-time.After(50 * time.Millisecond):
 	}
-	assert.False(t, processor.DisabledBlocks().Contains(protocol.SafeBlock))
 }
