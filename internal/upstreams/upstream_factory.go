@@ -5,6 +5,12 @@ import (
 	"fmt"
 
 	"github.com/drpcorg/nodecore/internal/stats/hook"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/pkg/methods"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -12,7 +18,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
@@ -98,7 +103,7 @@ func createRateLimiter(
 	return rt, autoTuneRateLimiter
 }
 
-func createLowerBoundsProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) lower_bounds.LowerBoundProcessor {
+func createLowerBoundsProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) lower_bounds.LowerBoundProcessor {
 	if *options.DisableLowerBoundsDetection {
 		return nil
 	}
@@ -141,7 +146,7 @@ func createConnector(
 	}
 }
 
-func createSettingValidationProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[validations.ValidationSettingResult] {
+func createSettingValidationProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[validations.ValidationSettingResult] {
 	if *options.DisableValidation || *options.DisableSettingsValidation {
 		return nil
 	}
@@ -153,7 +158,7 @@ func createSettingValidationProcessor(chainSpecific specific.ChainSpecific, opti
 	return validations.NewSettingsValidationProcessor(validators)
 }
 
-func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[protocol.AvailabilityStatus] {
+func createHealthValidationProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[protocol.AvailabilityStatus] {
 	if *options.DisableValidation || *options.DisableHealthValidation {
 		return nil
 	}
@@ -164,69 +169,68 @@ func createHealthValidationProcessor(chainSpecific specific.ChainSpecific, optio
 	return validations.NewHealthValidationProcessor(validators)
 }
 
-func createLabelsProcessor(chainSpecific specific.ChainSpecific, options *chains.Options) labels.LabelsProcessor {
+func createLabelsProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) labels.LabelsProcessor {
 	if *options.DisableLabelsDetection {
 		return nil
 	}
 	return chainSpecific.LabelsProcessor()
 }
 
-func createBlockProcessor(
-	ctx context.Context,
-	upConfig *config.Upstream,
-	connector connectors.ApiConnector,
-	chainSpecific specific.ChainSpecific,
-	blockchainType chains.BlockchainType,
-) blocks.BlockProcessor {
-	switch blockchainType {
-	case chains.Ethereum:
-		return blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, chainSpecific)
-	default:
-		return nil
-	}
+func createBlockProcessor(chainSpecific chains_specific.ChainSpecific) blocks.BlockProcessor {
+	return chainSpecific.BlockProcessor()
 }
 
 func getChainSpecific(
 	ctx context.Context,
-	upstream Upstream,
-	options *chains.Options,
+	conf *config.Upstream,
 	upstreamConnectorsInfo *connectorsInfo,
 	configuredChain *chains.ConfiguredChain,
-) specific.ChainSpecific {
+) (chains_specific.ChainSpecific, error) {
 	//TODO: there might be a few protocols a chain can work with, so it will be necessary to implement all of them
 	switch configuredChain.Type {
 	case chains.Ethereum:
-		return specific.NewEvmChainSpecific(
+		if chains.IsTron(configuredChain.Chain) {
+			return tron_specific.NewTronSpecific(
+				ctx,
+				conf.Id,
+				upstreamConnectorsInfo.internalRequestConnector,
+				configuredChain,
+				conf.PollInterval,
+				conf.Options,
+			)
+		}
+		return evm_specific.NewEvmChainSpecific(
 			ctx,
-			upstream.GetId(),
+			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			configuredChain,
-			options,
-		)
+			conf.PollInterval,
+			conf.Options,
+		), nil
 	case chains.Aztec:
-		return specific.NewAztecChainSpecificObject(
+		return aztec_specific.NewAztecChainSpecificObject(
 			ctx,
 			configuredChain,
-			upstream.GetId(),
-			options,
+			conf.Id,
+			conf.Options,
 			upstreamConnectorsInfo.internalRequestConnector,
-		)
+		), nil
 	case chains.Algorand:
-		return specific.NewAlgorandChainSpecificObject(
+		return algorand_specific.NewAlgorandChainSpecificObject(
 			ctx,
 			configuredChain,
-			upstream.GetId(),
+			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
-			options,
-		)
+			conf.Options,
+		), nil
 	case chains.Solana:
-		return specific.NewSolanaChainSpecificObject(
+		return solana_specific.NewSolanaChainSpecificObject(
 			ctx,
 			configuredChain,
-			upstream.GetId(),
+			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
-			options,
-		)
+			conf.Options,
+		), nil
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
 	}

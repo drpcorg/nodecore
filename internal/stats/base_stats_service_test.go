@@ -58,24 +58,44 @@ func TestStatsServiceProcessStatsDataAndStop(t *testing.T) {
 	result := protocol.NewUnaryRequestResult().WithUpstreamId("upId")
 	result1 := protocol.NewUnaryRequestResult().WithUpstreamId("upId")
 
+	// Hook ProcessStatsData with a channel so the test waits on a
+	// deterministic signal instead of racing a hard-coded sleep against
+	// the flush ticker.
+	processCalls := make(chan struct{}, 128)
 	client.On("GetStatsSchema").Return([]statsdata.StatsDims{statsdata.UpstreamId})
-	client.On("ProcessStatsData", mock.Anything).Return(nil)
+	client.On("ProcessStatsData", mock.Anything).
+		Run(func(_ mock.Arguments) {
+			processCalls <- struct{}{}
+		}).
+		Return(nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	statsService := NewBaseStatsServiceWithIntegrationClient(ctx, statsCfg, client)
 	statsService.Start(&mockOutbox{})
-
 	statsService.AddRequestResults([]protocol.RequestResult{result, result1})
-	time.Sleep(80 * time.Millisecond)
+
+	// Wait for the first periodic flush (one tick). Generous timeout so
+	// loaded CI can still hit it.
+	select {
+	case <-processCalls:
+	case <-time.After(time.Second):
+		t.Fatal("expected ProcessStatsData call from periodic flush within 1s")
+	}
+
+	// Stop is synchronous to process(): it blocks on waitChan, which is
+	// closed only after process()'s final flush() returns — so the
+	// shutdown flush's ProcessStatsData call has already been recorded
+	// by the time Stop returns. No post-Stop sleep is needed.
+	assert.NoError(t, statsService.Stop(context.Background()))
+
+	select {
+	case <-processCalls:
+	default:
+		t.Fatal("expected ProcessStatsData call from Stop's final flush")
+	}
 
 	client.AssertExpectations(t)
-
-	cancel()
-	err := statsService.Stop(context.Background())
-	assert.NoError(t, err)
-
-	time.Sleep(30 * time.Millisecond)
-	client.AssertNumberOfCalls(t, "ProcessStatsData", 2)
 }
 
 // ======================================= OUTBOX ===============================================

@@ -7,11 +7,20 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
+
+type BlockChainSpecific interface {
+	GetLatestBlock(ctx context.Context) (protocol.Block, error)
+	GetFinalizedBlock(context.Context) (protocol.Block, error)
+
+	ParseBlock([]byte) (protocol.Block, error)
+	ParseSubscriptionBlock(data []byte) (protocol.Block, error)
+
+	SubscribeHeadRequest() (protocol.RequestHolder, error)
+}
 
 type Head interface {
 	utils.Lifecycle
@@ -24,7 +33,7 @@ type Head interface {
 type RpcHead struct {
 	lifecycle       *utils.BaseLifecycle
 	block           *utils.Atomic[protocol.Block]
-	chainSpecific   specific.ChainSpecific
+	chainSpecific   BlockChainSpecific
 	pollInterval    time.Duration
 	internalTimeout time.Duration
 	upstreamId      string
@@ -52,7 +61,7 @@ func NewRpcHead(
 	upstreamId string,
 	internalTimeout,
 	pollInterval time.Duration,
-	chainSpecific specific.ChainSpecific,
+	chainSpecific BlockChainSpecific,
 ) *RpcHead {
 	head := RpcHead{
 		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_rpc_head", upstreamId), ctx),
@@ -118,7 +127,7 @@ func (r *RpcHead) poll() {
 type SubscriptionHead struct {
 	lifecycle       *utils.BaseLifecycle
 	block           *utils.Atomic[protocol.Block]
-	chainSpecific   specific.ChainSpecific
+	chainSpecific   BlockChainSpecific
 	headConnector   connectors.ApiConnector
 	upstreamId      string
 	subOpId         *utils.Atomic[string]
@@ -220,7 +229,7 @@ func NewSubHead(
 	upstreamId string,
 	internalTimeout time.Duration,
 	headConnector connectors.ApiConnector,
-	chainSpecific specific.ChainSpecific,
+	chainSpecific BlockChainSpecific,
 ) *SubscriptionHead {
 	head := SubscriptionHead{
 		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_subscription_head", upstreamId), ctx),

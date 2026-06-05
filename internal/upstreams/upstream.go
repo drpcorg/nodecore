@@ -89,10 +89,13 @@ func NewBaseUpstream(
 		emitter:          emitter,
 	}
 
-	chainSpecific := getChainSpecific(ctx, upstream, conf.Options, creationData.upstreamConnectorsInfo, configuredChain)
+	chainSpecific, err := getChainSpecific(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
+	if err != nil {
+		return nil, err
+	}
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
-			CreateBlockEventProcessor(ctx, conf, creationData.upstreamConnectorsInfo.internalRequestConnector, chainSpecific, configuredChain),
+			CreateBlockEventProcessor(ctx, conf, chainSpecific, configuredChain),
 			CreateHeadEventProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific, configuredChain.Chain),
 			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
 			CreateHealthEventProcessor(ctx, conf, chainSpecific),
@@ -187,6 +190,7 @@ func (u *BaseUpstream) Start() {
 				log.Debug().Msgf("upstream '%s' has unknown result of settings validation, skipping", u.id)
 			}
 		}
+		u.emitter(&protocol.InitUpstreamStateEvent{})
 		go u.processStateEvents(ctx, initialValid)
 		return nil
 	})

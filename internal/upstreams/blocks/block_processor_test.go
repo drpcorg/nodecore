@@ -32,7 +32,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, connector, test_utils.NewEvmChainSpecific(connector))
 	go processor.Start()
 
 	sub := processor.Subscribe("sub")
@@ -83,7 +83,7 @@ func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, connector, test_utils.NewEvmChainSpecific(connector))
 	go processor.Start()
 
 	sub := processor.Subscribe("sub")

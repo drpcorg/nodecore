@@ -21,9 +21,11 @@ type LowerBoundProbe func(height int64) (bool, error)
 type LowerBoundLatestHeightFetcher func() (int64, error)
 
 type LowerBoundSearchCalculator struct {
-	upstreamId string
-	boundType  protocol.LowerBoundType
-	period     time.Duration
+	UpstreamId    string
+	MainBoundType protocol.LowerBoundType
+
+	allSupportedTypes []protocol.LowerBoundType
+	period            time.Duration
 
 	retryAttempts int
 	retryDelay    time.Duration
@@ -37,11 +39,28 @@ func NewLowerBoundSearchCalculator(
 	period time.Duration,
 ) *LowerBoundSearchCalculator {
 	return &LowerBoundSearchCalculator{
-		upstreamId:    upstreamId,
-		boundType:     boundType,
-		period:        period,
-		retryAttempts: defaultLowerBoundSearchRetryAttempts,
-		retryDelay:    defaultLowerBoundSearchRetryDelay,
+		UpstreamId:        upstreamId,
+		MainBoundType:     boundType,
+		period:            period,
+		retryAttempts:     defaultLowerBoundSearchRetryAttempts,
+		retryDelay:        defaultLowerBoundSearchRetryDelay,
+		allSupportedTypes: []protocol.LowerBoundType{boundType},
+	}
+}
+
+func NewLowerBoundSearchCalculatorWithSupportedTypes(
+	upstreamId string,
+	boundType protocol.LowerBoundType,
+	allSupportedTypes []protocol.LowerBoundType,
+	period time.Duration,
+) *LowerBoundSearchCalculator {
+	return &LowerBoundSearchCalculator{
+		UpstreamId:        upstreamId,
+		MainBoundType:     boundType,
+		period:            period,
+		retryAttempts:     defaultLowerBoundSearchRetryAttempts,
+		retryDelay:        defaultLowerBoundSearchRetryDelay,
+		allSupportedTypes: allSupportedTypes,
 	}
 }
 
@@ -51,10 +70,10 @@ func (c *LowerBoundSearchCalculator) DetectLowerBound(
 ) ([]protocol.LowerBoundData, error) {
 	latest, err := c.withRetryLatestHeight(fetchLatestHeight)
 	if err != nil {
-		return nil, fmt.Errorf("cannot fetch latest height for upstream '%s': %w", c.upstreamId, err)
+		return nil, fmt.Errorf("cannot fetch latest height for upstream '%s': %w", c.UpstreamId, err)
 	}
 	if latest <= 0 {
-		return nil, fmt.Errorf("upstream '%s' returned non-positive latest height %d", c.upstreamId, latest)
+		return nil, fmt.Errorf("upstream '%s' returned non-positive latest height %d", c.UpstreamId, latest)
 	}
 
 	bound, err := c.locateBound(c.lastBound.Load(), latest, probe)
@@ -63,11 +82,11 @@ func (c *LowerBoundSearchCalculator) DetectLowerBound(
 	}
 	c.lastBound.Store(bound)
 
-	return []protocol.LowerBoundData{protocol.NewLowerBoundDataNow(bound, c.boundType)}, nil
+	return []protocol.LowerBoundData{protocol.NewLowerBoundDataNow(bound, c.MainBoundType)}, nil
 }
 
 func (c *LowerBoundSearchCalculator) SupportedTypes() []protocol.LowerBoundType {
-	return []protocol.LowerBoundType{c.boundType}
+	return c.allSupportedTypes
 }
 
 func (c *LowerBoundSearchCalculator) Period() time.Duration {
@@ -94,14 +113,14 @@ func (c *LowerBoundSearchCalculator) locateBound(cached, latest int64, probe Low
 		return 1, nil
 	}
 	if latest < 2 {
-		return 0, fmt.Errorf("upstream '%s' retains no %s data (latest=%d)", c.upstreamId, c.boundType.String(), latest)
+		return 0, fmt.Errorf("upstream '%s' retains no %s data (latest=%d)", c.UpstreamId, c.MainBoundType.String(), latest)
 	}
 	return c.binarySearchLower(2, latest, probe)
 }
 
 func (c *LowerBoundSearchCalculator) binarySearchLower(lo, hi int64, probe LowerBoundProbe) (int64, error) {
 	if lo > hi {
-		return 0, fmt.Errorf("upstream '%s' empty %s lower-bound range [%d, %d]", c.upstreamId, c.boundType.String(), lo, hi)
+		return 0, fmt.Errorf("upstream '%s' empty %s lower-bound range [%d, %d]", c.UpstreamId, c.MainBoundType.String(), lo, hi)
 	}
 
 	var searchErr error
@@ -122,7 +141,7 @@ func (c *LowerBoundSearchCalculator) binarySearchLower(lo, hi int64, probe Lower
 		return 0, searchErr
 	}
 	if idx == searchRange {
-		return 0, fmt.Errorf("upstream '%s' has no retained %s data in [%d, %d]", c.upstreamId, c.boundType.String(), lo, hi)
+		return 0, fmt.Errorf("upstream '%s' has no retained %s data in [%d, %d]", c.UpstreamId, c.MainBoundType.String(), lo, hi)
 	}
 	return lo + int64(idx), nil
 }

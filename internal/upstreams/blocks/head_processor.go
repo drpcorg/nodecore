@@ -7,7 +7,6 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/methods"
@@ -42,7 +41,7 @@ func NewBaseHeadProcessor(
 	ctx context.Context,
 	upConfig *config.Upstream,
 	headConnector connectors.ApiConnector,
-	specific specific.ChainSpecific,
+	specific BlockChainSpecific,
 ) *BaseHeadProcessor {
 	configuredChain := chains.GetChain(upConfig.ChainName)
 	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, headConnector, specific, upConfig.Options)
@@ -132,7 +131,7 @@ func createHead(
 	ctx context.Context,
 	id string, pollInterval time.Duration,
 	headConnector connectors.ApiConnector,
-	specific specific.ChainSpecific,
+	specific BlockChainSpecific,
 	options *chains.Options,
 ) Head {
 	switch headConnector.GetType() {

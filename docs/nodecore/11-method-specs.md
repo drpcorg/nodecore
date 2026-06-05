@@ -148,6 +148,8 @@ A bundle stitches together transport-specific plain specs:
 
 The resulting `eth` spec carries every method declared by `eth-json-rpc` plus every method declared by `eth-websocket`, attached to the corresponding `api-connectors`.
 
+The `tron` bundle is the multi-transport example: it composes `tron-json-rpc` (Ethereum-compatible `/jsonrpc`), `tron-rest` (the canonical `/wallet/*` HTTP API), and `tron-rest-solidity` (a `rest-additional` mirror over `/walletsolidity/*` for confirmed-only reads). The resulting `tron` spec carries methods across all three connectors at once.
+
 ## Shipped specs
 
 As of today, nodecore embeds the following spec files (see `pkg/methods/specs/`):

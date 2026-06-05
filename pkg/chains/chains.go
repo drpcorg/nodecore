@@ -102,6 +102,10 @@ func init() {
 	grpcChains = grpcResult
 }
 
+func IsTron(chain Chain) bool {
+	return chain == TRON || chain == TRON_SHASTA
+}
+
 func (c *ConfiguredChain) AverageRemoveSpeed() float64 {
 	return math.Ceil((1000.0/float64(c.Settings.ExpectedBlockTime.Milliseconds()))*100) / 100
 }
