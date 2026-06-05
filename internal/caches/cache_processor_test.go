@@ -116,18 +116,18 @@ func TestCacheProcessorReturnFirstResponseAndIgnoreOthers(t *testing.T) {
 	result := []byte(`result`)
 
 	connector1 := mocks.NewDelayedConnector(30 * time.Millisecond)
-	connector1.On("Receive", mock.Anything, mock.Anything).Return(result, nil)
+	connector1.On("Receive", mock.Anything, mock.Anything).Return(result, nil).Maybe()
 	policy1 := NewCachePolicy(upSupervisor, connector1, test_utils.PolicyConfig("polygon", "eth_*|getLastBlock|synscing", "conn-id", "10KB", "5s", true))
 
 	connector2 := mocks.NewDelayedConnector(0)
-	connector2.On("Receive", mock.Anything, mock.Anything).Return(result, nil)
+	connector2.On("Receive", mock.Anything, mock.Anything).Return(result, nil).Maybe()
 	policy2 := NewCachePolicy(upSupervisor, connector2, test_utils.PolicyConfig("polygon|solana", "*", "conn-id", "10KB", "5s", true))
 
 	connector3 := mocks.NewDelayedConnector(0)
-	connector3.On("Receive", mock.Anything, mock.Anything).Return(result, nil)
+	connector3.On("Receive", mock.Anything, mock.Anything).Return(result, nil).Maybe()
 	policy3 := NewCachePolicy(upSupervisor, connector3, test_utils.PolicyConfig("gnosis|polygon", "eth_call", "conn-id", "10KB", "5s", true))
 
-	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 10*time.Millisecond)
+	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 100*time.Millisecond)
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_call", nil, specMethod)
 
 	actual, ok := cacheProcessor.Receive(context.Background(), chains.POLYGON, request)

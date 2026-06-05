@@ -12,9 +12,9 @@ import (
 )
 
 func TestUpstreamMethodsNoSpecThenError(t *testing.T) {
-	_, err := methods.NewUpstreamMethods("test", nil, nil)
+	_, err := methods.NewUpstreamMethods("missing-method-spec", nil, nil)
 
-	assert.ErrorContains(t, err, "no method spec with name 'test'")
+	assert.ErrorContains(t, err, "no method spec with name 'missing-method-spec'")
 }
 
 func TestUpstreamMethodsOnlyFromSpec(t *testing.T) {
