@@ -110,11 +110,17 @@
     },
     {
       "name": "POST#/wallet/getblock",
-      "params": []
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
     },
     {
       "name": "GET#/wallet/getblock",
-      "params": []
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
     },
     {
       "name": "POST#/wallet/getblockbynum",

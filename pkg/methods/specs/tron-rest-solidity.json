@@ -40,11 +40,17 @@
     },
     {
       "name": "POST#/walletsolidity/getblock",
-      "params": []
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
     },
     {
       "name": "GET#/walletsolidity/getblock",
-      "params": []
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
     },
     {
       "name": "POST#/walletsolidity/getblockbynum",
