@@ -66,11 +66,12 @@ Each method object:
 
 ```json
 "settings": {
-  "cacheable": true,
+  "cacheable": false,
   "enforce-integrity": false,
   "local": false,
-  "sticky": { "send-sticky": true, "create-sticky": false },
-  "subscription": { "is-subscribe": true, "method": "subscribe", "unsubscribe-method": "unsubscribe" }
+  "dispatch": "broadcast",
+  "sticky": { "send-sticky": false, "create-sticky": false },
+  "subscription": { "is-subscribe": false, "method": "subscribe", "unsubscribe-method": "unsubscribe" }
 }
 ```
 
@@ -85,6 +86,11 @@ Each method object:
   - `is-subscribe: true` — declares this method as a subscription open call.
   - `method` (string) — for sub helpers; the underlying JSON-RPC method name when it differs from the entry's `name`.
   - `unsubscribe-method` (string) — the paired unsubscribe method.
+- `dispatch` (string) — optional fan-out execution policy for unary methods. Supported values:
+  - `broadcast` — nodecore sends the same request to every matching available upstream, waits for fan-out to complete, and returns the first successful response in selected-upstream order (not the fastest response). This is intended for transaction propagation methods such as `eth_sendRawTransaction`. If all upstreams fail, nodecore returns a deterministic upstream/protocol error.
+  - `maximum-value` — nodecore sends the request to every matching available upstream and returns the successful response with the largest hex quantity result. This is intended for nonce-like methods such as `eth_getTransactionCount`. Invalid/error responses are ignored if at least one valid value exists.
+  - Dispatch methods must not be `local`, `subscription`, or sticky methods. Fan-out execution bypasses the normal cache processor path; dispatch methods should set `cacheable: false` because one client request intentionally maps to multiple upstream calls.
+  - Dispatch increases upstream load and usually makes latency depend on the slowest selected upstream, bounded by existing connector/request timeouts.
 
 ### `tag-parser`
 

@@ -1,0 +1,27 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TEST JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "test",
+    "api-connectors": ["json-rpc"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "eth_subscribe",
+      "settings": {
+        "cacheable": false,
+        "dispatch": "broadcast",
+        "subscription": {
+          "is-subscribe": true,
+          "method": "eth_subscribe",
+          "unsubscribe-method": "eth_unsubscribe"
+        }
+      },
+      "params": []
+    }
+  ]
+}

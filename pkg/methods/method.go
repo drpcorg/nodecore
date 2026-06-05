@@ -30,6 +30,7 @@ type Method struct {
 	cacheable        bool
 	enforceIntegrity bool
 	local            bool
+	dispatch         DispatchPolicy
 }
 
 type jqParser struct {
@@ -89,6 +90,18 @@ func (m *Method) IsLocal() bool {
 	return m.local
 }
 
+func (m *Method) DispatchPolicy() DispatchPolicy {
+	return m.dispatch
+}
+
+func (m *Method) IsBroadcastDispatch() bool {
+	return m.dispatch == DispatchBroadcast
+}
+
+func (m *Method) IsMaximumValueDispatch() bool {
+	return m.dispatch == DispatchMaximumValue
+}
+
 func (m *Method) GetApiConnectorTypes() []ApiConnectorType {
 	return slices.Clone(m.apiConnectorTypes)
 }
@@ -133,6 +146,7 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 	cacheable := true
 	local := false
 	enforceIntegrity := false
+	dispatch := DispatchDefault
 	if methodData.Settings != nil {
 		if methodData.Settings.Cacheable != nil {
 			cacheable = *methodData.Settings.Cacheable
@@ -142,6 +156,7 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 		}
 		enforceIntegrity = methodData.Settings.EnforceIntegrity
 		local = methodData.Settings.Local
+		dispatch = methodData.Settings.Dispatch
 		if methodData.Settings.Sticky != nil {
 			sticky = methodData.Settings.Sticky
 			if methodData.Settings.Sticky.SendSticky && methodData.TagParser != nil {
@@ -166,6 +181,7 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 		cacheable:         cacheable,
 		local:             local,
 		enforceIntegrity:  enforceIntegrity,
+		dispatch:          dispatch,
 		Name:              methodData.Name,
 		parser:            parser,
 		modifyParser:      modifyParser,

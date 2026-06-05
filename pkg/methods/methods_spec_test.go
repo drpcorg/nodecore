@@ -115,6 +115,43 @@ func TestLoadSpecWrongStickySettings(t *testing.T) {
 	assert.ErrorContains(t, err, "couldn't read method specs: error during method 'eth_uninstallFilter' of 'spec.json' validation, cause: both 'create-sticky' and 'send-sticky' are enabled")
 }
 
+func TestLoadSpecWrongDispatchSettings(t *testing.T) {
+	tests := []struct {
+		name        string
+		dir         string
+		expectedErr string
+	}{
+		{
+			name:        "unknown dispatch",
+			dir:         "test_specs/wrong_dispatch_unknown",
+			expectedErr: "couldn't read method specs: error during method 'eth_sendRawTransaction' of 'spec.json' validation, cause: unknown dispatch policy - wrong",
+		},
+		{
+			name:        "local conflict",
+			dir:         "test_specs/wrong_dispatch_local",
+			expectedErr: "couldn't read method specs: error during method 'eth_sendRawTransaction' of 'spec.json' validation, cause: dispatch cannot be used with local methods",
+		},
+		{
+			name:        "subscription conflict",
+			dir:         "test_specs/wrong_dispatch_subscription",
+			expectedErr: "couldn't read method specs: error during method 'eth_subscribe' of 'spec.json' validation, cause: dispatch cannot be used with subscription methods",
+		},
+		{
+			name:        "sticky conflict",
+			dir:         "test_specs/wrong_dispatch_sticky",
+			expectedErr: "couldn't read method specs: error during method 'eth_getFilterChanges' of 'spec.json' validation, cause: dispatch cannot be used with sticky methods",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := specs.NewMethodSpecLoaderWithFs(os.DirFS(tt.dir)).Load()
+
+			assert.ErrorContains(t, err, tt.expectedErr)
+		})
+	}
+}
+
 func TestLoadSpecMergeMethods(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/merge_methods")).Load()
 
