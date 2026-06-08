@@ -26,6 +26,9 @@ func NewUpstreamMethods(
 	methodsConfig *config.MethodsConfig,
 	apiConnectorTypes []specs.ApiConnectorType,
 ) (*UpstreamMethods, error) {
+	if methodsConfig == nil {
+		methodsConfig = &config.MethodsConfig{}
+	}
 	specMethods := specs.GetSpecMethodsByConnectors(methodSpecName, apiConnectorTypes)
 	if specMethods == nil {
 		return nil, fmt.Errorf("no method spec with name '%s'", methodSpecName)

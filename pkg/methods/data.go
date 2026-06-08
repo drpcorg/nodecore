@@ -51,12 +51,21 @@ type MethodData struct {
 }
 
 type MethodSettings struct {
-	Cacheable        *bool         `json:"cacheable"`
-	EnforceIntegrity bool          `json:"enforce-integrity"`
-	Sticky           *Sticky       `json:"sticky"`
-	Subscription     *Subscription `json:"subscription"`
-	Local            bool          `json:"local"`
+	Cacheable        *bool          `json:"cacheable"`
+	EnforceIntegrity bool           `json:"enforce-integrity"`
+	Sticky           *Sticky        `json:"sticky"`
+	Subscription     *Subscription  `json:"subscription"`
+	Local            bool           `json:"local"`
+	Dispatch         DispatchPolicy `json:"dispatch"`
 }
+
+type DispatchPolicy string
+
+const (
+	DispatchDefault      DispatchPolicy = ""
+	DispatchBroadcast    DispatchPolicy = "broadcast"
+	DispatchMaximumValue DispatchPolicy = "maximum-value"
+)
 
 type Sticky struct {
 	SendSticky   bool `json:"send-sticky"`   // to send to the same node
@@ -142,12 +151,35 @@ func (m *MethodData) validate() error {
 }
 
 func (m *MethodSettings) validate() error {
+	if err := m.Dispatch.validate(); err != nil {
+		return err
+	}
+	if m.Dispatch != DispatchDefault {
+		if m.Local {
+			return errors.New("dispatch cannot be used with local methods")
+		}
+		if m.Subscription != nil && m.Subscription.IsSubscribe {
+			return errors.New("dispatch cannot be used with subscription methods")
+		}
+		if m.Sticky != nil && (m.Sticky.SendSticky || m.Sticky.CreateSticky) {
+			return errors.New("dispatch cannot be used with sticky methods")
+		}
+	}
 	if m.Sticky != nil {
 		if m.Sticky.CreateSticky && m.Sticky.SendSticky {
 			return errors.New("both 'create-sticky' and 'send-sticky' are enabled")
 		}
 	}
 	return nil
+}
+
+func (d DispatchPolicy) validate() error {
+	switch d {
+	case DispatchDefault, DispatchBroadcast, DispatchMaximumValue:
+		return nil
+	default:
+		return fmt.Errorf("unknown dispatch policy - %s", d)
+	}
 }
 
 func (p *TagParser) validate() error {

@@ -331,7 +331,8 @@
     {
       "name": "eth_getTransactionCount",
       "settings": {
-        "cacheable": false
+        "cacheable": false,
+        "dispatch": "maximum-value"
       },
       "params": []
     },
@@ -362,7 +363,8 @@
     {
       "name": "eth_sendRawTransaction",
       "settings": {
-        "cacheable": false
+        "cacheable": false,
+        "dispatch": "broadcast"
       },
       "params": []
     },

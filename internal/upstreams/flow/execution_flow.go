@@ -168,12 +168,19 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 	}
 	_, quorumRequested := quorum.FromContext(ctx)
 	stickySend := request.SpecMethod() != nil && request.SpecMethod().IsStickySend()
+	dispatchPolicy := specs.DispatchDefault
+	if request.SpecMethod() != nil {
+		dispatchPolicy = request.SpecMethod().DispatchPolicy()
+	}
 
 	// Quorum reads cannot piggyback on sticky-send methods: signatures are
 	// computed over a read result, not on a submission, and the sticky
 	// matcher would also be dropped by the DRPC-only strategy.
 	if quorumRequested && stickySend {
 		return NewFailingStrategy(protocol.QuorumNotSupportedError("sticky-send methods"))
+	}
+	if quorumRequested && dispatchPolicy != specs.DispatchDefault {
+		return NewFailingStrategy(protocol.QuorumNotSupportedError("dispatch methods"))
 	}
 
 	if stickySend {
@@ -296,6 +303,9 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 		reqObserver.WithRequestKind(protocol.Local)
 	} else if isStickyRequest(request.SpecMethod()) {
 		requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
+		reqObserver.WithRequestKind(protocol.Unary)
+	} else if request.SpecMethod().DispatchPolicy() != specs.DispatchDefault {
+		requestProcessor = NewFanoutRequestProcessor(e.upstreamSupervisor, request.SpecMethod().DispatchPolicy())
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else if shouldEnforceIntegrity(request.SpecMethod(), e.appConfig.UpstreamConfig.IntegrityConfig) {
 		requestProcessor = NewIntegrityRequestProcessor(
