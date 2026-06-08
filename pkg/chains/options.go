@@ -15,6 +15,7 @@ type Options struct {
 	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
 	DisableSafeBlockDetection   *bool         `yaml:"disable-safe-block-detection"`
 	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
+	DisableLogIndexValidation   *bool         `yaml:"disable-log-index-validation"`
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
 	ValidatePeers               *bool         `yaml:"validate-peers"`
 	MinPeers                    int64         `yaml:"min-peers"`

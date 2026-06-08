@@ -98,6 +98,9 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	if len(e.chain.GasPriceCondition) > 0 {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthGasPriceValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
+	if e.options.DisableLogIndexValidation == nil || !*e.options.DisableLogIndexValidation {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthLogIndexValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
 
 	return settingsValidators
 }

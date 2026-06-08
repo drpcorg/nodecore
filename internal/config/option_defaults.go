@@ -133,6 +133,13 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
+	if upstreamOptions.DisableLogIndexValidation == nil {
+		upstreamOptions.DisableLogIndexValidation = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),
+			lo.Ternary(upstreamMode == StrictMode, false, true),
+		)
+	}
 	if upstreamOptions.ValidateSyncing == nil {
 		upstreamOptions.ValidateSyncing = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateSyncing }),
