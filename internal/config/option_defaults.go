@@ -161,6 +161,13 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, true, false),
 		)
 	}
+	if upstreamOptions.ValidateClientVersion == nil {
+		upstreamOptions.ValidateClientVersion = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateClientVersion }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateClientVersion }),
+			lo.Ternary(upstreamMode == StrictMode, true, false),
+		)
+	}
 	if upstreamOptions.CallLimitSize == 0 {
 		upstreamOptions.CallLimitSize = resolveInt64(
 			getInt64(defaultChainOptions, func(options *chains.Options) int64 { return options.CallLimitSize }),

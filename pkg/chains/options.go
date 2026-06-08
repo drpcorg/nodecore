@@ -19,6 +19,7 @@ type Options struct {
 	ValidatePeers               *bool         `yaml:"validate-peers"`
 	MinPeers                    int64         `yaml:"min-peers"`
 	ValidateCallLimit           *bool         `yaml:"validate-call-limit"`
+	ValidateClientVersion       *bool         `yaml:"validate-client-version"`
 	CallLimitSize               int64         `yaml:"call-limit-size"`
 }
 
