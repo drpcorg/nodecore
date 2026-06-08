@@ -291,9 +291,13 @@ type UpstreamSubscriptionResponse interface {
 }
 
 type ResponseHolderWrapper struct {
-	UpstreamId string
-	RequestId  string
-	Response   ResponseHolder
+	UpstreamId            string
+	RequestId             string
+	UpstreamNodeVersion   string
+	RequestBlockTag       *RequestBlockTag
+	FinalizationBlockType *BlockType
+	FinalizationBlock     Block
+	Response              ResponseHolder
 }
 
 type AvailabilityStatus int

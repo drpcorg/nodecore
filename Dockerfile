@@ -15,8 +15,10 @@ COPY cmd/ ./cmd/
 COPY internal/ ./internal/
 COPY Makefile ./
 
+ARG VERSION=dev
+ARG GIT_SHA=
 # Build the application
-RUN make build
+RUN make build VERSION=${VERSION} GIT_SHA=${GIT_SHA}
 
 # Final stage
 FROM alpine:3.18

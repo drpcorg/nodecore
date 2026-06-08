@@ -92,6 +92,9 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	if *e.options.ValidateCallLimit && e.chain.CallValidateContract != "" {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthCallLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
+	if len(e.chain.GasPriceCondition) > 0 {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthGasPriceValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
 
 	return settingsValidators
 }

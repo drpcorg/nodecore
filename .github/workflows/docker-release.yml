@@ -133,3 +133,5 @@ jobs:
             type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            VERSION=${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+            GIT_SHA=${{ github.sha }}

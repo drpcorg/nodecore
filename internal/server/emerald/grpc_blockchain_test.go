@@ -2,6 +2,7 @@ package emerald
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -173,7 +174,7 @@ func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
 	reader := strings.NewReader(`{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`)
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallBody(7, "upstream-1", reader, 4, unwrapJsonRpcResultStream, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, 4, unwrapJsonRpcResultStream, nil, stream)
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 3)
 
@@ -188,13 +189,16 @@ func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
 	assert.Equal(t, "]", string(stream.sent[2].GetPayload()))
 	assert.True(t, stream.sent[2].GetChunked())
 	assert.True(t, stream.sent[2].GetFinalChunk())
+	assert.Equal(t, "erigon/2.60", stream.sent[0].GetUpstreamNodeVersion())
+	assert.Equal(t, "erigon/2.60", stream.sent[1].GetUpstreamNodeVersion())
+	assert.Equal(t, "erigon/2.60", stream.sent[2].GetUpstreamNodeVersion())
 }
 
 func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	reader := strings.NewReader(`{"hello":"world"}`)
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallBody(7, "upstream-1", reader, 8, passThroughStream, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, 8, passThroughStream, nil, stream)
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 3)
 
@@ -228,6 +232,46 @@ func TestNativeCallSuccessItemsChunking(t *testing.T) {
 	assert.Equal(t, "89", string(items[2].GetPayload()))
 }
 
+func TestNativeCallSendReplyReturnsSuccessItemWithResponseUpstreamId(t *testing.T) {
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId:          "upstream-1",
+		RequestId:           "1",
+		Response:            protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc),
+		UpstreamNodeVersion: "erigon/v3.0.0",
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 1)
+
+	assert.Equal(t, "upstream-1", stream.sent[0].GetUpstreamId())
+	assert.Equal(t, "erigon/v3.0.0", stream.sent[0].GetUpstreamNodeVersion())
+	assert.Equal(t, uint32(1), stream.sent[0].GetId())
+	assert.True(t, stream.sent[0].GetSucceed())
+	assert.Equal(t, `"0x1"`, string(stream.sent[0].GetPayload()))
+}
+
+func TestNativeCallSendReplyReturnsErrorItemWithResponseUpstreamId(t *testing.T) {
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId:          "upstream-err",
+		RequestId:           "1",
+		Response:            protocol.NewHttpUpstreamResponseWithError(protocol.ServerErrorWithCause(fmt.Errorf("message"))),
+		UpstreamNodeVersion: "reth/v1.6.0",
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 1)
+
+	assert.Equal(t, "upstream-err", stream.sent[0].GetUpstreamId())
+	assert.Equal(t, "reth/v1.6.0", stream.sent[0].GetUpstreamNodeVersion())
+	assert.Equal(t, uint32(1), stream.sent[0].GetId())
+	assert.False(t, stream.sent[0].GetSucceed())
+	assert.NotEmpty(t, stream.sent[0].GetErrorMessage())
+}
+
 // REST GET responses carry meaningful headers (Content-Type, CORS,
 // quorum signatures, ...). Streaming + error replies already forwarded
 // them; this test pins the unary-success path so a future refactor
@@ -240,9 +284,10 @@ func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
 	resp := protocol.NewSimpleHttpUpstreamResponse("42", []byte(`{"ok":true}`), protocol.Rest).
 		WithResponseHeaders(upstreamHeaders)
 	wrapper := &protocol.ResponseHolderWrapper{
-		UpstreamId: "upstream-1",
-		RequestId:  "42",
-		Response:   resp,
+		UpstreamId:          "upstream-1",
+		RequestId:           "42",
+		Response:            resp,
+		UpstreamNodeVersion: "geth/1.14",
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
@@ -251,6 +296,7 @@ func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
 	require.Len(t, stream.sent, 1)
 
 	got := stream.sent[0].GetResponseHeaders()
+	assert.Equal(t, "geth/1.14", stream.sent[0].GetUpstreamNodeVersion())
 	require.NotEmpty(t, got, "unary REST success must forward upstream headers")
 
 	flattened := make(map[string][]string)

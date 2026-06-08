@@ -2,6 +2,7 @@ package emerald_test
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -201,6 +202,8 @@ func TestSubscribeChainStatus_SendsFullResponseForExistingSupervisor(t *testing.
 	require.NotNil(t, response.ChainDescription)
 	assert.True(t, response.FullResponse)
 	assert.NotNil(t, response.BuildInfo)
+	assert.True(t, strings.HasPrefix(response.BuildInfo.Version, "nodecore/"))
+	assert.NotEqual(t, "1.0.0", response.BuildInfo.Version)
 	assert.Equal(t, uint32(chains.GetChain(chains.ARBITRUM.String()).GrpcId), uint32(response.ChainDescription.Chain))
 	assert.Len(t, response.ChainDescription.ChainEvent, 7)
 

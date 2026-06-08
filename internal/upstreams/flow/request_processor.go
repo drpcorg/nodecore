@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -202,9 +203,69 @@ func sendUnaryRequest(
 	if response.ResponseCode() == http.StatusTooManyRequests && upstream.GetUpstreamState().AutoTuneRateLimiter != nil {
 		upstream.GetUpstreamState().AutoTuneRateLimiter.IncErrors()
 	}
+	upstreamState := upstream.GetUpstreamState()
+	upstreamNodeVersion := ""
+	if upstreamState.Labels != nil {
+		if version, ok := upstreamState.Labels.GetLabel("client_version"); ok {
+			upstreamNodeVersion = version
+		}
+	}
+
+	requestBlockTag := requestBlockTagMetadata(ctx, request)
+	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTag)
 	return &protocol.ResponseHolderWrapper{
-		RequestId:  request.Id(),
-		UpstreamId: upstream.GetId(),
-		Response:   response,
+		RequestId:             request.Id(),
+		UpstreamId:            upstream.GetId(),
+		UpstreamNodeVersion:   upstreamNodeVersion,
+		RequestBlockTag:       requestBlockTag,
+		FinalizationBlockType: finalizationBlockType,
+		FinalizationBlock:     finalizationBlock,
+		Response:              response,
 	}, nil
+}
+
+func requestBlockTagMetadata(ctx context.Context, request protocol.RequestHolder) *protocol.RequestBlockTag {
+	if request == nil {
+		return nil
+	}
+	blockNumber, ok := request.ParseParams(ctx).(*specs.BlockNumberParam)
+	if !ok {
+		return nil
+	}
+
+	var tag protocol.RequestBlockTag
+	switch blockNumber.BlockNumber {
+	case rpc.LatestBlockNumber:
+		tag = protocol.BlockTagLatest
+	case rpc.SafeBlockNumber:
+		tag = protocol.BlockTagSafe
+	case rpc.FinalizedBlockNumber:
+		tag = protocol.BlockTagFinalized
+	default:
+		return nil
+	}
+
+	return &tag
+}
+
+func responseFinalizationMetadata(upstreamState protocol.UpstreamState, tag *protocol.RequestBlockTag) (*protocol.BlockType, protocol.Block) {
+	if tag == nil || upstreamState.BlockInfo == nil {
+		return nil, protocol.Block{}
+	}
+
+	var blockType protocol.BlockType
+	switch *tag {
+	case protocol.BlockTagSafe:
+		blockType = protocol.SafeBlock
+	case protocol.BlockTagFinalized:
+		blockType = protocol.FinalizedBlock
+	default:
+		return nil, protocol.Block{}
+	}
+
+	block := upstreamState.BlockInfo.GetBlock(blockType)
+	if block.IsFullEmpty() {
+		return nil, protocol.Block{}
+	}
+	return &blockType, block
 }

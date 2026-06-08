@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/drpcorg/nodecore/internal/buildinfo"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
@@ -181,9 +182,8 @@ func toFullResponse(grpcId int, state upstreams.ChainSupervisorState) *dshackle.
 				LabelsToApi(state.ChainLabels),
 			},
 		},
-		//TODO: hardcoded value, then it should be fixed
 		BuildInfo: &dshackle.BuildInfo{
-			Version: "1.0.0",
+			Version: buildinfo.ProductVersion(),
 		},
 		FullResponse: true,
 	}
