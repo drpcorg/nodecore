@@ -273,7 +273,6 @@ func TestReadFullConfig(t *testing.T) {
 					FailsafeConfig: &config.FailsafeConfig{
 						RetryConfig: &config.RetryConfig{
 							Attempts: 7,
-							Delay:    300 * time.Millisecond,
 						},
 					},
 					Connectors: []*config.ApiConnectorConfig{

@@ -41,10 +41,20 @@ type BaseUpstream struct {
 	stateChan        chan protocol.AbstractUpstreamStateEvent
 	upstreamIndexHex string
 	upConfig         *config.Upstream
+	groupLabels      mapset.Set[string]
 	upstreamCtx      *upstreamCtx
 	emitter          event_processors.Emitter
 
 	processorAggregator *event_processors.UpstreamProcessorAggregator
+}
+
+// groupLabelsFromConfig builds the immutable set of config-defined group-labels
+// once at upstream construction so label-balancing lookups are O(1).
+func groupLabelsFromConfig(conf *config.Upstream) mapset.Set[string] {
+	if conf == nil {
+		return mapset.NewThreadUnsafeSet[string]()
+	}
+	return mapset.NewThreadUnsafeSet(conf.GroupLabels...)
 }
 
 var _ Upstream = (*BaseUpstream)(nil)
@@ -85,6 +95,7 @@ func NewBaseUpstream(
 		subManager:       utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", conf.Id)),
 		upstreamIndexHex: upstreamIndexHex,
 		upConfig:         conf,
+		groupLabels:      groupLabelsFromConfig(conf),
 		stateChan:        stateChan,
 		emitter:          emitter,
 	}
@@ -146,6 +157,7 @@ func NewBaseUpstreamWithParams(
 		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
 		upstreamIndexHex:    index,
 		upConfig:            upConfig,
+		groupLabels:         groupLabelsFromConfig(upConfig),
 		processorAggregator: processorAggregator,
 		stateChan:           *stateChan,
 		emitter:             *emitter,
@@ -170,6 +182,13 @@ func (u *BaseUpstream) GetId() string {
 
 func (u *BaseUpstream) GetChain() chains.Chain {
 	return u.chain
+}
+
+func (u *BaseUpstream) GetGroupLabels() mapset.Set[string] {
+	if u.groupLabels == nil {
+		return mapset.NewThreadUnsafeSet[string]()
+	}
+	return u.groupLabels
 }
 
 func (u *BaseUpstream) Start() {

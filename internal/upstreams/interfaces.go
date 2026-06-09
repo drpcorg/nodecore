@@ -1,6 +1,7 @@
 package upstreams
 
 import (
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -59,6 +60,7 @@ type Upstream interface {
 
 	GetId() string
 	GetChain() chains.Chain
+	GetGroupLabels() mapset.Set[string]
 	GetVendorType() UpstreamVendor
 	GetUpstreamState() protocol.UpstreamState
 	GetConnector(connectorType specs.ApiConnectorType) connectors.ApiConnector

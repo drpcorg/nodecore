@@ -24,7 +24,18 @@ type UpstreamConfig struct {
 	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config"`
 	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
 	IntegrityConfig   *IntegrityConfig          `yaml:"integrity"`
+	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing"`
 	Mode              UpstreamMode              `yaml:"mode"`
+}
+
+// LabelBalancingFor resolves the effective label-balancing config for a chain:
+// a per-chain override under chain-defaults wins over the global default; if
+// neither is set it returns nil (rating-only balancing).
+func (u *UpstreamConfig) LabelBalancingFor(chain string) *LabelBalancingConfig {
+	if chainDefaults, ok := u.ChainDefaults[chain]; ok && chainDefaults.LabelBalancing != nil {
+		return chainDefaults.LabelBalancing
+	}
+	return u.LabelBalancing
 }
 
 type UpstreamMode string
@@ -55,6 +66,7 @@ type Upstream struct {
 	RateLimitBudget   string                   `yaml:"rate-limit-budget"`
 	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
+	GroupLabels       []string                 `yaml:"group-labels"`
 }
 
 func (u *Upstream) GetApiConnectorTypes() []specs.ApiConnectorType {
@@ -96,8 +108,45 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnecto
 }
 
 type ChainDefaults struct {
-	PollInterval time.Duration   `yaml:"poll-interval"`
-	Options      *chains.Options `yaml:"options"`
+	PollInterval   time.Duration         `yaml:"poll-interval"`
+	Options        *chains.Options       `yaml:"options"`
+	LabelBalancing *LabelBalancingConfig `yaml:"label-balancing"`
+}
+
+// LabelBalancingConfig enables priority-group balancing: upstreams tagged with
+// group-labels are served in the configured Order, falling through to the next
+// group when the current one can't serve. Within a group the usual rating order
+// applies. See docs/nodecore/05-upstream-config.md.
+type LabelBalancingConfig struct {
+	// Order is the ordered list of group label names, highest priority first.
+	Order []string `yaml:"order"`
+	// PassOnError, when true, jumps to the next group on a retryable error even
+	// if the current group still has untried upstreams. When false (default), a
+	// retryable error retries within the current group and only advances once
+	// the current group has no selectable upstream left.
+	PassOnError bool `yaml:"pass-on-error"`
+	// IncludeDefault, when true (the default), routes upstreams that carry none
+	// of the Order labels as a final fallback group tried after all configured
+	// groups. When false those upstreams are excluded while label-balancing is
+	// active.
+	IncludeDefault *bool `yaml:"include-default"`
+}
+
+func (l *LabelBalancingConfig) validate() error {
+	if len(l.Order) == 0 {
+		return errors.New("label-balancing order must contain at least one label")
+	}
+	seen := mapset.NewThreadUnsafeSet[string]()
+	for _, label := range l.Order {
+		if label == "" {
+			return errors.New("label-balancing order must not contain an empty label")
+		}
+		if seen.Contains(label) {
+			return fmt.Errorf("label-balancing order contains a duplicate label '%s'", label)
+		}
+		seen.Add(label)
+	}
+	return nil
 }
 
 type FailsafeConfig struct {
@@ -218,6 +267,12 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 		return fmt.Errorf("error during score policy config validation, cause: %s", err.Error())
 	}
 
+	if u.LabelBalancing != nil {
+		if err := u.LabelBalancing.validate(); err != nil {
+			return fmt.Errorf("error during label-balancing config validation, cause: %s", err.Error())
+		}
+	}
+
 	for chain, chainDefault := range u.ChainDefaults {
 		if !chains.IsSupported(chain) {
 			return fmt.Errorf("error during chain defaults validation, cause: not supported chain %s", chain)
@@ -299,7 +354,7 @@ func (r *RetryConfig) validate() error {
 	if r.Attempts < 1 {
 		return errors.New("the number of attempts can't be less than 1")
 	}
-	if r.Delay <= 0 {
+	if r.Delay < 0 {
 		return errors.New("the retry delay can't be less than 0")
 	}
 	if r.MaxDelay != nil && *r.MaxDelay <= 0 {
@@ -379,6 +434,12 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		return err
 	}
 
+	for _, label := range u.GroupLabels {
+		if label == "" {
+			return errors.New("group-labels must not contain an empty label")
+		}
+	}
+
 	return nil
 }
 
@@ -415,6 +476,11 @@ func (m *MethodsConfig) validate() error {
 func (c *ChainDefaults) validate() error {
 	if c.Options != nil {
 		if err := c.Options.Validate(); err != nil {
+			return err
+		}
+	}
+	if c.LabelBalancing != nil {
+		if err := c.LabelBalancing.validate(); err != nil {
 			return err
 		}
 	}

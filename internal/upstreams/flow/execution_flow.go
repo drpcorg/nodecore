@@ -204,6 +204,11 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 		}
 		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor).WithAdditionalMatchers(additionalMatchers).WithOrder(order)
 	}
+	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil {
+		return NewLabelGroupStrategy(e.chain, request.Method(), cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
+			WithAdditionalMatchers(additionalMatchers).
+			WithOrder(order)
+	}
 	return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
 }
 
