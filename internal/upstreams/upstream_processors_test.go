@@ -254,6 +254,8 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *chains.Options {
 		ValidatePeers:               new(false),
 		ValidateSyncing:             new(false),
 		ValidateCallLimit:           new(false),
+		ValidateClientVersion:       new(false),
+		DisableLogIndexValidation:   new(true),
 	}
 
 	for _, mutate := range mutators {
