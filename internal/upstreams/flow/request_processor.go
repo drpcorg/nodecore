@@ -329,6 +329,7 @@ func isPrunedHistoryError(message string) bool {
 		"required historical state unavailable",
 		"header not found",
 		"history has been pruned",
+		"block #", // trace clients report pruned trace history as "block #<n> not found"
 		"pruned",
 	}
 	for _, marker := range prunedMarkers {
