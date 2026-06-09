@@ -14,6 +14,9 @@ const (
 	ReceiptsBound
 	TxBound
 	BlockBound
+	LogsBound
+	TraceBound
+	ProofBound
 )
 
 func (t LowerBoundType) String() string {
@@ -30,6 +33,12 @@ func (t LowerBoundType) String() string {
 		return "TX"
 	case BlockBound:
 		return "BLOCK"
+	case LogsBound:
+		return "LOGS"
+	case TraceBound:
+		return "TRACE"
+	case ProofBound:
+		return "PROOF"
 	}
 	panic(fmt.Sprintf("unknown lower bound type %d", t))
 }

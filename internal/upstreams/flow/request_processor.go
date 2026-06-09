@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"github.com/drpcorg/nodecore/internal/caches"
@@ -213,6 +214,9 @@ func sendUnaryRequest(
 
 	requestBlockTag := requestBlockTagMetadata(ctx, request)
 	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTag)
+	if lowerBound, ok := liveLowerBoundFromPrunedError(ctx, request, response); ok {
+		upstream.UpdateLowerBound(lowerBound)
+	}
 	return &protocol.ResponseHolderWrapper{
 		RequestId:             request.Id(),
 		UpstreamId:            upstream.GetId(),
@@ -268,4 +272,69 @@ func responseFinalizationMetadata(upstreamState protocol.UpstreamState, tag *pro
 		return nil, protocol.Block{}
 	}
 	return &blockType, block
+}
+
+func liveLowerBoundFromPrunedError(ctx context.Context, request protocol.RequestHolder, response protocol.ResponseHolder) (protocol.LowerBoundData, bool) {
+	if response == nil || !response.HasError() {
+		return protocol.LowerBoundData{}, false
+	}
+	err := response.GetError()
+	if err == nil || !isPrunedHistoryError(err.Message) {
+		return protocol.LowerBoundData{}, false
+	}
+	boundType, ok := lowerBoundTypeForMethod(request.Method())
+	if !ok {
+		return protocol.LowerBoundData{}, false
+	}
+	block, ok := lowerBoundRequestBlock(ctx, request)
+	if !ok || block < 0 {
+		return protocol.LowerBoundData{}, false
+	}
+	return protocol.NewLowerBoundDataNow(block+1, boundType), true
+}
+
+func lowerBoundTypeForMethod(method string) (protocol.LowerBoundType, bool) {
+	if method == "eth_getProof" {
+		return protocol.ProofBound, true
+	}
+	if method == "eth_getLogs" {
+		return protocol.LogsBound, true
+	}
+	if strings.HasPrefix(method, "trace_") || strings.HasPrefix(method, "debug_trace") {
+		return protocol.TraceBound, true
+	}
+	return protocol.UnknownBound, false
+}
+
+func lowerBoundRequestBlock(ctx context.Context, request protocol.RequestHolder) (int64, bool) {
+	switch param := request.ParseParams(ctx).(type) {
+	case *specs.BlockNumberParam:
+		if param.BlockNumber >= 0 {
+			return int64(param.BlockNumber), true
+		}
+	case *specs.BlockRangeParam:
+		if param.From != nil && *param.From >= 0 {
+			return int64(*param.From), true
+		}
+	}
+	return 0, false
+}
+
+func isPrunedHistoryError(message string) bool {
+	message = strings.ToLower(message)
+	prunedMarkers := []string{
+		"missing trie node",
+		"missing trie node",
+		"state is not available",
+		"required historical state unavailable",
+		"header not found",
+		"history has been pruned",
+		"pruned",
+	}
+	for _, marker := range prunedMarkers {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }

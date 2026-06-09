@@ -73,6 +73,7 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 		evm_bounds.NewEvmBlockLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		evm_bounds.NewEvmTxLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }
