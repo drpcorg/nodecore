@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/outbox"
 	"github.com/drpcorg/nodecore/internal/server/emerald"
+	"github.com/drpcorg/nodecore/internal/server/health_server"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 
@@ -40,8 +41,9 @@ type App struct {
 	outboxStorage      outbox.Storer
 	upstreamSupervisor upstreams.UpstreamSupervisor
 
-	httpServer *echo.Echo
-	grpcServer *emerald.GrpcServer
+	httpServer   *echo.Echo
+	healthServer *echo.Echo
+	grpcServer   *emerald.GrpcServer
 }
 
 func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
@@ -97,6 +99,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		return nil, fmt.Errorf("unable to create grpc server: %w", err)
 	}
 	httpServer := http_server.NewHttpServer(ctx, appCtx)
+	healthServer := health_server.NewHealthServer(upstreamSupervisor)
 
 	outboxStorage, err := outbox.NewOutboxStorage(appConfig.StatsConfig, storageRegistry)
 	if err != nil {
@@ -111,6 +114,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		statsService:       statsService,
 		upstreamSupervisor: upstreamSupervisor,
 		httpServer:         httpServer,
+		healthServer:       healthServer,
 		grpcServer:         grpcServer,
 		outboxStorage:      outboxStorage,
 	}, nil
@@ -161,6 +165,18 @@ func (a *App) Start() {
 	}()
 
 	go func() {
+		if a.appConfig.ServerConfig.HealthPort != 0 {
+			if healthServerErr := http_server.StartEcho(a.healthServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.HealthPort), nil); healthServerErr != nil {
+				if !shuttingDown.Load() {
+					log.Panic().Err(healthServerErr).Msg("health server couldn't start")
+				}
+			}
+		} else {
+			log.Warn().Msg("health server is disabled")
+		}
+	}()
+
+	go func() {
 		if httpServerErr := http_server.StartEcho(a.httpServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.Port), a.appConfig.ServerConfig.TlsConfig); httpServerErr != nil {
 			if !shuttingDown.Load() {
 				log.Panic().Err(httpServerErr).Msg("http server couldn't start")
@@ -190,6 +206,12 @@ func (a *App) Start() {
 		log.Error().Err(err).Msg("http server couldn't stop gracefully")
 	} else {
 		log.Info().Msg("http server stopped gracefully")
+	}
+	err = a.healthServer.Shutdown(shutDownCtx)
+	if err != nil {
+		log.Error().Err(err).Msg("health server couldn't stop gracefully")
+	} else {
+		log.Info().Msg("health server stopped gracefully")
 	}
 
 	err = a.statsService.Stop(shutDownCtx)

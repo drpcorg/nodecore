@@ -100,6 +100,9 @@ func (s *ServerConfig) setDefaults() {
 	if s.Port == 0 {
 		s.Port = defaultPort
 	}
+	if s.HealthPort == 0 {
+		s.HealthPort = 9096
+	}
 	if s.PyroscopeConfig == nil {
 		s.PyroscopeConfig = &PyroscopeConfig{}
 	}
