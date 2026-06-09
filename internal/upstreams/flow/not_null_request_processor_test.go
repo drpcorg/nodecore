@@ -80,3 +80,90 @@ func TestNotNullRequestProcessorRetriesAfterNull(t *testing.T) {
 	connector1.AssertExpectations(t)
 	connector2.AssertExpectations(t)
 }
+
+func TestNotNullRequestProcessorReturnsFirstNullWhenAttemptsExhausted(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	ctx := context.Background()
+	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
+
+	strategy := mocks.NewMockStrategy()
+	strategy.On("SelectUpstream", request).Return("up1", nil).Once()
+	strategy.On("SelectUpstream", request).Return("up2", nil).Once()
+	strategy.On("SelectUpstream", request).Return("", errors.New("done")).Once()
+
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	connector1 := mocks.NewConnectorMock()
+	connector2 := mocks.NewConnectorMock()
+	up1 := test_utils.TestEvmUpstream(connector1, upConfig(), mocks.NewMethodsMock(), nil)
+	up2 := test_utils.TestEvmUpstream(connector2, upConfig(), mocks.NewMethodsMock(), nil)
+	upSupervisor.On("GetUpstream", "up1").Return(up1).Once()
+	upSupervisor.On("GetUpstream", "up2").Return(up2).Once()
+
+	connector1.On("SendRequest", mock.Anything, request).Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`null`), protocol.JsonRpc)).Once()
+	connector2.On("SendRequest", mock.Anything, request).Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`null`), protocol.JsonRpc)).Once()
+
+	processor := flow.NewNotNullRequestProcessor(upSupervisor)
+	response := processor.ProcessRequest(ctx, strategy, request)
+	unary := response.(*flow.UnaryResponse).ResponseWrapper
+
+	assert.False(t, unary.Response.HasError())
+	assert.Equal(t, []byte(`null`), unary.Response.ResponseResult())
+}
+
+func TestNotNullRequestProcessorFailsWhenAllUpstreamsError(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	ctx := context.Background()
+	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
+
+	strategy := mocks.NewMockStrategy()
+	strategy.On("SelectUpstream", request).Return("up1", nil).Once()
+	strategy.On("SelectUpstream", request).Return("up2", nil).Once()
+	strategy.On("SelectUpstream", request).Return("", errors.New("done")).Once()
+
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	connector1 := mocks.NewConnectorMock()
+	connector2 := mocks.NewConnectorMock()
+	up1 := test_utils.TestEvmUpstream(connector1, upConfig(), mocks.NewMethodsMock(), nil)
+	up2 := test_utils.TestEvmUpstream(connector2, upConfig(), mocks.NewMethodsMock(), nil)
+	upSupervisor.On("GetUpstream", "up1").Return(up1).Once()
+	upSupervisor.On("GetUpstream", "up2").Return(up2).Once()
+
+	connector1.On("SendRequest", mock.Anything, request).Return(protocol.NewTotalFailureFromErr("1", errors.New("first error"), protocol.JsonRpc)).Once()
+	connector2.On("SendRequest", mock.Anything, request).Return(protocol.NewTotalFailureFromErr("1", errors.New("second error"), protocol.JsonRpc)).Once()
+
+	processor := flow.NewNotNullRequestProcessor(upSupervisor)
+	response := processor.ProcessRequest(ctx, strategy, request)
+	unary := response.(*flow.UnaryResponse).ResponseWrapper
+
+	assert.True(t, unary.Response.HasError())
+	assert.Contains(t, unary.Response.GetError().Message, "first error")
+}
+
+func TestNotNullRequestProcessorPrefersNullOverErrorsWhenNoValueExists(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	ctx := context.Background()
+	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
+
+	strategy := mocks.NewMockStrategy()
+	strategy.On("SelectUpstream", request).Return("up1", nil).Once()
+	strategy.On("SelectUpstream", request).Return("up2", nil).Once()
+	strategy.On("SelectUpstream", request).Return("", errors.New("done")).Once()
+
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	connector1 := mocks.NewConnectorMock()
+	connector2 := mocks.NewConnectorMock()
+	up1 := test_utils.TestEvmUpstream(connector1, upConfig(), mocks.NewMethodsMock(), nil)
+	up2 := test_utils.TestEvmUpstream(connector2, upConfig(), mocks.NewMethodsMock(), nil)
+	upSupervisor.On("GetUpstream", "up1").Return(up1).Once()
+	upSupervisor.On("GetUpstream", "up2").Return(up2).Once()
+
+	connector1.On("SendRequest", mock.Anything, request).Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`null`), protocol.JsonRpc)).Once()
+	connector2.On("SendRequest", mock.Anything, request).Return(protocol.NewTotalFailureFromErr("1", errors.New("second error"), protocol.JsonRpc)).Once()
+
+	processor := flow.NewNotNullRequestProcessor(upSupervisor)
+	response := processor.ProcessRequest(ctx, strategy, request)
+	unary := response.(*flow.UnaryResponse).ResponseWrapper
+
+	assert.False(t, unary.Response.HasError())
+	assert.Equal(t, []byte(`null`), unary.Response.ResponseResult())
+}
