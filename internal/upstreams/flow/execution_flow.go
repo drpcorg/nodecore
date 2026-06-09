@@ -309,6 +309,9 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	} else if isStickyRequest(request.SpecMethod()) {
 		requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
 		reqObserver.WithRequestKind(protocol.Unary)
+	} else if request.SpecMethod().DispatchPolicy() == specs.DispatchNotNull {
+		requestProcessor = NewNotNullRequestProcessor(e.upstreamSupervisor)
+		reqObserver.WithRequestKind(protocol.Unary)
 	} else if request.SpecMethod().DispatchPolicy() != specs.DispatchDefault {
 		requestProcessor = NewFanoutRequestProcessor(e.upstreamSupervisor, request.SpecMethod().DispatchPolicy())
 		reqObserver.WithRequestKind(protocol.Unary)

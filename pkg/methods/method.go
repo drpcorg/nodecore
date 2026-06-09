@@ -102,6 +102,10 @@ func (m *Method) IsMaximumValueDispatch() bool {
 	return m.dispatch == DispatchMaximumValue
 }
 
+func (m *Method) IsNotNullDispatch() bool {
+	return m.dispatch == DispatchNotNull
+}
+
 func (m *Method) GetApiConnectorTypes() []ApiConnectorType {
 	return slices.Clone(m.apiConnectorTypes)
 }

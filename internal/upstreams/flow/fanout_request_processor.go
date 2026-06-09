@@ -34,7 +34,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 	upstreamStrategy UpstreamStrategy,
 	request protocol.RequestHolder,
 ) ProcessedResponse {
-	upstreamIDs, err := collectFanoutUpstreamIDs(upstreamStrategy, request)
+	upstreamIDs, err := collectDispatchUpstreamIDs(upstreamStrategy, request)
 	if err != nil {
 		return &UnaryResponse{ResponseWrapper: totalFailureWrapper(request, err)}
 	}
@@ -92,7 +92,7 @@ type fanoutResult struct {
 	err        error
 }
 
-func collectFanoutUpstreamIDs(upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) ([]string, error) {
+func collectDispatchUpstreamIDs(upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) ([]string, error) {
 	var upstreamIDs []string
 	seen := make(map[string]struct{})
 	for {
@@ -228,6 +228,10 @@ func (a *maximumValueAggregator) Final(request protocol.RequestHolder) *protocol
 		return totalFailureWrapper(request, a.lastErr)
 	}
 	return totalFailureWrapper(request, protocol.NoAvailableUpstreamsError())
+}
+
+func isNullResponse(response protocol.ResponseHolder) bool {
+	return strings.TrimSpace(string(response.ResponseResult())) == "null"
 }
 
 func parseHexQuantityResult(response protocol.ResponseHolder) (*big.Int, error) {
