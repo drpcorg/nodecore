@@ -16,6 +16,7 @@ type Options struct {
 	DisableSafeBlockDetection   *bool         `yaml:"disable-safe-block-detection"`
 	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
 	DisableLogIndexValidation   *bool         `yaml:"disable-log-index-validation"`
+	ArchiveCapability           *bool         `yaml:"archive"`
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
 	ValidatePeers               *bool         `yaml:"validate-peers"`
 	MinPeers                    int64         `yaml:"min-peers"`

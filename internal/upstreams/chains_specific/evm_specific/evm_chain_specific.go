@@ -54,10 +54,17 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
-		eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		archiveLabelsDetector(e),
 	}
 
 	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, labelsDetectors, e.options.ValidationInterval*5)
+}
+
+func archiveLabelsDetector(e *EvmChainSpecificObject) labels.LabelsDetector {
+	if e.options.ArchiveCapability != nil && !*e.options.ArchiveCapability {
+		return labels.NewStaticLabelsDetector(map[string]string{"archive": "false"})
+	}
+	return eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector)
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

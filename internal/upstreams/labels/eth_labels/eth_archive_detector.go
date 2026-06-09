@@ -2,6 +2,9 @@ package eth_labels
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -26,12 +29,21 @@ type EthArchiveLabelsDetector struct {
 }
 
 func (e *EthArchiveLabelsDetector) DetectLabels() map[string]string {
-	block := e.readEarliestBlock()
+	if !e.hasArchiveState(e.readEarliestBlock()) {
+		return map[string]string{"archive": "false"}
+	}
+	recentBlock, ok := e.recentArchiveProbeBlock()
+	if ok && !e.hasArchiveState(recentBlock) {
+		return map[string]string{"archive": "false"}
+	}
+	return map[string]string{"archive": "true"}
+}
 
+func (e *EthArchiveLabelsDetector) hasArchiveState(block string) bool {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", []any{"0x0000000000000000000000000000000000000000", block}, e.chain)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to create a request to detect archival state of upstream '%s'", e.upstreamId)
-		return nil
+		return false
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
@@ -39,14 +51,40 @@ func (e *EthArchiveLabelsDetector) DetectLabels() map[string]string {
 
 	resp := e.connector.SendRequest(ctx, req)
 	if resp.HasError() {
-		log.Error().Err(resp.GetError()).Msgf("unable to detect archival state of upstream '%s'", e.upstreamId)
-		return map[string]string{
-			"archive": "false",
+		log.Error().Err(resp.GetError()).Msgf("unable to detect archival state of upstream '%s' at block '%s'", e.upstreamId, block)
+		return false
+	}
+	return true
+}
+
+func (e *EthArchiveLabelsDetector) recentArchiveProbeBlock() (string, bool) {
+	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, e.chain)
+	if err != nil {
+		log.Error().Err(err).Msgf("unable to create latest block request for archive detection of upstream '%s'", e.upstreamId)
+		return "", false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	defer cancel()
+
+	resp := e.connector.SendRequest(ctx, req)
+	if resp.HasError() {
+		log.Error().Err(resp.GetError()).Msgf("unable to read latest block for archive detection of upstream '%s'", e.upstreamId)
+		return "", false
+	}
+	latestRaw, err := resp.ResponseResultString()
+	if err != nil {
+		log.Error().Err(err).Msgf("unable to parse latest block for archive detection of upstream '%s'", e.upstreamId)
+		return "", false
+	}
+	latest, err := strconv.ParseUint(strings.TrimPrefix(strings.Trim(strings.TrimSpace(latestRaw), "\""), "0x"), 16, 64)
+	if err != nil || latest <= 10000 {
+		if err != nil {
+			log.Error().Err(err).Msgf("unable to parse latest block for archive detection of upstream '%s'", e.upstreamId)
 		}
+		return "", false
 	}
-	return map[string]string{
-		"archive": "true",
-	}
+	return fmt.Sprintf("0x%x", latest-10000), true
 }
 
 func NewEthArchiveLabelsDetector(
