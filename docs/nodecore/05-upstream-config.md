@@ -379,6 +379,16 @@ every chain) and can be **overridden per chain** under `chain-defaults.<chain>.l
 (the per-chain block fully replaces the global one for that chain). When neither is set,
 behavior is unchanged (pure rating).
 
+> **⚠️ Requires a retry policy.** Falling through to the next group **after an error** is
+> driven by retries: each retry re-selects an upstream, which is how the request advances
+> within and across groups. Retries only happen when a [`failsafe-config`](#failsafe-config)
+> `retry` policy is configured. Without one,
+> a request makes a **single** upstream selection and will not advance on an error response —
+> so `pass-on-error` and within-group error retries have no effect. (Falling through a group
+> that is *entirely* unavailable at selection time still works without retries, since that
+> happens within the single selection.) Set a `retry` policy with enough `attempts` to cover
+> the upstreams you expect to traverse.
+
 How groups are traversed:
 
 - Groups are visited in `order`, then the default group (unlabeled upstreams) last.
