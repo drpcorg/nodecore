@@ -206,7 +206,7 @@ To eliminate these issues, nodecore implements a pure hedging strategy with clea
 
 1. The `retry` section:
    - `attempts` - Maximum number of request attempts, including the initial one. **_Default_**: `3`
-   - `delay` - Base wait time before a retry. Used as the starting backoff. **_Defaults_**: `300ms`
+   - `delay` - Base wait time before a retry. Used as the starting backoff.
    - `max-delay` - Upper bound for retry backoff. The effective delay will never exceed this value
    - `jitter` - Adds randomization to each backoff
 2. The `hedge` section:
@@ -257,6 +257,7 @@ The `chain-defaults` section defines per-chain baseline settings that apply to a
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
 * `<chain>.poll-interval` - How often nodecore polls upstreams of that chain for new head / finality information
   * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** is `1m` in `mode: default`, and the chain's expected block time in `mode: strict`
+* `<chain>.label-balancing` - Per-chain override of the global [label-balancing](#label-balancing) block. When set it fully replaces the global block for this chain
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
@@ -331,6 +332,78 @@ function sortUpstreams(upstreamData: UpstreamData[]): SortResponse;
 - `calculation-function-file-path` - Path to a custom TypeScript file implementing your own scoring function
 
 > **⚠️ Note**: Both `calculation-function-name` and `calculation-function-file-path` can't be set at the same time.
+
+## label-balancing
+
+```yaml
+upstream-config:
+  # global default — applies to every chain unless overridden under chain-defaults
+  label-balancing:
+    order:
+      - full
+      - archive
+      - fast
+    pass-on-error: false
+    include-default: true
+  chain-defaults:
+    polygon:
+      # per-chain override — fully replaces the global block for this chain
+      label-balancing:
+        order:
+          - archive
+          - full
+  upstreams:
+    - id: up1
+      chain: ethereum
+      group-labels: [full, fast]
+      connectors:
+        - type: json-rpc
+          url: https://full-node.example.com
+    - id: up2
+      chain: ethereum
+      group-labels: [archive]
+      connectors:
+        - type: json-rpc
+          url: https://archive-node.example.com
+```
+
+By default nodecore balances every request across **all** of a chain's upstreams using the
+[score-policy](#score-policy-config) rating. `label-balancing` layers an optional
+**priority-group** mode on top: you tag upstreams with `group-labels` and declare an
+`order` of those labels; requests are served from the highest-priority group first and fall
+through to lower-priority groups when the current group cannot serve. Rating still decides
+ordering **within** a group.
+
+It is configured as a **global default** under `upstream-config.label-balancing` (applies to
+every chain) and can be **overridden per chain** under `chain-defaults.<chain>.label-balancing`
+(the per-chain block fully replaces the global one for that chain). When neither is set,
+behavior is unchanged (pure rating).
+
+How groups are traversed:
+
+- Groups are visited in `order`, then the default group (unlabeled upstreams) last.
+- Within a group, upstreams keep the usual rating order.
+- An upstream is selected **at most once per request**, even if it carries several labels and
+  thus belongs to several groups.
+- An entirely-dead group (every upstream unavailable / method banned / rate-limited) **always**
+  falls through to the next group, regardless of `pass-on-error`.
+
+`label-balancing` fields:
+
+- `order` - Ordered list of group label names, highest priority first. **_Required_** when
+  `label-balancing` is set; entries must be non-empty and unique.
+- `pass-on-error` - Controls retry routing after a *retryable error response* (each error
+  triggers a fresh upstream selection):
+  - `false` (**_default_**) - retry **within the current group** (next-best untried upstream);
+    advance to the next group only once the current group has no selectable upstream left.
+  - `true` - **jump straight to the next group** on a retryable error, skipping any untried
+    upstreams in the current group.
+- `include-default` - When `true` (**_default_**), upstreams carrying none of the `order`
+  labels form a final fallback group tried after all configured groups. When `false`, those
+  upstreams are excluded from routing while label-balancing is active.
+
+The per-upstream `group-labels` field (see [Fields](#fields)) assigns an upstream to one or
+more groups. Labels not present in `order` route the upstream to the default group.
 
 ## upstreams
 
@@ -451,6 +524,7 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 - `rate-limit` - Inline rate limiting configuration specific to this upstream. Cannot be used together with `rate-limit-budget`. See [Rate Limiting](06-rate-limiting.md) for details
 - `rate-limit-auto-tune` - Automatically adjusts the upstream's outgoing rate limit based on observed error rate and utilization. See [Rate Limiting](06-rate-limiting.md#auto-tune-rate-limiting) for the field semantics
 - `failsafe-config` - Upstream-level failsafe configuration. Only the `retry` policy can be specified at this level (hedging and timeouts are configured globally on `upstream-config.failsafe-config`)
+- `group-labels` - List of priority-group labels this upstream belongs to, used by [label-balancing](#label-balancing). These are **config-defined** labels, independent of the runtime labels produced by label detectors. An upstream may belong to several groups but is still selected at most once per request
 
 ## Validators and labels
 

@@ -242,6 +242,10 @@ func (u *UpstreamConfig) setDefaults() {
 		u.ScorePolicyConfig = &ScorePolicyConfig{}
 	}
 	u.ScorePolicyConfig.setDefaults()
+	u.LabelBalancing.setDefaults()
+	for _, chainDefaults := range u.ChainDefaults {
+		chainDefaults.LabelBalancing.setDefaults()
+	}
 	for _, upstream := range u.Upstreams {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
 		upstream.setDefaults(chainDefaults, u.Mode)
@@ -273,6 +277,15 @@ func (r *RateLimitAutoTuneConfig) setDefaults() {
 	}
 	if r.InitRateLimitPeriod == 0 {
 		r.InitRateLimitPeriod = 1 * time.Second
+	}
+}
+
+func (l *LabelBalancingConfig) setDefaults() {
+	if l == nil {
+		return
+	}
+	if l.IncludeDefault == nil {
+		l.IncludeDefault = new(true)
 	}
 }
 
@@ -342,9 +355,6 @@ func (m *MethodsConfig) setDefaults() {
 func (r *RetryConfig) setDefaults() {
 	if r.Attempts == 0 {
 		r.Attempts = 3
-	}
-	if r.Delay == 0 {
-		r.Delay = 300 * time.Millisecond
 	}
 }
 
