@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -149,6 +148,7 @@ func executeUnaryRequest(
 	firstUpstream := utils.NewAtomic[string]()
 	hedged := atomic.Bool{}
 
+	parsedParam := request.ParseParams(ctx)
 	result, err := upstreamSupervisor.
 		GetExecutor().
 		WithContext(ctx).
@@ -161,7 +161,7 @@ func executeUnaryRequest(
 				firstUpstream.Store(upstreamId)
 			}
 
-			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request)
+			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request, parsedParam)
 			if err != nil {
 				return nil, handleErrors(exec, err)
 			}
@@ -192,6 +192,7 @@ func sendUnaryRequest(
 	ctx context.Context,
 	upstream upstreams.Upstream,
 	request protocol.RequestHolder,
+	parsedParam specs.MethodParam,
 ) (*protocol.ResponseHolderWrapper, error) {
 	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.GetId())
 
@@ -213,9 +214,8 @@ func sendUnaryRequest(
 		}
 	}
 
-	requestBlockTag := requestBlockTagMetadata(ctx, request)
-	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTag)
-	if lowerBound, ok := liveLowerBoundFromPrunedError(ctx, request, response, upstream.GetCurrentHeadHeight()); ok {
+	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTagMetadata(parsedParam))
+	if lowerBound, ok := liveLowerBoundFromPrunedError(request.Method(), parsedParam, response, upstream.GetCurrentHeadHeight()); ok {
 		upstream.UpdateLowerBound(lowerBound)
 	}
 	return &protocol.ResponseHolderWrapper{
@@ -228,8 +228,8 @@ func sendUnaryRequest(
 	}, nil
 }
 
-func requestBlockTagMetadata(ctx context.Context, request protocol.RequestHolder) *protocol.RequestBlockTag {
-	blockNumber, ok := requestMethodParam(ctx, request).(*specs.BlockNumberParam)
+func requestBlockTagMetadata(param specs.MethodParam) *protocol.RequestBlockTag {
+	blockNumber, ok := param.(*specs.BlockNumberParam)
 	if !ok {
 		return nil
 	}
@@ -271,7 +271,7 @@ func responseFinalizationMetadata(upstreamState protocol.UpstreamState, tag *pro
 	return &blockType, block
 }
 
-func liveLowerBoundFromPrunedError(ctx context.Context, request protocol.RequestHolder, response protocol.ResponseHolder, currentHead uint64) (protocol.LowerBoundData, bool) {
+func liveLowerBoundFromPrunedError(method string, param specs.MethodParam, response protocol.ResponseHolder, currentHead uint64) (protocol.LowerBoundData, bool) {
 	if response == nil || !response.HasError() {
 		return protocol.LowerBoundData{}, false
 	}
@@ -279,11 +279,11 @@ func liveLowerBoundFromPrunedError(ctx context.Context, request protocol.Request
 	if err == nil || !isPrunedHistoryError(err.Message) {
 		return protocol.LowerBoundData{}, false
 	}
-	boundType, ok := lowerBoundTypeForMethod(request.Method())
+	boundType, ok := lowerBoundTypeForMethod(method)
 	if !ok {
 		return protocol.LowerBoundData{}, false
 	}
-	block, ok := lowerBoundRequestBlock(ctx, request)
+	block, ok := lowerBoundRequestBlock(param)
 	if !ok || block < 0 || currentHead == 0 || uint64(block) > currentHead {
 		return protocol.LowerBoundData{}, false
 	}
@@ -303,8 +303,8 @@ func lowerBoundTypeForMethod(method string) (protocol.LowerBoundType, bool) {
 	return protocol.UnknownBound, false
 }
 
-func lowerBoundRequestBlock(ctx context.Context, request protocol.RequestHolder) (int64, bool) {
-	switch param := requestMethodParam(ctx, request).(type) {
+func lowerBoundRequestBlock(param specs.MethodParam) (int64, bool) {
+	switch param := param.(type) {
 	case *specs.BlockNumberParam:
 		if param.BlockNumber >= 0 {
 			return int64(param.BlockNumber), true
@@ -315,26 +315,6 @@ func lowerBoundRequestBlock(ctx context.Context, request protocol.RequestHolder)
 		}
 	}
 	return 0, false
-}
-
-func requestMethodParam(ctx context.Context, request protocol.RequestHolder) specs.MethodParam {
-	if request == nil || request.SpecMethod() == nil || request.RequestType() != protocol.JsonRpc {
-		return nil
-	}
-	body, err := request.Body()
-	if err != nil {
-		return nil
-	}
-	var parsedBody struct {
-		Params any `json:"params"`
-	}
-	if err := sonic.Unmarshal(body, &parsedBody); err != nil {
-		return nil
-	}
-	if parsedBody.Params == nil {
-		parsedBody.Params = []any{}
-	}
-	return request.SpecMethod().Parse(ctx, parsedBody.Params)
 }
 
 func isPrunedHistoryError(message string) bool {

@@ -33,6 +33,7 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 	if err != nil {
 		return &UnaryResponse{ResponseWrapper: totalFailureWrapper(request, err)}
 	}
+	parsedParam := request.ParseParams(ctx)
 
 	var nullResult *protocol.ResponseHolderWrapper
 	var fallback *protocol.ResponseHolderWrapper
@@ -51,7 +52,7 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 			continue
 		}
 
-		wrapper, err := sendUnaryRequest(ctx, upstream, request)
+		wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
 		if err != nil {
 			lastErr = err
 			continue

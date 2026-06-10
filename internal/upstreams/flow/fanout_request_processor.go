@@ -40,6 +40,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 	}
 
 	zerolog.Ctx(ctx).Debug().Msgf("fan-out selected %d upstreams for method %s", len(upstreamIDs), request.Method())
+	parsedParam := request.ParseParams(ctx)
 
 	results := make(chan fanoutResult, len(upstreamIDs))
 	var wg sync.WaitGroup
@@ -52,7 +53,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 				results <- fanoutResult{upstreamID: upstreamID, err: protocol.NoAvailableUpstreamsError()}
 				return
 			}
-			wrapper, err := sendUnaryRequest(ctx, upstream, request)
+			wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
 			results <- fanoutResult{upstreamID: upstreamID, wrapper: wrapper, err: err}
 		}(upstreamID)
 	}
