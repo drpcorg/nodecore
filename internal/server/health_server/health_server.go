@@ -9,9 +9,8 @@ import (
 )
 
 type chainStatus struct {
-	Chain             string `json:"chain"`
-	Status            string `json:"status"`
-	AvailableUpstream bool   `json:"available"`
+	Chain  string `json:"chain"`
+	Status string `json:"status"`
 }
 
 type statusResponse struct {
@@ -52,7 +51,7 @@ func buildStatus(supervisor upstreams.UpstreamSupervisor) statusResponse {
 	}
 	for _, chain := range supervisor.GetChainSupervisors() {
 		state := chain.GetChainState()
-		resp.Chains = append(resp.Chains, chainStatus{Chain: chain.GetChain().String(), Status: state.Status.String(), AvailableUpstream: state.Status == protocol.Available})
+		resp.Chains = append(resp.Chains, chainStatus{Chain: chain.GetChain().String(), Status: state.Status.String()})
 	}
 	return resp
 }

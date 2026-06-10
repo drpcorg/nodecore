@@ -32,6 +32,10 @@ upstream-config:
         min-peers: 5
         validate-call-limit: true
         call-limit-size: 131072
+        validate-client-version: false
+        disable-log-index-validation: true
+        enable-not-null-dispatch: false
+        archive: false
       poll-interval: 45s
     polygon:
       poll-interval: 30s
@@ -140,6 +144,9 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `validate-peers` | `false` (off) | `true` (on) |
 | `validate-call-limit` | `false` (off) | `true` (on) |
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
+| `disable-log-index-validation` | `true` (off) | `false` (on) |
+| `validate-client-version` | `false` (off) | `true` (on) |
+| `enable-not-null-dispatch` | `false` (off) | `true` (on) |
 
 ## integrity
 
@@ -255,6 +262,10 @@ The `chain-defaults` section defines per-chain baseline settings that apply to a
   * `min-peers` - Minimum acceptable peer count when `validate-peers` is on. **_Default_**: `1`
   * `validate-call-limit` - For EVM chains, periodically probes the upstream's `eth_call` return-data limit and marks the upstream unhealthy when its observed limit is below `call-limit-size`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
+  * `validate-client-version` - For EVM chains, validates the detected `web3_clientVersion`/client labels against the embedded compatible-client rules. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `enable-not-null-dispatch` - Enables sequential retry for method specs with `dispatch: not-null`. In `default` mode this falls back to `false` to avoid extra upstream requests; in `strict` mode it falls back to `true`. See [Method specs](11-method-specs.md#settings) for dispatch semantics
+  * `archive` - Manual EVM archive capability override. Set `archive: false` to publish `archive=false` without running archive auto-detection. Set `archive: true` or leave it unset to use the runtime archive detector and publish its detected result
 * `<chain>.poll-interval` - How often nodecore polls upstreams of that chain for new head / finality information
   * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** is `1m` in `mode: default`, and the chain's expected block time in `mode: strict`
 * `<chain>.label-balancing` - Per-chain override of the global [label-balancing](#label-balancing) block. When set it fully replaces the global block for this chain
@@ -262,6 +273,8 @@ The `chain-defaults` section defines per-chain baseline settings that apply to a
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
 See [Validators and labels](#validators-and-labels) below for what each validator does and how it maps to these flags.
+
+`gas-price-condition` is a chain metadata setting from embedded `chains.yaml`, not a per-upstream option. When present for an EVM chain, nodecore validates `eth_gasPrice` against the configured comparison conditions (for example `eq`, `ne`, `gt`, `gte`, `lt`, `lte` or symbolic equivalents) as part of settings validation.
 
 ## score-policy-config
 

@@ -310,7 +310,11 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 		requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else if request.SpecMethod().DispatchPolicy() == specs.DispatchNotNull {
-		requestProcessor = NewNotNullRequestProcessor(e.upstreamSupervisor)
+		if e.notNullDispatchEnabled() {
+			requestProcessor = NewNotNullRequestProcessor(e.upstreamSupervisor)
+		} else {
+			requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
+		}
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else if request.SpecMethod().DispatchPolicy() != specs.DispatchDefault {
 		requestProcessor = NewFanoutRequestProcessor(e.upstreamSupervisor, request.SpecMethod().DispatchPolicy())
@@ -328,6 +332,21 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	}
 
 	return requestProcessor
+}
+
+func (e *BaseExecutionFlow) notNullDispatchEnabled() bool {
+	if e == nil || e.appConfig == nil || e.appConfig.UpstreamConfig == nil {
+		return false
+	}
+	for _, upstream := range e.appConfig.UpstreamConfig.Upstreams {
+		if upstream == nil || upstream.Options == nil || upstream.ChainName != e.chain.String() {
+			continue
+		}
+		if upstream.Options.EnableNotNullDispatch != nil && *upstream.Options.EnableNotNullDispatch {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {

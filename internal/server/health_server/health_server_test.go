@@ -64,8 +64,8 @@ func TestStatusEndpointReturnsDetailedChainStatuses(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	assert.True(t, body.Ready)
 	assert.Equal(t, []chainStatus{
-		{Chain: chains.ETHEREUM.String(), Status: protocol.Available.String(), AvailableUpstream: true},
-		{Chain: chains.POLYGON.String(), Status: protocol.Unavailable.String(), AvailableUpstream: false},
+		{Chain: chains.ETHEREUM.String(), Status: protocol.Available.String()},
+		{Chain: chains.POLYGON.String(), Status: protocol.Unavailable.String()},
 	}, body.Chains)
 }
 

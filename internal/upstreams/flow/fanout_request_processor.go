@@ -230,10 +230,6 @@ func (a *maximumValueAggregator) Final(request protocol.RequestHolder) *protocol
 	return totalFailureWrapper(request, protocol.NoAvailableUpstreamsError())
 }
 
-func isNullResponse(response protocol.ResponseHolder) bool {
-	return strings.TrimSpace(string(response.ResponseResult())) == "null"
-}
-
 func parseHexQuantityResult(response protocol.ResponseHolder) (*big.Int, error) {
 	str, err := response.ResponseResultString()
 	if err != nil {

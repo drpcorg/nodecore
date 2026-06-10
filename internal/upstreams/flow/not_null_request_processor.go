@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -60,8 +61,8 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 			continue
 		}
 		if wrapper.Response.HasStream() {
-			lastErr = errors.New("not-null dispatch received streaming response")
-			continue
+			zerolog.Ctx(ctx).Debug().Msgf("not-null dispatch selected streaming upstream %s for method %s", wrapper.UpstreamId, request.Method())
+			return &UnaryResponse{ResponseWrapper: wrapper}
 		}
 		if wrapper.Response.HasError() {
 			if fallback == nil {
@@ -93,3 +94,7 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 }
 
 var _ RequestProcessor = (*NotNullRequestProcessor)(nil)
+
+func isNullResponse(response protocol.ResponseHolder) bool {
+	return strings.TrimSpace(string(response.ResponseResult())) == "null"
+}

@@ -74,3 +74,41 @@ func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
 
 	assert.IsType(t, &UnaryRequestProcessor{}, processor)
 }
+
+func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	exec := &BaseExecutionFlow{
+		chain: chains.ETHEREUM,
+		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
+			IntegrityConfig: &config.IntegrityConfig{},
+			Upstreams: []*config.Upstream{
+				{ChainName: chains.ETHEREUM.String(), Options: &chains.Options{EnableNotNullDispatch: new(false)}},
+			},
+		}},
+	}
+	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
+
+	processor := exec.createRequestProcessor(request)
+
+	assert.IsType(t, &UnaryRequestProcessor{}, processor)
+}
+
+func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	exec := &BaseExecutionFlow{
+		chain: chains.ETHEREUM,
+		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
+			IntegrityConfig: &config.IntegrityConfig{},
+			Upstreams: []*config.Upstream{
+				{ChainName: chains.ETHEREUM.String(), Options: &chains.Options{EnableNotNullDispatch: new(true)}},
+			},
+		}},
+	}
+	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
+
+	processor := exec.createRequestProcessor(request)
+
+	assert.IsType(t, &NotNullRequestProcessor{}, processor)
+}

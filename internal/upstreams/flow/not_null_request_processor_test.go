@@ -3,6 +3,7 @@ package flow_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -45,6 +46,36 @@ func TestNotNullRequestProcessorStopsAfterFirstNonNull(t *testing.T) {
 	strategy.AssertExpectations(t)
 	upSupervisor.AssertExpectations(t)
 	connector1.AssertExpectations(t)
+	connector2.AssertNotCalled(t, "SendRequest", mock.Anything, request)
+}
+
+func TestNotNullRequestProcessorReturnsStreamResponse(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	ctx := context.Background()
+	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
+
+	strategy := mocks.NewMockStrategy()
+	strategy.On("SelectUpstream", request).Return("up1", nil).Once()
+	strategy.On("SelectUpstream", request).Return("up2", nil).Once()
+	strategy.On("SelectUpstream", request).Return("", errors.New("done")).Once()
+
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	connector1 := mocks.NewConnectorMock()
+	connector2 := mocks.NewConnectorMock()
+	up1 := test_utils.TestEvmUpstream(connector1, upConfig(), mocks.NewMethodsMock(), nil)
+	up2 := test_utils.TestEvmUpstream(connector2, upConfig(), mocks.NewMethodsMock(), nil)
+	upSupervisor.On("GetUpstream", "up1").Return(up1).Once()
+	upSupervisor.On("GetUpstream", "up2").Return(up2).Maybe()
+
+	streamResponse := protocol.NewHttpUpstreamResponseStream("1", strings.NewReader(`{"result":"ok"}`), protocol.JsonRpc)
+	connector1.On("SendRequest", mock.Anything, request).Return(streamResponse).Once()
+
+	processor := flow.NewNotNullRequestProcessor(upSupervisor)
+	response := processor.ProcessRequest(ctx, strategy, request)
+	unary := response.(*flow.UnaryResponse).ResponseWrapper
+
+	assert.Same(t, streamResponse, unary.Response)
+	assert.True(t, unary.Response.HasStream())
 	connector2.AssertNotCalled(t, "SendRequest", mock.Anything, request)
 }
 
