@@ -34,8 +34,9 @@ upstream-config:
         call-limit-size: 131072
         validate-client-version: false
         disable-log-index-validation: true
-        enable-not-null-dispatch: false
         archive: false
+      dispatch:
+        not-null: false
       poll-interval: 45s
     polygon:
       poll-interval: 30s
@@ -146,7 +147,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
 | `disable-log-index-validation` | `true` (off) | `false` (on) |
 | `validate-client-version` | `false` (off) | `true` (on) |
-| `enable-not-null-dispatch` | `false` (off) | `true` (on) |
+| `chain-defaults.<chain>.dispatch.not-null` | `false` (off) | `true` (on) |
 
 ## integrity
 
@@ -240,11 +241,13 @@ chain-defaults:
       validate-call-limit: true
       call-limit-size: 131072
     poll-interval: 45s
+    dispatch:
+      not-null: true
   polygon:
     poll-interval: 30s
 ```
 
-The `chain-defaults` section defines per-chain baseline settings that apply to all upstreams of that chain unless explicitly overridden in the upstream configuration.
+The `chain-defaults` section defines per-chain baseline settings. `<chain>.options` apply to upstreams of that chain unless explicitly overridden in the upstream configuration; `<chain>.dispatch` controls routing policies for the whole chain and is not a per-upstream setting.
 
 `chain-defaults` fields:
 
@@ -264,8 +267,9 @@ The `chain-defaults` section defines per-chain baseline settings that apply to a
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
   * `validate-client-version` - For EVM chains, validates the detected `web3_clientVersion`/client labels against the embedded compatible-client rules. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
-  * `enable-not-null-dispatch` - Enables sequential retry for method specs with `dispatch: not-null`. In `default` mode this falls back to `false` to avoid extra upstream requests; in `strict` mode it falls back to `true`. See [Method specs](11-method-specs.md#settings) for dispatch semantics
   * `archive` - Manual EVM archive capability override. Set `archive: false` to publish `archive=false` without running archive auto-detection. Set `archive: true` or leave it unset to use the runtime archive detector and publish its detected result
+* `<chain>.dispatch` - Per-chain dispatch policy toggles. These options affect routing for the whole chain, not individual upstreams:
+  * `not-null` - Enables sequential retry for method specs with `dispatch: not-null`. In `default` mode this falls back to `false` to avoid extra upstream requests; in `strict` mode it falls back to `true`. See [Method specs](11-method-specs.md#settings) for dispatch semantics
 * `<chain>.poll-interval` - How often nodecore polls upstreams of that chain for new head / finality information
   * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** is `1m` in `mode: default`, and the chain's expected block time in `mode: strict`
 * `<chain>.label-balancing` - Per-chain override of the global [label-balancing](#label-balancing) block. When set it fully replaces the global block for this chain

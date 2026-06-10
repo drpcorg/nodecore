@@ -255,7 +255,6 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *chains.Options {
 		ValidateSyncing:             new(false),
 		ValidateCallLimit:           new(false),
 		ValidateClientVersion:       new(false),
-		EnableNotNullDispatch:       new(false),
 		DisableLogIndexValidation:   new(true),
 	}
 

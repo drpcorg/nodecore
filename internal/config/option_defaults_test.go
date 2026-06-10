@@ -41,7 +41,6 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(true),
 		ValidateClientVersion:       new(true),
-		EnableNotNullDispatch:       new(true),
 		MinPeers:                    7,
 		CallLimitSize:               7777777,
 	}
@@ -59,7 +58,6 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 			ValidatePeers:               new(true),
 			ValidateCallLimit:           new(false),
 			ValidateClientVersion:       new(false),
-			EnableNotNullDispatch:       new(false),
 			MinPeers:                    3,
 			CallLimitSize:               3333333,
 		},
@@ -75,7 +73,6 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 		ValidatePeers:               new(true),
 		ValidateCallLimit:           new(false),
 		ValidateClientVersion:       new(false),
-		EnableNotNullDispatch:       new(false),
 		MinPeers:                    2,
 		CallLimitSize:               2222222,
 	}, DefaultMode)
@@ -90,7 +87,6 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 	assert.False(t, *options.ValidatePeers)
 	assert.True(t, *options.ValidateCallLimit)
 	assert.Equal(t, int64(7), options.MinPeers)
-	assert.True(t, *options.EnableNotNullDispatch)
 	assert.Equal(t, int64(7777777), options.CallLimitSize)
 }
 
@@ -127,7 +123,6 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 			ValidatePeers:               new(true),
 			ValidateCallLimit:           new(true),
 			ValidateClientVersion:       new(true),
-			EnableNotNullDispatch:       new(true),
 		},
 	}, &chains.Options{
 		DisableValidation:           new(false),
@@ -141,7 +136,6 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(false),
 		ValidateClientVersion:       new(false),
-		EnableNotNullDispatch:       new(false),
 	}, DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
@@ -153,7 +147,6 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 	assert.True(t, *options.ValidateSyncing)
 	assert.True(t, *options.ValidatePeers)
 	assert.True(t, *options.ValidateCallLimit)
-	assert.True(t, *options.EnableNotNullDispatch)
 }
 
 func TestSetOptionsDefaultsUsesNodecoreIntDefaultsBeforeChain(t *testing.T) {
@@ -200,7 +193,6 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(true),
 		ValidateClientVersion:       new(true),
-		EnableNotNullDispatch:       new(true),
 	}, DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
@@ -212,7 +204,6 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 	assert.False(t, *options.ValidateSyncing)
 	assert.False(t, *options.ValidatePeers)
 	assert.True(t, *options.ValidateCallLimit)
-	assert.True(t, *options.EnableNotNullDispatch)
 }
 
 func TestSetOptionsDefaultsUsesChainIntDefaultsWhenNodecoreMissing(t *testing.T) {
@@ -245,7 +236,6 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	assert.False(t, *options.ValidateCallLimit)
 	assert.Equal(t, int64(1), options.MinPeers)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
-	assert.False(t, *options.EnableNotNullDispatch)
 }
 
 func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags(t *testing.T) {
@@ -258,7 +248,6 @@ func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags
 	assert.True(t, *options.ValidateSyncing)
 	assert.True(t, *options.ValidatePeers)
 	assert.True(t, *options.ValidateCallLimit)
-	assert.True(t, *options.EnableNotNullDispatch)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
 

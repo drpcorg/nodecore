@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,9 +83,7 @@ func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
-			Upstreams: []*config.Upstream{
-				{ChainName: chains.ETHEREUM.String(), Options: &chains.Options{EnableNotNullDispatch: new(false)}},
-			},
+			Mode:            config.DefaultMode,
 		}},
 	}
 	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
@@ -101,8 +100,8 @@ func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
-			Upstreams: []*config.Upstream{
-				{ChainName: chains.ETHEREUM.String(), Options: &chains.Options{EnableNotNullDispatch: new(true)}},
+			ChainDefaults: map[string]*config.ChainDefaults{
+				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{NotNull: lo.ToPtr(true)}},
 			},
 		}},
 	}

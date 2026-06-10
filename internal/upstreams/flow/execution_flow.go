@@ -338,15 +338,8 @@ func (e *BaseExecutionFlow) notNullDispatchEnabled() bool {
 	if e == nil || e.appConfig == nil || e.appConfig.UpstreamConfig == nil {
 		return false
 	}
-	for _, upstream := range e.appConfig.UpstreamConfig.Upstreams {
-		if upstream == nil || upstream.Options == nil || upstream.ChainName != e.chain.String() {
-			continue
-		}
-		if upstream.Options.EnableNotNullDispatch != nil && *upstream.Options.EnableNotNullDispatch {
-			return true
-		}
-	}
-	return false
+	dispatchOptions := e.appConfig.UpstreamConfig.GetDispatchOptions(e.chain.String())
+	return dispatchOptions.NotNull != nil && *dispatchOptions.NotNull
 }
 
 func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {

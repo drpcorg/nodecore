@@ -54,6 +54,23 @@ func (u UpstreamMode) Validate() error {
 	return nil
 }
 
+func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
+	options := DispatchOptions{
+		NotNull: lo.ToPtr(u != nil && u.Mode == StrictMode),
+	}
+	if u == nil || u.ChainDefaults == nil {
+		return options
+	}
+	defaults := u.ChainDefaults[chainName]
+	if defaults == nil || defaults.Dispatch == nil {
+		return options
+	}
+	if defaults.Dispatch.NotNull != nil {
+		options.NotNull = defaults.Dispatch.NotNull
+	}
+	return options
+}
+
 type Upstream struct {
 	Id                string                   `yaml:"id"`
 	ChainName         string                   `yaml:"chain"`
@@ -111,6 +128,7 @@ type ChainDefaults struct {
 	PollInterval   time.Duration         `yaml:"poll-interval"`
 	Options        *chains.Options       `yaml:"options"`
 	LabelBalancing *LabelBalancingConfig `yaml:"label-balancing"`
+	Dispatch       *DispatchOptions      `yaml:"dispatch"`
 }
 
 // LabelBalancingConfig enables priority-group balancing: upstreams tagged with
@@ -147,6 +165,12 @@ func (l *LabelBalancingConfig) validate() error {
 		seen.Add(label)
 	}
 	return nil
+}
+
+type DispatchOptions struct {
+	Broadcast    *bool `yaml:"broadcast"`
+	MaximumValue *bool `yaml:"maximum-value"`
+	NotNull      *bool `yaml:"not-null"`
 }
 
 type FailsafeConfig struct {

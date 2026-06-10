@@ -175,13 +175,6 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, true, false),
 		)
 	}
-	if upstreamOptions.EnableNotNullDispatch == nil {
-		upstreamOptions.EnableNotNullDispatch = resolveBool(
-			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.EnableNotNullDispatch }),
-			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.EnableNotNullDispatch }),
-			lo.Ternary(upstreamMode == StrictMode, true, false),
-		)
-	}
 	if upstreamOptions.CallLimitSize == 0 {
 		upstreamOptions.CallLimitSize = resolveInt64(
 			getInt64(defaultChainOptions, func(options *chains.Options) int64 { return options.CallLimitSize }),
