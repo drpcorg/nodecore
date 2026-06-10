@@ -78,6 +78,7 @@ retryable-errors:
   - str: <html>
   - str: www.allnodes.com
   - str: upgrade your plan
+  - str: upgrade to paid tier
   - str: Block not available for slot
   - str: L2 finalized block height not
   - str: decoding block from
