@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -228,10 +229,7 @@ func sendUnaryRequest(
 }
 
 func requestBlockTagMetadata(ctx context.Context, request protocol.RequestHolder) *protocol.RequestBlockTag {
-	if request == nil {
-		return nil
-	}
-	blockNumber, ok := request.ParseParams(ctx).(*specs.BlockNumberParam)
+	blockNumber, ok := requestMethodParam(ctx, request).(*specs.BlockNumberParam)
 	if !ok {
 		return nil
 	}
@@ -306,7 +304,7 @@ func lowerBoundTypeForMethod(method string) (protocol.LowerBoundType, bool) {
 }
 
 func lowerBoundRequestBlock(ctx context.Context, request protocol.RequestHolder) (int64, bool) {
-	switch param := request.ParseParams(ctx).(type) {
+	switch param := requestMethodParam(ctx, request).(type) {
 	case *specs.BlockNumberParam:
 		if param.BlockNumber >= 0 {
 			return int64(param.BlockNumber), true
@@ -317,6 +315,26 @@ func lowerBoundRequestBlock(ctx context.Context, request protocol.RequestHolder)
 		}
 	}
 	return 0, false
+}
+
+func requestMethodParam(ctx context.Context, request protocol.RequestHolder) specs.MethodParam {
+	if request == nil || request.SpecMethod() == nil || request.RequestType() != protocol.JsonRpc {
+		return nil
+	}
+	body, err := request.Body()
+	if err != nil {
+		return nil
+	}
+	var parsedBody struct {
+		Params any `json:"params"`
+	}
+	if err := sonic.Unmarshal(body, &parsedBody); err != nil {
+		return nil
+	}
+	if parsedBody.Params == nil {
+		parsedBody.Params = []any{}
+	}
+	return request.SpecMethod().Parse(ctx, parsedBody.Params)
 }
 
 func isPrunedHistoryError(message string) bool {
