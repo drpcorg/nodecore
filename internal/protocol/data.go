@@ -294,7 +294,6 @@ type ResponseHolderWrapper struct {
 	UpstreamId            string
 	RequestId             string
 	UpstreamNodeVersion   string
-	RequestBlockTag       *RequestBlockTag
 	FinalizationBlockType *BlockType
 	FinalizationBlock     Block
 	Response              ResponseHolder

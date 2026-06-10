@@ -214,14 +214,13 @@ func sendUnaryRequest(
 
 	requestBlockTag := requestBlockTagMetadata(ctx, request)
 	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTag)
-	if lowerBound, ok := liveLowerBoundFromPrunedError(ctx, request, response); ok {
+	if lowerBound, ok := liveLowerBoundFromPrunedError(ctx, request, response, upstream.GetCurrentHeadHeight()); ok {
 		upstream.UpdateLowerBound(lowerBound)
 	}
 	return &protocol.ResponseHolderWrapper{
 		RequestId:             request.Id(),
 		UpstreamId:            upstream.GetId(),
 		UpstreamNodeVersion:   upstreamNodeVersion,
-		RequestBlockTag:       requestBlockTag,
 		FinalizationBlockType: finalizationBlockType,
 		FinalizationBlock:     finalizationBlock,
 		Response:              response,
@@ -274,7 +273,7 @@ func responseFinalizationMetadata(upstreamState protocol.UpstreamState, tag *pro
 	return &blockType, block
 }
 
-func liveLowerBoundFromPrunedError(ctx context.Context, request protocol.RequestHolder, response protocol.ResponseHolder) (protocol.LowerBoundData, bool) {
+func liveLowerBoundFromPrunedError(ctx context.Context, request protocol.RequestHolder, response protocol.ResponseHolder, currentHead uint64) (protocol.LowerBoundData, bool) {
 	if response == nil || !response.HasError() {
 		return protocol.LowerBoundData{}, false
 	}
@@ -287,7 +286,7 @@ func liveLowerBoundFromPrunedError(ctx context.Context, request protocol.Request
 		return protocol.LowerBoundData{}, false
 	}
 	block, ok := lowerBoundRequestBlock(ctx, request)
-	if !ok || block < 0 {
+	if !ok || block < 0 || currentHead == 0 || uint64(block) > currentHead {
 		return protocol.LowerBoundData{}, false
 	}
 	return protocol.NewLowerBoundDataNow(block+1, boundType), true
