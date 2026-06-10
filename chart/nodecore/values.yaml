@@ -1,5 +1,6 @@
 image:
-  name: drpcorg/nodecore
+  repository: drpcorg/nodecore
+  tag: "latest"
   pullPolicy: Always
 
 deployment:

@@ -5,11 +5,16 @@
   "properties": {
     "image": {
       "type": "object",
+      "additionalProperties": false,
       "description": "Container image configuration",
       "properties": {
-        "name": {
+        "repository": {
           "type": "string",
           "description": "Container image repository"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Container image tag (defaults to the chart appVersion, then \"latest\")"
         },
         "pullPolicy": {
           "type": "string",
@@ -22,7 +27,7 @@
         }
       },
       "required": [
-        "name",
+        "repository",
         "pullPolicy"
       ]
     },
