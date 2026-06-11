@@ -76,9 +76,23 @@ func TestEvmParseSubBLock(t *testing.T) {
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
 		ParentHash: blockchain.NewHashIdFromString("0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"),
+		// the full header JSON is retained so newHeads can be served locally
+		RawData: body,
 	}
 
 	assert.Equal(t, expected, block)
+}
+
+func TestEvmParseBlockHasNoRawData(t *testing.T) {
+	body := []byte(`{
+      "number": "0x41fd60b",
+      "hash": "0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18",
+	  "parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
+    }`)
+
+	block, err := test_utils.NewEvmChainSpecific(nil).ParseBlock(body)
+	assert.Nil(t, err)
+	assert.Nil(t, block.RawData)
 }
 
 func TestEvmGetLatestBlock(t *testing.T) {

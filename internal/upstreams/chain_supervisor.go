@@ -59,6 +59,7 @@ func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.F
 			Methods:     methods.NewChainMethods(nil),
 			ChainLabels: make([]AggregatedLabels, 0),
 			SubMethods:  mapset.NewThreadUnsafeSet[string](),
+			Caps:        mapset.NewThreadUnsafeSet[protocol.Cap](),
 		},
 	)
 
@@ -188,7 +189,7 @@ func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.
 			if !newState.HeadData.IsEmpty() {
 				b.subStateManager.Publish(
 					&ChainSupervisorStateWrapperEvent{
-						[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head)},
+						[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head, upstreamId)},
 					},
 				)
 			}
@@ -212,7 +213,8 @@ func (b *BaseChainSupervisor) updateState() {
 	newState.Blocks = processUpstreamBlocks(availableUpstreams)
 	newState.LowerBounds = processLowerBounds(availableUpstreams)
 	newState.ChainLabels = processLabels(availableUpstreams)
-	newState.SubMethods = b.processSubMethods(availableUpstreams)
+	newState.Caps = processCaps(availableUpstreams)
+	newState.SubMethods = b.processSubMethods(newState.Caps)
 
 	eventWrappers := currentState.Compare(newState)
 	if len(eventWrappers) > 0 {
@@ -269,14 +271,25 @@ func (b *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	return states
 }
 
-func (b *BaseChainSupervisor) processSubMethods(availableUpstreams []*protocol.UpstreamState) mapset.Set[string] {
-	for _, upState := range availableUpstreams {
-		if upState.Caps.Contains(protocol.WsCap) {
-			return b.subChainMethods.Clone()
+func (b *BaseChainSupervisor) processSubMethods(caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+	if caps == nil || !caps.Contains(protocol.WsCap) {
+		return mapset.NewThreadUnsafeSet[string]()
+	}
+	subMethods := b.subChainMethods.Clone()
+	// EVM advertises concrete topics derived from caps instead of the generic
+	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
+	// real sub types. A topic is offered only if it can be served locally
+	// (newHeads -> NewHeadsCap, logs -> LogsCap).
+	if subMethods.ContainsOne("eth_subscribe") {
+		subMethods.Remove("eth_subscribe")
+		if caps.Contains(protocol.NewHeadsCap) {
+			subMethods.Add("newHeads")
+		}
+		if caps.Contains(protocol.LogsCap) {
+			subMethods.Add("logs")
 		}
 	}
-
-	return mapset.NewThreadUnsafeSet[string]()
+	return subMethods
 }
 
 func (b *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {

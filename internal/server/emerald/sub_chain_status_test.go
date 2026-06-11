@@ -233,7 +233,7 @@ func TestSubscribeChainStatus_WaitsForHeadBeforeFirstResponse(t *testing.T) {
 
 	head := protocol.NewBlockWithHeight(100)
 	chainSupervisor.SetState(newChainState(chains.ARBITRUM, head, []string{"eth_call"}))
-	chainSupervisor.PublishStateEvent(upstreams.NewHeadWrapper(head))
+	chainSupervisor.PublishStateEvent(upstreams.NewHeadWrapper(head, "up-1"))
 
 	select {
 	case <-stream.Sent():
@@ -430,7 +430,7 @@ func TestSubscribeChainStatus_SendsIncrementalEventsForStateChanges(t *testing.T
 	nextState := updatedState
 	nextState.HeadData = upstreams.NewChainHeadData(nextHead, "up-1")
 	chainSupervisor.SetState(nextState)
-	chainSupervisor.PublishStateEvent(upstreams.NewHeadWrapper(nextHead))
+	chainSupervisor.PublishStateEvent(upstreams.NewHeadWrapper(nextHead, "up-1"))
 
 	require.Eventually(t, func() bool {
 		return stream.Count() == 3
@@ -492,7 +492,7 @@ func TestSubscribeChainStatus_DoesNotSubscribeSameChainTwice(t *testing.T) {
 	nextHead := protocol.NewBlockWithHeight(322)
 	nextState := newChainState(chains.ARBITRUM, nextHead, []string{"eth_call"})
 	chainSupervisor.SetState(nextState)
-	chainSupervisor.PublishStateEvent(upstreams.NewHeadWrapper(nextHead))
+	chainSupervisor.PublishStateEvent(upstreams.NewHeadWrapper(nextHead, "up-1"))
 
 	require.Eventually(t, func() bool {
 		return stream.Count() == 2

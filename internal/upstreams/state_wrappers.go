@@ -79,12 +79,14 @@ func NewLowerBoundsWrapper(lowerBounds []protocol.LowerBoundData) *LowerBoundsWr
 func (s *LowerBoundsWrapper) chainSupervisorEventWrapper() {}
 
 type HeadWrapper struct {
-	Head protocol.Block
+	Head       protocol.Block
+	UpstreamId string
 }
 
-func NewHeadWrapper(head protocol.Block) *HeadWrapper {
+func NewHeadWrapper(head protocol.Block, upstreamId string) *HeadWrapper {
 	return &HeadWrapper{
-		Head: head,
+		Head:       head,
+		UpstreamId: upstreamId,
 	}
 }
 
