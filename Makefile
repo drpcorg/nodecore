@@ -1,3 +1,7 @@
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || true)
+LDFLAGS := -X github.com/drpcorg/nodecore/internal/buildinfo.Version=$(VERSION) -X github.com/drpcorg/nodecore/internal/buildinfo.GitSHA=$(GIT_SHA)
+
 .PHONY: dshackle-proto-gen
 dshackle-proto-gen:
 	mkdir -p pkg/dshackle
@@ -37,7 +41,7 @@ test:
 
 .PHONY: build
 build: generate-networks
-	go build -o $(PWD)/nodecore cmd/nodecore/main.go
+	go build -ldflags "$(LDFLAGS)" -o $(PWD)/nodecore cmd/nodecore/main.go
 
 .PHONY: setup
 setup:

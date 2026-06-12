@@ -37,16 +37,22 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache-key-suffix: "build-${{ matrix.os }}"
 
-      - name: Build
-        run: make build
+      - name: Get version metadata
+        id: version_meta
+        run: |
+          echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Get short SHA
-        id: short_sha
-        run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+      - name: Build
+        run: make build VERSION=${{ steps.version_meta.outputs.version }} GIT_SHA=${{ steps.version_meta.outputs.sha }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nodecore-${{ matrix.os }}-${{ matrix.go-version }}-${{ steps.short_sha.outputs.sha }}
+          name: nodecore-${{ matrix.os }}-${{ matrix.go-version }}-${{ steps.version_meta.outputs.sha }}
           path: nodecore
           retention-days: 7

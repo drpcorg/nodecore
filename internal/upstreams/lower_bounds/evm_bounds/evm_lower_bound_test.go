@@ -54,17 +54,17 @@ func expectLatest(connector *mocks.ConnectorMock, latest string) {
 func TestEvmLowerBoundDetectorSupportedTypesAndPeriod(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	detectors := []struct {
-		detector *evm_bounds.EvmLowerBoundDetector
-		bt       protocol.LowerBoundType
+		detector       *evm_bounds.EvmLowerBoundDetector
+		supportedTypes []protocol.LowerBoundType
 	}{
-		{evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector), protocol.StateBound},
-		{evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector), protocol.BlockBound},
-		{evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector), protocol.TxBound},
-		{evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector), protocol.ReceiptsBound},
+		{evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.StateBound, protocol.TraceBound}},
+		{evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.BlockBound, protocol.LogsBound}},
+		{evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.TxBound}},
+		{evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.ReceiptsBound}},
 	}
 
 	for _, tc := range detectors {
-		assert.Equal(t, []protocol.LowerBoundType{tc.bt}, tc.detector.SupportedTypes())
+		assert.Equal(t, tc.supportedTypes, tc.detector.SupportedTypes())
 		assert.Equal(t, 3*time.Minute, tc.detector.Period())
 	}
 }
@@ -94,7 +94,7 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesEarliestAvailableBlock(t *testi
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.BlockBound, result[0].Type)
 	assert.Equal(t, int64(3), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -117,7 +117,7 @@ func TestEvmStateLowerBoundDetectorFallsBackToBalanceWhenStateOverrideUnsupporte
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.StateBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -140,7 +140,7 @@ func TestEvmTxLowerBoundDetectorChecksFirstTransactionHash(t *testing.T) {
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.TxBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -163,7 +163,7 @@ func TestEvmReceiptsLowerBoundDetectorChecksFirstTransactionObjectHash(t *testin
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -194,7 +194,7 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesMultipleSteps(t *testing.T) {
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.BlockBound, result[0].Type)
 	assert.Equal(t, int64(4), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -220,8 +220,8 @@ func TestEvmBlockLowerBoundDetectorReusesCachedBound(t *testing.T) {
 	second, err := detector.DetectLowerBound()
 	require.NoError(t, err)
 
-	require.Len(t, first, 1)
-	require.Len(t, second, 1)
+	require.NotEmpty(t, first)
+	require.NotEmpty(t, second)
 	assert.Equal(t, int64(1), first[0].Bound)
 	assert.Equal(t, int64(1), second[0].Bound)
 	connector.AssertExpectations(t)
@@ -244,7 +244,7 @@ func TestEvmStateLowerBoundDetectorParsesStateOverrideResult(t *testing.T) {
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.StateBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -267,7 +267,7 @@ func TestEvmTxLowerBoundDetectorParsesLiveBlockAndTransactionShapes(t *testing.T
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.TxBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -290,7 +290,7 @@ func TestEvmReceiptsLowerBoundDetectorParsesObjectTransactionsAndReceiptShape(t 
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
@@ -330,7 +330,7 @@ func TestEvmLowerBoundDetectorRetriesUnexpectedErrors(t *testing.T) {
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
+	require.NotEmpty(t, result)
 	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
 }

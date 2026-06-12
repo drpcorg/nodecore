@@ -201,6 +201,31 @@ func TestParseBlockRefLogs(t *testing.T) {
 	assert.Equal(t, &specs.BlockRangeParam{From: new(rpc.EarliestBlockNumber), To: new(rpc.LatestBlockNumber)}, result.(*specs.BlockRangeParam))
 }
 
+func TestDefaultEvmLookupMethodsUseNotNullDispatch(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("specs")).Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethodsByConnectors("eth", nil)
+	notNullMethods := []string{
+		"eth_getBlockByHash",
+		"eth_getBlockByNumber",
+		"eth_getBlockTransactionCountByHash",
+		"eth_getTransactionByBlockHashAndIndex",
+		"eth_getTransactionByBlockNumberAndIndex",
+		"eth_getTransactionByHash",
+		"eth_getTransactionReceipt",
+		"eth_getUncleByBlockHashAndIndex",
+		"eth_getUncleCountByBlockHash",
+	}
+
+	for _, methodName := range notNullMethods {
+		t.Run(methodName, func(t *testing.T) {
+			method := spec[specs.DefaultMethodGroup][methodName]
+			assert.True(t, method.IsNotNullDispatch())
+		})
+	}
+}
+
 func TestParseStringValue(t *testing.T) {
 	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/parsers")).Load()
 	assert.NoError(t, err)

@@ -133,6 +133,13 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
+	if upstreamOptions.DisableLogIndexValidation == nil {
+		upstreamOptions.DisableLogIndexValidation = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),
+			lo.Ternary(upstreamMode == StrictMode, false, true),
+		)
+	}
 	if upstreamOptions.ValidateSyncing == nil {
 		upstreamOptions.ValidateSyncing = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateSyncing }),
@@ -158,6 +165,13 @@ func setOptionsDefaults(
 		upstreamOptions.ValidateCallLimit = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
+			lo.Ternary(upstreamMode == StrictMode, true, false),
+		)
+	}
+	if upstreamOptions.ValidateClientVersion == nil {
+		upstreamOptions.ValidateClientVersion = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateClientVersion }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateClientVersion }),
 			lo.Ternary(upstreamMode == StrictMode, true, false),
 		)
 	}

@@ -310,7 +310,15 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 		requestProcessor = NewStickyRequestProcessor(e.chain, e.upstreamSupervisor)
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else if request.SpecMethod().DispatchPolicy() != specs.DispatchDefault {
-		requestProcessor = NewFanoutRequestProcessor(e.upstreamSupervisor, request.SpecMethod().DispatchPolicy())
+		if e.dispatchEnabled(request.SpecMethod().DispatchPolicy()) {
+			if request.SpecMethod().DispatchPolicy() == specs.DispatchNotNull {
+				requestProcessor = NewNotNullRequestProcessor(e.upstreamSupervisor)
+			} else {
+				requestProcessor = NewFanoutRequestProcessor(e.upstreamSupervisor, request.SpecMethod().DispatchPolicy())
+			}
+		} else {
+			requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
+		}
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else if shouldEnforceIntegrity(request.SpecMethod(), e.appConfig.UpstreamConfig.IntegrityConfig) {
 		requestProcessor = NewIntegrityRequestProcessor(
@@ -325,6 +333,23 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	}
 
 	return requestProcessor
+}
+
+func (e *BaseExecutionFlow) dispatchEnabled(policy specs.DispatchPolicy) bool {
+	if e == nil || e.appConfig == nil || e.appConfig.UpstreamConfig == nil {
+		return false
+	}
+	dispatchOptions := e.appConfig.UpstreamConfig.GetDispatchOptions(e.chain.String())
+	switch policy {
+	case specs.DispatchBroadcast:
+		return dispatchOptions.Broadcast != nil && *dispatchOptions.Broadcast
+	case specs.DispatchMaximumValue:
+		return dispatchOptions.MaximumValue != nil && *dispatchOptions.MaximumValue
+	case specs.DispatchNotNull:
+		return dispatchOptions.NotNull != nil && *dispatchOptions.NotNull
+	default:
+		return false
+	}
 }
 
 func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {

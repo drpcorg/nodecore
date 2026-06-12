@@ -22,8 +22,9 @@ import (
 
 func TestChainValidator(t *testing.T) {
 	options := &chains.Options{
-		DisableChainValidation: new(true),
-		ValidateCallLimit:      new(false),
+		DisableChainValidation:    new(true),
+		DisableLogIndexValidation: new(true),
+		ValidateCallLimit:         new(false),
 	}
 	connector := mocks.NewConnectorMock()
 	chain := chains.GetChain("ethereum")

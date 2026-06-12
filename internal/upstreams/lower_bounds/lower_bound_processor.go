@@ -154,10 +154,14 @@ func (b *BaseLowerBoundProcessor) processBounds(
 		}
 
 		if data.Bound >= bound || data.Bound == 1 {
-			b.lowerBounds.UpdateBound(data)
-			boundsChan <- data
+			b.publishBound(data, boundsChan)
 		}
 	}
+}
+
+func (b *BaseLowerBoundProcessor) publishBound(data protocol.LowerBoundData, boundsChan chan protocol.LowerBoundData) {
+	b.lowerBounds.UpdateBound(data)
+	boundsChan <- data
 }
 
 var _ LowerBoundProcessor = (*BaseLowerBoundProcessor)(nil)

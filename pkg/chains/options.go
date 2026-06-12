@@ -15,10 +15,13 @@ type Options struct {
 	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
 	DisableSafeBlockDetection   *bool         `yaml:"disable-safe-block-detection"`
 	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
+	DisableLogIndexValidation   *bool         `yaml:"disable-log-index-validation"`
+	ArchiveCapability           *bool         `yaml:"archive"`
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
 	ValidatePeers               *bool         `yaml:"validate-peers"`
 	MinPeers                    int64         `yaml:"min-peers"`
 	ValidateCallLimit           *bool         `yaml:"validate-call-limit"`
+	ValidateClientVersion       *bool         `yaml:"validate-client-version"`
 	CallLimitSize               int64         `yaml:"call-limit-size"`
 }
 

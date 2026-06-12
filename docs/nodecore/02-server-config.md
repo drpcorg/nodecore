@@ -8,6 +8,7 @@ server:
   grpc-port: 9091
   metrics-port: 9093
   pprof-port: 6061
+  health-port: 9096
   tor-url: localhost:9050
   tls:
     enabled: true
@@ -35,6 +36,7 @@ server:
 - `grpc-port` - Port exposing the [gRPC API](12-grpc-server.md) for querying upstream/chain state. Disabled by default; set explicitly to enable
 - `metrics-port` - Port exposing Prometheus metrics (endpoint `GET /metrics`). By default, it's disabled, so it's necessary to specify the port explicitly to enable prom metrics
 - `pprof-port` - Port for Go [pprof](https://github.com/google/pprof) profiling endpoints. By default, profiling is disabled; to enable it, you must explicitly set this port
+- `health-port` - Port exposing operational health endpoints. **_Default_**: `9096`
 - `pyroscope-config` - Optional integration with [Pyroscope](https://pyroscope.io/) for continuous profiling
   - `enabled` - Enable/disable Pyroscope integration. **_Default_**: `false`
   - `url`: URL of the Pyroscope server. **_Required_** if `enabled: true`
@@ -52,6 +54,15 @@ server:
   - `external-public-key-path` - filesystem path to the public key used to verify incoming client signatures. **_Required_** if `enabled: true`; the file must exist
   - `session-ttl` - lifetime of a successful authentication session before a new handshake is required. **_Default_**: `24h`
 - `tor-url` - Address of a SOCKS5 proxy (typically a local Tor instance) used for connecting to `.onion` upstreams. Format: `host:port`. Example: `localhost:9050`. See [Upstream Config](05-upstream-config.md#tor-onion-upstreams) for details
+
+
+## Health endpoints
+
+When `health-port` is configured, nodecore exposes lightweight Kubernetes-friendly health endpoints on that port:
+
+- `GET /health` - liveness probe. It intentionally returns `200 OK` whenever the process and health HTTP server are alive. It does **not** check upstreams or external dependencies, so Kubernetes can use it to decide whether to restart the container without restarting healthy pods during upstream/network incidents.
+- `GET /ready` - readiness probe. It returns `200 OK` when at least one chain supervisor is currently available; otherwise it returns `503 Service Unavailable`. Use this endpoint to decide whether the pod should receive traffic.
+- `GET /status` - diagnostic JSON endpoint with the same readiness boolean plus per-chain statuses. This is intended for operators and monitoring dashboards, not for Kubernetes liveness decisions.
 
 ## Environment variables
 

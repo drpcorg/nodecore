@@ -34,12 +34,13 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 	upstreamStrategy UpstreamStrategy,
 	request protocol.RequestHolder,
 ) ProcessedResponse {
-	upstreamIDs, err := collectFanoutUpstreamIDs(upstreamStrategy, request)
+	upstreamIDs, err := collectDispatchUpstreamIDs(upstreamStrategy, request)
 	if err != nil {
 		return &UnaryResponse{ResponseWrapper: totalFailureWrapper(request, err)}
 	}
 
 	zerolog.Ctx(ctx).Debug().Msgf("fan-out selected %d upstreams for method %s", len(upstreamIDs), request.Method())
+	parsedParam := request.ParseParams(ctx)
 
 	results := make(chan fanoutResult, len(upstreamIDs))
 	var wg sync.WaitGroup
@@ -52,7 +53,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 				results <- fanoutResult{upstreamID: upstreamID, err: protocol.NoAvailableUpstreamsError()}
 				return
 			}
-			wrapper, err := sendUnaryRequest(ctx, upstream, request)
+			wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
 			results <- fanoutResult{upstreamID: upstreamID, wrapper: wrapper, err: err}
 		}(upstreamID)
 	}
@@ -92,7 +93,7 @@ type fanoutResult struct {
 	err        error
 }
 
-func collectFanoutUpstreamIDs(upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) ([]string, error) {
+func collectDispatchUpstreamIDs(upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) ([]string, error) {
 	var upstreamIDs []string
 	seen := make(map[string]struct{})
 	for {

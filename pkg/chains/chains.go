@@ -49,6 +49,7 @@ type ChainData struct {
 	Settings             map[string]interface{} `yaml:"settings"`
 	NetVersion           string                 `yaml:"net-version"`
 	CallValidateContract string                 `yaml:"call-validate-contract"`
+	GasPriceCondition    []string               `yaml:"gas-price-condition"`
 }
 
 type Protocol struct {
@@ -79,6 +80,7 @@ type ConfiguredChain struct {
 	Chain                Chain
 	MethodSpec           string
 	CallValidateContract string
+	GasPriceCondition    []string
 }
 
 var UnknownChain = &ConfiguredChain{
@@ -197,6 +199,7 @@ func configureChains() (map[string]*ConfiguredChain, map[int]*ConfiguredChain, e
 					Chain:                network,
 					MethodSpec:           methodSpec,
 					CallValidateContract: chain.CallValidateContract,
+					GasPriceCondition:    append([]string(nil), chain.GasPriceCondition...),
 				}
 
 				for _, shortName := range chain.ShortNames {

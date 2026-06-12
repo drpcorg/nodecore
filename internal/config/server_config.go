@@ -15,6 +15,7 @@ type ServerConfig struct {
 	GrpcPort        int              `yaml:"grpc-port"`
 	MetricsPort     int              `yaml:"metrics-port"`
 	PprofPort       int              `yaml:"pprof-port"`
+	HealthPort      int              `yaml:"health-port"`
 	TlsConfig       *TlsConfig       `yaml:"tls"`
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
 	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
@@ -73,6 +74,9 @@ func (s *ServerConfig) validate() error {
 	if s.PprofPort < 0 {
 		return fmt.Errorf("incorrect pprof port - %d", s.PprofPort)
 	}
+	if s.HealthPort < 0 {
+		return fmt.Errorf("incorrect health port - %d", s.HealthPort)
+	}
 
 	ports := mapset.NewThreadUnsafeSet[int](s.Port)
 	if ports.Contains(s.GrpcPort) && s.GrpcPort != 0 {
@@ -85,6 +89,10 @@ func (s *ServerConfig) validate() error {
 	ports.Add(s.MetricsPort)
 	if ports.Contains(s.PprofPort) && s.PprofPort != 0 {
 		return fmt.Errorf("pprof port %d is already in use", s.PprofPort)
+	}
+	ports.Add(s.PprofPort)
+	if ports.Contains(s.HealthPort) && s.HealthPort != 0 {
+		return fmt.Errorf("health port %d is already in use", s.HealthPort)
 	}
 
 	if err := s.TlsConfig.validate(); err != nil {

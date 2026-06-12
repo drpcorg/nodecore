@@ -50,7 +50,7 @@ func NewEvmBlockLowerBoundDetector(
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *EvmLowerBoundDetector {
-	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.BlockBound)
+	return newEvmLowerBoundDetectorWithSupportedTypes(upstreamId, chain, internalTimeout, connector, protocol.BlockBound, []protocol.LowerBoundType{protocol.BlockBound, protocol.LogsBound})
 }
 
 func NewEvmStateLowerBoundDetector(
@@ -59,7 +59,7 @@ func NewEvmStateLowerBoundDetector(
 	internalTimeout time.Duration,
 	connector connectors.ApiConnector,
 ) *EvmLowerBoundDetector {
-	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.StateBound)
+	return newEvmLowerBoundDetectorWithSupportedTypes(upstreamId, chain, internalTimeout, connector, protocol.StateBound, []protocol.LowerBoundType{protocol.StateBound, protocol.TraceBound})
 }
 
 func NewEvmTxLowerBoundDetector(
@@ -80,6 +80,15 @@ func NewEvmReceiptsLowerBoundDetector(
 	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.ReceiptsBound)
 }
 
+func NewEvmProofLowerBoundDetector(
+	upstreamId string,
+	chain chains.Chain,
+	internalTimeout time.Duration,
+	connector connectors.ApiConnector,
+) *EvmLowerBoundDetector {
+	return newEvmLowerBoundDetectorWithSupportedTypes(upstreamId, chain, internalTimeout, connector, protocol.ProofBound, []protocol.LowerBoundType{protocol.ProofBound})
+}
+
 func newEvmLowerBoundDetector(
 	upstreamId string,
 	chain chains.Chain,
@@ -87,8 +96,19 @@ func newEvmLowerBoundDetector(
 	connector connectors.ApiConnector,
 	boundType protocol.LowerBoundType,
 ) *EvmLowerBoundDetector {
+	return newEvmLowerBoundDetectorWithSupportedTypes(upstreamId, chain, internalTimeout, connector, boundType, []protocol.LowerBoundType{boundType})
+}
+
+func newEvmLowerBoundDetectorWithSupportedTypes(
+	upstreamId string,
+	chain chains.Chain,
+	internalTimeout time.Duration,
+	connector connectors.ApiConnector,
+	boundType protocol.LowerBoundType,
+	supportedTypes []protocol.LowerBoundType,
+) *EvmLowerBoundDetector {
 	return &EvmLowerBoundDetector{
-		LowerBoundSearchCalculator: lower_bounds.NewLowerBoundSearchCalculator(upstreamId, boundType, evmLowerBoundPeriod),
+		LowerBoundSearchCalculator: lower_bounds.NewLowerBoundSearchCalculatorWithSupportedTypes(upstreamId, boundType, supportedTypes, evmLowerBoundPeriod),
 		connector:                  connector,
 		chain:                      chain,
 		internalTimeout:            internalTimeout,
@@ -109,6 +129,8 @@ func (e *EvmLowerBoundDetector) probe(height int64) (bool, error) {
 		return e.hasTx(height)
 	case protocol.ReceiptsBound:
 		return e.hasReceipts(height)
+	case protocol.ProofBound:
+		return e.hasProof(height)
 	default:
 		return false, fmt.Errorf("unsupported EVM lower-bound type %s", e.MainBoundType.String())
 	}
@@ -179,6 +201,14 @@ func (e *EvmLowerBoundDetector) hasReceipts(height int64) (bool, error) {
 		return available, err
 	}
 	raw, available, err := e.call("eth_getTransactionReceipt", []any{txHash})
+	if err != nil || !available {
+		return available, err
+	}
+	return !isEvmNullResult(raw), nil
+}
+
+func (e *EvmLowerBoundDetector) hasProof(height int64) (bool, error) {
+	raw, available, err := e.call("eth_getProof", []any{evmZeroAddress, []string{}, evmBlockTag(height)})
 	if err != nil || !available {
 		return available, err
 	}

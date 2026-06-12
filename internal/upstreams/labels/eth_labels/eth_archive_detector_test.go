@@ -56,6 +56,22 @@ func TestEthArchiveLabelsDetectorDetectLabelsReturnsArchiveLabel(t *testing.T) {
 				On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(request))).
 				Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x0"`), protocol.JsonRpc)).
 				Once()
+			latestRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, tt.chain)
+			require.NoError(t, err)
+			connector.
+				On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(latestRequest))).
+				Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x10000"`), protocol.JsonRpc)).
+				Once()
+			recentRequest, err := protocol.NewInternalUpstreamJsonRpcRequest(
+				"eth_getBalance",
+				[]any{"0x0000000000000000000000000000000000000000", "0xd8f0"},
+				tt.chain,
+			)
+			require.NoError(t, err)
+			connector.
+				On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(recentRequest))).
+				Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x0"`), protocol.JsonRpc)).
+				Once()
 
 			detector := eth_labels.NewEthArchiveLabelsDetector("upstream-id", tt.chain, time.Second, connector)
 

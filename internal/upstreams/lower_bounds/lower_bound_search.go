@@ -82,11 +82,22 @@ func (c *LowerBoundSearchCalculator) DetectLowerBound(
 	}
 	c.lastBound.Store(bound)
 
-	return []protocol.LowerBoundData{protocol.NewLowerBoundDataNow(bound, c.MainBoundType)}, nil
+	return c.lowerBoundResults(bound), nil
 }
 
 func (c *LowerBoundSearchCalculator) SupportedTypes() []protocol.LowerBoundType {
 	return c.allSupportedTypes
+}
+
+func (c *LowerBoundSearchCalculator) lowerBoundResults(bound int64) []protocol.LowerBoundData {
+	results := make([]protocol.LowerBoundData, 0, len(c.allSupportedTypes))
+	if len(c.allSupportedTypes) == 0 {
+		return []protocol.LowerBoundData{protocol.NewLowerBoundDataNow(bound, c.MainBoundType)}
+	}
+	for _, boundType := range c.allSupportedTypes {
+		results = append(results, protocol.NewLowerBoundDataNow(bound, boundType))
+	}
+	return results
 }
 
 func (c *LowerBoundSearchCalculator) Period() time.Duration {

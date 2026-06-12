@@ -18,6 +18,7 @@ func TestServerConfig(t *testing.T) {
 		Port:            9095,
 		MetricsPort:     9093,
 		PprofPort:       6061,
+		HealthPort:      9096,
 		PyroscopeConfig: &config.PyroscopeConfig{},
 		TlsConfig:       &config.TlsConfig{},
 		GrpcAuthConfig: &config.GrpcAuthConfig{

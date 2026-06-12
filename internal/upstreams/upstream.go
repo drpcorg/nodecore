@@ -273,6 +273,10 @@ func (u *BaseUpstream) UpdateBlock(block protocol.Block, blockType protocol.Bloc
 	u.processorAggregator.UpdateBlock(event_processors.NewBaseBlockUpdateData(block, blockType))
 }
 
+func (u *BaseUpstream) UpdateLowerBound(data protocol.LowerBoundData) {
+	u.emitter(&protocol.LowerBoundUpstreamStateEvent{Data: data})
+}
+
 func (u *BaseUpstream) BanMethod(method string) {
 	u.emitter(&protocol.BanMethodUpstreamStateEvent{Method: method})
 }

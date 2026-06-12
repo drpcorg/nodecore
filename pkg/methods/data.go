@@ -65,6 +65,7 @@ const (
 	DispatchDefault      DispatchPolicy = ""
 	DispatchBroadcast    DispatchPolicy = "broadcast"
 	DispatchMaximumValue DispatchPolicy = "maximum-value"
+	DispatchNotNull      DispatchPolicy = "not-null"
 )
 
 type Sticky struct {
@@ -175,7 +176,7 @@ func (m *MethodSettings) validate() error {
 
 func (d DispatchPolicy) validate() error {
 	switch d {
-	case DispatchDefault, DispatchBroadcast, DispatchMaximumValue:
+	case DispatchDefault, DispatchBroadcast, DispatchMaximumValue, DispatchNotNull:
 		return nil
 	default:
 		return fmt.Errorf("unknown dispatch policy - %s", d)

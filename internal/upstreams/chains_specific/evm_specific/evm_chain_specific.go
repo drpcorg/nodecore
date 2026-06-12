@@ -54,10 +54,17 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
-		eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		archiveLabelsDetector(e),
 	}
 
 	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, labelsDetectors, e.options.ValidationInterval*5)
+}
+
+func archiveLabelsDetector(e *EvmChainSpecificObject) labels.LabelsDetector {
+	if e.options.ArchiveCapability != nil && !*e.options.ArchiveCapability {
+		return labels.NewStaticLabelsDetector(map[string]string{"archive": "false"})
+	}
+	return eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector)
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -66,6 +73,7 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 		evm_bounds.NewEvmBlockLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		evm_bounds.NewEvmTxLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }
@@ -91,6 +99,15 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	}
 	if *e.options.ValidateCallLimit && e.chain.CallValidateContract != "" {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthCallLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
+	if e.options.ValidateClientVersion != nil && *e.options.ValidateClientVersion {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthClientVersionValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
+	if len(e.chain.GasPriceCondition) > 0 {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthGasPriceValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
+	if e.options.DisableLogIndexValidation == nil || !*e.options.DisableLogIndexValidation {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthLogIndexValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 
 	return settingsValidators

@@ -6,7 +6,10 @@
   },
   "spec": {
     "name": "eth-json-rpc",
-    "api-connectors": ["json-rpc", "websocket"],
+    "api-connectors": [
+      "json-rpc",
+      "websocket"
+    ],
     "type": "plain"
   },
   "methods": [
@@ -218,24 +221,37 @@
     },
     {
       "name": "eth_getTransactionByHash",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_getTransactionReceipt",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_getBlockTransactionCountByHash",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_getBlockByHash",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_getBlockByNumber",
       "settings": {
-        "enforce-integrity": true
+        "enforce-integrity": true,
+        "dispatch": "not-null"
       },
       "params": [],
       "tag-parser": {
@@ -245,7 +261,10 @@
     },
     {
       "name": "eth_getTransactionByBlockHashAndIndex",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_getTransactionByBlockNumberAndIndex",
@@ -253,15 +272,24 @@
       "tag-parser": {
         "type": "blockNumber",
         "path": ".[0]"
+      },
+      "settings": {
+        "dispatch": "not-null"
       }
     },
     {
       "name": "eth_getUncleByBlockHashAndIndex",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_getUncleCountByBlockHash",
-      "params": []
+      "params": [],
+      "settings": {
+        "dispatch": "not-null"
+      }
     },
     {
       "name": "eth_call",

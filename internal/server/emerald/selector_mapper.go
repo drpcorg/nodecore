@@ -133,6 +133,12 @@ func mapDshackleLowerBoundType(boundType dshackle.LowerBoundType) (protocol.Lowe
 		return protocol.TxBound, true
 	case dshackle.LowerBoundType_LOWER_BOUND_RECEIPTS:
 		return protocol.ReceiptsBound, true
+	case dshackle.LowerBoundType_LOWER_BOUND_LOGS:
+		return protocol.LogsBound, true
+	case dshackle.LowerBoundType_LOWER_BOUND_TRACE:
+		return protocol.TraceBound, true
+	case dshackle.LowerBoundType_LOWER_BOUND_PROOF:
+		return protocol.ProofBound, true
 	default:
 		return protocol.UnknownBound, false
 	}

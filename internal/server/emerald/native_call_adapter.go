@@ -18,6 +18,7 @@ import (
 // layer and back: it turns the protobuf request into a protocol.RequestHolder
 // of the right API kind, and turns the resulting ResponseHolderWrapper into
 // NativeCallReplyItem(s) on the wire.
+
 type nativeCallAdapter interface {
 	BuildRequest(
 		chain *chains.ConfiguredChain,
@@ -173,22 +174,31 @@ func sendReply(
 	if resp, ok := wrapper.Response.(*protocol.BaseUpstreamResponse); ok {
 		headers = resp.ResponseHeaders()
 	}
-
 	requestID := parseCallItemID(wrapper.RequestId)
+	finalizationData := nativeCallFinalizationData(wrapper)
+
 	if wrapper.Response.HasError() {
-		return stream.Send(nativeCallErrorItem(requestID, wrapper.Response.GetError(), wrapper.UpstreamId, wrapper.Response.ResponseResult(), headers))
+		replyItem := nativeCallErrorItem(requestID, wrapper.Response.GetError(), wrapper.UpstreamId, wrapper.Response.ResponseResult(), headers)
+		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+		replyItem.Finalization = finalizationData
+		return stream.Send(replyItem)
 	}
 
 	if wrapper.Response.HasStream() {
 		reader := wrapper.Response.EncodeResponse([]byte("0"))
-		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, reader, chunkSize, mode, headers, stream); err != nil {
-			return stream.Send(nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers))
+		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, wrapper.UpstreamNodeVersion, finalizationData, reader, chunkSize, mode, headers, stream); err != nil {
+			replyItem := nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers)
+			replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+			replyItem.Finalization = finalizationData
+			return stream.Send(replyItem)
 		}
 		return nil
 	}
 
 	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
 	for _, replyItem := range nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize, headers) {
+		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+		replyItem.Finalization = finalizationData
 		if err := stream.Send(replyItem); err != nil {
 			return err
 		}
@@ -196,9 +206,24 @@ func sendReply(
 	return nil
 }
 
+func nativeCallFinalizationData(wrapper *protocol.ResponseHolderWrapper) *dshackle.FinalizationData {
+	if wrapper == nil || wrapper.FinalizationBlockType == nil {
+		return nil
+	}
+
+	finalizationType := dshackle.FinalizationType_FINALIZATION_SAFE_BLOCK
+	if *wrapper.FinalizationBlockType == protocol.FinalizedBlock {
+		finalizationType = dshackle.FinalizationType_FINALIZATION_FINALIZED_BLOCK
+	}
+
+	return &dshackle.FinalizationData{Height: wrapper.FinalizationBlock.Height, Type: finalizationType}
+}
+
 func streamNativeCallBody(
 	requestID uint32,
 	upstreamID string,
+	upstreamNodeVersion string,
+	finalization *dshackle.FinalizationData,
 	reader io.Reader,
 	chunkSize uint32,
 	mode streamMode,
@@ -211,13 +236,15 @@ func streamNativeCallBody(
 	}
 	emitter := newNativeCallChunkEmitter(effectiveChunkSize, func(chunk []byte, final bool) error {
 		return stream.Send(&dshackle.NativeCallReplyItem{
-			Id:              requestID,
-			Succeed:         true,
-			Payload:         chunk,
-			Chunked:         true,
-			FinalChunk:      final,
-			UpstreamId:      upstreamID,
-			ResponseHeaders: mapHeaders(header),
+			Id:                  requestID,
+			Succeed:             true,
+			Payload:             chunk,
+			Chunked:             true,
+			FinalChunk:          final,
+			UpstreamId:          upstreamID,
+			UpstreamNodeVersion: upstreamNodeVersion,
+			Finalization:        finalization,
+			ResponseHeaders:     mapHeaders(header),
 		})
 	})
 
