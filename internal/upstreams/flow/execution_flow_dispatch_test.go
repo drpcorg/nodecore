@@ -19,8 +19,13 @@ func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
 	exec := &BaseExecutionFlow{
-		chain:     chains.ETHEREUM,
-		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{IntegrityConfig: &config.IntegrityConfig{}}},
+		chain: chains.ETHEREUM,
+		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
+			IntegrityConfig: &config.IntegrityConfig{},
+			ChainDefaults: map[string]*config.ChainDefaults{
+				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{Broadcast: lo.ToPtr(true)}},
+			},
+		}},
 	}
 	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_sendRawTransaction"}, false, "eth")
 
@@ -33,14 +38,36 @@ func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testi
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
 	exec := &BaseExecutionFlow{
-		chain:     chains.ETHEREUM,
-		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{IntegrityConfig: &config.IntegrityConfig{}}},
+		chain: chains.ETHEREUM,
+		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
+			IntegrityConfig: &config.IntegrityConfig{},
+			ChainDefaults: map[string]*config.ChainDefaults{
+				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{MaximumValue: lo.ToPtr(true)}},
+			},
+		}},
 	}
 	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionCount"}, false, "eth")
 
 	processor := exec.createRequestProcessor(request)
 
 	assert.IsType(t, &FanoutRequestProcessor{}, processor)
+}
+
+func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	exec := &BaseExecutionFlow{
+		chain: chains.ETHEREUM,
+		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
+			IntegrityConfig: &config.IntegrityConfig{},
+			Mode:            config.DefaultMode,
+		}},
+	}
+	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_sendRawTransaction"}, false, "eth")
+
+	processor := exec.createRequestProcessor(request)
+
+	assert.IsType(t, &UnaryRequestProcessor{}, processor)
 }
 
 func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {

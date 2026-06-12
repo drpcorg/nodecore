@@ -55,8 +55,11 @@ func (u UpstreamMode) Validate() error {
 }
 
 func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
+	defaultEnabled := u != nil && u.Mode == StrictMode
 	options := DispatchOptions{
-		NotNull: lo.ToPtr(u != nil && u.Mode == StrictMode),
+		Broadcast:    lo.ToPtr(defaultEnabled),
+		MaximumValue: lo.ToPtr(defaultEnabled),
+		NotNull:      lo.ToPtr(defaultEnabled),
 	}
 	if u == nil || u.ChainDefaults == nil {
 		return options
@@ -64,6 +67,12 @@ func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
 	defaults := u.ChainDefaults[chainName]
 	if defaults == nil || defaults.Dispatch == nil {
 		return options
+	}
+	if defaults.Dispatch.Broadcast != nil {
+		options.Broadcast = defaults.Dispatch.Broadcast
+	}
+	if defaults.Dispatch.MaximumValue != nil {
+		options.MaximumValue = defaults.Dispatch.MaximumValue
 	}
 	if defaults.Dispatch.NotNull != nil {
 		options.NotNull = defaults.Dispatch.NotNull

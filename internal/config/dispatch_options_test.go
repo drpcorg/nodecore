@@ -14,31 +14,48 @@ func TestGetDispatchOptionsUsesModeFallbacks(t *testing.T) {
 	defaultCfg := &UpstreamConfig{Mode: DefaultMode}
 	strictCfg := &UpstreamConfig{Mode: StrictMode}
 
-	assert.False(t, *defaultCfg.GetDispatchOptions(chains.ETHEREUM.String()).NotNull)
-	assert.True(t, *strictCfg.GetDispatchOptions(chains.ETHEREUM.String()).NotNull)
+	defaultOptions := defaultCfg.GetDispatchOptions(chains.ETHEREUM.String())
+	assert.False(t, *defaultOptions.Broadcast)
+	assert.False(t, *defaultOptions.MaximumValue)
+	assert.False(t, *defaultOptions.NotNull)
+
+	strictOptions := strictCfg.GetDispatchOptions(chains.ETHEREUM.String())
+	assert.True(t, *strictOptions.Broadcast)
+	assert.True(t, *strictOptions.MaximumValue)
+	assert.True(t, *strictOptions.NotNull)
 }
 
 func TestGetDispatchOptionsUsesChainDefaults(t *testing.T) {
 	cfg := &UpstreamConfig{
 		Mode: DefaultMode,
 		ChainDefaults: map[string]*ChainDefaults{
-			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{NotNull: lo.ToPtr(true)}},
+			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{Broadcast: lo.ToPtr(true), MaximumValue: lo.ToPtr(true), NotNull: lo.ToPtr(true)}},
 		},
 	}
 
-	assert.True(t, *cfg.GetDispatchOptions(chains.ETHEREUM.String()).NotNull)
-	assert.False(t, *cfg.GetDispatchOptions(chains.BSC.String()).NotNull)
+	ethOptions := cfg.GetDispatchOptions(chains.ETHEREUM.String())
+	assert.True(t, *ethOptions.Broadcast)
+	assert.True(t, *ethOptions.MaximumValue)
+	assert.True(t, *ethOptions.NotNull)
+
+	bscOptions := cfg.GetDispatchOptions(chains.BSC.String())
+	assert.False(t, *bscOptions.Broadcast)
+	assert.False(t, *bscOptions.MaximumValue)
+	assert.False(t, *bscOptions.NotNull)
 }
 
 func TestGetDispatchOptionsChainDefaultsOverrideStrictFallback(t *testing.T) {
 	cfg := &UpstreamConfig{
 		Mode: StrictMode,
 		ChainDefaults: map[string]*ChainDefaults{
-			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{NotNull: lo.ToPtr(false)}},
+			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{Broadcast: lo.ToPtr(false), MaximumValue: lo.ToPtr(false), NotNull: lo.ToPtr(false)}},
 		},
 	}
 
-	assert.False(t, *cfg.GetDispatchOptions(chains.ETHEREUM.String()).NotNull)
+	options := cfg.GetDispatchOptions(chains.ETHEREUM.String())
+	assert.False(t, *options.Broadcast)
+	assert.False(t, *options.MaximumValue)
+	assert.False(t, *options.NotNull)
 }
 
 func TestDispatchOptionsParseFromChainDefaults(t *testing.T) {
@@ -48,9 +65,14 @@ mode: default
 chain-defaults:
   ethereum:
     dispatch:
+      broadcast: true
+      maximum-value: true
       not-null: true
 `), &cfg)
 
 	require.NoError(t, err)
-	assert.True(t, *cfg.GetDispatchOptions(chains.ETHEREUM.String()).NotNull)
+	options := cfg.GetDispatchOptions(chains.ETHEREUM.String())
+	assert.True(t, *options.Broadcast)
+	assert.True(t, *options.MaximumValue)
+	assert.True(t, *options.NotNull)
 }
