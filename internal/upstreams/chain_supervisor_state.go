@@ -64,6 +64,10 @@ type ChainSupervisorState struct {
 	LowerBounds map[protocol.LowerBoundType]protocol.LowerBoundData
 	ChainLabels []AggregatedLabels
 	SubMethods  mapset.Set[string]
+	// Caps is the union of subscription capabilities across available upstreams
+	// (WsCap, and for EVM NewHeadsCap/LogsCap). The subscription engine reads it
+	// to decide whether a topic can be served locally.
+	Caps mapset.Set[protocol.Cap]
 }
 
 func (c ChainSupervisorState) Compare(new ChainSupervisorState) []ChainSupervisorStateWrapper {
@@ -97,6 +101,17 @@ func (c ChainSupervisorState) Compare(new ChainSupervisorState) []ChainSuperviso
 	}
 
 	return wrappers
+}
+
+func processCaps(availableUpstreams []*protocol.UpstreamState) mapset.Set[protocol.Cap] {
+	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
+	for _, upState := range availableUpstreams {
+		if upState.Caps == nil {
+			continue
+		}
+		caps = caps.Union(upState.Caps)
+	}
+	return caps
 }
 
 func processLabels(availableUpstreams []*protocol.UpstreamState) []AggregatedLabels {

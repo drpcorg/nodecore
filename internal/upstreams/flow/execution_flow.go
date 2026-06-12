@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -104,6 +105,7 @@ type BaseExecutionFlow struct {
 	responseChan       chan *protocol.ResponseHolderWrapper
 	cacheProcessor     caches.CacheProcessor
 	subCtx             *SubCtx
+	subEngineRegistry  *subengine.Registry
 	registry           *rating.RatingRegistry
 	appConfig          *config.AppConfig
 	quorumRegistry     *quorum.Registry
@@ -121,6 +123,7 @@ func NewBaseExecutionFlow(
 	appConfig *config.AppConfig,
 	subCtx *SubCtx,
 	quorumRegistry *quorum.Registry,
+	subEngineRegistry *subengine.Registry,
 ) *BaseExecutionFlow {
 	return &BaseExecutionFlow{
 		chain:              chain,
@@ -128,6 +131,7 @@ func NewBaseExecutionFlow(
 		upstreamSupervisor: upstreamSupervisor,
 		responseChan:       make(chan *protocol.ResponseHolderWrapper),
 		subCtx:             subCtx,
+		subEngineRegistry:  subEngineRegistry,
 		registry:           registry,
 		appConfig:          appConfig,
 		quorumRegistry:     quorumRegistry,
@@ -302,7 +306,7 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	var requestProcessor RequestProcessor
 
 	if request.IsSubscribe() {
-		requestProcessor = NewSubscriptionRequestProcessor(e.upstreamSupervisor, e.subCtx)
+		requestProcessor = NewSubscriptionRequestProcessor(e.chain, e.upstreamSupervisor, e.subEngineRegistry.Get(e.chain), e.subCtx)
 	} else if request.SpecMethod().IsLocal() {
 		requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
 		reqObserver.WithRequestKind(protocol.Local)

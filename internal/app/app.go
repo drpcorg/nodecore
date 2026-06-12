@@ -24,6 +24,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/pyroscope"
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
@@ -82,6 +83,8 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		return nil, fmt.Errorf("unable to load quorum provider keys: %w", err)
 	}
 
+	subEngineRegistry := subengine.NewRegistry(ctx, upstreamSupervisor)
+
 	appCtx := server_ctx.NewApplicationServerContext(
 		upstreamSupervisor,
 		cacheProcessor,
@@ -92,6 +95,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		statsService,
 		dimensionTracker,
 		quorumRegistry,
+		subEngineRegistry,
 	)
 
 	grpcServer, err := emerald.NewGrpcServer(appCtx)

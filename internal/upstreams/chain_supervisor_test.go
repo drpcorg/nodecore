@@ -552,14 +552,15 @@ func TestChainSupervisorProcessSubMethods(t *testing.T) {
 	go chainSupervisor.Start()
 
 	sub := chainSupervisor.SubscribeState(t.Name())
-	expectedSubMethods := specs.GetSubMethods(chains.GetMethodSpecNameByChain(chains.ETHEREUM))
+	// EVM advertises cap-derived topics, not the generic eth_subscribe method.
+	expectedSubMethods := mapset.NewThreadUnsafeSet[string]("newHeads", "logs")
 
 	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
 		"id1",
 		protocol.Available,
 		100,
 		methods,
-		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap),
 	))
 
 	assert.Eventually(t, func() bool {
@@ -592,6 +593,156 @@ func TestChainSupervisorProcessSubMethods(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		return chainSupervisor.GetChainState().SubMethods.Cardinality() == 0
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorSubMethodsEvmWithoutTopicCapsIsEmpty(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// A ws connector is up (WsCap) but it is not the head connector, so neither
+	// NewHeadsCap nor LogsCap is granted - EVM then advertises no sub topics
+	// (the generic eth_subscribe is never exposed).
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetChainState()
+		return state.SubMethods.Cardinality() == 0 &&
+			state.Caps.Equal(mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorSubMethodsEvmNewHeadsOnly(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// Ws head connector but eth_getLogs not enabled -> newHeads only, no logs.
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Equal(mapset.NewThreadUnsafeSet[string]("newHeads"))
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorSubMethodsEmptyWithoutWsCap(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// No ws capability at all -> no sub methods regardless of chain.
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+	))
+
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetChainState()
+		return state.SubMethods.Cardinality() == 0 && state.Caps.Cardinality() == 0
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorSubMethodsSolanaUsesNativeMethods(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.SOLANA, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// Non-EVM keeps its native sub methods (no eth_subscribe in the spec), gated
+	// only on WsCap - the EVM topic caps are irrelevant here.
+	expected := specs.GetSubMethods(chains.GetMethodSpecNameByChain(chains.SOLANA))
+	require.NotZero(t, expected.Cardinality())
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Equal(expected)
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorCapsAggregatedAcrossUpstreams(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// id1 has a ws head connector (full topic caps); id2 only a request ws connector.
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap),
+	))
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id2",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+	))
+
+	// Chain caps are the union across available upstreams; topics follow.
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetChainState()
+		return state.Caps.Equal(mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)) &&
+			state.SubMethods.Equal(mapset.NewThreadUnsafeSet[string]("newHeads", "logs"))
+	}, eventuallyWait, eventuallyTick)
+
+	// The only upstream carrying the topic caps becomes unavailable -> caps and
+	// topics recompute from the remaining upstream (request ws only).
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Unavailable,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetChainState()
+		return state.Caps.Equal(mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap)) &&
+			state.SubMethods.Cardinality() == 0
 	}, eventuallyWait, eventuallyTick)
 }
 

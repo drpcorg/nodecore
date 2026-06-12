@@ -423,12 +423,13 @@ func NewHttpUpstreamResponseWithError(error *ResponseError) *BaseUpstreamRespons
 }
 
 type WsResponse struct {
-	Id      string
-	SubId   string
-	Message []byte
-	Type    RequestType
-	Error   *ResponseError
-	Event   []byte
+	Id         string
+	SubId      string
+	Message    []byte
+	Type       RequestType
+	Error      *ResponseError
+	Event      []byte
+	UpstreamId string
 }
 
 type JsonRpcWsUpstreamResponse struct {

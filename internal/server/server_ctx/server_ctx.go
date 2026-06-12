@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 )
 
 type ApplicationServerContext struct {
@@ -22,6 +23,7 @@ type ApplicationServerContext struct {
 	StatsService       stats.StatsService
 	DimensionTracker   dimensions.DimensionTracker
 	QuorumRegistry     *quorum.Registry
+	SubEngineRegistry  *subengine.Registry
 }
 
 func NewApplicationServerContext(
@@ -34,6 +36,7 @@ func NewApplicationServerContext(
 	statsService stats.StatsService,
 	dimensionTracker dimensions.DimensionTracker,
 	quorumRegistry *quorum.Registry,
+	subEngineRegistry *subengine.Registry,
 ) *ApplicationServerContext {
 	return &ApplicationServerContext{
 		UpstreamSupervisor: upstreamSupervisor,
@@ -45,5 +48,6 @@ func NewApplicationServerContext(
 		StatsService:       statsService,
 		DimensionTracker:   dimensionTracker,
 		QuorumRegistry:     quorumRegistry,
+		SubEngineRegistry:  subEngineRegistry,
 	}
 }
