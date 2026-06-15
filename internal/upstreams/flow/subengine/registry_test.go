@@ -10,7 +10,7 @@ import (
 )
 
 func TestRegistryGetIsLazyAndPerChain(t *testing.T) {
-	r := NewRegistry(context.Background(), nil)
+	r := NewRegistry(context.Background())
 
 	eth := r.Get(chains.ETHEREUM)
 	require.NotNil(t, eth)

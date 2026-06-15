@@ -153,6 +153,18 @@ func WsTotalFailureError() *ResponseError {
 	}
 }
 
+// WsSubscriberTooSlowError is the terminal error delivered to a subscriber that
+// could not keep up with the shared source's fan-out (its buffer overflowed).
+// It uses the WsTotalFailure code so the client treats it like any other
+// terminal failure and can resubscribe, but carries a distinct message so the
+// cause is visible in logs.
+func WsSubscriberTooSlowError() *ResponseError {
+	return &ResponseError{
+		Message: "subscription dropped: subscriber too slow to keep up",
+		Code:    WsTotalFailure,
+	}
+}
+
 func QuorumUnknownProviderError(providerID string) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("quorum signature verification failed: no public key configured for provider %q", providerID),

@@ -34,7 +34,7 @@ func newSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx *flow.Su
 	// No local-newHeads availability, so these tests exercise the generic
 	// node-backed path; tests that want local synthesis override this.
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
-	engine := subengine.NewRegistry(context.Background(), upSupervisor).Get(chains.ETHEREUM)
+	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
 	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx)
 }
 
@@ -202,7 +202,7 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	// No local-newHeads availability → both clients use the generic path.
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	// One shared engine backs both client processors.
-	engine := subengine.NewRegistry(ctx, upSupervisor).Get(chains.ETHEREUM)
+	engine := subengine.NewRegistry(ctx).Get(chains.ETHEREUM)
 	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx())
 	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx())
 

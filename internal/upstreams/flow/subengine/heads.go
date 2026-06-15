@@ -3,7 +3,6 @@ package subengine
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -13,12 +12,17 @@ import (
 
 // NewHeadsSourceBuilder builds a locally-synthesized newHeads source: instead of
 // opening eth_subscribe("newHeads") on a node, it taps the chain's merged head
-// stream (fork-choice winner) and emits each new block's full header JSON.
+// stream (fork-choice winner) and forwards subscription blocks.
 //
-// Only blocks carrying RawData are emitted - that JSON is populated solely by a
-// subscription-driven head (EVM ParseSubscriptionBlock). Polled heads have no
-// RawData and are skipped; callers gate this builder on WS-head availability so
-// that does not happen in practice.
+// A head produced from a ws newHeads notification carries that notification's
+// header JSON in RawData (set only by ParseSubscriptionBlock) - which is exactly
+// the newHeads payload, so it is forwarded verbatim. Heads without RawData
+// (polled blocks, or a subscription head's poll fallback) are not subscription
+// notifications and are skipped.
+//
+// The source degrades - emits a terminal frame so clients resubscribe onto the
+// generic node-backed path - when the chain loses NewHeadsCap (the last ws-head
+// upstream left), detected by re-reading the chain state on each state event.
 func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain) SourceBuilder {
 	return func(srcCtx context.Context) (*Source, error) {
 		chainSup := sup.GetChainSupervisor(chain)
@@ -26,17 +30,21 @@ func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain)
 			return nil, protocol.NoAvailableUpstreamsError()
 		}
 
-		sub := chainSup.SubscribeState(fmt.Sprintf("subengine_newheads_%s_%s_%d", chain, uuid.NewString(), time.Now().UnixNano()))
+		sub := chainSup.SubscribeState(fmt.Sprintf("subengine_newheads_%s_%s", chain, uuid.NewString()))
 		out := make(chan *protocol.WsResponse, 100)
 
 		go func() {
 			defer close(out)
 			defer sub.Unsubscribe()
 
-			// Seed with the current head so the first subscriber gets an
-			// immediate event instead of waiting for the next block.
-			if cur := chainSup.GetChainState().HeadData; !cur.IsEmpty() && len(cur.Head.RawData) > 0 {
-				out <- &protocol.WsResponse{Message: cur.Head.RawData, UpstreamId: cur.UpstreamId}
+			newHeadsLost := func() bool {
+				caps := chainSup.GetChainState().Caps
+				return caps == nil || !caps.Contains(protocol.NewHeadsCap)
+			}
+
+			if newHeadsLost() {
+				out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+				return
 			}
 
 			for {
@@ -47,10 +55,14 @@ func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain)
 					if !ok {
 						return
 					}
+					if newHeadsLost() {
+						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+						return
+					}
 					for _, wrapper := range event.Wrappers {
 						head, ok := wrapper.(*upstreams.HeadWrapper)
 						if !ok || len(head.Head.RawData) == 0 {
-							continue
+							continue // not a subscription block - nothing to forward
 						}
 						out <- &protocol.WsResponse{Message: head.Head.RawData, UpstreamId: head.UpstreamId}
 					}

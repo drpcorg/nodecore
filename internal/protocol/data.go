@@ -201,6 +201,7 @@ const (
 // block tag and numeric height) cannot be represented by construction.
 type RequestSelector interface {
 	isRequestSelector()
+	Key() string
 }
 
 type RequestAnySelector struct{}

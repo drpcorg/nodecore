@@ -3,7 +3,6 @@ package subengine
 import (
 	"context"
 
-	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 )
@@ -13,14 +12,12 @@ import (
 // subscription opened over either transport aggregates into the same source.
 type Registry struct {
 	ctx     context.Context
-	sup     upstreams.UpstreamSupervisor
 	engines *utils.CMap[chains.Chain, Engine]
 }
 
-func NewRegistry(ctx context.Context, sup upstreams.UpstreamSupervisor) *Registry {
+func NewRegistry(ctx context.Context) *Registry {
 	return &Registry{
 		ctx:     ctx,
-		sup:     sup,
 		engines: utils.NewCMap[chains.Chain, Engine](),
 	}
 }
@@ -33,6 +30,6 @@ func (r *Registry) Get(chain chains.Chain) Engine {
 	if engine, ok := r.engines.Load(chain); ok {
 		return engine
 	}
-	engine, _ := r.engines.LoadOrStore(chain, NewEngine(r.ctx, chain, r.sup))
+	engine, _ := r.engines.LoadOrStore(chain, NewEngine(r.ctx, chain))
 	return engine
 }

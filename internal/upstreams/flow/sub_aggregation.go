@@ -15,19 +15,28 @@ import (
 	"github.com/google/uuid"
 )
 
-// sourceBuilder picks how the shared source for this subscription is produced:
-// locally-synthesized newHeads when the chain has a WS-head-capable upstream, or
-// the default node-backed passthrough otherwise.
-func sourceBuilder(
+// localNewHeadsKey is the aggregation key for the locally-synthesized newHeads
+// source. The local source taps the chain's single merged-head stream and
+// ignores request selectors, so all local newHeads subscribers must collapse
+// onto one source regardless of their selectors (one head tap per chain).
+const localNewHeadsKey = "local|newHeads"
+
+// resolveSource decides how the shared source for this subscription is produced
+// and returns its aggregation key alongside the builder, keeping the local-vs-
+// generic decision and the key in one place:
+//   - locally-synthesized newHeads (one source per chain) when the chain has a
+//     WS-head-capable upstream, or
+//   - the default node-backed passthrough, keyed by method+params+selectors.
+func resolveSource(
 	chain chains.Chain,
 	supervisor upstreams.UpstreamSupervisor,
 	request protocol.RequestHolder,
 	strategy UpstreamStrategy,
-) subengine.SourceBuilder {
+) (string, subengine.SourceBuilder) {
 	if isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
-		return subengine.NewHeadsSourceBuilder(supervisor, chain)
+		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain)
 	}
-	return newGenericSourceBuilder(supervisor, request, strategy)
+	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy)
 }
 
 // isNewHeadsRequest reports whether request is eth_subscribe("newHeads"). Only
@@ -64,67 +73,28 @@ func localNewHeadsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSup
 	return caps != nil && caps.Contains(protocol.NewHeadsCap)
 }
 
-// subscriptionKey is the aggregation key: subscriptions that share method,
+// subscriptionKey is the aggregation key: subscriptions that share method and
 // params (via RequestHash, which is blake2b over method+params) and selector
-// routing collapse onto a single upstream source.
+// routing collapse onto a single upstream source. RequestHash already covers
+// method+params, so the method is not prefixed separately.
 func subscriptionKey(request protocol.RequestHolder) string {
-	return fmt.Sprintf("%s|%s|%s", request.Method(), request.RequestHash(), selectorKey(request.Selectors()))
+	return fmt.Sprintf("%s|%s", request.RequestHash(), selectorKey(request.Selectors()))
 }
 
 // selectorKey produces a stable string for a selector tree so that identical
 // subscriptions routed the same way collide, while differently-routed ones do
-// not. The encoding is deterministic regardless of selector ordering within
-// and/or groups.
+// not. Per-selector encoding is RequestSelector.Key (deterministic regardless
+// of ordering within and/or groups).
 func selectorKey(selectors []protocol.RequestSelector) string {
 	if len(selectors) == 0 {
 		return ""
 	}
 	parts := make([]string, 0, len(selectors))
 	for _, selector := range selectors {
-		parts = append(parts, encodeSelector(selector))
+		parts = append(parts, selector.Key())
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ",")
-}
-
-func encodeSelector(selector protocol.RequestSelector) string {
-	switch s := selector.(type) {
-	case protocol.RequestAnySelector:
-		return "any"
-	case protocol.RequestLabelSelector:
-		values := append([]string(nil), s.Values...)
-		sort.Strings(values)
-		return fmt.Sprintf("label(%s=%s)", s.Name, strings.Join(values, "|"))
-	case protocol.RequestExistsSelector:
-		return fmt.Sprintf("exists(%s)", s.Name)
-	case protocol.RequestAndSelector:
-		return fmt.Sprintf("and(%s)", encodeSelectorGroup(s.Children))
-	case protocol.RequestOrSelector:
-		return fmt.Sprintf("or(%s)", encodeSelectorGroup(s.Children))
-	case protocol.RequestNotSelector:
-		return fmt.Sprintf("not(%s)", encodeSelector(s.Child))
-	case protocol.RequestHeightSelector:
-		return fmt.Sprintf("height(%d)", s.Height)
-	case protocol.RequestBlockTagSelector:
-		return fmt.Sprintf("tag(%d)", s.Tag)
-	case protocol.RequestSlotHeightSelector:
-		return fmt.Sprintf("slot(%d)", s.SlotHeight)
-	case protocol.RequestLowerHeightSelector:
-		return fmt.Sprintf("lower(%d,%d,%d,%d)", s.Height, s.LowerBoundType, s.TimeOffset, s.HeightDelta)
-	case protocol.RequestUnsupportedSelector:
-		return fmt.Sprintf("unsupported(%s)", s.Reason)
-	default:
-		return fmt.Sprintf("%T", selector)
-	}
-}
-
-func encodeSelectorGroup(children []protocol.RequestSelector) string {
-	parts := make([]string, 0, len(children))
-	for _, child := range children {
-		parts = append(parts, encodeSelector(child))
-	}
-	sort.Strings(parts)
-	return strings.Join(parts, "|")
 }
 
 // newGenericSourceBuilder builds the default node-backed source: it selects an

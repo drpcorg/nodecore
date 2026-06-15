@@ -48,7 +48,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		defer close(responses)
 
 		if request.SpecMethod() == nil || request.SpecMethod().Subscription == nil {
-			responses <- failureWrapper(request, errors.New("no subscription info"))
+			responses <- totalFailureWrapper(request, errors.New("no subscription info"))
 			return
 		}
 
@@ -63,22 +63,18 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// The shared source emits events only - each client allocates its own
 		// client-facing subscription id below, independent of the single
 		// upstream subscription id.
-		key := subscriptionKey(request)
-		events, unsub, err := s.engine.Subscribe(key, sourceBuilder(s.chain, s.upstreamSupervisor, request, upstreamStrategy))
+		key, builder := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy)
+		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
-			responses <- failureWrapper(request, err)
+			responses <- totalFailureWrapper(request, err)
 			return
 		}
-		defer unsub()
+		defer sub.Unsubscribe()
 
 		subId, err := nextSubscriptionJson(isSolana(s.chain))
 		if err != nil {
 			log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
-			responses <- &protocol.ResponseHolderWrapper{
-				UpstreamId: NoUpstream,
-				RequestId:  request.Id(),
-				Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.WsTotalFailureError(), request.RequestType()),
-			}
+			responses <- totalFailureWrapper(request, protocol.WsTotalFailureError())
 			return
 		}
 		s.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
@@ -90,15 +86,14 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 		for {
 			select {
-			case r, ok := <-events:
+			case r, ok := <-sub.Events:
 				if !ok {
-					return
-				}
-				if r.Error != nil {
-					responses <- &protocol.ResponseHolderWrapper{
-						UpstreamId: responseUpstreamId(r),
-						RequestId:  request.Id(),
-						Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.WsTotalFailureError(), request.RequestType()),
+					// The shared source ended. A non-nil cause is a terminal
+					// failure (node disconnect, param reject, slow consumer);
+					// nil means this client detached cleanly. The real cause is
+					// preserved rather than collapsed into a generic error.
+					if cause := sub.Err(); cause != nil {
+						responses <- totalFailureWrapper(request, cause)
 					}
 					return
 				}
@@ -120,14 +115,6 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	}()
 
 	return &SubscriptionResponse{responses}
-}
-
-func failureWrapper(request protocol.RequestHolder, err error) *protocol.ResponseHolderWrapper {
-	return &protocol.ResponseHolderWrapper{
-		UpstreamId: NoUpstream,
-		RequestId:  request.Id(),
-		Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
-	}
 }
 
 func responseUpstreamId(r *protocol.WsResponse) string {

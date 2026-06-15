@@ -181,17 +181,15 @@ func (b *BaseChainSupervisor) processEvents() {
 
 func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.HeadUpstreamEvent) {
 	newState := b.state.Load()
+	var headWrapper *ChainSupervisorStateWrapperEvent
 	if headEvent != nil && !headEvent.Head.IsEmptyByHeight() {
 		updated, head := b.fc.Choose(upstreamId, headEvent)
 		if updated {
 			newState.HeadData = NewChainHeadData(head, upstreamId)
-
 			if !newState.HeadData.IsEmpty() {
-				b.subStateManager.Publish(
-					&ChainSupervisorStateWrapperEvent{
-						[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head, upstreamId)},
-					},
-				)
+				headWrapper = &ChainSupervisorStateWrapperEvent{
+					[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head, upstreamId)},
+				}
 			}
 		}
 	} else if headEvent != nil {
@@ -199,6 +197,9 @@ func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.
 	}
 
 	b.state.Store(newState)
+	if headWrapper != nil {
+		b.subStateManager.Publish(headWrapper)
+	}
 	b.calculateHeadLags()
 }
 
@@ -217,11 +218,10 @@ func (b *BaseChainSupervisor) updateState() {
 	newState.SubMethods = b.processSubMethods(newState.Caps)
 
 	eventWrappers := currentState.Compare(newState)
+	b.state.Store(newState)
 	if len(eventWrappers) > 0 {
 		b.subStateManager.Publish(&ChainSupervisorStateWrapperEvent{eventWrappers})
 	}
-
-	b.state.Store(newState)
 	b.calculateFinalizationLags()
 }
 

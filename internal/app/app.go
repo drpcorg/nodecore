@@ -83,7 +83,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		return nil, fmt.Errorf("unable to load quorum provider keys: %w", err)
 	}
 
-	subEngineRegistry := subengine.NewRegistry(ctx, upstreamSupervisor)
+	subEngineRegistry := subengine.NewRegistry(ctx)
 
 	appCtx := server_ctx.NewApplicationServerContext(
 		upstreamSupervisor,
