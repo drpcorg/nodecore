@@ -1,3 +1,6 @@
+-include .env
+export
+
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || true)
 LDFLAGS := -X github.com/drpcorg/nodecore/internal/buildinfo.Version=$(VERSION) -X github.com/drpcorg/nodecore/internal/buildinfo.GitSHA=$(GIT_SHA)
@@ -38,6 +41,28 @@ lint:
 .PHONY: test
 test:
 	go test -race -p 8 ./...
+
+E2E_VERSION ?= e2e-version
+E2E_GIT_SHA ?= e2e-git-sha
+
+
+.PHONY: build-e2e-images
+build-e2e-images:
+	docker build -t nodecore-e2e:latest --build-arg VERSION=$(E2E_VERSION) --build-arg GIT_SHA=$(E2E_GIT_SHA) .
+	docker build -t nodecore-e2e-hardhat:latest test/e2e/internal/hardhat
+
+
+.PHONY: test-e2e-grpc
+test-e2e-grpc: build-e2e-images
+	go test -tags=e2e ./test/e2e/grpc -count=1 -timeout=20m -v
+
+.PHONY: test-e2e-http
+test-e2e-http: build-e2e-images
+	go test -tags=e2e ./test/e2e/http -count=1 -timeout=20m -v
+
+.PHONY: test-e2e
+test-e2e: build-e2e-images
+	go test -tags=e2e ./test/e2e/... -count=1 -timeout=20m -v
 
 .PHONY: build
 build: generate-networks

@@ -31,7 +31,7 @@ type UpstreamJsonRpcRequest struct {
 }
 
 func NewUpstreamJsonRpcRequestWithSpecMethod(method string, params any, specMethod *specs.Method) (*UpstreamJsonRpcRequest, error) {
-	requestParams, err := sonic.Marshal(params)
+	requestParams, err := marshalJsonRPCParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func NewUpstreamJsonRpcRequestWithSpecMethod(method string, params any, specMeth
 }
 
 func NewInternalUpstreamJsonRpcRequest(method string, params any, chain chains.Chain) (*UpstreamJsonRpcRequest, error) {
-	requestParams, err := sonic.Marshal(params)
+	requestParams, err := marshalJsonRPCParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func NewInternalUpstreamJsonRpcRequest(method string, params any, chain chains.C
 }
 
 func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chains.Chain) (*UpstreamJsonRpcRequest, error) {
-	requestParams, err := sonic.Marshal(params)
+	requestParams, err := marshalJsonRPCParams(params)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +75,13 @@ func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chain
 		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(true).WithRequestKind(InternalSubscription).WithMethod(method),
 	}, nil
+}
+
+func marshalJsonRPCParams(params any) ([]byte, error) {
+	if params == nil {
+		params = []any{}
+	}
+	return sonic.Marshal(params)
 }
 
 func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specName string) *UpstreamJsonRpcRequest {
