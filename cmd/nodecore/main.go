@@ -23,10 +23,6 @@ const (
 	// schema as drpcorg/public chains.yaml) that gets merged into the
 	// embedded registry at startup. Empty/unset = embedded only.
 	envExtraChainsPath = "NODECORE_EXTRA_CHAINS_PATH"
-
-	// envExtraSpecsPath points at a directory of JSON method-spec files that
-	// extend or override the embedded specs. Empty/unset = embedded only.
-	envExtraSpecsPath = "NODECORE_EXTRA_SPECS_PATH"
 )
 
 func main() {
@@ -49,9 +45,9 @@ func main() {
 	}
 
 	specLoader := specs.NewMethodSpecLoader()
-	if path := os.Getenv(envExtraSpecsPath); path != "" {
-		specLoader = specs.NewMethodSpecLoaderWithFs(os.DirFS(path))
-		log.Info().Str("path", path).Msg("loading method specs from external directory")
+	if path := os.Getenv(specs.SpecPathVar); path != "" {
+		specLoader = specs.NewMethodSpecLoaderWithExtraFs(os.DirFS(path))
+		log.Info().Str("path", path).Msg("extending method specs with external directory")
 	}
 	err = specLoader.Load()
 	if err != nil {

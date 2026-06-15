@@ -162,7 +162,7 @@ forking:
 | Env var | Purpose |
 |---------|---------|
 | `NODECORE_EXTRA_CHAINS_PATH` | Path to a YAML file using the same schema as `chains.yaml`. Its entries are merged on top of the embedded registry. |
-| `NODECORE_EXTRA_SPECS_PATH` | Directory of JSON method-spec files (same schema as `pkg/methods/specs/*.json`). Files in this directory are loaded instead of the embedded specs. |
+| `NODECORE_SPECS_PATH` | Directory of JSON method-spec files (same schema as `pkg/methods/specs/*.json`). The specs found here **extend** the embedded specs — they are loaded *in addition to* the built-in ones. A spec whose `name` already exists in the embedded set is rejected, so extras can only add new method specs, not silently replace built-ins. |
 
 A minimal extra-chains file for a single Besu network:
 

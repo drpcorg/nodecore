@@ -158,9 +158,13 @@ func loadExtraChainsLocked(extraYaml []byte) error {
 	}
 
 	for shortName, configured := range extraConfigured {
-		if existing, exists := chains[shortName]; exists && existing != configured {
+		if _, exists := chains[shortName]; exists {
 			return fmt.Errorf("extra chain short-name %q already registered", shortName)
 		}
+		// grpcId is optional for extra chains (e.g. private EVM upstreams that
+		// don't speak dRPC's gRPC protocol). 0 is the unset sentinel and every
+		// embedded chain sets a non-zero grpcId, so only a non-zero grpcId can
+		// genuinely collide with the existing registry.
 		if _, exists := grpcChains[configured.GrpcId]; exists && configured.GrpcId != 0 {
 			return fmt.Errorf("extra chain grpcId %d (%q) collides with an existing chain", configured.GrpcId, shortName)
 		}
