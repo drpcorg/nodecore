@@ -22,6 +22,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
@@ -286,7 +287,26 @@ func GRPCClient(t *testing.T, nodecore *Nodecore) (*grpc.ClientConn, dshackle.Bl
 	if err != nil {
 		t.Fatalf("create grpc client: %v", err)
 	}
+	waitGRPCReady(t, nodecore, conn, 30*time.Second)
 	return conn, dshackle.NewBlockchainClient(conn)
+}
+
+func waitGRPCReady(t *testing.T, nodecore *Nodecore, conn *grpc.ClientConn, timeout time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	conn.Connect()
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			return
+		}
+		if !conn.WaitForStateChange(ctx, state) {
+			t.Fatalf("gRPC server at %s did not become ready before timeout; last state=%s\nlogs:\n%s", nodecore.GRPCAddr, state, nodecore.Logs(context.Background()))
+		}
+		conn.Connect()
+	}
 }
 
 func GRPCSessionContext(ctx context.Context, sessionID string) context.Context {
@@ -521,7 +541,35 @@ func StartNodecoreWithImageAndFiles(t *testing.T, ctx context.Context, networkNa
 		_ = c.Terminate(context.Background())
 		t.Fatalf("nodecore mapped health port: %v", err)
 	}
-	return &Nodecore{Container: c, HTTPURL: fmt.Sprintf("http://%s:%s", host, httpPort.Port()), GRPCAddr: fmt.Sprintf("%s:%s", host, grpcPort.Port()), HealthURL: fmt.Sprintf("http://%s:%s", host, healthPort.Port()), LogRedact: redactions}
+	nodecore := &Nodecore{Container: c, HTTPURL: fmt.Sprintf("http://%s:%s", host, httpPort.Port()), GRPCAddr: fmt.Sprintf("%s:%s", host, grpcPort.Port()), HealthURL: fmt.Sprintf("http://%s:%s", host, healthPort.Port()), LogRedact: redactions}
+	waitNodecoreHealth(t, ctx, nodecore, 30*time.Second)
+	return nodecore
+}
+
+func waitNodecoreHealth(t *testing.T, ctx context.Context, nodecore *Nodecore, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	client := &http.Client{Timeout: 2 * time.Second}
+	var lastErr error
+	var lastStatus int
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, nodecore.HealthURL+"/health", nil)
+		if err != nil {
+			t.Fatalf("create nodecore health request: %v", err)
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			lastStatus = resp.StatusCode
+			_ = resp.Body.Close()
+			if lastStatus == http.StatusOK {
+				return
+			}
+		} else {
+			lastErr = err
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Fatalf("nodecore health endpoint did not become ready before timeout; status=%d err=%v\nlogs:\n%s", lastStatus, lastErr, nodecore.Logs(context.Background()))
 }
 
 func (n *Nodecore) Terminate(ctx context.Context) {
