@@ -39,7 +39,7 @@ func TestSolanaClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	body, err := request.Body()
 	require.NoError(t, err)
 
-	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"getVersion","params":null}`, string(body))
+	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"getVersion","params":[]}`, string(body))
 }
 
 func TestSolanaClientLabelsDetectorClientVersionAndType(t *testing.T) {

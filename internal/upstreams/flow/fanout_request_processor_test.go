@@ -209,5 +209,4 @@ func TestFanoutRequestProcessorRespectsContextCancellation(t *testing.T) {
 	unary := response.(*flow.UnaryResponse).ResponseWrapper
 
 	assert.True(t, unary.Response.HasError())
-	assert.Eventually(t, func() bool { return true }, time.Millisecond, time.Millisecond)
 }

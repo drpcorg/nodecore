@@ -22,7 +22,7 @@ func matchSolanaGetHealthRequest(request protocol.RequestHolder) bool {
 		request.Id() == "1" &&
 		request.RequestType() == protocol.JsonRpc &&
 		strings.Contains(string(body), `"method":"getHealth"`) &&
-		strings.Contains(string(body), `"params":null`)
+		strings.Contains(string(body), `"params":[]`)
 }
 
 func TestSolanaHealthValidatorValidateReturnsAvailableWhenHealthIsOk(t *testing.T) {

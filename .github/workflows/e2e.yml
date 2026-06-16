@@ -1,0 +1,51 @@
+name: Run E2E tests
+
+on:
+  workflow_dispatch: null
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        type: string
+        default: "1.26.0"
+    secrets:
+      NODECORE_E2E_DRPC_KEY:
+        required: false
+  pull_request:
+    paths-ignore:
+      - 'chart/**'
+      - 'chart/nodecore/**'
+
+env:
+  GO_VERSION: ${{ inputs.go-version || '1.26.0' }}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      NODECORE_E2E_DRPC_KEY: ${{ secrets.NODECORE_E2E_DRPC_KEY }}
+      NODECORE_E2E_CHAIN: ${{ vars.NODECORE_E2E_CHAIN || 'ethereum' }}
+      NODECORE_E2E_HARDHAT_FORK_BLOCK: ${{ vars.NODECORE_E2E_HARDHAT_FORK_BLOCK }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Go project
+        uses: ./.github/actions/setup-go-project
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-key-suffix: "e2e"
+
+      - name: Verify E2E secret is available
+        run: |
+          if [ -z "$NODECORE_E2E_DRPC_KEY" ]; then
+            echo "NODECORE_E2E_DRPC_KEY secret is required for blackbox E2E tests" >&2
+            exit 1
+          fi
+
+      - name: Run E2E tests
+        run: make test-e2e
