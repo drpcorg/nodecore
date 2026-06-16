@@ -330,6 +330,7 @@ func handleRequest(
 		appCtx.AppConfig,
 		subCtx,
 		appCtx.QuorumRegistry,
+		appCtx.SubEngineRegistry,
 	)
 	executionFlow.AddHooks(
 		flow.NewMethodBanHook(appCtx.UpstreamSupervisor),

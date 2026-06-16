@@ -95,6 +95,7 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		s.appCtx.AppConfig,
 		flow.NewSubCtx(),
 		s.appCtx.QuorumRegistry,
+		s.appCtx.SubEngineRegistry,
 	)
 	executionFlow.AddHooks(
 		flow.NewMethodBanHook(s.appCtx.UpstreamSupervisor),
@@ -135,6 +136,10 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Unavailable, protocol.NoAvailableUpstreamsError().Message)
 	}
 
+	if !subscribeMethodSupported(chainSupervisor, request.GetMethod()) {
+		return status.Error(codes.Unimplemented, fmt.Sprintf("subscribe %s is not supported for chain %d", request.GetMethod(), request.GetChain()))
+	}
+
 	mappedMethod, mappedPayload, err := mapNativeSubscribeMethod(configuredChain.MethodSpec, chainSupervisor, request.GetMethod(), request.GetPayload())
 	if err != nil {
 		if errors.Is(err, errSubscribeMappingNotSupported) {
@@ -155,6 +160,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		s.appCtx.AppConfig,
 		subCtx,
 		s.appCtx.QuorumRegistry,
+		s.appCtx.SubEngineRegistry,
 	)
 	executionFlow.AddHooks(flow.NewMethodBanHook(s.appCtx.UpstreamSupervisor))
 
@@ -419,6 +425,11 @@ func mapNativeSubscribeMethod(
 
 func supportsNativeSubscribeMethod(methodSpecName string, requestedMethod string) bool {
 	return specs.IsSubscribeMethod(methodSpecName, requestedMethod)
+}
+
+func subscribeMethodSupported(chainSupervisor upstreams.ChainSupervisor, method string) bool {
+	subMethods := chainSupervisor.GetChainState().SubMethods
+	return subMethods != nil && subMethods.ContainsOne(method)
 }
 
 func normalizeNativeSubscribePayload(requestedMethod string, payload []byte) (string, []byte, error) {

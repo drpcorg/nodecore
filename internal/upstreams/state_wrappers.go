@@ -1,6 +1,9 @@
 package upstreams
 
-import "github.com/drpcorg/nodecore/internal/protocol"
+import (
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/protocol"
+)
 
 type ChainSupervisorStateWrapperEvent struct {
 	Wrappers []ChainSupervisorStateWrapper
@@ -78,13 +81,25 @@ func NewLowerBoundsWrapper(lowerBounds []protocol.LowerBoundData) *LowerBoundsWr
 
 func (s *LowerBoundsWrapper) chainSupervisorEventWrapper() {}
 
-type HeadWrapper struct {
-	Head protocol.Block
+type CapsWrapper struct {
+	Caps mapset.Set[protocol.Cap]
 }
 
-func NewHeadWrapper(head protocol.Block) *HeadWrapper {
+func NewCapsWrapper(caps mapset.Set[protocol.Cap]) *CapsWrapper {
+	return &CapsWrapper{Caps: caps}
+}
+
+func (s *CapsWrapper) chainSupervisorEventWrapper() {}
+
+type HeadWrapper struct {
+	Head       protocol.Block
+	UpstreamId string
+}
+
+func NewHeadWrapper(head protocol.Block, upstreamId string) *HeadWrapper {
 	return &HeadWrapper{
-		Head: head,
+		Head:       head,
+		UpstreamId: upstreamId,
 	}
 }
 

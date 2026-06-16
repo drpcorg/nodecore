@@ -8,11 +8,14 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func newUpstreamState() protocol.UpstreamState {
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("HasMethod", mock.Anything).Return(false).Maybe()
 	return protocol.DefaultUpstreamState(
-		mocks.NewMethodsMock(),
+		methodsMock,
 		mapset.NewThreadUnsafeSet[protocol.Cap](),
 		"test-upstream",
 		nil,
@@ -152,6 +155,77 @@ func TestSubscribeUpstreamStateEvent(t *testing.T) {
 		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.SubscribeConnectorState(99)}
 
 		assert.False(t, event.Same(state))
+	})
+
+	t.Run("evm head connector ws connect adds newHeads and logs caps", func(t *testing.T) {
+		methodsMock := mocks.NewMethodsMock()
+		methodsMock.On("HasMethod", "eth_subscribe").Return(true)
+		methodsMock.On("HasMethod", "eth_getLogs").Return(true)
+		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
+		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: true}
+
+		next := event.ProcessEvent(state)
+
+		assert.True(t, next.Caps.Contains(protocol.WsCap))
+		assert.True(t, next.Caps.Contains(protocol.NewHeadsCap))
+		assert.True(t, next.Caps.Contains(protocol.LogsCap))
+	})
+
+	t.Run("evm head connector ws connect without eth_getLogs has no logs cap", func(t *testing.T) {
+		methodsMock := mocks.NewMethodsMock()
+		methodsMock.On("HasMethod", "eth_subscribe").Return(true)
+		methodsMock.On("HasMethod", "eth_getLogs").Return(false)
+		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
+		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: true}
+
+		next := event.ProcessEvent(state)
+
+		assert.True(t, next.Caps.Contains(protocol.NewHeadsCap))
+		assert.False(t, next.Caps.Contains(protocol.LogsCap))
+	})
+
+	// A ws connector used only for requests (head connector is e.g. json-rpc)
+	// must not grant local-sub caps - otherwise newHeads routes to local
+	// synthesis with a polled head and emits nothing.
+	t.Run("non-head ws connect grants only WsCap", func(t *testing.T) {
+		methodsMock := mocks.NewMethodsMock()
+		methodsMock.On("HasMethod", "eth_subscribe").Return(true).Maybe()
+		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
+		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: false}
+
+		next := event.ProcessEvent(state)
+
+		assert.True(t, next.Caps.Contains(protocol.WsCap))
+		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
+		assert.False(t, next.Caps.Contains(protocol.LogsCap))
+	})
+
+	t.Run("non-evm head connector ws connect grants only WsCap", func(t *testing.T) {
+		methodsMock := mocks.NewMethodsMock()
+		methodsMock.On("HasMethod", "eth_subscribe").Return(false)
+		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
+		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: true}
+
+		next := event.ProcessEvent(state)
+
+		assert.True(t, next.Caps.Contains(protocol.WsCap))
+		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
+		assert.False(t, next.Caps.Contains(protocol.LogsCap))
+	})
+
+	t.Run("ws disconnect removes all sub caps", func(t *testing.T) {
+		state := protocol.DefaultUpstreamState(
+			mocks.NewMethodsMock(),
+			mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap),
+			"u", nil, nil,
+		)
+		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected}
+
+		next := event.ProcessEvent(state)
+
+		assert.False(t, next.Caps.Contains(protocol.WsCap))
+		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
+		assert.False(t, next.Caps.Contains(protocol.LogsCap))
 	})
 }
 

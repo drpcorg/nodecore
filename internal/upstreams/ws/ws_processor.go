@@ -23,6 +23,13 @@ type WsProcessor interface {
 
 const rpcTimeout = 1 * time.Minute
 
+// wsWriteTimeout bounds how long an outbound frame may wait to be written to the
+// socket (enqueue + write). It does NOT bound the subscription stream itself -
+// that lives on the caller's context. Without it, a stuck or long-reconnecting
+// connection would block the writer indefinitely, which for subscriptions would
+// pin the aggregation engine's per-key build and starve unrelated subscribers.
+const wsWriteTimeout = 30 * time.Second
+
 type BaseWsProcessor struct {
 	lifecycle *utils.BaseLifecycle
 
@@ -186,7 +193,12 @@ func (b *BaseWsProcessor) sendWsRequest(ctx context.Context, upstreamRequest pro
 	req := b.requestRegistry.Register(ctx, upstreamRequest, frame.RequestId, frame.SubType, b.wsProtocol.DoOnCloseFunc(b.writeRequest))
 	b.requestRegistry.Start(req)
 
-	err = b.writeRequest(ctx, frame.Body)
+	// Bound only the write; the subscription stream stays on the caller's ctx
+	// (registered above). resultErrChan is buffered, so the writer goroutine
+	// never blocks if this returns early on timeout.
+	writeCtx, cancel := context.WithTimeout(ctx, wsWriteTimeout)
+	defer cancel()
+	err = b.writeRequest(writeCtx, frame.Body)
 	if err != nil {
 		b.requestRegistry.Abort(frame.RequestId)
 		return nil, "", err

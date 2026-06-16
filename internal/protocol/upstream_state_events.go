@@ -129,10 +129,14 @@ func (u *UnbanMethodUpstreamStateEvent) ProcessEvent(state UpstreamState) Upstre
 }
 
 type SubscribeUpstreamStateEvent struct {
-	State SubscribeConnectorState
+	State         SubscribeConnectorState
+	HeadConnector bool
 }
 
 func (s *SubscribeUpstreamStateEvent) Same(state UpstreamState) bool {
+	if s.HeadConnector {
+		return false
+	}
 	switch s.State {
 	case WsConnected:
 		return state.Caps.Contains(WsCap)
@@ -147,8 +151,17 @@ func (s *SubscribeUpstreamStateEvent) ProcessEvent(state UpstreamState) Upstream
 	switch s.State {
 	case WsConnected:
 		copyCaps.Add(WsCap)
+		// A websocket head connector means the head is subscription-driven, so
+		// newHeads can be synthesized locally; logs additionally needs
+		// eth_getLogs. eth_subscribe presence implies an EVM chain.
+		if s.HeadConnector && state.UpstreamMethods != nil && state.UpstreamMethods.HasMethod("eth_subscribe") {
+			copyCaps.Add(NewHeadsCap)
+			if state.UpstreamMethods.HasMethod("eth_getLogs") {
+				copyCaps.Add(LogsCap)
+			}
+		}
 	case WsDisconnected:
-		copyCaps.Remove(WsCap)
+		copyCaps.Clear()
 	}
 	state.Caps = copyCaps
 	return state

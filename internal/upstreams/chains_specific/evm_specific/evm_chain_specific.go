@@ -126,7 +126,12 @@ func (e *EvmChainSpecificObject) GetSafeBlock(ctx context.Context) (protocol.Blo
 }
 
 func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
-	return e.ParseBlock(blockBytes)
+	block, err := e.ParseBlock(blockBytes)
+	if err != nil {
+		return block, err
+	}
+	block.RawData = append([]byte(nil), blockBytes...)
+	return block, nil
 }
 
 func (e *EvmChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {

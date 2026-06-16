@@ -8,22 +8,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 type SubscriptionRequestProcessor struct {
+	chain              chains.Chain
 	upstreamSupervisor upstreams.UpstreamSupervisor
+	engine             subengine.Engine
 	subCtx             *SubCtx
 }
 
-func NewSubscriptionRequestProcessor(upstreamSupervisor upstreams.UpstreamSupervisor, subCtx *SubCtx) *SubscriptionRequestProcessor {
-	return &SubscriptionRequestProcessor{upstreamSupervisor: upstreamSupervisor, subCtx: subCtx}
+func NewSubscriptionRequestProcessor(
+	chain chains.Chain,
+	upstreamSupervisor upstreams.UpstreamSupervisor,
+	engine subengine.Engine,
+	subCtx *SubCtx,
+) *SubscriptionRequestProcessor {
+	return &SubscriptionRequestProcessor{
+		chain:              chain,
+		upstreamSupervisor: upstreamSupervisor,
+		engine:             engine,
+		subCtx:             subCtx,
+	}
 }
 
 func (s *SubscriptionRequestProcessor) ProcessRequest(
@@ -35,118 +46,68 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 	go func() {
 		defer close(responses)
-		var response *protocol.ResponseHolderWrapper
 
 		if request.SpecMethod() == nil || request.SpecMethod().Subscription == nil {
-			response = &protocol.ResponseHolderWrapper{
-				UpstreamId: NoUpstream,
-				RequestId:  request.Id(),
-				Response:   protocol.NewTotalFailureFromErr(request.Id(), errors.New("no subscription info"), request.RequestType()),
-			}
-			responses <- response
+			responses <- totalFailureWrapper(request, errors.New("no subscription info"))
 			return
 		}
 
 		method := request.SpecMethod().Subscription.Method
 
-		//TODO: it might be a good idea to select an upstream with a ws (or other sub) head connector
-		// and receive updates from it in order to reduce client's costs
-		// otherwise choose any upstream with a sub capability
-		upstreamId, err := upstreamStrategy.SelectUpstream(request)
-		if err != nil {
-			response = &protocol.ResponseHolderWrapper{
-				UpstreamId: NoUpstream,
-				RequestId:  request.Id(),
-				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
-			}
-			responses <- response
-			return
-		}
-
-		upstream := s.upstreamSupervisor.GetUpstream(upstreamId)
-
-		// however there could be other connectors as well
-		// like http connector to support SSE
-		wsConn := getMethodConnector(upstream, request.SpecMethod())
-		if wsConn == nil {
-			response = &protocol.ResponseHolderWrapper{
-				UpstreamId: NoUpstream,
-				RequestId:  request.Id(),
-				Response:   protocol.NewTotalFailure(request, protocol.NoApiConnectorsError(request.Method())),
-			}
-			responses <- response
-			return
-		}
-
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
-		var stateChan chan protocol.SubscribeConnectorState
-		connectorStatesSub := wsConn.SubscribeStates(
-			fmt.Sprintf("%s_%s_request_%s_%d", upstream.GetId(), request.Method(), uuid.NewString(), time.Now().UnixNano()),
-		)
-		if connectorStatesSub != nil {
-			stateChan = connectorStatesSub.Events
-			defer connectorStatesSub.Unsubscribe()
-		}
-
-		subResp, err := wsConn.Subscribe(execCtx, request)
+		// All subscriptions route through the per-chain aggregation engine so
+		// identical (method+params+selector) subscriptions share a single
+		// upstream source instead of opening one node subscription per client.
+		// The shared source emits events only - each client allocates its own
+		// client-facing subscription id below, independent of the single
+		// upstream subscription id.
+		key, builder := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy)
+		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
-			response = &protocol.ResponseHolderWrapper{
-				UpstreamId: NoUpstream,
-				RequestId:  request.Id(),
-				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
-			}
-			responses <- response
+			responses <- totalFailureWrapper(request, err)
 			return
 		}
-		var currentSubId json.RawMessage
+		defer sub.Unsubscribe()
+
+		subId, err := nextSubscriptionJson(isSolana(s.chain))
+		if err != nil {
+			log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
+			responses <- totalFailureWrapper(request, protocol.WsTotalFailureError())
+			return
+		}
+		s.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
+		responses <- &protocol.ResponseHolderWrapper{
+			UpstreamId: NoUpstream,
+			RequestId:  request.Id(),
+			Response:   protocol.NewSubscriptionMessageEventResponse(request.Id(), subId),
+		}
 
 		for {
 			select {
-			case state, ok := <-stateChan:
-				if ok {
-					if state == protocol.WsDisconnected {
-						responses <- &protocol.ResponseHolderWrapper{
-							UpstreamId: upstreamId,
-							RequestId:  request.Id(),
-							Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.WsTotalFailureError(), request.RequestType()),
-						}
-						return
-					}
-				}
-			case r, ok := <-subResp.ResponseChan():
+			case r, ok := <-sub.Events:
 				if !ok {
+					// The shared source ended. A non-nil cause is a terminal
+					// failure (node disconnect, param reject, slow consumer);
+					// nil means this client detached cleanly. The real cause is
+					// preserved rather than collapsed into a generic error.
+					if cause := sub.Err(); cause != nil {
+						responses <- totalFailureWrapper(request, cause)
+					}
 					return
 				}
 				var subResponse protocol.ResponseHolder
-				if r.SubId == "" {
-					subId, err := nextSubscriptionJson(isSolana(upstream.GetChain()))
-					if err != nil {
-						log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
-						responses <- &protocol.ResponseHolderWrapper{
-							UpstreamId: upstreamId,
-							RequestId:  request.Id(),
-							Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.WsTotalFailureError(), request.RequestType()),
-						}
-						return
-					}
-					currentSubId = subId
-					s.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
-					subResponse = protocol.NewSubscriptionMessageEventResponse(request.Id(), subId)
+				if s.subCtx.IsSubscriptionResultOnly() {
+					subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
 				} else {
-					if s.subCtx.IsSubscriptionResultOnly() {
-						subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
-					} else {
-						subResponse = protocol.NewSubscriptionMethodResultResponse(request.Id(), method, r.Message, currentSubId)
-					}
+					subResponse = protocol.NewSubscriptionMethodResultResponse(request.Id(), method, r.Message, subId)
 				}
-				wrapper := &protocol.ResponseHolderWrapper{
-					UpstreamId: upstreamId,
+				responses <- &protocol.ResponseHolderWrapper{
+					UpstreamId: responseUpstreamId(r),
 					RequestId:  request.Id(),
 					Response:   subResponse,
 				}
-				responses <- wrapper
 			case <-execCtx.Done():
 				return
 			}
@@ -154,6 +115,13 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	}()
 
 	return &SubscriptionResponse{responses}
+}
+
+func responseUpstreamId(r *protocol.WsResponse) string {
+	if r.UpstreamId != "" {
+		return r.UpstreamId
+	}
+	return NoUpstream
 }
 
 func isSolana(chain chains.Chain) bool {
