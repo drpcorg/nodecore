@@ -64,6 +64,10 @@ type ChainSupervisorState struct {
 	LowerBounds map[protocol.LowerBoundType]protocol.LowerBoundData
 	ChainLabels []AggregatedLabels
 	SubMethods  mapset.Set[string]
+	// Caps is the union of subscription capabilities across available upstreams
+	// (WsCap, and for EVM NewHeadsCap/LogsCap). The subscription engine reads it
+	// to decide whether a topic can be served locally.
+	Caps mapset.Set[protocol.Cap]
 }
 
 func (c ChainSupervisorState) Compare(new ChainSupervisorState) []ChainSupervisorStateWrapper {
@@ -96,7 +100,32 @@ func (c ChainSupervisorState) Compare(new ChainSupervisorState) []ChainSuperviso
 		wrappers = append(wrappers, NewSubMethodsWrapper(new.SubMethods.ToSlice()))
 	}
 
+	// Caps changes (e.g. the last NewHeadsCap upstream disconnecting) must be
+	// observable so locally-synthesized subscriptions can fail over instead of
+	// starving silently.
+	if !capsEqual(c.Caps, new.Caps) {
+		wrappers = append(wrappers, NewCapsWrapper(new.Caps))
+	}
+
 	return wrappers
+}
+
+func capsEqual(a, b mapset.Set[protocol.Cap]) bool {
+	if a == nil || b == nil {
+		return (a == nil || a.Cardinality() == 0) && (b == nil || b.Cardinality() == 0)
+	}
+	return a.Equal(b)
+}
+
+func processCaps(availableUpstreams []*protocol.UpstreamState) mapset.Set[protocol.Cap] {
+	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
+	for _, upState := range availableUpstreams {
+		if upState.Caps == nil {
+			continue
+		}
+		caps = caps.Union(upState.Caps)
+	}
+	return caps
 }
 
 func processLabels(availableUpstreams []*protocol.UpstreamState) []AggregatedLabels {

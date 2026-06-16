@@ -59,6 +59,7 @@ func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.F
 			Methods:     methods.NewChainMethods(nil),
 			ChainLabels: make([]AggregatedLabels, 0),
 			SubMethods:  mapset.NewThreadUnsafeSet[string](),
+			Caps:        mapset.NewThreadUnsafeSet[protocol.Cap](),
 		},
 	)
 
@@ -180,17 +181,15 @@ func (b *BaseChainSupervisor) processEvents() {
 
 func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.HeadUpstreamEvent) {
 	newState := b.state.Load()
+	var headWrapper *ChainSupervisorStateWrapperEvent
 	if headEvent != nil && !headEvent.Head.IsEmptyByHeight() {
 		updated, head := b.fc.Choose(upstreamId, headEvent)
 		if updated {
 			newState.HeadData = NewChainHeadData(head, upstreamId)
-
 			if !newState.HeadData.IsEmpty() {
-				b.subStateManager.Publish(
-					&ChainSupervisorStateWrapperEvent{
-						[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head)},
-					},
-				)
+				headWrapper = &ChainSupervisorStateWrapperEvent{
+					[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head, upstreamId)},
+				}
 			}
 		}
 	} else if headEvent != nil {
@@ -198,6 +197,9 @@ func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.
 	}
 
 	b.state.Store(newState)
+	if headWrapper != nil {
+		b.subStateManager.Publish(headWrapper)
+	}
 	b.calculateHeadLags()
 }
 
@@ -212,14 +214,14 @@ func (b *BaseChainSupervisor) updateState() {
 	newState.Blocks = processUpstreamBlocks(availableUpstreams)
 	newState.LowerBounds = processLowerBounds(availableUpstreams)
 	newState.ChainLabels = processLabels(availableUpstreams)
-	newState.SubMethods = b.processSubMethods(availableUpstreams)
+	newState.Caps = processCaps(availableUpstreams)
+	newState.SubMethods = b.processSubMethods(newState.Caps)
 
 	eventWrappers := currentState.Compare(newState)
+	b.state.Store(newState)
 	if len(eventWrappers) > 0 {
 		b.subStateManager.Publish(&ChainSupervisorStateWrapperEvent{eventWrappers})
 	}
-
-	b.state.Store(newState)
 	b.calculateFinalizationLags()
 }
 
@@ -269,14 +271,25 @@ func (b *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
 	return states
 }
 
-func (b *BaseChainSupervisor) processSubMethods(availableUpstreams []*protocol.UpstreamState) mapset.Set[string] {
-	for _, upState := range availableUpstreams {
-		if upState.Caps.Contains(protocol.WsCap) {
-			return b.subChainMethods.Clone()
+func (b *BaseChainSupervisor) processSubMethods(caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+	if caps == nil || !caps.Contains(protocol.WsCap) {
+		return mapset.NewThreadUnsafeSet[string]()
+	}
+	subMethods := b.subChainMethods.Clone()
+	// EVM advertises concrete topics derived from caps instead of the generic
+	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
+	// real sub types. A topic is offered only if it can be served locally
+	// (newHeads -> NewHeadsCap, logs -> LogsCap).
+	if subMethods.ContainsOne("eth_subscribe") {
+		subMethods.Remove("eth_subscribe")
+		if caps.Contains(protocol.NewHeadsCap) {
+			subMethods.Add("newHeads")
+		}
+		if caps.Contains(protocol.LogsCap) {
+			subMethods.Add("logs")
 		}
 	}
-
-	return mapset.NewThreadUnsafeSet[string]()
+	return subMethods
 }
 
 func (b *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {

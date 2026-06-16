@@ -21,6 +21,11 @@ const (
 
 type MethodSpecLoader struct {
 	specsFS fs.ReadFileFS
+	// extraFS, when non-nil, is walked after specsFS and its specs are merged
+	// on top of the embedded ones. Extra specs may add new method specs but
+	// must not reuse an embedded spec name (same strict add-only semantics as
+	// extra chains via chains.LoadExtraChains).
+	extraFS fs.ReadFileFS
 }
 
 func NewMethodSpecLoader() MethodSpecLoader {
@@ -30,20 +35,54 @@ func NewMethodSpecLoader() MethodSpecLoader {
 }
 
 func NewMethodSpecLoaderWithFs(specsFS fs.FS) MethodSpecLoader {
-	readFileFs, ok := specsFS.(fs.ReadFileFS)
+	return MethodSpecLoader{
+		specsFS: asReadFileFS(specsFS),
+	}
+}
+
+// NewMethodSpecLoaderWithExtraFs returns a loader that serves the embedded
+// specs plus any *.json specs found in extra. Extra specs extend the embedded
+// registry; a spec whose name already exists in the embedded set is rejected.
+func NewMethodSpecLoaderWithExtraFs(extra fs.FS) MethodSpecLoader {
+	return MethodSpecLoader{
+		specsFS: specsFS,
+		extraFS: asReadFileFS(extra),
+	}
+}
+
+func asReadFileFS(fsys fs.FS) fs.ReadFileFS {
+	readFileFs, ok := fsys.(fs.ReadFileFS)
 	if !ok {
 		panic("not ReadFileFS")
 	}
-	return MethodSpecLoader{
-		specsFS: readFileFs,
-	}
+	return readFileFs
 }
 
 func (m MethodSpecLoader) Load() error {
 	resolvedSpecs = map[string]*resolvedSpec{}
 
 	specs := map[string]*MethodSpec{}
-	err := fs.WalkDir(m.specsFS, ".", func(path string, d fs.DirEntry, err error) error {
+	if err := m.walkSpecs(m.specsFS, specs); err != nil {
+		return fmt.Errorf("couldn't read method specs: %s", err.Error())
+	}
+	if m.extraFS != nil {
+		if err := m.walkSpecs(m.extraFS, specs); err != nil {
+			return fmt.Errorf("couldn't read extra method specs: %s", err.Error())
+		}
+	}
+	if len(specs) == 0 {
+		return fmt.Errorf("no method specs")
+	}
+
+	if err := enrichSpecs(specs); err != nil {
+		return fmt.Errorf("couldn't merge method specs: %s", err.Error())
+	}
+
+	return nil
+}
+
+func (m MethodSpecLoader) walkSpecs(fsys fs.ReadFileFS, specs map[string]*MethodSpec) error {
+	return fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -53,7 +92,7 @@ func (m MethodSpecLoader) Load() error {
 			return err
 		}
 
-		spec, err := m.loadSpec(path, fileInfo)
+		spec, err := loadSpec(fsys, path, fileInfo)
 		if err != nil {
 			return err
 		}
@@ -68,23 +107,11 @@ func (m MethodSpecLoader) Load() error {
 
 		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("couldn't read method specs: %s", err.Error())
-	}
-	if len(specs) == 0 {
-		return fmt.Errorf("no method specs")
-	}
-
-	if err = enrichSpecs(specs); err != nil {
-		return fmt.Errorf("couldn't merge method specs: %s", err.Error())
-	}
-
-	return nil
 }
 
-func (m MethodSpecLoader) loadSpec(path string, file fs.FileInfo) (*MethodSpec, error) {
+func loadSpec(fsys fs.ReadFileFS, path string, file fs.FileInfo) (*MethodSpec, error) {
 	if !file.IsDir() && filepath.Ext(path) == ".json" {
-		specBytes, err := m.specsFS.ReadFile(path)
+		specBytes, err := fsys.ReadFile(path)
 		if err != nil {
 			return nil, err
 		}

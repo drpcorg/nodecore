@@ -65,6 +65,9 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 
 	collectedResults := make(map[string]fanoutResult, len(upstreamIDs))
 	for {
+		if err := ctx.Err(); err != nil {
+			return &UnaryResponse{ResponseWrapper: totalFailureWrapper(request, err)}
+		}
 		select {
 		case <-ctx.Done():
 			return &UnaryResponse{ResponseWrapper: totalFailureWrapper(request, ctx.Err())}

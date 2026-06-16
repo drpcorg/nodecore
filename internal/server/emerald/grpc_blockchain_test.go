@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -18,6 +20,33 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+// subMethodsChainSupervisor is a ChainSupervisor stub exposing a fixed
+// SubMethods set.
+type subMethodsChainSupervisor struct {
+	upstreams.ChainSupervisor
+	subMethods mapset.Set[string]
+}
+
+func (s subMethodsChainSupervisor) GetChainState() upstreams.ChainSupervisorState {
+	return upstreams.ChainSupervisorState{SubMethods: s.subMethods}
+}
+
+func chainSupWithSubMethods(methods ...string) subMethodsChainSupervisor {
+	return subMethodsChainSupervisor{subMethods: mapset.NewThreadUnsafeSet[string](methods...)}
+}
+
+func TestSubscribeMethodSupported(t *testing.T) {
+	// gRPC validates the requested method against the chain's advertised topics
+	assert.True(t, subscribeMethodSupported(chainSupWithSubMethods("newHeads", "logs"), "newHeads"))
+	assert.True(t, subscribeMethodSupported(chainSupWithSubMethods("newHeads", "logs"), "logs"))
+	// logs not advertised (e.g. no eth_getLogs / no ws head) -> unsupported
+	assert.False(t, subscribeMethodSupported(chainSupWithSubMethods("newHeads"), "logs"))
+	// nothing advertised (e.g. no ws upstream) -> unsupported
+	assert.False(t, subscribeMethodSupported(chainSupWithSubMethods(), "newHeads"))
+	// native (non-EVM) sub methods pass through by name
+	assert.True(t, subscribeMethodSupported(chainSupWithSubMethods("programSubscribe"), "programSubscribe"))
+}
 
 func TestMapNativeSubscribeMethod(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())

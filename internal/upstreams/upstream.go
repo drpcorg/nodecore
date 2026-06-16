@@ -312,6 +312,7 @@ func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) meth
 }
 
 func (u *BaseUpstream) startConnectors(ctx context.Context) {
+	headConnectorType := u.upConfig.GetHeadApiConnectorType()
 	for _, connector := range u.apiConnectors {
 		connector.Start()
 		go func(conn connectors.ApiConnector) {
@@ -321,13 +322,14 @@ func (u *BaseUpstream) startConnectors(ctx context.Context) {
 			}
 			defer stateSubscription.Unsubscribe()
 
+			isHeadConnector := conn.GetType() == headConnectorType
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case event, okEvent := <-stateSubscription.Events:
 					if okEvent {
-						u.emitter(&protocol.SubscribeUpstreamStateEvent{State: event})
+						u.emitter(&protocol.SubscribeUpstreamStateEvent{State: event, HeadConnector: isHeadConnector})
 					}
 				}
 			}

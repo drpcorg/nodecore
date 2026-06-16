@@ -14,6 +14,7 @@ type Block struct {
 	Slot       uint64
 	Hash       blockchain.HashId
 	ParentHash blockchain.HashId
+	RawData    []byte
 }
 
 func (b Block) Equals(other Block) bool {

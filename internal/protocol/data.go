@@ -201,6 +201,7 @@ const (
 // block tag and numeric height) cannot be represented by construction.
 type RequestSelector interface {
 	isRequestSelector()
+	Key() string
 }
 
 type RequestAnySelector struct{}
@@ -361,7 +362,16 @@ func (r ValidUpstreamEvent) eventData() {}
 type Cap int
 
 const (
+	// WsCap means the upstream has a live websocket connector (any chain). Used
+	// to route node-backed subscriptions to a ws-capable upstream.
 	WsCap Cap = iota
+	// NewHeadsCap means the upstream's head is subscription-driven (its head
+	// connector is a websocket), so newHeads can be synthesized locally from the
+	// head stream. EVM-only.
+	NewHeadsCap
+	// LogsCap means NewHeadsCap holds and eth_getLogs is enabled, so logs can be
+	// synthesized locally. EVM-only.
+	LogsCap
 )
 
 type UpstreamState struct {

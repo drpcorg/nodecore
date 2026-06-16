@@ -81,3 +81,7 @@ func (mp *CMap[K, V]) Delete(key K) {
 func (mp *CMap[K, V]) CompareAndSwap(key K, old V, new V) bool {
 	return mp.mp.CompareAndSwap(key, old, new)
 }
+
+func (mp *CMap[K, V]) CompareAndDelete(key K, old V) bool {
+	return mp.mp.CompareAndDelete(key, old)
+}
