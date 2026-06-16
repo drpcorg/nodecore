@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -181,5 +182,43 @@ func TestRequestObserverWithParallelUpstreamUnaryResult(t *testing.T) {
 		assert.True(t, res.IsSuccessfulRetry())
 		assert.Equal(t, protocol.Ok, res.GetRespKind())
 		assert.Equal(t, time.UTC, res.GetTimestamp().Location())
+	}
+}
+
+// TestRequestObserverTrackUpstreamCallAfterGetResults reproduces the fan-out / cancellation
+// scenario where an orphaned dispatch goroutine starts tracking an upstream call after
+// GetResults has already begun waiting. With the previous sync.WaitGroup implementation this
+// triggered a "WaitGroup is reused before previous Wait has returned" panic; the mutex+cond
+// counter must tolerate it without panicking.
+func TestRequestObserverTrackUpstreamCallAfterGetResults(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		body := protocol.JsonRpcRequestBody{Method: "method"}
+		request := protocol.NewUpstreamJsonRpcRequest("id", body, false, "")
+		observer := request.RequestObserver().
+			WithChain(chains.OPTIMISM).
+			WithRequestKind(protocol.Unary)
+
+		// First call completes immediately, so the in-flight counter returns to 0 and any
+		// waiter inside GetResults is released.
+		done := observer.TrackUpstreamCall()
+		done()
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		// A consumer pulls the results (this waits when the counter is non-zero).
+		go func() {
+			defer wg.Done()
+			observer.GetResults()
+		}()
+		// An orphaned goroutine starts tracking a new call concurrently with / after the wait.
+		go func() {
+			defer wg.Done()
+			lateDone := observer.TrackUpstreamCall()
+			lateDone()
+		}()
+		wg.Wait()
+
+		// A final pull must still return without panicking.
+		assert.NotPanics(t, func() { observer.GetResults() })
 	}
 }
