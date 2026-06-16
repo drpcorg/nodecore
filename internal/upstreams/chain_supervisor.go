@@ -168,6 +168,16 @@ func (b *BaseChainSupervisor) processEvents() {
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
 					}
 				case *protocol.HeadUpstreamEvent:
+					// Keep the per-upstream snapshot's head fresh - head updates
+					// arrive as HeadUpstreamEvent (not StateUpstreamEvent), so
+					// without this the head read by selection matchers and head-lag
+					// tracking would stay frozen at the last StateUpstreamEvent.
+					// Copy-on-write: matchers read the stored pointer concurrently.
+					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
+						newUpState := *upState
+						newUpState.HeadData = eventType.Head
+						b.upstreamStates.Store(event.Id, &newUpState)
+					}
 					b.updateHead(event.Id, eventType)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
