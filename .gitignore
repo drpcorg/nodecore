@@ -6,3 +6,4 @@ internal/quorum/tools/
 internal/quorum/e2e_live_test.go
 vendor
 .env
+plans
