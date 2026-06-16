@@ -449,6 +449,28 @@ func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
 	}, eventuallyWait, eventuallyTick)
 }
 
+func TestChainSupervisorHeadEventRefreshesUpstreamSnapshot(t *testing.T) {
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methods))
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetUpstreamState("id")
+		return state != nil && state.HeadData.Height == 100
+	}, eventuallyWait, eventuallyTick)
+
+	// A head update arrives only as a HeadUpstreamEvent (no StateUpstreamEvent).
+	// The per-upstream snapshot read by selection must follow it.
+	publishHeadEvent(chainSupervisor, "id", protocol.Available, protocol.NewBlockWithHeight(150))
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetUpstreamState("id")
+		return state != nil && state.HeadData.Height == 150
+	}, eventuallyWait, eventuallyTick)
+}
+
 func TestChainSupervisorRemoveUpstreamRecomputesHead(t *testing.T) {
 	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
 	methods := mocks.NewMethodsMock()
