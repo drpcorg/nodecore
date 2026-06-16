@@ -23,6 +23,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -286,6 +287,10 @@ func GRPCClient(t *testing.T, nodecore *Nodecore) (*grpc.ClientConn, dshackle.Bl
 		t.Fatalf("create grpc client: %v", err)
 	}
 	return conn, dshackle.NewBlockchainClient(conn)
+}
+
+func GRPCSessionContext(ctx context.Context, sessionID string) context.Context {
+	return metadata.NewOutgoingContext(ctx, metadata.Pairs("sessionid", sessionID))
 }
 
 type NativeCall struct {
@@ -558,32 +563,75 @@ func NewNetwork(t *testing.T, ctx context.Context) (name string, cleanup func())
 	return net.Name, func() { _ = net.Remove(context.Background()) }
 }
 
+type HTTPResponse struct {
+	StatusCode int
+	Headers    http.Header
+	Body       []byte
+}
+
 func JSONRPC(t *testing.T, ctx context.Context, baseURL, chain, method string, params any) map[string]any {
+	t.Helper()
+	return JSONRPCWithHeaders(t, ctx, baseURL, chain, method, params, nil)
+}
+
+func JSONRPCWithHeaders(t *testing.T, ctx context.Context, baseURL, chain, method string, params any, headers map[string]string) map[string]any {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 	if err != nil {
 		t.Fatalf("marshal json-rpc request: %v", err)
 	}
-	url := fmt.Sprintf("%s/queries/%s", strings.TrimRight(baseURL, "/"), chain)
+	raw := JSONRPCRaw(t, ctx, baseURL, chain, body, headers)
+	var out map[string]any
+	if err := json.Unmarshal(raw.Body, &out); err != nil {
+		t.Fatalf("decode json-rpc response status=%d body=%s: %v", raw.StatusCode, string(raw.Body), err)
+	}
+	return out
+}
+
+func JSONRPCBatch(t *testing.T, ctx context.Context, baseURL, chain string, batch any, headers map[string]string) []map[string]any {
+	t.Helper()
+	body, err := json.Marshal(batch)
+	if err != nil {
+		t.Fatalf("marshal json-rpc batch request: %v", err)
+	}
+	raw := JSONRPCRaw(t, ctx, baseURL, chain, body, headers)
+	var out []map[string]any
+	if err := json.Unmarshal(raw.Body, &out); err != nil {
+		t.Fatalf("decode json-rpc batch response status=%d body=%s: %v", raw.StatusCode, string(raw.Body), err)
+	}
+	return out
+}
+
+func JSONRPCExpectError(t *testing.T, ctx context.Context, baseURL, chain, method string, params any, headers map[string]string) map[string]any {
+	t.Helper()
+	resp := JSONRPCWithHeaders(t, ctx, baseURL, chain, method, params, headers)
+	if errVal, ok := resp["error"]; !ok || errVal == nil {
+		t.Fatalf("json-rpc %s did not return an error: %+v", method, resp)
+	}
+	return resp
+}
+
+func JSONRPCRaw(t *testing.T, ctx context.Context, baseURL, chain string, body []byte, headers map[string]string) HTTPResponse {
+	t.Helper()
+	url := fmt.Sprintf("%s/queries/%s", strings.TrimRight(baseURL, "/"), strings.TrimLeft(chain, "/"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("create json-rpc request: %v", err)
 	}
 	req.Header.Set("content-type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("json-rpc %s failed: %v", method, err)
+		t.Fatalf("json-rpc raw request failed: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read json-rpc response: %v", err)
 	}
-	var out map[string]any
-	if err := json.Unmarshal(respBody, &out); err != nil {
-		t.Fatalf("decode json-rpc response status=%d body=%s: %v", resp.StatusCode, string(respBody), err)
-	}
-	return out
+	return HTTPResponse{StatusCode: resp.StatusCode, Headers: resp.Header.Clone(), Body: respBody}
 }
 
 func RepoRoot(t *testing.T) string {
