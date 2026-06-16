@@ -41,20 +41,36 @@ var _ requestCtx = (*subscriptionRequestCtx)(nil)
 type unaryRequestCtx struct {
 	requestResults []RequestResult
 
-	mu sync.RWMutex
-	wg sync.WaitGroup
+	mu       sync.Mutex
+	cond     *sync.Cond
+	inFlight int
 }
 
 func newUnaryRequestCtx() *unaryRequestCtx {
-	return &unaryRequestCtx{}
+	c := &unaryRequestCtx{}
+	c.cond = sync.NewCond(&c.mu)
+	return c
 }
 
 func (c *unaryRequestCtx) trackUpstreamCall() func() {
 	// we have to track upstream calls since there could be parallel ones, and we need to wait for all of them to finish
-	// to be able to collect all the results
-	c.wg.Add(1)
+	// to be able to collect all the results. A plain in-flight counter guarded by a mutex + cond is used instead of a
+	// sync.WaitGroup: parallel/dispatch processors (e.g. fan-out) can start a tracked call after getResults has begun
+	// waiting, which would make a WaitGroup panic ("reused before previous Wait has returned").
+	c.mu.Lock()
+	c.inFlight++
+	c.mu.Unlock()
 	once := sync.Once{}
-	return func() { once.Do(c.wg.Done) }
+	return func() {
+		once.Do(func() {
+			c.mu.Lock()
+			c.inFlight--
+			if c.inFlight == 0 {
+				c.cond.Broadcast()
+			}
+			c.mu.Unlock()
+		})
+	}
 }
 
 func (c *unaryRequestCtx) addResult(result RequestResult) {
@@ -73,10 +89,11 @@ func (c *unaryRequestCtx) addFinalResult(result RequestResult) {
 }
 
 func (c *unaryRequestCtx) getResults() []RequestResult {
-	c.wg.Wait()
-
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for c.inFlight > 0 {
+		c.cond.Wait()
+	}
 	return slices.Clone(c.requestResults)
 }
 
