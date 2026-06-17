@@ -9,6 +9,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -21,6 +22,15 @@ import (
 // onto one source regardless of their selectors (one head tap per chain).
 const localNewHeadsKey = "local|newHeads"
 
+// localLogsKey is the aggregation key for the locally-synthesized logs source.
+// All logs subscribers on a chain share ONE all-logs source (no address/topic
+// filter in the source); per-client filtering happens in the processor. The key
+// is therefore per-chain, NOT RequestHash-based (which would split the source
+// per filter and defeat sharing). Selectors are ignored for the same reason the
+// newHeads key ignores them - there is a single merged head per chain - and
+// resolveSource only takes the local path when no selectors are present.
+const localLogsKey = "local|logs"
+
 // resolveSource decides how the shared source for this subscription is produced
 // and returns its aggregation key alongside the builder, keeping the local-vs-
 // generic decision and the key in one place:
@@ -32,11 +42,17 @@ func resolveSource(
 	supervisor upstreams.UpstreamSupervisor,
 	request protocol.RequestHolder,
 	strategy UpstreamStrategy,
-) (string, subengine.SourceBuilder) {
+	registry *rating.RatingRegistry,
+) (string, subengine.SourceBuilder, SubFilter) {
 	if isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
-		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain)
+		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
-	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy)
+	if isLogsRequest(request) && localLogsAvailable(chain, supervisor) && len(request.Selectors()) == 0 {
+		if filter, err := parseLogFilter(request); err == nil {
+			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
+		}
+	}
+	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
 }
 
 // isNewHeadsRequest reports whether request is eth_subscribe("newHeads"). Only
@@ -71,6 +87,39 @@ func localNewHeadsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSup
 	}
 	caps := chainSup.GetChainState().Caps
 	return caps != nil && caps.Contains(protocol.NewHeadsCap)
+}
+
+// isLogsRequest reports whether request is eth_subscribe("logs", ...). Only EVM
+// chains expose eth_subscribe, so this also implies an EVM chain.
+func isLogsRequest(request protocol.RequestHolder) bool {
+	if request.Method() != "eth_subscribe" {
+		return false
+	}
+	body, err := request.Body()
+	if err != nil {
+		return false
+	}
+	node, err := sonic.Get(body, "params", 0)
+	if err != nil {
+		return false
+	}
+	value, err := node.String()
+	if err != nil {
+		return false
+	}
+	return value == "logs"
+}
+
+// localLogsAvailable reports whether the chain can synthesize logs locally, i.e.
+// some available upstream has a ws-driven head and eth_getLogs (LogsCap). Chains
+// without it fall back to the generic node-backed source.
+func localLogsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSupervisor) bool {
+	chainSup := supervisor.GetChainSupervisor(chain)
+	if chainSup == nil {
+		return false
+	}
+	caps := chainSup.GetChainState().Caps
+	return caps != nil && caps.Contains(protocol.LogsCap)
 }
 
 // subscriptionKey is the aggregation key: subscriptions that share method and

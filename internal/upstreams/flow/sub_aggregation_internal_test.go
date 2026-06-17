@@ -103,6 +103,74 @@ func TestIsNewHeadsRequest(t *testing.T) {
 	assert.False(t, isNewHeadsRequest(other))
 }
 
+func TestIsLogsRequest(t *testing.T) {
+	logs := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["logs",{}]`)}, true, "eth")
+	logsNoObj := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["logs"]`)}, true, "eth")
+	newHeads := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth")
+	other := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_call", Params: []byte(`[]`)}, false, "eth")
+
+	assert.True(t, isLogsRequest(logs))
+	assert.True(t, isLogsRequest(logsNoObj))
+	assert.False(t, isLogsRequest(newHeads))
+	assert.False(t, isLogsRequest(other))
+}
+
+func TestLocalLogsAvailable(t *testing.T) {
+	supNil := mocks.NewUpstreamSupervisorMock()
+	supNil.On("GetChainSupervisor", chains.ETHEREUM).Return(nil)
+	assert.False(t, localLogsAvailable(chains.ETHEREUM, supNil))
+
+	// ws head connector without eth_getLogs → NewHeadsCap but no LogsCap
+	supHeads := mocks.NewUpstreamSupervisorMock()
+	supHeads.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
+		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap)},
+	})
+	assert.False(t, localLogsAvailable(chains.ETHEREUM, supHeads))
+
+	// ws head connector with eth_getLogs → LogsCap → local synthesis
+	supLogs := mocks.NewUpstreamSupervisorMock()
+	supLogs.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
+		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)},
+	})
+	assert.True(t, localLogsAvailable(chains.ETHEREUM, supLogs))
+}
+
+func logsRequest(params string) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth")
+}
+
+func TestParseLogFilterAndMatches(t *testing.T) {
+	logAB := []byte(`{"address":"0xABC","topics":["0xaaa","0xddd","0xC"]}`)
+	logOther := []byte(`{"address":"0xdef","topics":["0xaaa"]}`)
+	logTwoTopics := []byte(`{"address":"0xABC","topics":["0xaaa","0xddd"]}`)
+
+	tests := []struct {
+		name   string
+		params string
+		log    []byte
+		match  bool
+	}{
+		{"empty object matches all", `["logs",{}]`, logAB, true},
+		{"no filter object matches all", `["logs"]`, logAB, true},
+		{"address string match (case-insensitive)", `["logs",{"address":"0xabc"}]`, logAB, true},
+		{"address string mismatch", `["logs",{"address":"0xabc"}]`, logOther, false},
+		{"address array match", `["logs",{"address":["0x111","0xabc"]}]`, logAB, true},
+		{"topic exact match", `["logs",{"topics":["0xaaa"]}]`, logAB, true},
+		{"topic null is wildcard", `["logs",{"topics":[null,"0xddd"]}]`, logAB, true},
+		{"topic OR-set match (case-insensitive)", `["logs",{"topics":[null,null,["0xb","0xc"]]}]`, logAB, true},
+		{"topic mismatch", `["logs",{"topics":["0xzzz"]}]`, logAB, false},
+		{"more filter topics than log has -> reject", `["logs",{"topics":["0xaaa","0xddd","0xc"]}]`, logTwoTopics, false},
+		{"address+topics combined", `["logs",{"address":"0xabc","topics":["0xaaa"]}]`, logAB, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, err := parseLogFilter(logsRequest(tc.params))
+			assert.NoError(t, err)
+			assert.Equal(t, tc.match, filter.Matches(tc.log))
+		})
+	}
+}
+
 func TestSubscriptionKeyDependsOnMethodParamsAndSelectors(t *testing.T) {
 	newHeads := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth")
 	logs := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["logs"]`)}, true, "eth")
