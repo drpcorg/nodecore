@@ -186,7 +186,6 @@ func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervis
 					continue
 				}
 				for _, update := range t.advance(head.Head) {
-					fmt.Println("block update", update.Block.Height, update.Kind)
 					select {
 					case out <- update:
 					case <-srcCtx.Done():
