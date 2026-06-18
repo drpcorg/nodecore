@@ -2,6 +2,7 @@ package flow
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -13,8 +14,35 @@ import (
 // stream) carries every event for all of its subscribers; each client's
 // SubFilter drops the ones it did not subscribe to. resolveSource returns nil
 // for sources that need no per-client filtering (newHeads, generic passthrough).
+//
+// It receives the source-attached protocol.ParsedEvent (parsed once per event in
+// the source) so it can match without re-parsing the raw JSON for every
+// subscriber.
 type SubFilter interface {
-	Matches(message []byte) bool
+	Matches(event protocol.ParsedEvent) bool
+}
+
+type parsedLog struct {
+	raw     json.RawMessage
+	address string
+	topics  []string
+}
+
+var _ protocol.ParsedEvent = (*parsedLog)(nil)
+
+func (p *parsedLog) Raw() []byte { return p.raw }
+
+func parseLogEvent(raw json.RawMessage) *parsedLog {
+	var rl struct {
+		Address string   `json:"address"`
+		Topics  []string `json:"topics"`
+	}
+	_ = sonic.Unmarshal(raw, &rl) // best-effort; missing fields stay zero
+	pl := &parsedLog{raw: raw, address: strings.ToLower(rl.Address), topics: make([]string, len(rl.Topics))}
+	for i, t := range rl.Topics {
+		pl.topics[i] = strings.ToLower(t)
+	}
+	return pl
 }
 
 // topicFilter is one position of an eth logs topic filter: any (the request had
@@ -67,7 +95,15 @@ func parseLogFilter(request protocol.RequestHolder) (*logFilter, error) {
 		return nil, err
 	}
 
-	for _, addr := range parseStringOrArray(rf.Address) {
+	// A present-but-malformed address would otherwise leave the address set empty
+	// and silently match EVERY address (the firehose). Reject it so the caller
+	// falls back to the generic node-backed path, where the node validates the
+	// filter itself.
+	addrs, ok := parseStringOrArray(rf.Address)
+	if !ok {
+		return nil, errors.New("malformed address in logs filter")
+	}
+	for _, addr := range addrs {
 		filter.addresses[strings.ToLower(addr)] = struct{}{}
 	}
 	for _, topic := range rf.Topics {
@@ -75,7 +111,7 @@ func parseLogFilter(request protocol.RequestHolder) (*logFilter, error) {
 		trimmed := strings.TrimSpace(string(topic))
 		if len(topic) == 0 || trimmed == "null" {
 			tf.any = true
-		} else if vals := parseStringOrArray(topic); len(vals) > 0 {
+		} else if vals, ok := parseStringOrArray(topic); ok && len(vals) > 0 {
 			for _, v := range vals {
 				tf.set[strings.ToLower(v)] = struct{}{}
 			}
@@ -88,38 +124,42 @@ func parseLogFilter(request protocol.RequestHolder) (*logFilter, error) {
 }
 
 // parseStringOrArray decodes a JSON value that is either a single string or an
-// array of strings into a slice (nil for null/empty/other).
-func parseStringOrArray(raw json.RawMessage) []string {
+// array of strings into a slice. The bool distinguishes a usable value (absent,
+// or a well-formed string/array - ok=true) from a malformed one (present but
+// neither a string nor an array of strings - ok=false), so the caller can fall
+// back rather than silently widening the match.
+func parseStringOrArray(raw json.RawMessage) ([]string, bool) {
 	if len(raw) == 0 {
-		return nil
+		return nil, true // absent
 	}
 	var single string
 	if err := sonic.Unmarshal(raw, &single); err == nil {
-		return []string{single}
+		return []string{single}, true
 	}
 	var many []string
 	if err := sonic.Unmarshal(raw, &many); err == nil {
-		return many
+		return many, true
 	}
-	return nil
+	return nil, false // malformed
 }
 
-// Matches reports whether a raw eth log object satisfies the filter. A log with
-// fewer topics than the filter requires does not match (standard eth semantics).
-func (f *logFilter) Matches(logRaw []byte) bool {
+// Matches reports whether the parsed eth log satisfies the filter. It reads the
+// pre-parsed view (parsed once in the source) instead of re-walking the raw JSON
+// per subscriber. A log with fewer topics than the filter requires does not match
+// (standard eth semantics).
+func (f *logFilter) Matches(event protocol.ParsedEvent) bool {
 	if f == nil {
 		return true
 	}
+	if event == nil {
+		return false // contract violation: a logs source must attach a ParsedEvent
+	}
+	pl, ok := event.(*parsedLog)
+	if !ok {
+		pl = parseLogEvent(event.Raw()) // defensive: unknown parsed type; never hit for logs
+	}
 	if len(f.addresses) > 0 {
-		addrNode, err := sonic.Get(logRaw, "address")
-		if err != nil {
-			return false
-		}
-		addr, err := addrNode.String()
-		if err != nil {
-			return false
-		}
-		if _, ok := f.addresses[strings.ToLower(addr)]; !ok {
+		if _, ok := f.addresses[pl.address]; !ok {
 			return false
 		}
 	}
@@ -127,15 +167,10 @@ func (f *logFilter) Matches(logRaw []byte) bool {
 		if tf.any {
 			continue
 		}
-		topicNode, err := sonic.Get(logRaw, "topics", i)
-		if err != nil {
+		if i >= len(pl.topics) {
 			return false // log has fewer topics than the filter requires
 		}
-		topic, err := topicNode.String()
-		if err != nil {
-			return false
-		}
-		if _, ok := tf.set[strings.ToLower(topic)]; !ok {
+		if _, ok := tf.set[pl.topics[i]]; !ok {
 			return false
 		}
 	}

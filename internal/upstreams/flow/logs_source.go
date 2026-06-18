@@ -6,13 +6,32 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
+
+// logsBlocksSkippedMetric counts blocks whose logs could not be served and were
+// therefore skipped (the client silently misses that block's logs). A non-zero
+// rate means subscribers may have gaps; the reason label says why.
+var logsBlocksSkippedMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: config.AppName,
+		Subsystem: "logs_source",
+		Name:      "blocks_skipped_total",
+		Help:      "The total number of blocks whose logs could not be served and were skipped, by reason",
+	},
+	[]string{"chain", "reason"},
+)
+
+func init() {
+	prometheus.MustRegister(logsBlocksSkippedMetric)
+}
 
 const (
 	// logsCacheSize is how many recent blocks' logs are kept so a reorg DROP can
@@ -87,22 +106,36 @@ func newLogsSourceBuilder(
 						if logs == nil {
 							continue // fetch failed/skipped (logged); not terminal
 						}
-						cache.put(update.Block.Hash.ToHex(), logs)
-						for _, raw := range logs {
+						// Parse each log's filterable fields once here; every client's
+						// SubFilter then reads the shared parsed view instead of
+						// re-parsing the raw JSON per subscriber.
+						parsed := make([]*parsedLog, len(logs))
+						for i, raw := range logs {
+							parsed[i] = parseLogEvent(raw)
+						}
+						cache.put(update.Block.Hash.ToHex(), parsed)
+						for _, pl := range parsed {
 							select {
-							case out <- &protocol.WsResponse{Message: raw, UpstreamId: upstreamId}:
+							case out <- &protocol.WsResponse{Message: pl.raw, UpstreamId: upstreamId, ParsedEvent: pl}:
 							case <-srcCtx.Done():
 								return
 							}
 						}
 					case subengine.BlockDrop:
+						// Client contract: this source is shared and cache-only
+						// (logsCacheSize blocks), so a client that subscribed after a
+						// block was emitted but before it reorgs receives removed:true
+						// for logs it never received as added. Clients MUST tolerate
+						// unmatched/spurious removed events (standard eth-log semantics).
 						cached, ok := cache.get(update.Block.Hash.ToHex())
 						if !ok {
 							continue // never cached this block's logs - nothing to revert
 						}
-						for _, raw := range cached {
+						// Reuse the cached parsed view: the removed flag does not affect
+						// address/topic matching, so per-client filters still apply.
+						for _, pl := range cached {
 							select {
-							case out <- &protocol.WsResponse{Message: setRemovedTrue(raw)}:
+							case out <- &protocol.WsResponse{Message: setRemovedTrue(pl.raw), ParsedEvent: pl}:
 							case <-srcCtx.Done():
 								return
 							}
@@ -137,6 +170,7 @@ func fetchBlockLogs(
 	)
 	if err != nil {
 		log.Warn().Err(err).Msgf("subengine: failed to build eth_getLogs for block %d on %s", block.Height, chain)
+		logsBlocksSkippedMetric.WithLabelValues(chain.String(), "build").Inc()
 		return nil, ""
 	}
 
@@ -148,7 +182,11 @@ func fetchBlockLogs(
 	for attempt := 0; attempt < logsFetchAttempts; attempt++ {
 		resp, err := selectAndSend(ctx, supervisor, request, strategy)
 		if err != nil {
-			return nil, "" // strategy exhausted / no upstream at this height
+			// No upstream at this height (or the strategy is exhausted): the block's
+			// logs are skipped, so the client silently misses them. Surface it.
+			log.Warn().Err(err).Msgf("subengine: no upstream to serve eth_getLogs for block %d on %s; skipping block's logs", block.Height, chain)
+			logsBlocksSkippedMetric.WithLabelValues(chain.String(), "no_upstream").Inc()
+			return nil, ""
 		}
 		if resp.Response.HasError() {
 			continue // try the next-best upstream
@@ -156,6 +194,7 @@ func fetchBlockLogs(
 		var arr []json.RawMessage
 		if err := sonic.Unmarshal(resp.Response.ResponseResult(), &arr); err != nil {
 			log.Warn().Err(err).Msgf("subengine: failed to parse eth_getLogs result for block %d on %s", block.Height, chain)
+			logsBlocksSkippedMetric.WithLabelValues(chain.String(), "parse").Inc()
 			return nil, ""
 		}
 		logs := make([]json.RawMessage, 0, len(arr))
@@ -164,40 +203,49 @@ func fetchBlockLogs(
 		}
 		return logs, resp.UpstreamId
 	}
+	// Every attempt returned an upstream error: the block's logs are skipped.
+	log.Warn().Msgf("subengine: eth_getLogs errored on all %d attempts for block %d on %s; skipping block's logs", logsFetchAttempts, block.Height, chain)
+	logsBlocksSkippedMetric.WithLabelValues(chain.String(), "upstream_error").Inc()
 	return nil, ""
 }
 
 // setRemovedTrue returns a copy of an eth log object with "removed" set to true,
 // for re-emitting a reorged-out block's logs. On any parse/marshal error it
-// returns the input unchanged.
+// returns the input unchanged and warns: a malformed cached log would otherwise
+// be re-emitted with its original "removed" value, so the client would treat a
+// reorged-out log as still valid without any signal.
 func setRemovedTrue(raw json.RawMessage) []byte {
 	node, err := sonic.Get(raw)
 	if err != nil {
+		log.Warn().Err(err).Msg("subengine: failed to parse cached log for reorg removal; re-emitting unchanged")
 		return raw
 	}
 	if _, err := node.Set("removed", ast.NewBool(true)); err != nil {
+		log.Warn().Err(err).Msg("subengine: failed to set removed:true on cached log; re-emitting unchanged")
 		return raw
 	}
 	b, err := node.MarshalJSON()
 	if err != nil {
+		log.Warn().Err(err).Msg("subengine: failed to marshal cached log for reorg removal; re-emitting unchanged")
 		return raw
 	}
 	return b
 }
 
-// logCache is a single-goroutine FIFO of recent blocks' logs, keyed by block
-// hash, used to re-emit removals on a reorg.
+// logCache is a single-goroutine FIFO of recent blocks' parsed logs, keyed by
+// block hash, used to re-emit removals on a reorg. It stores the parsed view
+// (which also carries the raw bytes) so a DROP reuses it without re-parsing.
 type logCache struct {
 	capacity int
 	order    []string
-	items    map[string][]json.RawMessage
+	items    map[string][]*parsedLog
 }
 
 func newLogCache(capacity int) *logCache {
-	return &logCache{capacity: capacity, items: make(map[string][]json.RawMessage, capacity)}
+	return &logCache{capacity: capacity, items: make(map[string][]*parsedLog, capacity)}
 }
 
-func (c *logCache) put(hash string, logs []json.RawMessage) {
+func (c *logCache) put(hash string, logs []*parsedLog) {
 	if _, ok := c.items[hash]; ok {
 		c.items[hash] = logs
 		return
@@ -211,7 +259,7 @@ func (c *logCache) put(hash string, logs []json.RawMessage) {
 	c.items[hash] = logs
 }
 
-func (c *logCache) get(hash string) ([]json.RawMessage, bool) {
+func (c *logCache) get(hash string) ([]*parsedLog, bool) {
 	logs, ok := c.items[hash]
 	return logs, ok
 }

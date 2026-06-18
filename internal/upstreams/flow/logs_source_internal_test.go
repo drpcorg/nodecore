@@ -340,22 +340,22 @@ func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
 
 func TestLogCacheFIFO(t *testing.T) {
 	c := newLogCache(2)
-	c.put("a", []json.RawMessage{[]byte(`1`)})
-	c.put("b", []json.RawMessage{[]byte(`2`)})
-	c.put("c", []json.RawMessage{[]byte(`3`)}) // evicts "a"
+	c.put("a", []*parsedLog{{raw: []byte(`1`)}})
+	c.put("b", []*parsedLog{{raw: []byte(`2`)}})
+	c.put("c", []*parsedLog{{raw: []byte(`3`)}}) // evicts "a"
 
 	_, ok := c.get("a")
 	assert.False(t, ok, "oldest entry should be evicted")
 	got, ok := c.get("b")
 	assert.True(t, ok)
-	assert.Equal(t, json.RawMessage(`2`), got[0])
+	assert.Equal(t, json.RawMessage(`2`), got[0].raw)
 	_, ok = c.get("c")
 	assert.True(t, ok)
 
 	// overwriting an existing key does not grow/evict
-	c.put("b", []json.RawMessage{[]byte(`22`)})
+	c.put("b", []*parsedLog{{raw: []byte(`22`)}})
 	got, _ = c.get("b")
-	assert.Equal(t, json.RawMessage(`22`), got[0])
+	assert.Equal(t, json.RawMessage(`22`), got[0].raw)
 	_, ok = c.get("c")
 	assert.True(t, ok, "overwrite must not evict another entry")
 }

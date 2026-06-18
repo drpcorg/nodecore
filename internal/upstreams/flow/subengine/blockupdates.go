@@ -4,15 +4,37 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog/log"
 )
 
 // historyRingSize bounds how deep a reorg we keep enough history to reconcile.
 // Indexed by height % historyRingSize.
 const historyRingSize = 18
+
+// reorgClampedMetric counts reorgs whose orphaned suffix reaches deeper than the
+// history ring, so the oldest orphans are never emitted as removed:true. A
+// non-zero value means a reorg exceeded the reconciliation window and some
+// removals were silently dropped.
+var reorgClampedMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: config.AppName,
+		Subsystem: "logs_source",
+		Name:      "reorg_clamped_total",
+		Help:      "The total number of reorgs deeper than the history window whose oldest removals were dropped",
+	},
+	[]string{"chain"},
+)
+
+func init() {
+	prometheus.MustRegister(reorgClampedMetric)
+}
 
 // UpdateKind classifies a BlockUpdate.
 type UpdateKind int
@@ -63,6 +85,7 @@ type blockTracker struct {
 	ring    []ringEntry
 	haveTip bool
 	tipH    uint64
+	chain   chains.Chain
 }
 
 func newBlockTracker() *blockTracker {
@@ -141,7 +164,11 @@ func (t *blockTracker) reorgPoint(block protocol.Block) (uint64, bool) {
 func (t *blockTracker) dropFrom(reorgFrom uint64) []BlockUpdate {
 	lo := reorgFrom
 	if t.tipH >= historyRingSize && lo < t.tipH-historyRingSize+1 {
+		// Reorg reaches deeper than the ring: orphans below lo were already
+		// evicted and are never emitted as removed. Surface this incompleteness.
 		lo = t.tipH - historyRingSize + 1
+		log.Warn().Msgf("subengine: reorg on %s deeper than history window (reorgFrom=%d clamped to %d, tip=%d); oldest removals dropped", t.chain, reorgFrom, lo, t.tipH)
+		reorgClampedMetric.WithLabelValues(t.chain.String()).Inc()
 	}
 	var drops []BlockUpdate
 	for hh := t.tipH; hh >= lo; hh-- {
@@ -166,12 +193,17 @@ func (t *blockTracker) put(block protocol.Block) {
 
 // StreamBlockUpdates taps the chain head stream and pushes ordered BlockUpdates
 // to out until srcCtx is cancelled or the head subscription closes. It owns its
-// blockTracker; the caller owns out (it is not closed here).
+// blockTracker and closes out on return, so the consumer exits deterministically
+// (via its `if !ok` branch) even when the head subscription closes while srcCtx
+// is still live.
 func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervisor, out chan<- BlockUpdate) {
+	defer close(out)
+
 	sub := chainSup.SubscribeState(fmt.Sprintf("subengine_logs_%s_%s", chainSup.GetChain(), uuid.NewString()))
 	defer sub.Unsubscribe()
 
 	t := newBlockTracker()
+	t.chain = chainSup.GetChain()
 	for {
 		select {
 		case <-srcCtx.Done():

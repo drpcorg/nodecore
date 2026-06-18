@@ -155,20 +155,82 @@ func TestParseLogFilterAndMatches(t *testing.T) {
 		{"address string match (case-insensitive)", `["logs",{"address":"0xabc"}]`, logAB, true},
 		{"address string mismatch", `["logs",{"address":"0xabc"}]`, logOther, false},
 		{"address array match", `["logs",{"address":["0x111","0xabc"]}]`, logAB, true},
+		{"address array mismatch", `["logs",{"address":["0x111","0x222"]}]`, logAB, false},
 		{"topic exact match", `["logs",{"topics":["0xaaa"]}]`, logAB, true},
 		{"topic null is wildcard", `["logs",{"topics":[null,"0xddd"]}]`, logAB, true},
 		{"topic OR-set match (case-insensitive)", `["logs",{"topics":[null,null,["0xb","0xc"]]}]`, logAB, true},
 		{"topic mismatch", `["logs",{"topics":["0xzzz"]}]`, logAB, false},
 		{"more filter topics than log has -> reject", `["logs",{"topics":["0xaaa","0xddd","0xc"]}]`, logTwoTopics, false},
 		{"address+topics combined", `["logs",{"address":"0xabc","topics":["0xaaa"]}]`, logAB, true},
+
+		// [topic1, null, topic2] — exact at pos0, wildcard at pos1, exact at pos2.
+		{"[t1,null,t2] all positions satisfied", `["logs",{"topics":["0xaaa",null,"0xc"]}]`, logAB, true},
+		{"[t1,null,t2] pos0 mismatch", `["logs",{"topics":["0xzzz",null,"0xc"]}]`, logAB, false},
+		{"[t1,null,t2] pos2 mismatch", `["logs",{"topics":["0xaaa",null,"0xzzz"]}]`, logAB, false},
+		{"[t1,null,t2] but log too short", `["logs",{"topics":["0xaaa",null,"0xc"]}]`, logTwoTopics, false},
+
+		// [topic1, [topic2, topic3]] — exact at pos0, OR-set at pos1.
+		{"[t1,[a,b]] OR-set hit", `["logs",{"topics":["0xaaa",["0xddd","0xeee"]]}]`, logAB, true},
+		{"[t1,[a,b]] OR-set miss", `["logs",{"topics":["0xaaa",["0xfff","0xeee"]]}]`, logAB, false},
+		{"[t1,[a,b]] pos0 mismatch with OR-set pos1", `["logs",{"topics":["0xzzz",["0xddd","0xeee"]]}]`, logAB, false},
+
+		// OR-set / null at the first position.
+		{"OR-set at pos0 hit", `["logs",{"topics":[["0xaaa","0xbbb"]]}]`, logAB, true},
+		{"OR-set at pos0 miss", `["logs",{"topics":[["0xbbb","0xccc"]]}]`, logAB, false},
+		{"all-null positions match all", `["logs",{"topics":[null,null]}]`, logAB, true},
+
+		// Degenerate topic positions are treated as wildcards.
+		{"empty topics array matches all", `["logs",{"topics":[]}]`, logAB, true},
+		{"empty OR-set is wildcard", `["logs",{"topics":[[]]}]`, logAB, true},
+
+		// A wildcard trailing position never imposes a length requirement.
+		{"trailing null past log length still matches", `["logs",{"topics":["0xaaa","0xddd","0xc",null]}]`, logAB, true},
+		// ...but a concrete trailing position past log length rejects.
+		{"trailing concrete topic past log length rejects", `["logs",{"topics":[null,null,null,"0xc"]}]`, logAB, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			filter, err := parseLogFilter(logsRequest(tc.params))
 			assert.NoError(t, err)
-			assert.Equal(t, tc.match, filter.Matches(tc.log))
+			assert.Equal(t, tc.match, filter.Matches(parseLogEvent(tc.log)))
 		})
 	}
+}
+
+func TestParseLogFilterMalformedAddress(t *testing.T) {
+	// A present-but-malformed address must be rejected (error -> generic
+	// node-backed path) rather than silently matching every address (firehose).
+	malformed := []string{
+		`["logs",{"address":123}]`,
+		`["logs",{"address":{"foo":"bar"}}]`,
+		`["logs",{"address":[1,2,3]}]`,
+		`["logs",{"address":true}]`,
+	}
+	for _, params := range malformed {
+		t.Run(params, func(t *testing.T) {
+			_, err := parseLogFilter(logsRequest(params))
+			assert.Error(t, err)
+		})
+	}
+
+	// Absent address must NOT error and must match any address.
+	filter, err := parseLogFilter(logsRequest(`["logs",{"topics":["0xaaa"]}]`))
+	assert.NoError(t, err)
+	assert.True(t, filter.Matches(parseLogEvent([]byte(`{"address":"0xanything","topics":["0xaaa"]}`))))
+}
+
+func TestParseLogEvent(t *testing.T) {
+	// address and topics are lowercased; raw is preserved verbatim.
+	raw := []byte(`{"address":"0xABC","topics":["0xAAA","0xDdD"],"removed":false}`)
+	pl := parseLogEvent(raw)
+	assert.Equal(t, "0xabc", pl.address)
+	assert.Equal(t, []string{"0xaaa", "0xddd"}, pl.topics)
+	assert.Equal(t, raw, []byte(pl.Raw()))
+
+	// Missing fields stay zero-valued (no panic): empty address, no topics.
+	plEmpty := parseLogEvent([]byte(`{"data":"0x0"}`))
+	assert.Equal(t, "", plEmpty.address)
+	assert.Empty(t, plEmpty.topics)
 }
 
 func TestSubscriptionKeyDependsOnMethodParamsAndSelectors(t *testing.T) {

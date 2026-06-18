@@ -104,7 +104,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 				// Per-client logs filtering: the shared logs source carries every
 				// log of the chain; drop the ones this client did not subscribe to.
 				// Never filter terminal frames (handled above; they carry no Message).
-				if filter != nil && !filter.Matches(r.Message) {
+				if filter != nil && !filter.Matches(r.ParsedEvent) {
 					continue
 				}
 				var subResponse protocol.ResponseHolder
