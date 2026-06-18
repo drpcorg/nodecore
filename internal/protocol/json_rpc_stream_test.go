@@ -26,19 +26,52 @@ func TestProcessFirstChunk(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "full body with result in one chunk then stream",
+			name:     "full object result in one chunk then no stream",
 			body:     []byte(`{"id": 1, "result": {"message": "mess"}}`),
+			expected: false,
+		},
+		{
+			name:     "full array result in one chunk then no stream",
+			body:     []byte(`{"id": 1, "result": [1, 2, 3]}`),
+			expected: false,
+		},
+		{
+			name:     "full string result in one chunk then no stream",
+			body:     []byte(`{"id": 1, "result": "0x1234"}`),
+			expected: false,
+		},
+		{
+			name:     "full scalar result in one chunk then no stream",
+			body:     []byte(`{"id": 1, "result": 42}`),
+			expected: false,
+		},
+		{
+			name:     "full null result in one chunk then no stream",
+			body:     []byte(`{"id": 1, "result": null}`),
+			expected: false,
+		},
+		{
+			name:     "result larger than chunk without error then stream",
+			body:     append([]byte(`{"id": 1, "result": "`), append(bytes.Repeat([]byte("a"), protocol.MaxChunkSize), []byte(`"}`)...)...),
 			expected: true,
 		},
 		{
-			name:     "not full body without error in the first chunk then stream",
-			body:     []byte(`{"id": 1, "result": {"message": "mess`),
-			expected: true,
+			name:     "error within the first chunk of an oversized body then no stream",
+			body:     append([]byte(`{"id": 1, "error": {"message": "`), append(bytes.Repeat([]byte("e"), protocol.MaxChunkSize), []byte(`"}}`)...)...),
+			expected: false,
 		},
 		{
 			name:     "error key anywhere in envelope then no stream",
 			body:     []byte(`{"id": 1, "result": null, "error": {"code": -1}}`),
 			expected: false,
+		},
+		{
+			// known limitation: a complete body that is exactly the chunk size
+			// reports nil (not io.EOF) from Peek, so it is not recognized as
+			// fully buffered and still takes the stream path
+			name:     "complete body exactly chunk size then stream",
+			body:     exactChunkSizeBody(),
+			expected: true,
 		},
 	}
 
@@ -51,6 +84,15 @@ func TestProcessFirstChunk(t *testing.T) {
 			assert.Equal(t, test.expected, canBeStreamed)
 		})
 	}
+}
+
+// exactChunkSizeBody returns a valid JSON-RPC response whose total length is
+// exactly protocol.MaxChunkSize bytes.
+func exactChunkSizeBody() []byte {
+	prefix := []byte(`{"id":1,"result":"`)
+	suffix := []byte(`"}`)
+	pad := protocol.MaxChunkSize - len(prefix) - len(suffix)
+	return append(prefix, append(bytes.Repeat([]byte("a"), pad), suffix...)...)
 }
 
 func TestFindResultStart(t *testing.T) {
