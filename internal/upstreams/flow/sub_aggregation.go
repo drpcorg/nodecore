@@ -32,6 +32,19 @@ const localNewHeadsKey = "local|newHeads"
 // are present. RequestAnySelector is a no-op and must not block the local path.
 const localLogsKey = "local|logs"
 
+// localPendingTxKey is the aggregation key for the locally-synthesized
+// newPendingTransactions source. It opens eth_subscribe("newPendingTransactions")
+// on every ws-capable upstream of the chain, merges them and dedupes by hash, so
+// all clients must collapse onto one source regardless of selectors (one mempool
+// tap per chain) - same rationale as localNewHeadsKey.
+const localPendingTxKey = "local|newPendingTransactions"
+
+// localDrpcPendingTxKey is the aggregation key for drpc_pendingTransactions: it
+// rides the shared localPendingTxKey hash source and enriches each hash into a
+// full transaction object via eth_getTransactionByHash. Per-chain for the same
+// reason as localPendingTxKey.
+const localDrpcPendingTxKey = "local|drpcPendingTransactions"
+
 // genericSubscriptionBufferSize mirrors dshackle's high-volume subscription
 // buffering for shared logs streams. Generic node-backed subscriptions can still
 // carry bursty payloads (logs, pending txes), so they need more headroom than
@@ -43,6 +56,8 @@ const genericSubscriptionBufferSize = 4096
 // generic decision and the key in one place:
 //   - locally-synthesized newHeads (one source per chain) when the chain has a
 //     WS-head-capable upstream, or
+//   - locally-aggregated newPendingTransactions/drpc_pendingTransactions (one
+//     source per chain) when the chain has a ws-capable upstream, or
 //   - the default node-backed passthrough, keyed by method+params+selectors.
 func resolveSource(
 	chain chains.Chain,
@@ -50,6 +65,7 @@ func resolveSource(
 	request protocol.RequestHolder,
 	strategy UpstreamStrategy,
 	registry *rating.RatingRegistry,
+	engine subengine.Engine,
 ) (string, subengine.SourceBuilder, SubFilter) {
 	if isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
@@ -58,6 +74,12 @@ func resolveSource(
 		if filter, err := parseLogFilter(request); err == nil {
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
 		}
+	}
+	if isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
+	}
+	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
 	}
 	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
 }
@@ -72,25 +94,33 @@ func hasEffectiveSelectors(selectors []protocol.RequestSelector) bool {
 	return false
 }
 
-// isNewHeadsRequest reports whether request is eth_subscribe("newHeads"). Only
-// EVM chains expose eth_subscribe, so this also implies an EVM chain.
-func isNewHeadsRequest(request protocol.RequestHolder) bool {
+// subscribeTopic returns the first param of an eth_subscribe request (the topic,
+// e.g. "newHeads"/"logs"/"newPendingTransactions"), or ("", false) if request is
+// not eth_subscribe or has no string first param. Only EVM chains expose
+// eth_subscribe, so a non-empty topic also implies an EVM chain.
+func subscribeTopic(request protocol.RequestHolder) (string, bool) {
 	if request.Method() != "eth_subscribe" {
-		return false
+		return "", false
 	}
 	body, err := request.Body()
 	if err != nil {
-		return false
+		return "", false
 	}
 	node, err := sonic.Get(body, "params", 0)
 	if err != nil {
-		return false
+		return "", false
 	}
 	value, err := node.String()
 	if err != nil {
-		return false
+		return "", false
 	}
-	return value == "newHeads"
+	return value, true
+}
+
+// isNewHeadsRequest reports whether request is eth_subscribe("newHeads").
+func isNewHeadsRequest(request protocol.RequestHolder) bool {
+	topic, ok := subscribeTopic(request)
+	return ok && topic == "newHeads"
 }
 
 // localNewHeadsAvailable reports whether the chain can synthesize newHeads
@@ -106,25 +136,25 @@ func localNewHeadsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSup
 	return caps != nil && caps.Contains(protocol.NewHeadsCap)
 }
 
-// isLogsRequest reports whether request is eth_subscribe("logs", ...). Only EVM
-// chains expose eth_subscribe, so this also implies an EVM chain.
+// isLogsRequest reports whether request is eth_subscribe("logs", ...).
 func isLogsRequest(request protocol.RequestHolder) bool {
-	if request.Method() != "eth_subscribe" {
-		return false
-	}
-	body, err := request.Body()
-	if err != nil {
-		return false
-	}
-	node, err := sonic.Get(body, "params", 0)
-	if err != nil {
-		return false
-	}
-	value, err := node.String()
-	if err != nil {
-		return false
-	}
-	return value == "logs"
+	topic, ok := subscribeTopic(request)
+	return ok && topic == "logs"
+}
+
+// isPendingTxRequest reports whether request is
+// eth_subscribe("newPendingTransactions").
+func isPendingTxRequest(request protocol.RequestHolder) bool {
+	topic, ok := subscribeTopic(request)
+	return ok && topic == "newPendingTransactions"
+}
+
+// isDrpcPendingTxRequest reports whether request is
+// eth_subscribe("drpc_pendingTransactions") - the dRPC variant that enriches each
+// pending hash into a full transaction object.
+func isDrpcPendingTxRequest(request protocol.RequestHolder) bool {
+	topic, ok := subscribeTopic(request)
+	return ok && topic == "drpc_pendingTransactions"
 }
 
 // localLogsAvailable reports whether the chain can synthesize logs locally, i.e.
@@ -137,6 +167,18 @@ func localLogsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSupervi
 	}
 	caps := chainSup.GetChainState().Caps
 	return caps != nil && caps.Contains(protocol.LogsCap)
+}
+
+// localPendingTxAvailable reports whether the chain can aggregate pending-tx
+// subscriptions locally, i.e. some available upstream has a live ws connector
+// (PendingTxCap). Chains without it fall back to the generic node-backed source.
+func localPendingTxAvailable(chain chains.Chain, supervisor upstreams.UpstreamSupervisor) bool {
+	chainSup := supervisor.GetChainSupervisor(chain)
+	if chainSup == nil {
+		return false
+	}
+	caps := chainSup.GetChainState().Caps
+	return caps != nil && caps.Contains(protocol.PendingTxCap)
 }
 
 // subscriptionKey is the aggregation key: subscriptions that share method and

@@ -306,7 +306,7 @@ func TestBaseUpstreamProcessStateEvents_AddsWsCapOnConnected(t *testing.T) {
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
 		mustNewUpstreamMethods(t, nil),
-		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
 		"00012",
 		nil,
 		nil,
@@ -329,7 +329,7 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsConnectedState(t *test
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
 		mustNewUpstreamMethods(t, nil),
-		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
 		"00012",
 		nil,
 		nil,

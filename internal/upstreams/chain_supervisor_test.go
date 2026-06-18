@@ -668,6 +668,31 @@ func TestChainSupervisorSubMethodsEvmNewHeadsOnly(t *testing.T) {
 	}, eventuallyWait, eventuallyTick)
 }
 
+func TestChainSupervisorSubMethodsEvmPendingTx(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// A ws connector grants PendingTxCap -> both pending-tx topics are advertised
+	// (alongside the head-derived topics).
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap),
+	))
+
+	expected := mapset.NewThreadUnsafeSet[string]("newHeads", "logs", "newPendingTransactions", "drpc_pendingTransactions")
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Equal(expected)
+	}, eventuallyWait, eventuallyTick)
+}
+
 func TestChainSupervisorSubMethodsEmptyWithoutWsCap(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 

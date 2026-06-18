@@ -372,6 +372,11 @@ const (
 	// LogsCap means NewHeadsCap holds and eth_getLogs is enabled, so logs can be
 	// synthesized locally. EVM-only.
 	LogsCap
+	// PendingTxCap means the upstream has a live websocket connector usable for
+	// eth_subscribe("newPendingTransactions"), so pending-tx subscriptions can be
+	// aggregated locally. Set alongside WsCap; the topics are EVM-only but the cap
+	// is harmless elsewhere since only eth_subscribe clients request them.
+	PendingTxCap
 )
 
 type UpstreamState struct {

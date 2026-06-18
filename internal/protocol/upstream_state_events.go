@@ -151,6 +151,10 @@ func (s *SubscribeUpstreamStateEvent) ProcessEvent(state UpstreamState) Upstream
 	switch s.State {
 	case WsConnected:
 		copyCaps.Add(WsCap)
+		// A live ws connector is enough to aggregate pending-tx subscriptions
+		// (eth_subscribe("newPendingTransactions")) locally; unlike newHeads/logs
+		// it does not require the head connector to be ws-driven.
+		copyCaps.Add(PendingTxCap)
 		// A websocket head connector means the head is subscription-driven, so
 		// newHeads can be synthesized locally; logs additionally needs
 		// eth_getLogs. eth_subscribe presence implies an EVM chain.

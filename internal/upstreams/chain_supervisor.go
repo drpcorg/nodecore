@@ -292,7 +292,8 @@ func (b *BaseChainSupervisor) processSubMethods(caps mapset.Set[protocol.Cap]) m
 	// EVM advertises concrete topics derived from caps instead of the generic
 	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
 	// real sub types. A topic is offered only if it can be served locally
-	// (newHeads -> NewHeadsCap, logs -> LogsCap).
+	// (newHeads -> NewHeadsCap, logs -> LogsCap, newPendingTransactions and
+	// drpc_pendingTransactions -> PendingTxCap).
 	if subMethods.ContainsOne("eth_subscribe") {
 		subMethods.Remove("eth_subscribe")
 		if caps.Contains(protocol.NewHeadsCap) {
@@ -300,6 +301,10 @@ func (b *BaseChainSupervisor) processSubMethods(caps mapset.Set[protocol.Cap]) m
 		}
 		if caps.Contains(protocol.LogsCap) {
 			subMethods.Add("logs")
+		}
+		if caps.Contains(protocol.PendingTxCap) {
+			subMethods.Add("newPendingTransactions")
+			subMethods.Add("drpc_pendingTransactions")
 		}
 	}
 	return subMethods
