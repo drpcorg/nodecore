@@ -306,7 +306,7 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	var requestProcessor RequestProcessor
 
 	if request.IsSubscribe() {
-		requestProcessor = NewSubscriptionRequestProcessor(e.chain, e.upstreamSupervisor, e.subEngineRegistry.Get(e.chain), e.subCtx)
+		requestProcessor = NewSubscriptionRequestProcessor(e.chain, e.upstreamSupervisor, e.subEngineRegistry.Get(e.chain), e.subCtx, e.registry)
 	} else if request.SpecMethod().IsLocal() {
 		requestProcessor = NewLocalRequestProcessor(e.chain, e.subCtx)
 		reqObserver.WithRequestKind(protocol.Local)

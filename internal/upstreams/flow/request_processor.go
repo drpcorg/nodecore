@@ -179,6 +179,29 @@ func executeUnaryRequest(
 	return result, err
 }
 
+// selectAndSend selects a single upstream via the strategy and sends the request
+// to it directly, WITHOUT the failsafe executor (no retry/hedge policies). It is
+// the lightweight counterpart to executeUnaryRequest for callers that just need a
+// one-shot request to a strategy-chosen upstream - e.g. the local logs source
+// fetching eth_getLogs from any upstream at the block's height. Repeated calls
+// with the same strategy walk down its rating list (selectedUpstreams dedup).
+func selectAndSend(
+	ctx context.Context,
+	upstreamSupervisor upstreams.UpstreamSupervisor,
+	request protocol.RequestHolder,
+	strategy UpstreamStrategy,
+) (*protocol.ResponseHolderWrapper, error) {
+	upstreamId, err := strategy.SelectUpstream(request)
+	if err != nil {
+		return nil, err
+	}
+	upstream := upstreamSupervisor.GetUpstream(upstreamId)
+	if upstream == nil {
+		return nil, protocol.NoAvailableUpstreamsError()
+	}
+	return sendUnaryRequest(ctx, upstream, request, request.ParseParams(ctx))
+}
+
 func getMethodConnector(upstream upstreams.Upstream, method *specs.Method) connectors.ApiConnector {
 	for _, connector := range method.GetApiConnectorTypes() {
 		if upConnector := upstream.GetConnector(connector); upConnector != nil {

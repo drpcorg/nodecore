@@ -21,6 +21,7 @@
 package subengine
 
 import (
+	"cmp"
 	"context"
 	"time"
 
@@ -46,6 +47,11 @@ const subscriberBufferSize = 100
 type Source struct {
 	Events <-chan *protocol.WsResponse
 	Stop   func()
+	// Buffer optionally overrides the per-subscriber fan-out buffer size for this
+	// source. Zero means subscriberBufferSize. A source that bursts many events
+	// per upstream message (e.g. all logs of one block) sets a larger value so a
+	// momentarily-busy client is not disconnected as "too slow".
+	Buffer int
 }
 
 // SourceBuilder starts a Source bound to srcCtx. srcCtx is cancelled by the
@@ -195,6 +201,8 @@ func (e *baseEngine) run(a *sourceActor, build SourceBuilder) {
 		return
 	}
 
+	bufSize := cmp.Or(src.Buffer, subscriberBufferSize)
+
 	subs := make(map[int]*subscriber)
 	var seq, refs int
 	var teardown *time.Timer
@@ -263,7 +271,7 @@ func (e *baseEngine) run(a *sourceActor, build SourceBuilder) {
 					close(s.ch)
 					delete(subs, id)
 					refs--
-					log.Warn().Msgf("disconnected lagging subscriber %s/sub-%d: buffer of %d full", a.key, id, subscriberBufferSize)
+					log.Warn().Msgf("disconnected lagging subscriber %s/sub-%d: buffer of %d full", a.key, id, bufSize)
 				}
 			}
 			if refs == 0 && teardownC == nil {
@@ -281,7 +289,7 @@ func (e *baseEngine) run(a *sourceActor, build SourceBuilder) {
 			}
 			seq++
 			refs++
-			s := &subscriber{id: seq, ch: make(chan *protocol.WsResponse, subscriberBufferSize)}
+			s := &subscriber{id: seq, ch: make(chan *protocol.WsResponse, bufSize)}
 			subs[s.id] = s
 			cmd.reply <- e.newSubscription(a, s)
 

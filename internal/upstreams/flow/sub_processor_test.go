@@ -35,7 +35,7 @@ func newSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx *flow.Su
 	// node-backed path; tests that want local synthesis override this.
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
-	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx)
+	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil)
 }
 
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {
@@ -203,8 +203,8 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	// One shared engine backs both client processors.
 	engine := subengine.NewRegistry(ctx).Get(chains.ETHEREUM)
-	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx())
-	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx())
+	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil)
+	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil)
 
 	req1 := testEthSubscribeRequestWithId("c1")
 	req2 := testEthSubscribeRequestWithId("c2")

@@ -12,6 +12,7 @@ This document describes all Prometheus metrics exposed by nodecore on the `metri
 - [Cache Metrics](#cache-metrics)
 - [WebSocket Metrics](#websocket-metrics)
 - [Subscription Utilities Metrics](#subscription-utilities-metrics)
+- [Logs Subscription Metrics](#logs-subscription-metrics)
 
 ---
 
@@ -468,3 +469,40 @@ These metrics track internal subscription manager performance (used for event pr
 **Source:** `pkg/utils/subscriptions.go`
 
 **Use Case:** Identify potential backpressure or slow consumers in internal event systems.
+
+---
+
+## Logs Subscription Metrics
+
+Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A non-zero value on either counter means subscribers may have silently missed log events.
+
+### `nodecore_logs_source_blocks_skipped_total`
+
+**Type:** Counter
+
+**Description:** The total number of blocks whose logs could not be served and were skipped. The block's logs are silently missing from every `logs` subscriber on that chain.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+- `reason` - Why the block was skipped: `build` (failed to build the `eth_getLogs` request), `no_upstream` (no upstream at the block height / strategy exhausted), `parse` (failed to parse the `eth_getLogs` result), `upstream_error` (every attempt returned an upstream error)
+
+**Source:** `internal/upstreams/flow/logs_source.go`
+
+**Use Case:** Alert on gaps in delivered `logs`; a sustained `no_upstream` rate indicates insufficient upstream coverage at the chain head.
+
+---
+
+### `nodecore_logs_source_reorg_clamped_total`
+
+**Type:** Counter
+
+**Description:** The total number of reorgs whose orphaned suffix reached deeper than the history window, so the oldest orphaned blocks were never re-emitted with `removed:true`.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+
+**Source:** `internal/upstreams/flow/subengine/blockupdates.go`
+
+**Use Case:** Detect deep reorgs that exceed the reconciliation window, where some `removed` events are silently dropped.

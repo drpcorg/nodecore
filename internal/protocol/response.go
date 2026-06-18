@@ -430,6 +430,13 @@ type WsResponse struct {
 	Error      *ResponseError
 	Event      []byte
 	UpstreamId string
+	// ParsedEvent is an optional, source-attached pre-parsed view of Message,
+	ParsedEvent ParsedEvent
+}
+
+// ParsedEvent is the pre-parsed view of a WsResponse Message. See WsResponse.ParsedEvent.
+type ParsedEvent interface {
+	Raw() []byte
 }
 
 type JsonRpcWsUpstreamResponse struct {
