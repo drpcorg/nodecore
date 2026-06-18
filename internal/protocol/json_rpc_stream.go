@@ -18,7 +18,11 @@ func ResponseCanBeStreamed(reader *bufio.Reader, chunkSize int) bool {
 	// analyze the first chunk to determine if there is an error or not
 	// if there is an error then it's unnecessary to stream such responses
 	body, err := reader.Peek(chunkSize)
-	if err != nil && err != io.EOF {
+	if err != nil {
+		// io.EOF means the whole response is already buffered in the first chunk
+		// (fewer than chunkSize bytes total), so there is nothing to stream - let
+		// the buffered path parse/validate/cache it; any other error also means
+		// we shouldn't stream
 		return false
 	}
 	jsonDecoder := json.NewDecoder(bytes.NewReader(body))

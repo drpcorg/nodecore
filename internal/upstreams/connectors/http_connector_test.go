@@ -191,7 +191,7 @@ func TestHttpConnectorType(t *testing.T) {
 	}
 }
 
-func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
+func TestJsonRpcRequest200CodeThenNoStream(t *testing.T) {
 	httpmock.Activate(t)
 	defer httpmock.Deactivate()
 	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
@@ -208,9 +208,9 @@ func TestJsonRpcRequest200CodeThenStream(t *testing.T) {
 
 	r := connector.SendRequest(context.Background(), req)
 
-	assert.True(t, r.HasStream())
+	assert.False(t, r.HasStream())
 	assert.False(t, r.HasError())
-	assert.Nil(t, r.ResponseResult())
+	assert.Equal(t, []byte(`{"number": "0x11"}`), r.ResponseResult())
 }
 
 func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
