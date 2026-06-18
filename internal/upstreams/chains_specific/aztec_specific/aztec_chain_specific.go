@@ -28,6 +28,10 @@ type AztecChainSpecificObject struct {
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
 	options         *chains.Options
+	// tips bridges the v5 rename node_getL2Tips -> node_getChainTips and caches
+	// the working method for this upstream. It is shared with the health
+	// validator so a v5 node is probed for the renamed method only once.
+	tips *aztec_validations.TipsMethodResolver
 }
 
 func (a *AztecChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
@@ -49,6 +53,7 @@ func NewAztecChainSpecificObject(
 		internalTimeout: options.InternalTimeout,
 		labelsDelay:     options.ValidationInterval * 5,
 		configuredChain: configuredChain,
+		tips:            aztec_validations.NewTipsMethodResolver(),
 	}
 }
 
@@ -87,7 +92,7 @@ func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[pr
 	}
 	return []validations.Validator[protocol.AvailabilityStatus]{
 		aztec_validations.NewAztecHealthValidator(
-			a.upstreamId, a.connector, a.configuredChain.Chain, a.internalTimeout,
+			a.upstreamId, a.connector, a.configuredChain.Chain, a.internalTimeout, a.tips,
 		),
 	}
 }
@@ -105,16 +110,10 @@ func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[
 }
 
 func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"node_getL2Tips",
-		[]interface{}{},
-		a.configuredChain.Chain,
-	)
+	response, err := a.tips.FetchTips(ctx, a.connector, a.configuredChain.Chain)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
-
-	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return protocol.ZeroBlock{}, response.GetError()
 	}
@@ -123,16 +122,10 @@ func (a *AztecChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol
 }
 
 func (a *AztecChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"node_getL2Tips",
-		[]interface{}{},
-		a.configuredChain.Chain,
-	)
+	response, err := a.tips.FetchTips(ctx, a.connector, a.configuredChain.Chain)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
-
-	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return protocol.ZeroBlock{}, response.GetError()
 	}

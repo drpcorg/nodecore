@@ -32,6 +32,13 @@
       }
     },
     {
+      "name": "node_getChainTips",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
       "name": "node_getBlock",
       "params": []
     },

@@ -56,6 +56,23 @@ func TestAztecParseBlockV4Nested(t *testing.T) {
 	assert.Equal(t, expected, block)
 }
 
+func TestAztecParseBlockProposedNested(t *testing.T) {
+	// Be robust to the nested shape for `proposed` too: proposed.block.{number,hash}
+	// must parse identically to the flat proposed.{number,hash} form.
+	body := []byte(`{
+		"proposed":     {"block": {"number": 300, "hash": "0xabc"}},
+		"proven":       {"block": {"number": 299, "hash": "0xdef"}},
+		"finalized":    {"block": {"number": 298, "hash": "0xfed"}},
+		"checkpointed": {"block": {"number": 298, "hash": "0xcba"}}
+	}`)
+
+	block, err := test_utils.NewAztecChainSpecific(context.Background(), nil).ParseBlock(body)
+	assert.Nil(t, err)
+
+	expected := protocol.NewBlock(300, 0, blockchain.NewHashIdFromString("0xabc"), blockchain.EmptyHash)
+	assert.Equal(t, expected, block)
+}
+
 func TestAztecParseBlockInvalidJSON(t *testing.T) {
 	block, err := test_utils.NewAztecChainSpecific(context.Background(), nil).ParseBlock([]byte(`not json`))
 	assert.True(t, block.IsFullEmpty())
@@ -95,6 +112,39 @@ func TestAztecGetLatestBlock(t *testing.T) {
 	connector.AssertExpectations(t)
 
 	expected := protocol.NewBlock(500, 0, blockchain.NewHashIdFromString("0xfeed"), blockchain.EmptyHash)
+	assert.Equal(t, expected, block)
+}
+
+func TestAztecGetLatestBlockFallsBackToChainTips(t *testing.T) {
+	// A v5 node only knows node_getChainTips and answers node_getL2Tips with
+	// -32601. GetLatestBlock must transparently fall back and parse the result.
+	ctx := context.Background()
+	connector := mocks.NewConnectorMock()
+
+	notFound := protocol.NewHttpUpstreamResponseWithError(
+		protocol.ResponseErrorWithData(protocol.NoSupportedMethod, "Method not found: node_getL2Tips", nil),
+	)
+	body := []byte(`{
+		"jsonrpc": "2.0",
+		"result": {
+			"proposed":     {"number": 700, "hash": "0xv5"},
+			"proven":       {"block": {"number": 699, "hash": "0xpr"}},
+			"finalized":    {"block": {"number": 698, "hash": "0xfi"}},
+			"checkpointed": {"block": {"number": 698, "hash": "0xck"}}
+		}
+	}`)
+	ok := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
+
+	methodIs := func(method string) any {
+		return mock.MatchedBy(func(r protocol.RequestHolder) bool { return r.Method() == method })
+	}
+	connector.On("SendRequest", ctx, methodIs("node_getL2Tips")).Return(notFound)
+	connector.On("SendRequest", ctx, methodIs("node_getChainTips")).Return(ok)
+
+	block, err := test_utils.NewAztecChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
+	assert.Nil(t, err)
+
+	expected := protocol.NewBlock(700, 0, blockchain.NewHashIdFromString("0xv5"), blockchain.EmptyHash)
 	assert.Equal(t, expected, block)
 }
 

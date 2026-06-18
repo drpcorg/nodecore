@@ -28,6 +28,7 @@ type AztecHealthValidator struct {
 	connector       connectors.ApiConnector
 	chain           chains.Chain
 	internalTimeout time.Duration
+	tips            *TipsMethodResolver
 }
 
 func NewAztecHealthValidator(
@@ -35,12 +36,17 @@ func NewAztecHealthValidator(
 	connector connectors.ApiConnector,
 	chain chains.Chain,
 	internalTimeout time.Duration,
+	tips *TipsMethodResolver,
 ) *AztecHealthValidator {
+	if tips == nil {
+		tips = NewTipsMethodResolver()
+	}
 	return &AztecHealthValidator{
 		upstreamId:      upstreamId,
 		connector:       connector,
 		chain:           chain,
 		internalTimeout: internalTimeout,
+		tips:            tips,
 	}
 }
 
@@ -89,12 +95,15 @@ func (a *AztecHealthValidator) checkReady() error {
 	return nil
 }
 
-// AztecL2Tips models node_getL2Tips. Aztec reshaped the payload between v3 and v4:
-// v3 had every tip flat ({number, hash}); v4 nested proven/finalized/checkpointed
-// as {block: {number, hash}, checkpoint: {...}} and kept proposed flat.
-// AztecVersionedTip transparently handles both shapes.
+// AztecL2Tips models the node_getL2Tips / node_getChainTips payload. Aztec
+// reshaped it across versions: v3 had every tip flat ({number, hash}); v4
+// nested proven/finalized/checkpointed as {block: {number, hash}, checkpoint:
+// {...}} and kept proposed flat; v5 (node_getChainTips) keeps the same shape.
+// Every field uses AztecVersionedTip, which transparently reads both the flat
+// {number, hash} form and the nested {block: {number, hash}} form, so proposed
+// stays correct whether the node sends it flat or nested.
 type AztecL2Tips struct {
-	Proposed     AztecTip          `json:"proposed"`
+	Proposed     AztecVersionedTip `json:"proposed"`
 	Proven       AztecVersionedTip `json:"proven"`
 	Finalized    AztecVersionedTip `json:"finalized"`
 	Checkpointed AztecVersionedTip `json:"checkpointed"`
@@ -132,14 +141,10 @@ func (a *AztecHealthValidator) checkTips() error {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"node_getL2Tips", []string{}, a.chain,
-	)
+	response, err := a.tips.FetchTips(ctx, a.connector, a.chain)
 	if err != nil {
 		return err
 	}
-
-	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return response.GetError()
 	}
