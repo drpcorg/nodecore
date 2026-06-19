@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -21,6 +22,7 @@ type SubscriptionRequestProcessor struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	engine             subengine.Engine
 	subCtx             *SubCtx
+	registry           *rating.RatingRegistry
 }
 
 func NewSubscriptionRequestProcessor(
@@ -28,12 +30,14 @@ func NewSubscriptionRequestProcessor(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	engine subengine.Engine,
 	subCtx *SubCtx,
+	registry *rating.RatingRegistry,
 ) *SubscriptionRequestProcessor {
 	return &SubscriptionRequestProcessor{
 		chain:              chain,
 		upstreamSupervisor: upstreamSupervisor,
 		engine:             engine,
 		subCtx:             subCtx,
+		registry:           registry,
 	}
 }
 
@@ -63,7 +67,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// The shared source emits events only - each client allocates its own
 		// client-facing subscription id below, independent of the single
 		// upstream subscription id.
-		key, builder := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy)
+		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry)
 		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
 			responses <- totalFailureWrapper(request, err)
@@ -96,6 +100,12 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 						responses <- totalFailureWrapper(request, cause)
 					}
 					return
+				}
+				// Per-client logs filtering: the shared logs source carries every
+				// log of the chain; drop the ones this client did not subscribe to.
+				// Never filter terminal frames (handled above; they carry no Message).
+				if filter != nil && !filter.Matches(r.ParsedEvent) {
+					continue
 				}
 				var subResponse protocol.ResponseHolder
 				if s.subCtx.IsSubscriptionResultOnly() {

@@ -244,6 +244,34 @@ func TestEngineSlowConsumerDisconnectedDespiteFullBuffer(t *testing.T) {
 	assert.Equal(t, protocol.WsSubscriberTooSlowError().Code, sub.Err().Code)
 }
 
+// A source may enlarge its per-subscriber fan-out buffer via Source.Buffer; a
+// subscriber then tolerates a burst larger than the default before being
+// disconnected, while a default-buffer source still disconnects at the default.
+func TestEngineSourceBufferOverride(t *testing.T) {
+	e := newTestEngine(time.Minute)
+	const big = subscriberBufferSize + 200
+	events := make(chan *protocol.WsResponse)
+	build := func(_ context.Context) (*Source, error) {
+		return &Source{Events: events, Stop: func() {}, Buffer: big}, nil
+	}
+	sub, err := e.Subscribe("k", build)
+	require.NoError(t, err)
+
+	// Push more than the default buffer but within the override; the subscriber
+	// must NOT be disconnected (events sit in its enlarged buffer).
+	for i := 0; i < subscriberBufferSize+100; i++ {
+		events <- &protocol.WsResponse{Message: []byte("e")}
+	}
+	assert.Nil(t, sub.Err(), "subscriber disconnected below its enlarged buffer")
+
+	drained := 0
+	for drained < subscriberBufferSize+100 {
+		<-sub.Events
+		drained++
+	}
+	sub.Unsubscribe()
+}
+
 // A fast subscriber keeps receiving even when a peer on the same source is
 // disconnected for lagging.
 func TestEngineSlowConsumerDoesNotAffectFastPeer(t *testing.T) {
