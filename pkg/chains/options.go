@@ -12,11 +12,10 @@ type Options struct {
 	DisableSettingsValidation   *bool         `yaml:"disable-settings-validation"`
 	DisableChainValidation      *bool         `yaml:"disable-chain-validation"`
 	DisableHealthValidation     *bool         `yaml:"disable-health-validation"`
-	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
-	DisableSafeBlockDetection   *bool         `yaml:"disable-safe-block-detection"`
-	SupportFinalizedBlockTag    *bool         `yaml:"support-finalized-block-tag"`
-	SupportSafeBlockTag         *bool         `yaml:"support-safe-block-tag"`
-	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
+	DisableLowerBoundsDetection   *bool         `yaml:"disable-lower-bounds-detection"`
+	DisableSafeBlockDetection     *bool         `yaml:"disable-safe-block-detection"`
+	DisableFinalizedBlockDetection *bool         `yaml:"disable-finalized-block-detection"`
+	DisableLabelsDetection        *bool         `yaml:"disable-labels-detection"`
 	DisableLogIndexValidation   *bool         `yaml:"disable-log-index-validation"`
 	ArchiveCapability           *bool         `yaml:"archive"`
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
@@ -34,35 +33,22 @@ func boolValue(v *bool, fallback bool) bool {
 	return *v
 }
 
-// FinalizedBlockTagSupported returns false only when the chain explicitly
-// declares support-finalized-block-tag: false. Defaults to true (supported).
-func (o *Options) FinalizedBlockTagSupported() bool {
-	return boolValue(o.SupportFinalizedBlockTag, true)
-}
-
-// SafeBlockTagSupported returns false only when the chain explicitly
-// declares support-safe-block-tag: false. Defaults to true (supported).
-func (o *Options) SafeBlockTagSupported() bool {
-	return boolValue(o.SupportSafeBlockTag, true)
-}
-
 // FinalizedBlockDetectionDisabled returns true when finalized block polling
-// should be skipped because the chain does not support the finalized block tag.
+// should be skipped.
 func (o *Options) FinalizedBlockDetectionDisabled() bool {
 	if o == nil {
 		return false
 	}
-	return !o.FinalizedBlockTagSupported()
+	return boolValue(o.DisableFinalizedBlockDetection, false)
 }
 
 // SafeBlockDetectionDisabled returns true when safe block polling should be
-// skipped — either because the tag is unsupported, or because
-// DisableSafeBlockDetection is explicitly set.
+// skipped.
 func (o *Options) SafeBlockDetectionDisabled() bool {
 	if o == nil {
 		return false
 	}
-	return boolValue(o.DisableSafeBlockDetection, false) || !o.SafeBlockTagSupported()
+	return boolValue(o.DisableSafeBlockDetection, false)
 }
 
 func (o *Options) Validate() error {
