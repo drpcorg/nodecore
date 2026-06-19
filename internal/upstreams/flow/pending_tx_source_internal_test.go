@@ -2,6 +2,8 @@ package flow
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -415,4 +417,85 @@ func TestDrpcPendingTxSourcePropagatesTerminal(t *testing.T) {
 
 	r := readWsResponse(t, src.Events)
 	require.NotNil(t, r.Error, "expected drpc source to propagate the shared source's terminal frame")
+}
+
+// Enrichment must run with bounded concurrency, not serially: a slow
+// eth_getTransactionByHash must not block the read side of the shared hash stream
+// (a serial drain would let the inner subscription buffer fill and get this source
+// disconnected as too slow). We hold every enrichment in-flight simultaneously and
+// assert the peak concurrency reaches the number of pending hashes - a serial drain
+// would peak at 1.
+func TestDrpcPendingTxSourceEnrichesConcurrently(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
+	registerPendingUpstream(chSup, "up1", pendingCaps())
+
+	const n = 8 // fewer than pendingEnrichConcurrency, so all can run at once
+	txJSON := []byte(`{"hash":"0xaaa"}`)
+
+	var inflight, maxInflight atomic.Int32
+	release := make(chan struct{})
+
+	wsCh := make(chan *protocol.WsResponse, n)
+	wsConn := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
+	wsConn.On("Subscribe", mock.Anything, mock.Anything).Return(protocol.NewJsonRpcWsUpstreamResponse(wsCh, "op1"), nil)
+	wsConn.On("Unsubscribe", mock.Anything).Maybe()
+
+	// Every enrichment blocks until release is closed, so they pile up concurrently;
+	// each call records the running peak.
+	jsonConn := mocks.NewConnectorMock()
+	jsonConn.On("SendRequest", mock.Anything, mock.Anything).
+		Run(func(mock.Arguments) {
+			cur := inflight.Add(1)
+			for {
+				m := maxInflight.Load()
+				if cur <= m || maxInflight.CompareAndSwap(m, cur) {
+					break
+				}
+			}
+			<-release
+			inflight.Add(-1)
+		}).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", txJSON, protocol.JsonRpc))
+
+	upState := utils.NewAtomic[protocol.UpstreamState]()
+	upState.Store(protocol.DefaultUpstreamState(pendingMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "idx", nil, nil))
+	up1 := upstreams.NewBaseUpstreamWithParams(
+		"up1",
+		chains.ARBITRUM,
+		[]connectors.ApiConnector{wsConn, jsonConn},
+		pendingTestUpConfig(),
+		"idx",
+		upState,
+		nil,
+		nil,
+		nil,
+	)
+
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "up1").Return(up1).Maybe()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine := subengine.NewEngine(ctx, chains.ARBITRUM)
+
+	src, err := newDrpcPendingTxSourceBuilder(upSup, chains.ARBITRUM, engine)(ctx)
+	require.NoError(t, err)
+
+	for i := 0; i < n; i++ {
+		wsCh <- pendingNotif(fmt.Sprintf("0x%02x", i)) // distinct hashes so none are deduped
+	}
+
+	// All n enrichments must be in-flight at once; a serial drain would never exceed 1.
+	require.Eventually(t, func() bool { return inflight.Load() == int32(n) }, time.Second, 5*time.Millisecond,
+		"enrichments must run concurrently; a serial drain blocks on the first one")
+	close(release)
+
+	for i := 0; i < n; i++ {
+		got := readWsResponse(t, src.Events)
+		require.Nil(t, got.Error)
+		assert.JSONEq(t, string(txJSON), string(got.Message))
+	}
+	assert.GreaterOrEqual(t, maxInflight.Load(), int32(n), "enrichment did not run concurrently")
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -29,6 +30,12 @@ const (
 	// the same tx produces across several upstreams' mempools.
 	pendingTxDedupSize = 10_000
 	pendingTxDedupTTL  = 30 * time.Second
+	// pendingEnrichConcurrency bounds how many eth_getTransactionByHash enrichments
+	// run at once for drpc_pendingTransactions. Enrichment is far slower than the
+	// rate hashes arrive (a network round-trip each, and the common dropped/mined-out
+	// hash waits on every upstream replying null), so a serial drain cannot keep up
+	// with a busy mempool
+	pendingEnrichConcurrency = 32
 )
 
 // upstreamSub bundles a per-upstream pending subscription with the connector that
@@ -241,28 +248,51 @@ func newDrpcPendingTxSourceBuilder(
 		out := make(chan *protocol.WsResponse, pendingTxBufferSize)
 		go func() {
 			defer close(out)
+			// counting semaphore patter
+			sem := make(chan struct{}, pendingEnrichConcurrency)
+			var wg sync.WaitGroup
+
+			emit := func(resp *protocol.WsResponse) {
+				select {
+				case out <- resp:
+				case <-srcCtx.Done():
+				}
+			}
+
 			for {
 				select {
 				case <-srcCtx.Done():
+					wg.Wait() // workers exit via srcCtx; wait so none send on a closed out
 					return
 				case ev, ok := <-inner.Events:
 					if !ok {
-						// The shared hash source ended; propagate its terminal cause
-						// so drpc clients fail over rather than silently stalling.
+						// The shared hash source ended; wait for in-flight enrichments to
+						// drain (so they don't send on a closed out), then propagate its
+						// terminal cause so drpc clients fail over rather than stalling.
+						wg.Wait()
 						if cause := inner.Err(); cause != nil {
-							out <- &protocol.WsResponse{Error: cause}
+							emit(&protocol.WsResponse{Error: cause})
 						}
 						return
 					}
-					tx, upstreamId := enrichPendingTx(srcCtx, supervisor, chain, chainSup, ev.Message)
-					if tx == nil {
-						continue // not found / errored - normal for a dropped pending tx
-					}
+					// Acquire a slot before spawning so concurrency stays bounded;
+					// bail out promptly if the source is torn down while we wait.
 					select {
-					case out <- &protocol.WsResponse{Message: tx, UpstreamId: upstreamId}:
+					case sem <- struct{}{}:
 					case <-srcCtx.Done():
+						wg.Wait()
 						return
 					}
+					wg.Add(1)
+					go func(hashMessage []byte) {
+						defer wg.Done()
+						defer func() { <-sem }()
+						tx, upstreamId := enrichPendingTx(srcCtx, supervisor, chain, chainSup, hashMessage)
+						if tx == nil {
+							return // not found / errored - normal for a dropped pending tx
+						}
+						emit(&protocol.WsResponse{Message: tx, UpstreamId: upstreamId})
+					}(ev.Message)
 				}
 			}
 		}()
