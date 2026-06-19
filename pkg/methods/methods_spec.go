@@ -59,6 +59,8 @@ func asReadFileFS(fsys fs.FS) fs.ReadFileFS {
 }
 
 func (m MethodSpecLoader) Load() error {
+	resolvedSpecs = map[string]*resolvedSpec{}
+
 	specs := map[string]*MethodSpec{}
 	if err := m.walkSpecs(m.specsFS, specs); err != nil {
 		return fmt.Errorf("couldn't read method specs: %s", err.Error())
@@ -72,13 +74,9 @@ func (m MethodSpecLoader) Load() error {
 		return fmt.Errorf("no method specs")
 	}
 
-	// Build into a local map and publish it atomically so concurrent readers
-	// never observe a half-built map or race with a reload.
-	building := map[string]*resolvedSpec{}
-	if err := enrichSpecs(specs, building); err != nil {
+	if err := enrichSpecs(specs); err != nil {
 		return fmt.Errorf("couldn't merge method specs: %s", err.Error())
 	}
-	resolvedSpecs.Store(&building)
 
 	return nil
 }

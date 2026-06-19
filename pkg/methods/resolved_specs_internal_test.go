@@ -8,49 +8,64 @@ import (
 )
 
 func TestEnrichSpecsSkipsAlreadyResolvedSpecs(t *testing.T) {
-	target := map[string]*resolvedSpec{
+	resolvedSpecs = map[string]*resolvedSpec{
 		"cached": newResolvedSpec(newMethodGroups(), newConnectorMethods()),
 	}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	err := enrichSpecs(map[string]*MethodSpec{
 		"cached": nil,
-	}, target)
+	})
 	require.NoError(t, err)
 
-	assert.Contains(t, target, "cached")
+	assert.Contains(t, resolvedSpecs, "cached")
 }
 
 func TestEnrichSpecReturnsNilWhenSpecAlreadyResolved(t *testing.T) {
-	target := map[string]*resolvedSpec{
+	resolvedSpecs = map[string]*resolvedSpec{
 		"cached": newResolvedSpec(newMethodGroups(), newConnectorMethods()),
 	}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
-	err := enrichSpec("cached", map[string]*MethodSpec{}, map[string]bool{}, target)
+	err := enrichSpec("cached", map[string]*MethodSpec{}, map[string]bool{})
 	require.NoError(t, err)
 }
 
 func TestEnrichSpecReturnsNotFoundError(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
-	err := enrichSpec("missing", map[string]*MethodSpec{}, map[string]bool{}, target)
+	err := enrichSpec("missing", map[string]*MethodSpec{}, map[string]bool{})
 	require.Error(t, err)
 	assert.EqualError(t, err, "spec 'missing' not found")
 }
 
 func TestEnrichSpecReturnsCircularImportError(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	specs := map[string]*MethodSpec{
 		"loop": newInternalTestMethodSpec("loop", []string{"json-rpc"}, []string{"other"}),
 	}
 
-	err := enrichSpec("loop", specs, map[string]bool{"loop": true}, target)
+	err := enrichSpec("loop", specs, map[string]bool{"loop": true})
 	require.Error(t, err)
 	assert.EqualError(t, err, "spec 'loop', error 'circular spec import detected'")
 }
 
 func TestEnrichSpecLeafRemovesDisabledMethods(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	specs := map[string]*MethodSpec{
 		"leaf": newInternalTestMethodSpec("leaf", []string{"json-rpc"}, nil,
@@ -59,10 +74,10 @@ func TestEnrichSpecLeafRemovesDisabledMethods(t *testing.T) {
 		),
 	}
 
-	err := enrichSpec("leaf", specs, map[string]bool{}, target)
+	err := enrichSpec("leaf", specs, map[string]bool{})
 	require.NoError(t, err)
 
-	leaf := target["leaf"]
+	leaf := resolvedSpecs["leaf"]
 	require.NotNil(t, leaf)
 	require.NotNil(t, leaf.methods)
 	require.NotNil(t, leaf.connectors)
@@ -74,7 +89,10 @@ func TestEnrichSpecLeafRemovesDisabledMethods(t *testing.T) {
 }
 
 func TestEnrichSpecImportedDisabledOverrideRemovesInheritedMethod(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	specs := map[string]*MethodSpec{
 		"base": newInternalTestMethodSpec("base", []string{"json-rpc"}, nil,
@@ -86,10 +104,10 @@ func TestEnrichSpecImportedDisabledOverrideRemovesInheritedMethod(t *testing.T) 
 		),
 	}
 
-	err := enrichSpec("child", specs, map[string]bool{}, target)
+	err := enrichSpec("child", specs, map[string]bool{})
 	require.NoError(t, err)
 
-	child := target["child"]
+	child := resolvedSpecs["child"]
 	require.NotNil(t, child)
 	assert.NotContains(t, child.methods.defaultMethods(), "eth_call")
 	assert.Contains(t, child.methods.defaultMethods(), "eth_chainId")
@@ -98,17 +116,23 @@ func TestEnrichSpecImportedDisabledOverrideRemovesInheritedMethod(t *testing.T) 
 }
 
 func TestResolveImportedSpecsReturnsMissingImportError(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, nil)
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"missing"}, map[string]*MethodSpec{}, map[string]bool{}, newMethodGroups(), target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"missing"}, map[string]*MethodSpec{}, map[string]bool{}, newMethodGroups())
 	require.Error(t, err)
 	assert.Nil(t, importedSpecs)
 	assert.EqualError(t, err, "imported spec missing not found")
 }
 
 func TestResolveImportedSpecsMergesMethodsAndCollectsConnectorTypes(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	specs := map[string]*MethodSpec{
 		"rpc": newInternalTestMethodSpec("rpc", []string{"json-rpc"}, nil,
@@ -121,7 +145,7 @@ func TestResolveImportedSpecsMergesMethodsAndCollectsConnectorTypes(t *testing.T
 
 	currentMethods := newMethodGroups()
 	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"rpc", "ws"})
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods, target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods)
 	require.NoError(t, err)
 	require.NotNil(t, importedSpecs)
 
@@ -134,7 +158,10 @@ func TestResolveImportedSpecsMergesMethodsAndCollectsConnectorTypes(t *testing.T
 }
 
 func TestResolveImportedSpecsRejectsSameLevelDuplicateMethods(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	specs := map[string]*MethodSpec{
 		"left": newInternalTestMethodSpec("left", []string{"json-rpc"}, nil,
@@ -146,14 +173,17 @@ func TestResolveImportedSpecsRejectsSameLevelDuplicateMethods(t *testing.T) {
 	}
 
 	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"left", "right"})
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"left", "right"}, specs, map[string]bool{}, newMethodGroups(), target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"left", "right"}, specs, map[string]bool{}, newMethodGroups())
 	require.Error(t, err)
 	assert.Nil(t, importedSpecs)
 	assert.EqualError(t, err, "same-level imported specs left and right define method eth_call")
 }
 
 func TestResolveImportedSpecsRejectsPlainImportWithDifferentConnectors(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, []string{"imported"})
 	specs := map[string]*MethodSpec{
@@ -162,7 +192,7 @@ func TestResolveImportedSpecsRejectsPlainImportWithDifferentConnectors(t *testin
 		),
 	}
 
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"imported"}, specs, map[string]bool{}, newMethodGroups(), target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"imported"}, specs, map[string]bool{}, newMethodGroups())
 	require.Error(t, err)
 	assert.Nil(t, importedSpecs)
 	assert.ErrorContains(t, err, "plain spec current cannot import spec imported because api connectors differ")
@@ -171,7 +201,10 @@ func TestResolveImportedSpecsRejectsPlainImportWithDifferentConnectors(t *testin
 }
 
 func TestResolveImportedSpecsAllowsPlainImportWithSameConnectors(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc", "websocket"}, []string{"imported"})
 	specs := map[string]*MethodSpec{
@@ -181,14 +214,17 @@ func TestResolveImportedSpecsAllowsPlainImportWithSameConnectors(t *testing.T) {
 	}
 
 	currentMethods := newMethodGroups()
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"imported"}, specs, map[string]bool{}, currentMethods, target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"imported"}, specs, map[string]bool{}, currentMethods)
 	require.NoError(t, err)
 	require.NotNil(t, importedSpecs)
 	assert.Contains(t, currentMethods.defaultMethods(), "eth_call")
 }
 
 func TestResolveImportedSpecsAllowsBundleImportAcrossDifferentConnectors(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	currentSpec := newInternalTestMethodSpec("bundle", nil, []string{"rpc", "ws"})
 	specs := map[string]*MethodSpec{
@@ -201,7 +237,7 @@ func TestResolveImportedSpecsAllowsBundleImportAcrossDifferentConnectors(t *test
 	}
 
 	currentMethods := newMethodGroups()
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods, target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"rpc", "ws"}, specs, map[string]bool{}, currentMethods)
 	require.NoError(t, err)
 	require.NotNil(t, importedSpecs)
 	assert.Contains(t, currentMethods.defaultMethods(), "eth_call")
@@ -209,7 +245,10 @@ func TestResolveImportedSpecsAllowsBundleImportAcrossDifferentConnectors(t *test
 }
 
 func TestResolveImportedSpecsRejectsPlainImportOfBundleWithDifferentEffectiveConnectors(t *testing.T) {
-	target := map[string]*resolvedSpec{}
+	resolvedSpecs = map[string]*resolvedSpec{}
+	t.Cleanup(func() {
+		resolvedSpecs = nil
+	})
 
 	currentSpec := newInternalTestMethodSpec("current", []string{"json-rpc"}, []string{"bundle"})
 	specs := map[string]*MethodSpec{
@@ -222,7 +261,7 @@ func TestResolveImportedSpecsRejectsPlainImportOfBundleWithDifferentEffectiveCon
 		"bundle": newInternalTestMethodSpec("bundle", nil, []string{"left", "right"}),
 	}
 
-	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"bundle"}, specs, map[string]bool{}, newMethodGroups(), target)
+	importedSpecs, err := resolveImportedSpecs(currentSpec, []string{"bundle"}, specs, map[string]bool{}, newMethodGroups())
 	require.Error(t, err)
 	assert.Nil(t, importedSpecs)
 	assert.ErrorContains(t, err, "plain spec current cannot import spec bundle because api connectors differ")

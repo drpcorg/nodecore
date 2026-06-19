@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync/atomic"
 
 	"github.com/drpcorg/nodecore/pkg/utils"
 )
@@ -24,19 +23,14 @@ type importedSpecData struct {
 	connectorTypes map[ApiConnectorType]struct{}
 }
 
-// resolvedSpecs holds the published, fully-resolved specs. Load builds a fresh
-// map locally and swaps it in atomically, so concurrent readers (getResolvedSpec)
-// always observe a complete, immutable map and never race with a rebuild.
-var resolvedSpecs atomic.Pointer[map[string]*resolvedSpec]
+var resolvedSpecs map[string]*resolvedSpec
 
-// enrichSpecs resolves every spec into target, the build-local map that Load
-// publishes once enrichment finishes.
-func enrichSpecs(specs map[string]*MethodSpec, target map[string]*resolvedSpec) error {
+func enrichSpecs(specs map[string]*MethodSpec) error {
 	for specName := range specs {
-		if _, specExisted := target[specName]; specExisted {
+		if _, specExisted := resolvedSpecs[specName]; specExisted {
 			continue
 		}
-		if err := enrichSpec(specName, specs, map[string]bool{}, target); err != nil {
+		if err := enrichSpec(specName, specs, map[string]bool{}); err != nil {
 			return err
 		}
 	}
@@ -44,8 +38,8 @@ func enrichSpecs(specs map[string]*MethodSpec, target map[string]*resolvedSpec) 
 	return nil
 }
 
-func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[string]bool, target map[string]*resolvedSpec) error {
-	if _, specExisted := target[specName]; specExisted {
+func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[string]bool) error {
+	if _, specExisted := resolvedSpecs[specName]; specExisted {
 		return nil
 	}
 
@@ -70,7 +64,7 @@ func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[stri
 		return wrapSpecError(specName, err)
 	}
 
-	importedSpecs, err := resolveImportedSpecs(spec, spec.SpecImports, specs, visiting, currentMethods, target)
+	importedSpecs, err := resolveImportedSpecs(spec, spec.SpecImports, specs, visiting, currentMethods)
 	if err != nil {
 		return wrapSpecError(specName, err)
 	}
@@ -87,7 +81,7 @@ func enrichSpec(specName string, specs map[string]*MethodSpec, visiting map[stri
 	}
 
 	currentConnectors.initConnectors()
-	target[specName] = newResolvedSpec(currentMethods, currentConnectors)
+	resolvedSpecs[specName] = newResolvedSpec(currentMethods, currentConnectors)
 	return nil
 }
 
@@ -111,14 +105,7 @@ func buildRestMatcher(methods *methodGroups) *utils.PathMatcher {
 	return utils.NewPathMatcher(templates)
 }
 
-func resolveImportedSpecs(
-	currentSpec *MethodSpec,
-	importedSpecNames []string,
-	specs map[string]*MethodSpec,
-	visiting map[string]bool,
-	currentMethods *methodGroups,
-	target map[string]*resolvedSpec,
-) (*importedSpecData, error) {
+func resolveImportedSpecs(currentSpec *MethodSpec, importedSpecNames []string, specs map[string]*MethodSpec, visiting map[string]bool, currentMethods *methodGroups) (*importedSpecData, error) {
 	importedSpecs := newImportedSpecData()
 	importedMethodOwners := map[string]string{}
 
@@ -127,11 +114,11 @@ func resolveImportedSpecs(
 		if !ok {
 			return nil, fmt.Errorf("imported spec %s not found", importedSpecName)
 		}
-		if err := enrichSpec(importedSpecName, specs, visiting, target); err != nil {
+		if err := enrichSpec(importedSpecName, specs, visiting); err != nil {
 			return nil, err
 		}
 
-		importedSpec := target[importedSpecName]
+		importedSpec := resolvedSpecs[importedSpecName]
 		if err := validateImportedSpecCompatibility(currentSpec, importedSpecData, importedSpec); err != nil {
 			return nil, err
 		}
