@@ -26,6 +26,9 @@ upstream-config:
         disable-chain-validation: false
         disable-health-validation: false
         disable-lower-bounds-detection: false
+        disable-safe-block-detection: false
+        support-finalized-block-tag: true
+        support-safe-block-tag: true
         disable-labels-detection: false
         validate-syncing: true
         validate-peers: true
@@ -326,6 +329,9 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
   * `validate-client-version` - For EVM chains, validates the detected `web3_clientVersion`/client labels against the embedded compatible-client rules. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
+  * `support-finalized-block-tag` - Whether the chain supports the `"finalized"` block tag in `eth_getBlockByNumber`. When `false`, nodecore does **not** poll finalized blocks, does not cache with `finalization-type: finalized`, and skips finalization-lag tracking. Set to `false` for chains like Viction (PoSV) that lack Ethereum's finalized-block concept. **_Default_**: `true`
+  * `support-safe-block-tag` - Whether the chain supports the `"safe"` block tag in `eth_getBlockByNumber`. When `false`, nodecore does **not** poll safe blocks. Set to `false` for chains like Viction (PoSV) that lack Ethereum's safe-block concept. **_Default_**: `true`
   * `archive` - Manual EVM archive capability override. Set `archive: false` to publish `archive=false` without running archive auto-detection. Set `archive: true` or leave it unset to use the runtime archive detector and publish its detected result
 * `<chain>.dispatch` - Per-chain dispatch policy toggles. These options affect routing for the whole chain, not individual upstreams:
   * `broadcast` - Enables fan-out broadcast for method specs with `dispatch: broadcast` (for example transaction propagation). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.
