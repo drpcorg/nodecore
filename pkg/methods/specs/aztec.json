@@ -32,6 +32,13 @@
       }
     },
     {
+      "name": "node_getChainTips",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
       "name": "node_getBlock",
       "params": []
     },
@@ -56,6 +63,10 @@
       "params": []
     },
     {
+      "name": "node_getBlockData",
+      "params": []
+    },
+    {
       "name": "node_getCheckpointNumber",
       "params": [],
       "settings": {
@@ -75,6 +86,14 @@
     },
     {
       "name": "node_getCheckpoints",
+      "params": []
+    },
+    {
+      "name": "node_getCheckpoint",
+      "params": []
+    },
+    {
+      "name": "node_getCheckpointsData",
       "params": []
     },
     {
@@ -134,6 +153,27 @@
     },
     {
       "name": "node_getWorldStateSyncStatus",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getSyncedL2SlotNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getSyncedL2EpochNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getSyncedL1Timestamp",
       "params": [],
       "settings": {
         "cacheable": false
@@ -204,6 +244,10 @@
       "params": []
     },
     {
+      "name": "node_getL2ToL1MembershipWitness",
+      "params": []
+    },
+    {
       "name": "node_getPrivateLogs",
       "params": []
     },
@@ -217,6 +261,10 @@
     },
     {
       "name": "node_getPublicLogsByTagsFromContract",
+      "params": []
+    },
+    {
+      "name": "node_getPublicLogsByTags",
       "params": []
     },
     {
@@ -266,6 +314,10 @@
       "params": []
     },
     {
+      "name": "node_getL1Constants",
+      "params": []
+    },
+    {
       "name": "node_getProtocolContractAddresses",
       "params": []
     },
@@ -292,6 +344,13 @@
     },
     {
       "name": "node_getMaxPriorityFees",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "node_getPredictedMinFees",
       "params": [],
       "settings": {
         "cacheable": false
