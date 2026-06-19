@@ -130,7 +130,7 @@ func setOptionsDefaults(
 		upstreamOptions.DisableFinalizedBlockDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableFinalizedBlockDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableFinalizedBlockDetection }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			false,
 		)
 	}
 	if upstreamOptions.DisableLabelsDetection == nil {
