@@ -3,11 +3,8 @@
 package http_e2e
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -37,43 +34,12 @@ func TestVictionStartupAndBasicRequest(t *testing.T) {
 
 	// Send a basic JSON-RPC request (eth_blockNumber) through nodecore
 	// to confirm the Viction chain routing works end-to-end.
-	rpcReq := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  "eth_blockNumber",
-		"params":  []interface{}{},
-		"id":      1,
-	}
-	reqBody, err := json.Marshal(rpcReq)
-	if err != nil {
-		t.Fatalf("marshal request: %v", err)
+	result := harness.ResultString(t, harness.JSONRPC(t, ctx, nodecore.HTTPURL, "viction", "eth_blockNumber", []any{}))
+	if result == "" {
+		t.Fatal("expected hex block number, got empty result")
 	}
 
-	resp, err := http.Post(nodecore.HTTPURL, "application/json", bytes.NewReader(reqBody))
-	if err != nil {
-		t.Fatalf("POST %s: %v", nodecore.HTTPURL, err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read response: %v", err)
-	}
-
-	var rpcResp struct {
-		Result string `json:"result"`
-		Error  any    `json:"error"`
-	}
-	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
-		t.Fatalf("unmarshal response %q: %v", string(respBody), err)
-	}
-	if rpcResp.Error != nil {
-		t.Fatalf("RPC error: %v", rpcResp.Error)
-	}
-	if rpcResp.Result == "" {
-		t.Fatalf("expected hex block number, got empty result: %s", string(respBody))
-	}
-
-	t.Logf("Viction nodecore healthy, eth_blockNumber = %s", rpcResp.Result)
+	t.Logf("Viction nodecore healthy, eth_blockNumber = %s", result)
 }
 
 func TestVictionRejectsFinalizedTag(t *testing.T) {
@@ -92,41 +58,17 @@ func TestVictionRejectsFinalizedTag(t *testing.T) {
 
 	// Request eth_getBlockByNumber with "finalized" tag — on Viction this
 	// must be rejected at flow level with -32602 without reaching the upstream.
-	rpcReq := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"method":  "eth_getBlockByNumber",
-		"params":  []interface{}{"finalized", false},
-		"id":      1,
+	resp := harness.JSONRPCExpectError(t, ctx, nodecore.HTTPURL, "viction", "eth_getBlockByNumber", []any{"finalized", false}, nil)
+	errObj, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected Viction finalized tag error shape: %+v", resp)
 	}
-	reqBody, err := json.Marshal(rpcReq)
-	if err != nil {
-		t.Fatalf("marshal request: %v", err)
+	code, _ := errObj["code"].(float64)
+	message, _ := errObj["message"].(string)
+	if int(code) != -32602 {
+		t.Fatalf("expected -32602 for finalized tag on Viction, got code=%v message=%q response=%+v", errObj["code"], message, resp)
 	}
-
-	resp, err := http.Post(nodecore.HTTPURL, "application/json", bytes.NewReader(reqBody))
-	if err != nil {
-		t.Fatalf("POST %s: %v", nodecore.HTTPURL, err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read response: %v", err)
-	}
-
-	var rpcResp struct {
-		Error struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
-		t.Fatalf("unmarshal response %q: %v", string(respBody), err)
-	}
-	if rpcResp.Error.Code != -32602 {
-		t.Fatalf("expected -32602 for finalized tag on Viction, got code=%d message=%q body=%s", rpcResp.Error.Code, rpcResp.Error.Message, string(respBody))
-	}
-	t.Logf("Viction correctly rejects finalized tag: %s", rpcResp.Error.Message)
+	t.Logf("Viction correctly rejects finalized tag: %s", message)
 }
 
 func TestVictionNoFinalizedBlockPolling(t *testing.T) {
@@ -229,6 +171,9 @@ upstream-config:
       options:
         internal-timeout: 5s
         validation-interval: 30s
+        disable-chain-validation: true
+        disable-finalized-block-detection: true
+        disable-safe-block-detection: true
         disable-lower-bounds-detection: true
         disable-labels-detection: true
         validate-syncing: false
