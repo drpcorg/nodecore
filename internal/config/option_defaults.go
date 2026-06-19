@@ -10,15 +10,14 @@ import (
 func setOptionsDefaults(
 	upstreamOptions *chains.Options,
 	chainDefaults *ChainDefaults,
-	globalChainOptions *chains.Options,
+	chainSettings chains.Settings,
 	upstreamMode UpstreamMode,
-	chainSupportFinalizedBlockTag *bool,
-	chainSupportSafeBlockTag *bool,
 ) {
 	var defaultChainOptions *chains.Options
 	if chainDefaults != nil {
 		defaultChainOptions = chainDefaults.Options
 	}
+	globalChainOptions := chainSettings.Options
 
 	resolveDuration := func(defaultValue, chainValue, fallback time.Duration) time.Duration {
 		if defaultValue != 0 {
@@ -122,16 +121,19 @@ func setOptionsDefaults(
 		)
 	}
 	if upstreamOptions.DisableSafeBlockDetection == nil {
+		fallback := lo.Ternary(upstreamMode == StrictMode, false, true)
+		if chainSettings.SupportSafeBlockTag != nil && !*chainSettings.SupportSafeBlockTag {
+			fallback = true
+		}
 		upstreamOptions.DisableSafeBlockDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			fallback,
 		)
 	}
 	if upstreamOptions.DisableFinalizedBlockDetection == nil {
-		// Derive from chain-level support flag; if not set, default to false (detection enabled).
 		fallback := false
-		if chainSupportFinalizedBlockTag != nil && !*chainSupportFinalizedBlockTag {
+		if chainSettings.SupportFinalizedBlockTag != nil && !*chainSettings.SupportFinalizedBlockTag {
 			fallback = true
 		}
 		upstreamOptions.DisableFinalizedBlockDetection = resolveBool(

@@ -8,6 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func chainSettings(options *chains.Options) chains.Settings {
+	return chains.Settings{Options: options}
+}
+
 func TestSetOptionsDefaultsKeepsUpstreamDurations(t *testing.T) {
 	options := &chains.Options{
 		InternalTimeout:    2 * time.Second,
@@ -19,10 +23,10 @@ func TestSetOptionsDefaultsKeepsUpstreamDurations(t *testing.T) {
 			InternalTimeout:    15 * time.Second,
 			ValidationInterval: time.Minute,
 		},
-	}, &chains.Options{
+	}, chainSettings(&chains.Options{
 		InternalTimeout:    25 * time.Second,
 		ValidationInterval: 90 * time.Second,
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.Equal(t, 2*time.Second, options.InternalTimeout)
 	assert.Equal(t, 45*time.Second, options.ValidationInterval)
@@ -61,7 +65,7 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 			MinPeers:                    3,
 			CallLimitSize:               3333333,
 		},
-	}, &chains.Options{
+	}, chainSettings(&chains.Options{
 		DisableValidation:           new(false),
 		DisableChainValidation:      new(false),
 		DisableSettingsValidation:   new(false),
@@ -75,7 +79,7 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 		ValidateClientVersion:       new(false),
 		MinPeers:                    2,
 		CallLimitSize:               2222222,
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
 	assert.True(t, *options.DisableChainValidation)
@@ -98,10 +102,10 @@ func TestSetOptionsDefaultsUsesNodecoreDurationDefaultsBeforeChain(t *testing.T)
 			InternalTimeout:    15 * time.Second,
 			ValidationInterval: time.Minute,
 		},
-	}, &chains.Options{
+	}, chainSettings(&chains.Options{
 		InternalTimeout:    25 * time.Second,
 		ValidationInterval: 90 * time.Second,
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.Equal(t, 15*time.Second, options.InternalTimeout)
 	assert.Equal(t, time.Minute, options.ValidationInterval)
@@ -124,7 +128,7 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 			ValidateCallLimit:           new(true),
 			ValidateClientVersion:       new(true),
 		},
-	}, &chains.Options{
+	}, chainSettings(&chains.Options{
 		DisableValidation:           new(false),
 		DisableChainValidation:      new(false),
 		DisableSettingsValidation:   new(false),
@@ -136,7 +140,7 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(false),
 		ValidateClientVersion:       new(false),
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
 	assert.True(t, *options.DisableChainValidation)
@@ -157,10 +161,10 @@ func TestSetOptionsDefaultsUsesNodecoreIntDefaultsBeforeChain(t *testing.T) {
 			MinPeers:      5,
 			CallLimitSize: 5000000,
 		},
-	}, &chains.Options{
+	}, chainSettings(&chains.Options{
 		MinPeers:      2,
 		CallLimitSize: 2000000,
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.Equal(t, int64(5), options.MinPeers)
 	assert.Equal(t, int64(5000000), options.CallLimitSize)
@@ -169,10 +173,10 @@ func TestSetOptionsDefaultsUsesNodecoreIntDefaultsBeforeChain(t *testing.T) {
 func TestSetOptionsDefaultsUsesChainDurationsWhenNodecoreMissing(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, &chains.Options{
+	setOptionsDefaults(options, nil, chainSettings(&chains.Options{
 		InternalTimeout:    25 * time.Second,
 		ValidationInterval: 90 * time.Second,
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.Equal(t, 25*time.Second, options.InternalTimeout)
 	assert.Equal(t, 90*time.Second, options.ValidationInterval)
@@ -181,7 +185,7 @@ func TestSetOptionsDefaultsUsesChainDurationsWhenNodecoreMissing(t *testing.T) {
 func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, &chains.Options{
+	setOptionsDefaults(options, nil, chainSettings(&chains.Options{
 		DisableValidation:           new(true),
 		DisableChainValidation:      new(true),
 		DisableSettingsValidation:   new(true),
@@ -193,7 +197,7 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(true),
 		ValidateClientVersion:       new(true),
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
 	assert.True(t, *options.DisableChainValidation)
@@ -209,10 +213,10 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 func TestSetOptionsDefaultsUsesChainIntDefaultsWhenNodecoreMissing(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, &chains.Options{
+	setOptionsDefaults(options, nil, chainSettings(&chains.Options{
 		MinPeers:      4,
 		CallLimitSize: 4000000,
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.Equal(t, int64(4), options.MinPeers)
 	assert.Equal(t, int64(4000000), options.CallLimitSize)
@@ -221,7 +225,7 @@ func TestSetOptionsDefaultsUsesChainIntDefaultsWhenNodecoreMissing(t *testing.T)
 func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, nil, DefaultMode, nil, nil)
+	setOptionsDefaults(options, nil, chainSettings(nil), DefaultMode)
 
 	assert.Equal(t, 5*time.Second, options.InternalTimeout)
 	assert.Equal(t, 30*time.Second, options.ValidationInterval)
@@ -230,6 +234,8 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	assert.False(t, *options.DisableSettingsValidation)
 	assert.False(t, *options.DisableHealthValidation)
 	assert.True(t, *options.DisableLowerBoundsDetection)
+	assert.True(t, *options.DisableSafeBlockDetection)
+	assert.False(t, *options.DisableFinalizedBlockDetection)
 	assert.True(t, *options.DisableLabelsDetection)
 	assert.False(t, *options.ValidateSyncing)
 	assert.False(t, *options.ValidatePeers)
@@ -241,9 +247,11 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, nil, StrictMode, nil, nil)
+	setOptionsDefaults(options, nil, chainSettings(nil), StrictMode)
 
 	assert.False(t, *options.DisableLowerBoundsDetection)
+	assert.False(t, *options.DisableSafeBlockDetection)
+	assert.False(t, *options.DisableFinalizedBlockDetection)
 	assert.False(t, *options.DisableLabelsDetection)
 	assert.True(t, *options.ValidateSyncing)
 	assert.True(t, *options.ValidatePeers)
@@ -251,12 +259,24 @@ func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
 
+func TestSetOptionsDefaultsDisablesUnsupportedBlockTagDetection(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chains.Settings{
+		SupportFinalizedBlockTag: new(false),
+		SupportSafeBlockTag:      new(false),
+	}, StrictMode)
+
+	assert.True(t, *options.DisableSafeBlockDetection)
+	assert.True(t, *options.DisableFinalizedBlockDetection)
+}
+
 func TestSetOptionsDefaultsHandlesNilDefaultOptions(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, &ChainDefaults{}, &chains.Options{
+	setOptionsDefaults(options, &ChainDefaults{}, chainSettings(&chains.Options{
 		DisableValidation: new(true),
-	}, DefaultMode, nil, nil)
+	}), DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
 }
@@ -268,7 +288,7 @@ func TestSetOptionsDefaultsHandlesNilChainOptions(t *testing.T) {
 		Options: &chains.Options{
 			DisableValidation: new(true),
 		},
-	}, nil, DefaultMode, nil, nil)
+	}, chainSettings(nil), DefaultMode)
 
 	assert.True(t, *options.DisableValidation)
 }

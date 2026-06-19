@@ -314,7 +314,7 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		u.Options = &chains.Options{}
 	}
 	configuredChain := chains.GetChain(u.ChainName)
-	setOptionsDefaults(u.Options, defaults, configuredChain.Settings.Options, upstreamMode, configuredChain.Settings.SupportFinalizedBlockTag, configuredChain.Settings.SupportSafeBlockTag)
+	setOptionsDefaults(u.Options, defaults, configuredChain.Settings, upstreamMode)
 	if u.FailsafeConfig != nil {
 		if u.FailsafeConfig.RetryConfig != nil {
 			u.FailsafeConfig.RetryConfig.setDefaults()
