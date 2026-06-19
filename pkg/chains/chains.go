@@ -66,10 +66,12 @@ type LagConfig struct {
 }
 
 type Settings struct {
-	ExpectedBlockTime time.Duration `yaml:"expected-block-time"`
-	MethodSpec        string        `yaml:"method-spec"`
-	Lags              LagConfig     `yaml:"lags"`
-	Options           *Options      `yaml:"options"`
+	ExpectedBlockTime        time.Duration `yaml:"expected-block-time"`
+	MethodSpec               string        `yaml:"method-spec"`
+	Lags                     LagConfig     `yaml:"lags"`
+	Options                  *Options      `yaml:"options"`
+	SupportFinalizedBlockTag *bool         `yaml:"support-finalized-block-tag"`
+	SupportSafeBlockTag      *bool         `yaml:"support-safe-block-tag"`
 }
 
 type ConfiguredChain struct {

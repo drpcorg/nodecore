@@ -35,7 +35,7 @@ func TestEthLikeBlockProcessorGetFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, true, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -91,7 +91,7 @@ func TestEthLikeBlockProcessorDisableFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, true, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewEthLikeBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -113,7 +113,7 @@ func TestEthLikeBlockProcessorPollsSafeBlockWhenSupported(t *testing.T) {
 		blockProcessorChainSpecificNoSafeStub: blockProcessorChainSpecificNoSafeStub{finalized: protocol.NewBlockWithHeight(100)},
 		safe:                                  protocol.NewBlockWithHeight(90),
 	}
-	processor := blocks.NewEthLikeBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
+	processor := blocks.NewEthLikeBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -137,7 +137,7 @@ func TestEthLikeBlockProcessorDisablesSafeBlockWhenUnsupported(t *testing.T) {
 	disableSafe := false
 	upConfig := &config.Upstream{Id: "1", PollInterval: time.Hour, Options: &chains.Options{InternalTimeout: 5 * time.Second, DisableSafeBlockDetection: &disableSafe}}
 	chainSpecific := &blockProcessorChainSpecificNoSafeStub{finalized: protocol.NewBlockWithHeight(100)}
-	processor := blocks.NewEthLikeBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
+	processor := blocks.NewEthLikeBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -212,7 +212,7 @@ func TestEthLikeBlockProcessorSkipsSafeBlockWhenDisabled(t *testing.T) {
 		blockProcessorChainSpecificNoSafeStub: blockProcessorChainSpecificNoSafeStub{finalized: protocol.NewBlockWithHeight(100)},
 		safe:                                  protocol.NewBlockWithHeight(90),
 	}
-	processor := blocks.NewEthLikeBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
+	processor := blocks.NewEthLikeBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()

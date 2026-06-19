@@ -242,8 +242,11 @@ func (b *BaseChainSupervisor) calculateFinalizationLags() {
 		b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
 			finalizationBlock, ok := state.Blocks[protocol.FinalizedBlock]
 			finalizationLag := uint64(0)
-			if ok {
-				finalizationLag = finalizationBlock.Height - val.BlockInfo.GetBlock(protocol.FinalizedBlock).Height
+			if ok && !finalizationBlock.IsEmptyByHeight() {
+				upFinalized := val.BlockInfo.GetBlock(protocol.FinalizedBlock)
+				if !upFinalized.IsEmptyByHeight() && finalizationBlock.Height >= upFinalized.Height {
+					finalizationLag = finalizationBlock.Height - upFinalized.Height
+				}
 			}
 			b.tracker.GetChainDimensions(b.chain, key).TrackFinalizationLag(finalizationLag)
 

@@ -232,10 +232,11 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 		}
 		if c.finalizationType == Finalized {
 			chainFinalizedBlock, ok := chainsSupervisor.GetChainState().Blocks[protocol.FinalizedBlock]
-			if ok {
-				if uint64(param.BlockNumber.Int64()) > chainFinalizedBlock.Height {
-					return false
-				}
+			if !ok || chainFinalizedBlock.IsEmptyByHeight() {
+				return false // don't cache when finalized height is unknown
+			}
+			if uint64(param.BlockNumber.Int64()) > chainFinalizedBlock.Height {
+				return false
 			}
 		}
 	case *specs.BlockRangeParam:
@@ -247,19 +248,20 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 		}
 		if c.finalizationType == Finalized {
 			chainFinalizedBlock, ok := chainsSupervisor.GetChainState().Blocks[protocol.FinalizedBlock]
-			if ok {
-				var maxBlock int64
-				if param.From != nil && param.To != nil {
-					maxBlock = lo.Max([]int64{param.From.Int64(), param.To.Int64()})
-				} else if param.To != nil {
-					maxBlock = param.To.Int64()
-				} else {
-					// to is nil, but from not, means to is latest, so its a block tag
-					return false
-				}
-				if uint64(maxBlock) > chainFinalizedBlock.Height {
-					return false
-				}
+			if !ok || chainFinalizedBlock.IsEmptyByHeight() {
+				return false // don't cache when finalized height is unknown
+			}
+			var maxBlock int64
+			if param.From != nil && param.To != nil {
+				maxBlock = lo.Max([]int64{param.From.Int64(), param.To.Int64()})
+			} else if param.To != nil {
+				maxBlock = param.To.Int64()
+			} else {
+				// to is nil, but from not, means to is latest, so its a block tag
+				return false
+			}
+			if uint64(maxBlock) > chainFinalizedBlock.Height {
+				return false
 			}
 		}
 	}

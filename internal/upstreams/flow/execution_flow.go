@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 )
@@ -266,6 +267,16 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			return
 		}
 
+		if err := e.unsupportedBlockTagError(ctx, request); err != nil {
+			wrapper := &protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				RequestId:  request.Id(),
+				Response:   protocol.NewTotalFailure(request, err),
+			}
+			e.sendResponse(ctx, wrapper, request)
+			return
+		}
+
 		reqObserver := request.RequestObserver().WithChain(e.chain)
 
 		execCtx := context.WithValue(ctx, resilience.RequestKey, request)
@@ -354,6 +365,41 @@ func (e *BaseExecutionFlow) dispatchEnabled(policy specs.DispatchPolicy) bool {
 	default:
 		return false
 	}
+}
+
+func (e *BaseExecutionFlow) unsupportedBlockTagError(ctx context.Context, request protocol.RequestHolder) *protocol.ResponseError {
+	configuredChain := chains.GetChain(e.chain.String())
+	settings := configuredChain.Settings
+	param := request.ParseParams(ctx)
+
+	check := func(n rpc.BlockNumber) *protocol.ResponseError {
+		switch n {
+		case rpc.FinalizedBlockNumber:
+			if settings.SupportFinalizedBlockTag != nil && !*settings.SupportFinalizedBlockTag {
+				return protocol.UnsupportedBlockTagError(e.chain.String(), "finalized")
+			}
+		case rpc.SafeBlockNumber:
+			if settings.SupportSafeBlockTag != nil && !*settings.SupportSafeBlockTag {
+				return protocol.UnsupportedBlockTagError(e.chain.String(), "safe")
+			}
+		}
+		return nil
+	}
+
+	switch p := param.(type) {
+	case *specs.BlockNumberParam:
+		return check(p.BlockNumber)
+	case *specs.BlockRangeParam:
+		if p.From != nil {
+			if err := check(*p.From); err != nil {
+				return err
+			}
+		}
+		if p.To != nil {
+			return check(*p.To)
+		}
+	}
+	return nil
 }
 
 func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {
