@@ -59,16 +59,16 @@ func (r *TipsMethodResolver) FetchTips(
 		return nil, err
 	}
 	if !isMethodNotFound(response) {
-		// Either a success or a genuine error - no fallback in both cases. Keep
-		// the method cached on success so a self-healed switch sticks.
-		if !response.HasError() {
-			r.remember(primary)
-		}
+		// Success or a genuine error - no fallback either way. `primary` is
+		// already what preferredMethod() returns, so there is nothing new to
+		// cache; the hot path (mainnet, where node_getL2Tips always works) thus
+		// takes the lock only once, for the read.
 		return response, nil
 	}
 
-	// The preferred method is not supported by this node; try the other one and
-	// remember it if it works.
+	// The preferred method is not supported by this node; switch to the other
+	// one and remember it if it works. This is the only place the cached method
+	// actually changes, so it is the only place we take the write lock.
 	fallback := otherTipsMethod(primary)
 	fallbackResponse, err := sendTipsRequest(ctx, connector, chain, fallback)
 	if err != nil {
