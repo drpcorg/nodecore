@@ -40,10 +40,16 @@ func pendingMethodsMock() *mocks.MethodsMock {
 }
 
 // registerPendingUpstream publishes a state event giving the upstream WsCap +
-// PendingTxCap, so the chain knows it can serve pending-tx subs.
+// PendingTxCap and Available status, so the chain knows it can serve pending-tx subs.
 func registerPendingUpstream(chSup upstreams.ChainSupervisor, id string, caps mapset.Set[protocol.Cap]) {
+	registerPendingUpstreamWithStatus(chSup, id, caps, protocol.Available)
+}
+
+// registerPendingUpstreamWithStatus is registerPendingUpstream with an explicit
+// availability status, used to exercise the builder's Available-only filter.
+func registerPendingUpstreamWithStatus(chSup upstreams.ChainSupervisor, id string, caps mapset.Set[protocol.Cap], status protocol.AvailabilityStatus) {
 	state := protocol.DefaultUpstreamState(pendingMethodsMock(), caps, "idx", nil, nil)
-	state.Status = protocol.Available
+	state.Status = status
 	chSup.PublishUpstreamEvent(protocol.UpstreamEvent{
 		Id:        id,
 		EventType: &protocol.StateUpstreamEvent{State: &state},
@@ -143,6 +149,42 @@ func TestPendingTxSourceOneFeedFailsNonTerminal(t *testing.T) {
 	chGood <- pendingNotif("0xabc")
 	got := readWsResponse(t, src.Events)
 	assert.Equal(t, `"0xabc"`, string(got.Message))
+}
+
+// An upstream that advertises PendingTxCap but is not Available is skipped: its
+// mempool feed is never opened, matching enrichPendingTx which only enriches via
+// available upstreams. The one available upstream still serves the source.
+func TestPendingTxSourceSkipsUnavailableUpstream(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	chSup := test_utils.CreateChainSupervisor()
+	registerPendingUpstream(chSup, "up", pendingCaps())
+	registerPendingUpstreamWithStatus(chSup, "down", pendingCaps(), protocol.Unavailable)
+
+	chUp := make(chan *protocol.WsResponse, 10)
+	connUp := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(chUp, "opUp"), nil)
+	// Wired with a working Subscribe so a regressed guard would succeed (not panic);
+	// AssertNotCalled below then fails cleanly instead.
+	chDown := make(chan *protocol.WsResponse, 10)
+	connDown := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(chDown, "opDown"), nil)
+	up := test_utils.TestEvmUpstream(connUp, pendingTestUpConfig(), pendingMethodsMock(), nil)
+	down := test_utils.TestEvmUpstream(connDown, pendingTestUpConfig(), pendingMethodsMock(), nil)
+
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "up").Return(up).Maybe()
+	upSup.On("GetUpstream", "down").Return(down).Maybe()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := newPendingTxSourceBuilder(upSup, chains.ARBITRUM)(ctx)
+	require.NoError(t, err) // built from the one available upstream
+
+	chUp <- pendingNotif("0xabc")
+	got := readWsResponse(t, src.Events)
+	assert.Equal(t, `"0xabc"`, string(got.Message))
+
+	// The unavailable upstream's feed was never opened.
+	connDown.AssertNotCalled(t, "Subscribe", mock.Anything, mock.Anything)
 }
 
 // No ws-capable upstream means the source cannot be built; the engine surfaces the

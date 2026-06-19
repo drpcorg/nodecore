@@ -8,10 +8,7 @@ import (
 )
 
 func TestEnrichSpecsPopulatesConnectorMethods(t *testing.T) {
-	resolvedSpecs = map[string]*resolvedSpec{}
-	t.Cleanup(func() {
-		resolvedSpecs = nil
-	})
+	target := map[string]*resolvedSpec{}
 
 	specs := map[string]*MethodSpec{
 		"rpc": newInternalTestMethodSpec("rpc", []string{"json-rpc", "websocket"}, nil,
@@ -23,10 +20,10 @@ func TestEnrichSpecsPopulatesConnectorMethods(t *testing.T) {
 		"bundle": newInternalTestMethodSpec("bundle", nil, []string{"rpc", "ws"}),
 	}
 
-	err := enrichSpecs(specs)
+	err := enrichSpecs(specs, target)
 	require.NoError(t, err)
 
-	bundle := resolvedSpecs["bundle"]
+	bundle := target["bundle"]
 	require.NotNil(t, bundle)
 	require.NotNil(t, bundle.connectors)
 	require.Len(t, bundle.connectors.byConnector, 2)
@@ -43,10 +40,7 @@ func TestEnrichSpecsPopulatesConnectorMethods(t *testing.T) {
 }
 
 func TestEnrichSpecsAppliesBundleOverridesAcrossConnectorMethods(t *testing.T) {
-	resolvedSpecs = map[string]*resolvedSpec{}
-	t.Cleanup(func() {
-		resolvedSpecs = nil
-	})
+	target := map[string]*resolvedSpec{}
 
 	specs := map[string]*MethodSpec{
 		"base": newInternalTestMethodSpec("base", []string{"json-rpc", "websocket"}, nil,
@@ -58,10 +52,10 @@ func TestEnrichSpecsAppliesBundleOverridesAcrossConnectorMethods(t *testing.T) {
 		),
 	}
 
-	err := enrichSpecs(specs)
+	err := enrichSpecs(specs, target)
 	require.NoError(t, err)
 
-	bundle := resolvedSpecs["bundle"]
+	bundle := target["bundle"]
 	require.NotNil(t, bundle)
 	require.NotNil(t, bundle.connectors)
 	require.Len(t, bundle.connectors.byConnector, 2)
@@ -73,10 +67,7 @@ func TestEnrichSpecsAppliesBundleOverridesAcrossConnectorMethods(t *testing.T) {
 }
 
 func TestEnrichSpecsDoesNotMutateImportedPlainSpecMethods(t *testing.T) {
-	resolvedSpecs = map[string]*resolvedSpec{}
-	t.Cleanup(func() {
-		resolvedSpecs = nil
-	})
+	target := map[string]*resolvedSpec{}
 
 	specs := map[string]*MethodSpec{
 		"left": newInternalTestMethodSpec("left", []string{"json-rpc"}, nil,
@@ -88,10 +79,10 @@ func TestEnrichSpecsDoesNotMutateImportedPlainSpecMethods(t *testing.T) {
 		"parent": newInternalTestMethodSpec("parent", []string{"json-rpc"}, []string{"left", "right"}),
 	}
 
-	err := enrichSpecs(specs)
+	err := enrichSpecs(specs, target)
 	require.NoError(t, err)
 
-	left := resolvedSpecs["left"]
+	left := target["left"]
 	require.NotNil(t, left)
 	require.NotNil(t, left.methods)
 	assert.Contains(t, left.methods.defaultMethods(), "eth_call")
@@ -99,7 +90,7 @@ func TestEnrichSpecsDoesNotMutateImportedPlainSpecMethods(t *testing.T) {
 	assert.Contains(t, left.methods.byGroup["common"], "eth_call")
 	assert.NotContains(t, left.methods.byGroup["common"], "eth_chainId")
 
-	parent := resolvedSpecs["parent"]
+	parent := target["parent"]
 	require.NotNil(t, parent)
 	require.NotNil(t, parent.methods)
 	assert.Contains(t, parent.methods.defaultMethods(), "eth_call")

@@ -89,7 +89,10 @@ func newPendingTxSourceBuilder(
 
 		for _, id := range chainSup.GetUpstreamIds() {
 			state := chainSup.GetUpstreamState(id)
-			if state == nil || state.Caps == nil || !state.Caps.Contains(protocol.PendingTxCap) {
+			if state == nil || state.Status != protocol.Available {
+				continue
+			}
+			if state.Caps == nil || !state.Caps.Contains(protocol.PendingTxCap) {
 				continue
 			}
 			upstream := supervisor.GetUpstream(id)
@@ -248,7 +251,7 @@ func newDrpcPendingTxSourceBuilder(
 		out := make(chan *protocol.WsResponse, pendingTxBufferSize)
 		go func() {
 			defer close(out)
-			// counting semaphore patter
+			// counting semaphore pattern
 			sem := make(chan struct{}, pendingEnrichConcurrency)
 			var wg sync.WaitGroup
 

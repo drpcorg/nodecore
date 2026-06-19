@@ -119,7 +119,11 @@ func subscribeSettings(specName, methodName string) *Subscription {
 }
 
 func getResolvedSpec(specName string) *resolvedSpec {
-	spec, ok := resolvedSpecs[specName]
+	m := resolvedSpecs.Load()
+	if m == nil {
+		return nil
+	}
+	spec, ok := (*m)[specName]
 	if !ok {
 		return nil
 	}
