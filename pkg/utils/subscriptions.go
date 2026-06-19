@@ -1,8 +1,7 @@
 package utils
 
 import (
-	"sync/atomic"
-	"time"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
@@ -38,17 +37,21 @@ type Subscription[T any] struct {
 	Events  chan T
 	name    string
 	manager *SubscriptionManager[T]
-	closed  atomic.Bool
+	// mu serializes Unsubscribe's close of Events against Publish's send, so a
+	// send can never race with (or land after) the close. closed is guarded by mu.
+	mu     sync.Mutex
+	closed bool
 }
 
 func (s *Subscription[T]) Unsubscribe() {
-	s.closed.Store(true)
 	s.manager.subscriptions.Delete(s.name)
 	numSubscriptions.WithLabelValues(s.manager.name).Dec()
-	go func() {
-		time.Sleep(100 * time.Millisecond)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.closed {
+		s.closed = true
 		close(s.Events)
-	}()
+	}
 }
 
 type SubscriptionManager[T any] struct {
@@ -65,7 +68,6 @@ func (sm *SubscriptionManager[T]) SubscribeWithSize(name string, size int) *Subs
 		name:    name,
 		Events:  make(chan T, size),
 		manager: sm,
-		closed:  atomic.Bool{},
 	}
 	_, loaded := sm.subscriptions.LoadOrStore(name, sub)
 	if loaded {
@@ -80,7 +82,6 @@ func (sm *SubscriptionManager[T]) SubscribeWithInitialState(name string, size in
 		name:    name,
 		Events:  make(chan T, size),
 		manager: sm,
-		closed:  atomic.Bool{},
 	}
 	sub.Events <- initialState
 
@@ -94,7 +95,9 @@ func (sm *SubscriptionManager[T]) SubscribeWithInitialState(name string, size in
 
 func (sm *SubscriptionManager[T]) Publish(event T) {
 	sm.subscriptions.Range(func(key string, sub *Subscription[T]) bool {
-		if sub.closed.Load() {
+		sub.mu.Lock()
+		defer sub.mu.Unlock()
+		if sub.closed {
 			return true
 		}
 		unreadMessages.WithLabelValues(sub.name).Set(float64(len(sub.Events)))
