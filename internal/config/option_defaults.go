@@ -12,6 +12,8 @@ func setOptionsDefaults(
 	chainDefaults *ChainDefaults,
 	globalChainOptions *chains.Options,
 	upstreamMode UpstreamMode,
+	chainSupportFinalizedBlockTag *bool,
+	chainSupportSafeBlockTag *bool,
 ) {
 	var defaultChainOptions *chains.Options
 	if chainDefaults != nil {
@@ -127,10 +129,15 @@ func setOptionsDefaults(
 		)
 	}
 	if upstreamOptions.DisableFinalizedBlockDetection == nil {
+		// Derive from chain-level support flag; if not set, default to false (detection enabled).
+		fallback := false
+		if chainSupportFinalizedBlockTag != nil && !*chainSupportFinalizedBlockTag {
+			fallback = true
+		}
 		upstreamOptions.DisableFinalizedBlockDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableFinalizedBlockDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableFinalizedBlockDetection }),
-			false,
+			fallback,
 		)
 	}
 	if upstreamOptions.DisableLabelsDetection == nil {

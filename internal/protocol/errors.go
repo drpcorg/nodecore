@@ -224,3 +224,12 @@ func QuorumNotSupportedError(reason string) *ResponseError {
 		Code:    QuorumSignatureErrCode,
 	}
 }
+
+const InvalidParams = -32602
+
+func UnsupportedBlockTagError(chain, tag string) *ResponseError {
+	return &ResponseError{
+		Code:    InvalidParams,
+		Message: fmt.Sprintf("block tag %q is not supported on chain %s", tag, chain),
+	}
+}

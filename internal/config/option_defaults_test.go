@@ -22,7 +22,7 @@ func TestSetOptionsDefaultsKeepsUpstreamDurations(t *testing.T) {
 	}, &chains.Options{
 		InternalTimeout:    25 * time.Second,
 		ValidationInterval: 90 * time.Second,
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.Equal(t, 2*time.Second, options.InternalTimeout)
 	assert.Equal(t, 45*time.Second, options.ValidationInterval)
@@ -75,7 +75,7 @@ func TestSetOptionsDefaultsKeepsUpstreamBoolAndIntValues(t *testing.T) {
 		ValidateClientVersion:       new(false),
 		MinPeers:                    2,
 		CallLimitSize:               2222222,
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.True(t, *options.DisableValidation)
 	assert.True(t, *options.DisableChainValidation)
@@ -101,7 +101,7 @@ func TestSetOptionsDefaultsUsesNodecoreDurationDefaultsBeforeChain(t *testing.T)
 	}, &chains.Options{
 		InternalTimeout:    25 * time.Second,
 		ValidationInterval: 90 * time.Second,
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.Equal(t, 15*time.Second, options.InternalTimeout)
 	assert.Equal(t, time.Minute, options.ValidationInterval)
@@ -136,7 +136,7 @@ func TestSetOptionsDefaultsUsesNodecoreBoolDefaultsBeforeChain(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(false),
 		ValidateClientVersion:       new(false),
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.True(t, *options.DisableValidation)
 	assert.True(t, *options.DisableChainValidation)
@@ -160,7 +160,7 @@ func TestSetOptionsDefaultsUsesNodecoreIntDefaultsBeforeChain(t *testing.T) {
 	}, &chains.Options{
 		MinPeers:      2,
 		CallLimitSize: 2000000,
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.Equal(t, int64(5), options.MinPeers)
 	assert.Equal(t, int64(5000000), options.CallLimitSize)
@@ -172,7 +172,7 @@ func TestSetOptionsDefaultsUsesChainDurationsWhenNodecoreMissing(t *testing.T) {
 	setOptionsDefaults(options, nil, &chains.Options{
 		InternalTimeout:    25 * time.Second,
 		ValidationInterval: 90 * time.Second,
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.Equal(t, 25*time.Second, options.InternalTimeout)
 	assert.Equal(t, 90*time.Second, options.ValidationInterval)
@@ -193,7 +193,7 @@ func TestSetOptionsDefaultsUsesChainBoolsWhenNodecoreMissing(t *testing.T) {
 		ValidatePeers:               new(false),
 		ValidateCallLimit:           new(true),
 		ValidateClientVersion:       new(true),
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.True(t, *options.DisableValidation)
 	assert.True(t, *options.DisableChainValidation)
@@ -212,7 +212,7 @@ func TestSetOptionsDefaultsUsesChainIntDefaultsWhenNodecoreMissing(t *testing.T)
 	setOptionsDefaults(options, nil, &chains.Options{
 		MinPeers:      4,
 		CallLimitSize: 4000000,
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.Equal(t, int64(4), options.MinPeers)
 	assert.Equal(t, int64(4000000), options.CallLimitSize)
@@ -221,7 +221,7 @@ func TestSetOptionsDefaultsUsesChainIntDefaultsWhenNodecoreMissing(t *testing.T)
 func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, nil, DefaultMode)
+	setOptionsDefaults(options, nil, nil, DefaultMode, nil, nil)
 
 	assert.Equal(t, 5*time.Second, options.InternalTimeout)
 	assert.Equal(t, 30*time.Second, options.ValidationInterval)
@@ -241,7 +241,7 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags(t *testing.T) {
 	options := &chains.Options{}
 
-	setOptionsDefaults(options, nil, nil, StrictMode)
+	setOptionsDefaults(options, nil, nil, StrictMode, nil, nil)
 
 	assert.False(t, *options.DisableLowerBoundsDetection)
 	assert.False(t, *options.DisableLabelsDetection)
@@ -256,7 +256,7 @@ func TestSetOptionsDefaultsHandlesNilDefaultOptions(t *testing.T) {
 
 	setOptionsDefaults(options, &ChainDefaults{}, &chains.Options{
 		DisableValidation: new(true),
-	}, DefaultMode)
+	}, DefaultMode, nil, nil)
 
 	assert.True(t, *options.DisableValidation)
 }
@@ -268,7 +268,7 @@ func TestSetOptionsDefaultsHandlesNilChainOptions(t *testing.T) {
 		Options: &chains.Options{
 			DisableValidation: new(true),
 		},
-	}, nil, DefaultMode)
+	}, nil, DefaultMode, nil, nil)
 
 	assert.True(t, *options.DisableValidation)
 }
