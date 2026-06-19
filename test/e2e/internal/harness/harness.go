@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,6 +34,9 @@ const (
 	NodecoreHealthPort = "9091/tcp"
 	HardhatPort        = "8545/tcp"
 	ContainerConfig    = "/tmp/nodecore-e2e.yml"
+
+	hardhatReadyTimeout      = 90 * time.Second
+	hardhatRPCRequestTimeout = 10 * time.Second
 )
 
 var (
@@ -93,7 +97,7 @@ func startScriptedHardhatNode(t *testing.T, ctx context.Context, networkName, al
 			Env:            env,
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {alias}},
-			WaitingFor:     wait.ForListeningPort(HardhatPort).WithStartupTimeout(60 * time.Second),
+			WaitingFor:     wait.ForMappedPort(HardhatPort).WithStartupTimeout(30 * time.Second),
 		},
 		Started: true,
 	})
@@ -110,8 +114,8 @@ func startScriptedHardhatNode(t *testing.T, ctx context.Context, networkName, al
 		_ = c.Terminate(context.Background())
 		t.Fatalf("hardhat node mapped port: %v", err)
 	}
-	hardhatURL := fmt.Sprintf("http://%s:%s", host, port.Port())
-	waitHardhatReady(t, ctx, hardhatURL)
+	hardhatURL := "http://" + dockerHostPort(host, port.Port())
+	waitHardhatReady(t, ctx, c, alias, hardhatURL)
 	nonceHex := setHardhatNonce(t, ctx, hardhatURL, seedTxs)
 	if strings.TrimSpace(rulesJSON) != "" {
 		setHardhatRules(t, ctx, hardhatURL, rulesJSON)
@@ -147,9 +151,9 @@ func hardhatEnv(t *testing.T) map[string]string {
 	return env
 }
 
-func waitHardhatReady(t *testing.T, ctx context.Context, hardhatURL string) {
+func waitHardhatReady(t *testing.T, ctx context.Context, c tc.Container, alias, hardhatURL string) {
 	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(hardhatReadyTimeout)
 	var last map[string]any
 	for time.Now().Before(deadline) {
 		last = hardhatRPCNoFatal(ctx, hardhatURL, "eth_chainId", []any{})
@@ -158,7 +162,7 @@ func waitHardhatReady(t *testing.T, ctx context.Context, hardhatURL string) {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	t.Fatalf("hardhat did not become JSON-RPC ready before timeout: last=%+v", last)
+	t.Fatalf("hardhat node %s did not become JSON-RPC ready before %s: last=%+v\nlogs:\n%s", alias, hardhatReadyTimeout, last, containerLogs(c))
 }
 
 func setHardhatNonce(t *testing.T, ctx context.Context, hardhatURL string, seedTxs int) string {
@@ -245,12 +249,15 @@ func CountHardhatRequests(t *testing.T, ctx context.Context, node *RPCNode, meth
 	}
 	return count
 }
+
 func hardhatRPCNoFatal(ctx context.Context, hardhatURL, method string, params any) map[string]any {
 	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hardhatURL, bytes.NewReader(body))
+	reqCtx, cancel := context.WithTimeout(ctx, hardhatRPCRequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, hardhatURL, bytes.NewReader(body))
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
@@ -514,7 +521,7 @@ func StartNodecoreWithImageAndFiles(t *testing.T, ctx context.Context, networkNa
 			},
 			Files:      files,
 			Networks:   []string{networkName},
-			WaitingFor: wait.ForListeningPort(NodecoreHTTPPort).WithStartupTimeout(90 * time.Second),
+			WaitingFor: wait.ForMappedPort(NodecoreHTTPPort).WithStartupTimeout(30 * time.Second),
 		},
 		Started: true,
 	})
@@ -541,7 +548,13 @@ func StartNodecoreWithImageAndFiles(t *testing.T, ctx context.Context, networkNa
 		_ = c.Terminate(context.Background())
 		t.Fatalf("nodecore mapped health port: %v", err)
 	}
-	nodecore := &Nodecore{Container: c, HTTPURL: fmt.Sprintf("http://%s:%s", host, httpPort.Port()), GRPCAddr: fmt.Sprintf("%s:%s", host, grpcPort.Port()), HealthURL: fmt.Sprintf("http://%s:%s", host, healthPort.Port()), LogRedact: redactions}
+	nodecore := &Nodecore{
+		Container: c,
+		HTTPURL:   "http://" + dockerHostPort(host, httpPort.Port()),
+		GRPCAddr:  dockerHostPort(host, grpcPort.Port()),
+		HealthURL: "http://" + dockerHostPort(host, healthPort.Port()),
+		LogRedact: redactions,
+	}
 	waitNodecoreHealth(t, ctx, nodecore, 30*time.Second)
 	return nodecore
 }
@@ -576,22 +589,48 @@ func (n *Nodecore) Terminate(ctx context.Context) {
 	_ = n.Container.Terminate(ctx, tc.StopTimeout(time.Second))
 }
 
+func dockerHostPort(host, port string) string {
+	return net.JoinHostPort(normalizeDockerHost(host), port)
+}
+
+func normalizeDockerHost(host string) string {
+	if strings.EqualFold(host, "localhost") {
+		return "127.0.0.1"
+	}
+	return host
+}
+
 func (n *Nodecore) Logs(ctx context.Context) string {
-	reader, err := n.Container.Logs(ctx)
-	if err != nil {
-		return fmt.Sprintf("<failed to read nodecore logs: %v>", err)
-	}
-	defer func() { _ = reader.Close() }()
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return fmt.Sprintf("<failed to read nodecore logs: %v>", err)
-	}
-	logs := string(data)
+	logs := containerLogsWithContext(ctx, n.Container, "nodecore")
 	for _, secret := range n.LogRedact {
 		if secret != "" {
 			logs = strings.ReplaceAll(logs, secret, "<redacted>")
 		}
 	}
+	return logs
+}
+
+func containerLogs(c tc.Container) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	logs := containerLogsWithContext(ctx, c, "container")
+	if secret := strings.TrimSpace(os.Getenv("NODECORE_E2E_DRPC_KEY")); secret != "" {
+		logs = strings.ReplaceAll(logs, secret, "<redacted>")
+	}
+	return logs
+}
+
+func containerLogsWithContext(ctx context.Context, c tc.Container, name string) string {
+	reader, err := c.Logs(ctx)
+	if err != nil {
+		return fmt.Sprintf("<failed to read %s logs: %v>", name, err)
+	}
+	defer func() { _ = reader.Close() }()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return fmt.Sprintf("<failed to read %s logs: %v>", name, err)
+	}
+	logs := string(data)
 	const max = 32 * 1024
 	if len(logs) > max {
 		logs = logs[len(logs)-max:]

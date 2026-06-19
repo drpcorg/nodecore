@@ -10,13 +10,14 @@ import (
 func setOptionsDefaults(
 	upstreamOptions *chains.Options,
 	chainDefaults *ChainDefaults,
-	globalChainOptions *chains.Options,
+	chainSettings chains.Settings,
 	upstreamMode UpstreamMode,
 ) {
 	var defaultChainOptions *chains.Options
 	if chainDefaults != nil {
 		defaultChainOptions = chainDefaults.Options
 	}
+	globalChainOptions := chainSettings.Options
 
 	resolveDuration := func(defaultValue, chainValue, fallback time.Duration) time.Duration {
 		if defaultValue != 0 {
@@ -120,10 +121,25 @@ func setOptionsDefaults(
 		)
 	}
 	if upstreamOptions.DisableSafeBlockDetection == nil {
+		fallback := lo.Ternary(upstreamMode == StrictMode, false, true)
+		if chainSettings.SupportSafeBlockTag != nil && !*chainSettings.SupportSafeBlockTag {
+			fallback = true
+		}
 		upstreamOptions.DisableSafeBlockDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableSafeBlockDetection }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			fallback,
+		)
+	}
+	if upstreamOptions.DisableFinalizedBlockDetection == nil {
+		fallback := false
+		if chainSettings.SupportFinalizedBlockTag != nil && !*chainSettings.SupportFinalizedBlockTag {
+			fallback = true
+		}
+		upstreamOptions.DisableFinalizedBlockDetection = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableFinalizedBlockDetection }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableFinalizedBlockDetection }),
+			fallback,
 		)
 	}
 	if upstreamOptions.DisableLabelsDetection == nil {

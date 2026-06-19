@@ -12,9 +12,10 @@ type Options struct {
 	DisableSettingsValidation   *bool         `yaml:"disable-settings-validation"`
 	DisableChainValidation      *bool         `yaml:"disable-chain-validation"`
 	DisableHealthValidation     *bool         `yaml:"disable-health-validation"`
-	DisableLowerBoundsDetection *bool         `yaml:"disable-lower-bounds-detection"`
-	DisableSafeBlockDetection   *bool         `yaml:"disable-safe-block-detection"`
-	DisableLabelsDetection      *bool         `yaml:"disable-labels-detection"`
+	DisableLowerBoundsDetection   *bool         `yaml:"disable-lower-bounds-detection"`
+	DisableSafeBlockDetection     *bool         `yaml:"disable-safe-block-detection"`
+	DisableFinalizedBlockDetection *bool         `yaml:"disable-finalized-block-detection"`
+	DisableLabelsDetection        *bool         `yaml:"disable-labels-detection"`
 	DisableLogIndexValidation   *bool         `yaml:"disable-log-index-validation"`
 	ArchiveCapability           *bool         `yaml:"archive"`
 	ValidateSyncing             *bool         `yaml:"validate-syncing"`
@@ -23,6 +24,31 @@ type Options struct {
 	ValidateCallLimit           *bool         `yaml:"validate-call-limit"`
 	ValidateClientVersion       *bool         `yaml:"validate-client-version"`
 	CallLimitSize               int64         `yaml:"call-limit-size"`
+}
+
+func boolValue(v *bool, fallback bool) bool {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
+// FinalizedBlockDetectionDisabled returns true when finalized block polling
+// should be skipped.
+func (o *Options) FinalizedBlockDetectionDisabled() bool {
+	if o == nil {
+		return false
+	}
+	return boolValue(o.DisableFinalizedBlockDetection, false)
+}
+
+// SafeBlockDetectionDisabled returns true when safe block polling should be
+// skipped.
+func (o *Options) SafeBlockDetectionDisabled() bool {
+	if o == nil {
+		return false
+	}
+	return boolValue(o.DisableSafeBlockDetection, false)
 }
 
 func (o *Options) Validate() error {

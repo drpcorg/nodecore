@@ -62,7 +62,8 @@ test-e2e-http: build-e2e-images
 
 .PHONY: test-e2e
 test-e2e: build-e2e-images
-	go test -tags=e2e ./test/e2e/... -count=1 -timeout=20m -v
+	go test -tags=e2e ./test/e2e/grpc -count=1 -timeout=20m -v
+	go test -tags=e2e ./test/e2e/http -count=1 -timeout=20m -v
 
 .PHONY: build
 build: generate-networks
