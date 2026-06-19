@@ -126,6 +126,20 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
+	if upstreamOptions.SupportFinalizedBlockTag == nil {
+		upstreamOptions.SupportFinalizedBlockTag = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.SupportFinalizedBlockTag }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.SupportFinalizedBlockTag }),
+			true,
+		)
+	}
+	if upstreamOptions.SupportSafeBlockTag == nil {
+		upstreamOptions.SupportSafeBlockTag = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.SupportSafeBlockTag }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.SupportSafeBlockTag }),
+			true,
+		)
+	}
 	if upstreamOptions.DisableLabelsDetection == nil {
 		upstreamOptions.DisableLabelsDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLabelsDetection }),

@@ -41,17 +41,18 @@ type BlockEvent struct {
 }
 
 type EthLikeBlockProcessor struct {
-	upstreamId                string
-	connector                 connectors.ApiConnector
-	chainSpecific             BlockChainSpecific
-	subManager                *utils.SubscriptionManager[BlockEvent]
-	disableDetection          atomic.Uint32
-	disableSafeBlockDetection bool
-	manualBlockChan           chan *BlockEvent
-	blocks                    map[protocol.BlockType]protocol.Block
-	lifecycle                 *utils.BaseLifecycle
-	internalTimeout           time.Duration
-	pollInterval              time.Duration
+	upstreamId                       string
+	connector                        connectors.ApiConnector
+	chainSpecific                    BlockChainSpecific
+	subManager                       *utils.SubscriptionManager[BlockEvent]
+	disableDetection                 atomic.Uint32
+	disableSafeBlockDetection        bool
+	disableFinalizedBlockDetection   bool
+	manualBlockChan                  chan *BlockEvent
+	blocks                           map[protocol.BlockType]protocol.Block
+	lifecycle                        *utils.BaseLifecycle
+	internalTimeout                  time.Duration
+	pollInterval                     time.Duration
 }
 
 func (b *EthLikeBlockProcessor) Running() bool {
@@ -67,22 +68,24 @@ func NewEthLikeBlockProcessor(
 	ctx context.Context,
 	upstreamId string,
 	pollInterval, internalTimeout time.Duration,
+	disableFinalizedBlockDetection bool,
 	disableSafeBlockDetection bool,
 	connector connectors.ApiConnector,
 	chainSpecific BlockChainSpecific,
 ) *EthLikeBlockProcessor {
 	name := fmt.Sprintf("%s_block_processor", upstreamId)
 	return &EthLikeBlockProcessor{
-		upstreamId:                upstreamId,
-		connector:                 connector,
-		chainSpecific:             chainSpecific,
-		disableSafeBlockDetection: disableSafeBlockDetection,
-		manualBlockChan:           make(chan *BlockEvent, 100),
-		subManager:                utils.NewSubscriptionManager[BlockEvent](name),
-		blocks:                    make(map[protocol.BlockType]protocol.Block),
-		lifecycle:                 utils.NewBaseLifecycle(name, ctx),
-		internalTimeout:           internalTimeout,
-		pollInterval:              pollInterval,
+		upstreamId:                     upstreamId,
+		connector:                      connector,
+		chainSpecific:                  chainSpecific,
+		disableFinalizedBlockDetection: disableFinalizedBlockDetection,
+		disableSafeBlockDetection:      disableSafeBlockDetection,
+		manualBlockChan:                make(chan *BlockEvent, 100),
+		subManager:                     utils.NewSubscriptionManager[BlockEvent](name),
+		blocks:                         make(map[protocol.BlockType]protocol.Block),
+		lifecycle:                      utils.NewBaseLifecycle(name, ctx),
+		internalTimeout:                internalTimeout,
+		pollInterval:                   pollInterval,
 	}
 }
 
@@ -96,7 +99,9 @@ func (b *EthLikeBlockProcessor) Subscribe(name string) *utils.Subscription[Block
 
 func (b *EthLikeBlockProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
-		go b.pollLoop(ctx, protocol.FinalizedBlock)
+		if !b.disableFinalizedBlockDetection {
+			go b.pollLoop(ctx, protocol.FinalizedBlock)
+		}
 		if !b.disableSafeBlockDetection {
 			go b.pollLoop(ctx, protocol.SafeBlock)
 		}
