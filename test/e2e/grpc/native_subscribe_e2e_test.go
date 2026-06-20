@@ -40,6 +40,12 @@ func TestGrpcNativeSubscribeLogsAcceptsObjectPayload(t *testing.T) {
 		Chain:   chain,
 		Method:  "logs",
 		Payload: []byte(fmt.Sprintf(`{"address":%q,"topics":[]}`, filterAddress)),
+		// Force the generic node-backed subscribe path so this test keeps verifying
+		// the dshackle NativeSubscribe(Method="logs", Payload=object) ->
+		// eth_subscribe ["logs", object] mapping. Without an effective selector,
+		// logs subscriptions are served by the local logs source and do not issue an
+		// upstream eth_subscribe("logs", ...).
+		Selector: latestBlockSelector(),
 	})
 	if err != nil {
 		t.Fatalf("NativeSubscribe logs failed to open stream: %v\nlogs:\n%s", err, nodecore.Logs(ctx))
@@ -66,6 +72,16 @@ func TestGrpcNativeSubscribeLogsAcceptsObjectPayload(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("hardhat did not receive eth_subscribe logs request\nlogs:\n%s", nodecore.Logs(ctx))
+}
+
+func latestBlockSelector() *dshackle.Selector {
+	return &dshackle.Selector{
+		SelectorType: &dshackle.Selector_HeightSelector{
+			HeightSelector: &dshackle.HeightSelector{
+				HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_LATEST},
+			},
+		},
+	}
 }
 
 func grpcNativeSubscribeNodecoreConfig(upstream *harness.RPCNode) string {
