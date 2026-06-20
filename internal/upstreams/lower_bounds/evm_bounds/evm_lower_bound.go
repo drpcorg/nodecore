@@ -365,6 +365,7 @@ var evmNoDataErrorHints = []string{
 	"missing trie node",
 	"header not found",
 	"metadata is not found",
+	"distance to target block exceeds maximum proof window",
 	"node state is pruned",
 	"is not available, lowest height is",
 	"state already discarded for",
