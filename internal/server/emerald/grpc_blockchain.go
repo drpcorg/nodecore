@@ -459,20 +459,19 @@ func mapToEthSubscribeFallback(requestedMethod string, payload []byte) (string, 
 }
 
 func mapEthSubscribeParams(requestedMethod string, payload []byte) ([]byte, error) {
-	args := make([]json.RawMessage, 0)
-	if len(payload) > 0 {
+	methodRaw, _ := json.Marshal(requestedMethod)
+	params := []json.RawMessage{methodRaw}
+
+	// dproxy NativeSubscribe sends Method as the concrete subscription type and
+	// Payload as that type's single parameter payload. For example:
+	//   Method="logs", Payload={...} -> eth_subscribe params ["logs", {...}]
+	//   Method="newHeads", Payload=null -> eth_subscribe params ["newHeads"]
+	if len(payload) > 0 && string(payload) != "null" {
 		if !json.Valid(payload) {
 			return nil, fmt.Errorf("invalid subscribe payload format")
 		}
-		if err := json.Unmarshal(payload, &args); err != nil {
-			return nil, fmt.Errorf("subscribe payload must be a JSON array")
-		}
+		params = append(params, append(json.RawMessage(nil), payload...))
 	}
-
-	methodRaw, _ := json.Marshal(requestedMethod)
-	params := make([]json.RawMessage, 0, 1+len(args))
-	params = append(params, methodRaw)
-	params = append(params, args...)
 
 	result, err := json.Marshal(params)
 	if err != nil {

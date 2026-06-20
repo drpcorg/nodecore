@@ -71,11 +71,18 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 		assert.Contains(te, err.Error(), "invalid subscribe payload format")
 	})
 
-	t.Run("maps api style method to eth_subscribe", func(te *testing.T) {
-		method, payload, err := mapNativeSubscribeMethod("eth", nil, "newHeads", []byte(`[{"foo":"bar"}]`))
+	t.Run("maps dshackle null payload to eth_subscribe without extra args", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("eth", nil, "newHeads", []byte(`null`))
 		require.NoError(te, err)
 		assert.Equal(te, "eth_subscribe", method)
-		assert.Equal(te, `["newHeads",{"foo":"bar"}]`, string(payload))
+		assert.Equal(te, `["newHeads"]`, string(payload))
+	})
+
+	t.Run("maps dshackle logs object payload to eth_subscribe", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("eth", nil, "logs", []byte(`{"address":"0xabc","topics":[]}`))
+		require.NoError(te, err)
+		assert.Equal(te, "eth_subscribe", method)
+		assert.Equal(te, `["logs",{"address":"0xabc","topics":[]}]`, string(payload))
 	})
 
 	t.Run("returns unimplemented mapping error for unsupported method", func(te *testing.T) {
