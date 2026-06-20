@@ -3,15 +3,18 @@ package evm_specific_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/samber/lo"
@@ -147,6 +150,47 @@ func TestEvmLowerBoundProcessor(t *testing.T) {
 	processor := test_utils.NewEvmChainSpecific(mocks.NewConnectorMock()).LowerBoundProcessor()
 
 	assert.NotNil(t, processor)
+}
+
+func TestEvmLowerBoundProcessorIncludesProofDetectorWhenSpecSupportsGetProof(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	processor := newEvmChainSpecificForChain("ethereum").LowerBoundProcessor()
+
+	assert.Equal(t, 5, lowerBoundDetectorCount(t, processor))
+}
+
+func TestEvmLowerBoundProcessorSkipsProofDetectorWhenSpecDisablesGetProof(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	for _, chainName := range []string{"viction", "viction-testnet", "hyperliquid", "hyperliquid-testnet"} {
+		t.Run(chainName, func(t *testing.T) {
+			processor := newEvmChainSpecificForChain(chainName).LowerBoundProcessor()
+
+			assert.Equal(t, 4, lowerBoundDetectorCount(t, processor))
+		})
+	}
+}
+
+func newEvmChainSpecificForChain(chainName string) *specific.EvmChainSpecificObject {
+	return specific.NewEvmChainSpecific(
+		context.Background(),
+		"id",
+		mocks.NewConnectorMock(),
+		chains.GetChain(chainName),
+		time.Second,
+		&chains.Options{InternalTimeout: time.Second},
+	)
+}
+
+func lowerBoundDetectorCount(t *testing.T, processor lower_bounds.LowerBoundProcessor) int {
+	t.Helper()
+	base, ok := processor.(*lower_bounds.BaseLowerBoundProcessor)
+	require.True(t, ok)
+
+	detectors := reflect.ValueOf(base).Elem().FieldByName("lowerBoundsDetectors")
+	require.True(t, detectors.IsValid())
+	return detectors.Len()
 }
 
 func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {

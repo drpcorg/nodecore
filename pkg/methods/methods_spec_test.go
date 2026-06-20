@@ -200,3 +200,20 @@ func TestLoadSpecNestedImports(t *testing.T) {
 	assert.Contains(t, child[specs.DefaultMethodGroup], "net_version")
 	assert.Contains(t, child[specs.SubMethodGroup], "eth_subscribe")
 }
+
+func TestNetworkSpecsDisableUnsupportedGetProof(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	for _, specName := range []string{"viction", "hyperliquid"} {
+		t.Run(specName, func(t *testing.T) {
+			assert.Nil(t, specs.GetSpecMethod(specName, "eth_getProof"))
+
+			jsonRPCMethods := specs.GetSpecMethodsByConnectors(specName, []specs.ApiConnectorType{specs.JsonRpcConnector})
+			assert.NotContains(t, jsonRPCMethods[specs.DefaultMethodGroup], "eth_getProof")
+		})
+	}
+
+	restAdditionalMethods := specs.GetSpecMethodsByConnectors("hyperliquid", []specs.ApiConnectorType{specs.RestAdditional})
+	assert.NotContains(t, restAdditionalMethods[specs.DefaultMethodGroup], "eth_getProof")
+}
