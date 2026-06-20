@@ -32,6 +32,12 @@ const localNewHeadsKey = "local|newHeads"
 // are present. RequestAnySelector is a no-op and must not block the local path.
 const localLogsKey = "local|logs"
 
+// genericSubscriptionBufferSize mirrors dshackle's high-volume subscription
+// buffering for shared logs streams. Generic node-backed subscriptions can still
+// carry bursty payloads (logs, pending txes), so they need more headroom than
+// the subengine default for low-volume local sources.
+const genericSubscriptionBufferSize = 4096
+
 // resolveSource decides how the shared source for this subscription is produced
 // and returns its aggregation key alongside the builder, keeping the local-vs-
 // generic decision and the key in one place:
@@ -193,7 +199,7 @@ func newGenericSourceBuilder(
 			stateChan = statesSub.Events
 		}
 
-		out := make(chan *protocol.WsResponse, 100)
+		out := make(chan *protocol.WsResponse, genericSubscriptionBufferSize)
 		go func() {
 			defer close(out)
 			defer func() {
@@ -235,6 +241,6 @@ func newGenericSourceBuilder(
 		stop := func() {
 			wsConn.Unsubscribe(subResp.OpId())
 		}
-		return &subengine.Source{Events: out, Stop: stop}, nil
+		return &subengine.Source{Events: out, Stop: stop, Buffer: genericSubscriptionBufferSize}, nil
 	}
 }
