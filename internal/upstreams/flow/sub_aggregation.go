@@ -28,7 +28,8 @@ const localNewHeadsKey = "local|newHeads"
 // is therefore per-chain, NOT RequestHash-based (which would split the source
 // per filter and defeat sharing). Selectors are ignored for the same reason the
 // newHeads key ignores them - there is a single merged head per chain - and
-// resolveSource only takes the local path when no selectors are present.
+// resolveSource only takes the local path when no effective routing selectors
+// are present. RequestAnySelector is a no-op and must not block the local path.
 const localLogsKey = "local|logs"
 
 // resolveSource decides how the shared source for this subscription is produced
@@ -47,12 +48,22 @@ func resolveSource(
 	if isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
-	if isLogsRequest(request) && localLogsAvailable(chain, supervisor) && len(request.Selectors()) == 0 {
+	if isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
 		if filter, err := parseLogFilter(request); err == nil {
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
 		}
 	}
 	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
+}
+
+func hasEffectiveSelectors(selectors []protocol.RequestSelector) bool {
+	for _, selector := range selectors {
+		if _, ok := selector.(protocol.RequestAnySelector); ok {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // isNewHeadsRequest reports whether request is eth_subscribe("newHeads"). Only
