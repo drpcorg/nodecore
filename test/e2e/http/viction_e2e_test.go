@@ -120,8 +120,40 @@ func TestVictionNoFinalizedBlockPolling(t *testing.T) {
 	t.Logf("Viction correctly skipped finalized/safe polling; sent %d eth_getBlockByNumber requests (latest only)", len(hardhatReqCount))
 }
 
+func TestEvmLowerBoundsSkipUnsupportedProofDetectorBySpec(t *testing.T) {
+	ctx := context.Background()
+	networkName, cleanupNetwork := harness.NewNetwork(t, ctx)
+	defer cleanupNetwork()
+
+	nodes := harness.StartHardhatNodes(t, ctx, networkName,
+		harness.HardhatNodeSpec{Alias: "hardhat-no-proof", SeedTxs: 1, Rules: unsupportedProofRule()},
+	)
+	upstream := nodes[0]
+	defer upstream.Terminate(ctx)
+
+	nodecore := harness.StartNodecore(t, ctx, networkName, noProofLowerBoundsNodecoreConfig(upstream, "viction", "hyperliquid"))
+	defer nodecore.Terminate(ctx)
+
+	assertStatus(t, nodecore.HealthURL+"/health", http.StatusOK)
+	waitReady(t, nodecore)
+
+	// Lower-bound detectors have a 15s startup delay. After that delay, any
+	// wrongly-created proof detector would call eth_getProof and hit this
+	// upstream's -32601 rule.
+	harness.ClearHardhatRequests(t, ctx, upstream)
+	time.Sleep(20 * time.Second)
+
+	if got := harness.CountHardhatRequests(t, ctx, upstream, "eth_getProof"); got != 0 {
+		t.Fatalf("nodecore sent %d eth_getProof lower-bound probes despite the chain specs disabling it\nlogs:\n%s", got, nodecore.Logs(ctx))
+	}
+}
+
 type hardhatRequest struct {
 	param string
+}
+
+func unsupportedProofRule() string {
+	return `[{"method":"eth_getProof","error":{"code":-32601,"message":"the method eth_getProof does not exist/is not available"}}]`
 }
 
 func countHardhatRequestsByMethodAndParam(t *testing.T, ctx context.Context, node *harness.RPCNode, method string) []hardhatRequest {
@@ -142,6 +174,43 @@ func countHardhatRequestsByMethodAndParam(t *testing.T, ctx context.Context, nod
 		}
 		params := m["params"]
 		out = append(out, hardhatRequest{param: fmt.Sprint(params)})
+	}
+	return out
+}
+
+func noProofLowerBoundsNodecoreConfig(upstream *harness.RPCNode, chains ...string) string {
+	out := fmt.Sprintf(`server:
+  port: 8080
+  grpc-port: 9090
+  metrics-port: 0
+  pprof-port: 0
+  health-port: 9091
+  grpc-auth:
+    enabled: false
+upstream-config:
+  mode: default
+  score-policy-config:
+    calculation-interval: 500ms
+  upstreams:
+`)
+	for _, chain := range chains {
+		out += fmt.Sprintf(`    - id: %s-%s
+      chain: %s
+      poll-interval: 1s
+      connectors:
+        - type: json-rpc
+          url: %q
+      options:
+        internal-timeout: 5s
+        validation-interval: 30s
+        disable-chain-validation: true
+        disable-finalized-block-detection: true
+        disable-safe-block-detection: true
+        disable-lower-bounds-detection: false
+        disable-labels-detection: true
+        validate-syncing: false
+        validate-peers: false
+`, upstream.Alias, chain, chain, upstream.InternalURL())
 	}
 	return out
 }

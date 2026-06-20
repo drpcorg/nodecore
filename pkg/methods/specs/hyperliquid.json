@@ -10,6 +10,6 @@
   },
   "spec-imports": [
     "hyperliquid-rest-additional",
-    "eth"
+    "hyperliquid-eth"
   ]
 }
