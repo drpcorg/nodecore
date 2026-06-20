@@ -135,8 +135,51 @@ func TestLocalLogsAvailable(t *testing.T) {
 	assert.True(t, localLogsAvailable(chains.ETHEREUM, supLogs))
 }
 
+func TestHasEffectiveSelectors(t *testing.T) {
+	assert.False(t, hasEffectiveSelectors(nil))
+	assert.False(t, hasEffectiveSelectors([]protocol.RequestSelector{protocol.RequestAnySelector{}}))
+	assert.True(t, hasEffectiveSelectors([]protocol.RequestSelector{protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}}))
+	assert.True(t, hasEffectiveSelectors([]protocol.RequestSelector{
+		protocol.RequestAnySelector{},
+		protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}},
+	}))
+}
+
 func logsRequest(params string) protocol.RequestHolder {
 	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth")
+}
+
+func logsSupervisor() *mocks.UpstreamSupervisorMock {
+	sup := mocks.NewUpstreamSupervisorMock()
+	sup.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
+		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)},
+	})
+	return sup
+}
+
+func TestResolveSourceUsesLocalLogsForAnySelector(t *testing.T) {
+	tests := []struct {
+		name      string
+		selectors []protocol.RequestSelector
+		wantLocal bool
+	}{
+		{name: "no selectors", selectors: nil, wantLocal: true},
+		{name: "any selector", selectors: []protocol.RequestSelector{protocol.RequestAnySelector{}}, wantLocal: true},
+		{name: "label selector", selectors: []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}}, wantLocal: false},
+		{name: "any plus label selector", selectors: []protocol.RequestSelector{protocol.RequestAnySelector{}, protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}}, wantLocal: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := protocol.WithSelectors(logsRequest(`["logs",{}]`), tc.selectors)
+			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil)
+			if tc.wantLocal {
+				assert.Equal(t, localLogsKey, key)
+			} else {
+				assert.NotEqual(t, localLogsKey, key)
+			}
+		})
+	}
 }
 
 func TestParseLogFilterAndMatches(t *testing.T) {
