@@ -31,9 +31,18 @@ func TestNewBaseRequestOp(t *testing.T) {
 	assert.Equal(t, "request-1", op.Id())
 	assert.Equal(t, "eth_subscribe", op.Method())
 	assert.Equal(t, "newHeads", op.SubType())
+	assert.Equal(t, 4096, cap(op.GetChannel(ws.MessageResponse)))
+	assert.Equal(t, 4096, cap(op.GetChannel(ws.MessageInternal)))
 	assert.False(t, op.IsCompleted())
 	assert.Empty(t, op.SubID())
 	assert.True(t, op.ShouldDoOnClose())
+}
+
+func TestNewBaseRequestOpUsesSmallBufferForUnaryRequests(t *testing.T) {
+	op := ws.NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(ws.RequestOperation) {})
+
+	assert.Equal(t, 50, cap(op.GetChannel(ws.MessageResponse)))
+	assert.Equal(t, 50, cap(op.GetChannel(ws.MessageInternal)))
 }
 
 func TestBaseRequestOpWriteResponse(t *testing.T) {

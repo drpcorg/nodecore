@@ -95,6 +95,11 @@ const (
 	MessageResponse
 )
 
+const (
+	defaultRequestOpBufferSize      = 50
+	subscriptionRequestOpBufferSize = 4096
+)
+
 type RequestOperation interface {
 	Write(message *protocol.WsResponse, messageType MessageType)
 	SetSubID(subID []byte)
@@ -237,17 +242,25 @@ func (r *BaseRequestOp) ShouldDoOnClose() bool {
 
 func NewBaseRequestOp(ctx context.Context, id, method, subType string, doOnClose DoOnClose) *BaseRequestOp {
 	ctx, cancel := context.WithCancel(ctx)
+	bufferSize := requestOpBufferSize(subType)
 
 	return &BaseRequestOp{
 		id:               id,
-		responseChan:     make(chan *protocol.WsResponse, 50),
-		internalMessages: make(chan *protocol.WsResponse, 50),
+		responseChan:     make(chan *protocol.WsResponse, bufferSize),
+		internalMessages: make(chan *protocol.WsResponse, bufferSize),
 		ctx:              ctx,
 		cancel:           cancel,
 		method:           method,
 		subType:          subType,
 		doOnClose:        doOnClose,
 	}
+}
+
+func requestOpBufferSize(subType string) int {
+	if subType != "" {
+		return subscriptionRequestOpBufferSize
+	}
+	return defaultRequestOpBufferSize
 }
 
 var _ RequestOperation = (*BaseRequestOp)(nil)
