@@ -131,6 +131,8 @@ func TestSubscribeUpstreamStateEvent(t *testing.T) {
 
 		assert.False(t, state.Caps.Contains(protocol.WsCap))
 		assert.True(t, nextState.Caps.Contains(protocol.WsCap))
+		// a live ws connector also grants the pending-tx capability
+		assert.True(t, nextState.Caps.Contains(protocol.PendingTxCap))
 		assert.NotSame(t, state.Caps, nextState.Caps)
 		assert.True(t, event.Same(nextState))
 	})
@@ -198,6 +200,8 @@ func TestSubscribeUpstreamStateEvent(t *testing.T) {
 		assert.True(t, next.Caps.Contains(protocol.WsCap))
 		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
 		assert.False(t, next.Caps.Contains(protocol.LogsCap))
+		// pending-tx aggregation only needs a ws connector, not a ws-driven head
+		assert.True(t, next.Caps.Contains(protocol.PendingTxCap))
 	})
 
 	t.Run("non-evm head connector ws connect grants only WsCap", func(t *testing.T) {
@@ -216,7 +220,7 @@ func TestSubscribeUpstreamStateEvent(t *testing.T) {
 	t.Run("ws disconnect removes all sub caps", func(t *testing.T) {
 		state := protocol.DefaultUpstreamState(
 			mocks.NewMethodsMock(),
-			mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap),
+			mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap),
 			"u", nil, nil,
 		)
 		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected}
@@ -226,6 +230,7 @@ func TestSubscribeUpstreamStateEvent(t *testing.T) {
 		assert.False(t, next.Caps.Contains(protocol.WsCap))
 		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
 		assert.False(t, next.Caps.Contains(protocol.LogsCap))
+		assert.False(t, next.Caps.Contains(protocol.PendingTxCap))
 	})
 }
 

@@ -115,6 +115,42 @@ func TestIsLogsRequest(t *testing.T) {
 	assert.False(t, isLogsRequest(other))
 }
 
+func TestIsPendingTxRequest(t *testing.T) {
+	pending := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newPendingTransactions"]`)}, true, "eth")
+	drpc := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["drpc_pendingTransactions"]`)}, true, "eth")
+	newHeads := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth")
+	other := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_call", Params: []byte(`[]`)}, false, "eth")
+
+	assert.True(t, isPendingTxRequest(pending))
+	assert.False(t, isPendingTxRequest(drpc))
+	assert.False(t, isPendingTxRequest(newHeads))
+	assert.False(t, isPendingTxRequest(other))
+
+	assert.True(t, isDrpcPendingTxRequest(drpc))
+	assert.False(t, isDrpcPendingTxRequest(pending))
+	assert.False(t, isDrpcPendingTxRequest(other))
+}
+
+func TestLocalPendingTxAvailable(t *testing.T) {
+	supNil := mocks.NewUpstreamSupervisorMock()
+	supNil.On("GetChainSupervisor", chains.ETHEREUM).Return(nil)
+	assert.False(t, localPendingTxAvailable(chains.ETHEREUM, supNil))
+
+	// no ws connector at all → no PendingTxCap → falls back to generic
+	supNone := mocks.NewUpstreamSupervisorMock()
+	supNone.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
+		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()},
+	})
+	assert.False(t, localPendingTxAvailable(chains.ETHEREUM, supNone))
+
+	// a ws connector grants PendingTxCap → local aggregation (no head connector needed)
+	supWs := mocks.NewUpstreamSupervisorMock()
+	supWs.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
+		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap)},
+	})
+	assert.True(t, localPendingTxAvailable(chains.ETHEREUM, supWs))
+}
+
 func TestLocalLogsAvailable(t *testing.T) {
 	supNil := mocks.NewUpstreamSupervisorMock()
 	supNil.On("GetChainSupervisor", chains.ETHEREUM).Return(nil)
@@ -172,7 +208,7 @@ func TestResolveSourceUsesLocalLogsForAnySelector(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := protocol.WithSelectors(logsRequest(`["logs",{}]`), tc.selectors)
-			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil)
+			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil, nil)
 			if tc.wantLocal {
 				assert.Equal(t, localLogsKey, key)
 			} else {

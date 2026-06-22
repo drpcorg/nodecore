@@ -67,7 +67,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// The shared source emits events only - each client allocates its own
 		// client-facing subscription id below, independent of the single
 		// upstream subscription id.
-		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry)
+		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine)
 		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
 			responses <- totalFailureWrapper(request, err)
