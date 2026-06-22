@@ -208,7 +208,7 @@ func TestResolveSourceUsesLocalLogsForAnySelector(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := protocol.WithSelectors(logsRequest(`["logs",{}]`), tc.selectors)
-			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil)
+			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil, nil)
 			if tc.wantLocal {
 				assert.Equal(t, localLogsKey, key)
 			} else {
