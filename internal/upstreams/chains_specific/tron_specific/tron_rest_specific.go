@@ -10,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -129,6 +130,10 @@ func (t *TronRestSpecific) HealthValidators() []validations.Validator[protocol.A
 
 func (t *TronRestSpecific) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
 	return nil
+}
+
+func (t *TronRestSpecific) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	return caps.DefaultCapDetectors(t.upstreamId, input.WsConnector)
 }
 
 func (t *TronRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

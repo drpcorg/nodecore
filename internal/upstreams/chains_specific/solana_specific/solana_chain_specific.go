@@ -8,6 +8,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -46,6 +47,10 @@ func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	}
 
 	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
+}
+
+func (s *SolanaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	return caps.DefaultCapDetectors(s.upstreamId, input.WsConnector)
 }
 
 func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

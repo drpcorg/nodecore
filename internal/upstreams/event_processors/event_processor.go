@@ -15,6 +15,7 @@ const (
 	HealthValidatorProcessorType
 	SettingsValidatorProcessorType
 	LabelsProcessorType
+	CapEventProcessorType
 )
 
 type UpstreamStateEventProcessor interface {

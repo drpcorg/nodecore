@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -45,11 +46,18 @@ type BaseWsProcessor struct {
 
 	executor   failsafe.Executor[bool]
 	subManager *utils.SubscriptionManager[protocol.SubscribeConnectorState]
+	// connected tracks the last published connection state so new subscribers can
+	// be seeded with it immediately (SubscribeWsStates replays it). Without this a
+	// subscriber that registers after the initial WsConnected publish would never
+	// learn the connector is up.
+	connected atomic.Bool
 }
 
 func (b *BaseWsProcessor) Unsubscribe(opId string) {
 	b.requestRegistry.Cancel(opId)
 }
+
+var i = 0
 
 func (b *BaseWsProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
@@ -66,6 +74,7 @@ func (b *BaseWsProcessor) Start() {
 						b.disconnect("stopping ws loop after connect failure", err)
 						return
 					}
+					b.connected.Store(true)
 					b.subManager.Publish(protocol.WsConnected)
 					b.startReader(ctx)
 				}
@@ -158,6 +167,14 @@ func (b *BaseWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest pro
 }
 
 func (b *BaseWsProcessor) SubscribeWsStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
+	// If the connector is already connected, seed the new subscriber with WsConnected
+	// right away: the initial WsConnected was published once on connect and a late
+	// subscriber (e.g. a cap detector started after the connection came up) would
+	// otherwise never learn the connector is live. When disconnected we subscribe
+	// normally - the next connect publishes WsConnected as usual.
+	if b.connected.Load() {
+		return b.subManager.SubscribeWithInitialState(name, 100, protocol.WsConnected)
+	}
 	return b.subManager.Subscribe(name)
 }
 
@@ -236,6 +253,7 @@ func (b *BaseWsProcessor) disconnect(reason string, cause error) {
 	if err := b.wsSession.CloseCurrent(); err != nil {
 		log.Error().Err(err).Msg("couldn't close a ws connection")
 	}
+	b.connected.Store(false)
 	b.requestRegistry.CancelAll()
 }
 

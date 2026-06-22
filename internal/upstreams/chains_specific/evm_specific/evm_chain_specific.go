@@ -8,6 +8,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps/evm_caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -125,6 +127,29 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	}
 
 	return settingsValidators
+}
+
+func (e *EvmChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	detectors := []caps.CapDetector{
+		caps.NewWsPresenceCapDetector(fmt.Sprintf("%s_ws_cap", e.upstreamId), protocol.WsCap, input.WsConnector),
+		evm_caps.NewEvmHeadSubCapDetector(fmt.Sprintf("%s_head_sub_cap", e.upstreamId), input.HeadConnector, input.Methods),
+	}
+
+	pendingTxName := fmt.Sprintf("%s_pending_tx_cap", e.upstreamId)
+	if e.chain.Chain == chains.BASE {
+		detectors = append(detectors, evm_caps.NewEvmPendingTxCapDetector(
+			pendingTxName,
+			input.WsConnector,
+			e.connector,
+			e.chain.Chain,
+			e.options.InternalTimeout,
+			evm_caps.BaseTxLimit,
+		))
+	} else {
+		detectors = append(detectors, caps.NewWsPresenceCapDetector(pendingTxName, protocol.PendingTxCap, input.WsConnector))
+	}
+
+	return detectors
 }
 
 func (e *EvmChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {

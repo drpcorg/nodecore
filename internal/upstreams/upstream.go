@@ -112,6 +112,7 @@ func NewBaseUpstream(
 			CreateHealthEventProcessor(ctx, conf, chainSpecific),
 			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
 			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
+			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)
@@ -250,6 +251,7 @@ func (u *BaseUpstream) PartialStop() {
 	u.processorAggregator.StopProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.LabelsProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.CapEventProcessorType)
 }
 
 func (u *BaseUpstream) Resume() {
@@ -258,6 +260,7 @@ func (u *BaseUpstream) Resume() {
 	u.processorAggregator.StartProcessor(event_processors.HealthValidatorProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LabelsProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.CapEventProcessorType)
 }
 
 func (u *BaseUpstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
@@ -311,28 +314,11 @@ func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) meth
 	return newMethods
 }
 
-func (u *BaseUpstream) startConnectors(ctx context.Context) {
-	headConnectorType := u.upConfig.GetHeadApiConnectorType()
+func (u *BaseUpstream) startConnectors(_ context.Context) {
+	// Capabilities derived from connector state (WsCap, NewHeads/Logs, PendingTx) are
+	// now produced by the cap pipeline (caps.CapProcessor + CapDetectors), which
+	// subscribes to the connectors' state streams itself. Here we only start them.
 	for _, connector := range u.apiConnectors {
 		connector.Start()
-		go func(conn connectors.ApiConnector) {
-			stateSubscription := conn.SubscribeStates(fmt.Sprintf("%s_%s_sub_states", u.id, conn.GetType()))
-			if stateSubscription == nil {
-				return
-			}
-			defer stateSubscription.Unsubscribe()
-
-			isHeadConnector := conn.GetType() == headConnectorType
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case event, okEvent := <-stateSubscription.Events:
-					if okEvent {
-						u.emitter(&protocol.SubscribeUpstreamStateEvent{State: event, HeadConnector: isHeadConnector})
-					}
-				}
-			}
-		}(connector)
 	}
 }

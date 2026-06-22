@@ -2,12 +2,12 @@ package eth_validations
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
@@ -185,7 +185,7 @@ func (v *EthLogIndexValidator) getBlock(blockHex string) (logIndexBlock, error) 
 		return logIndexBlock{}, response.GetError()
 	}
 	var block logIndexBlock
-	if err := json.Unmarshal(response.ResponseResult(), &block); err != nil {
+	if err := sonic.Unmarshal(response.ResponseResult(), &block); err != nil {
 		return logIndexBlock{}, err
 	}
 	return block, nil
@@ -200,7 +200,7 @@ func (v *EthLogIndexValidator) getTransactionReceipt(txHash string) (logIndexRec
 		return logIndexReceipt{}, response.GetError()
 	}
 	var receipt logIndexReceipt
-	if err := json.Unmarshal(response.ResponseResult(), &receipt); err != nil {
+	if err := sonic.Unmarshal(response.ResponseResult(), &receipt); err != nil {
 		return logIndexReceipt{}, err
 	}
 	return receipt, nil
