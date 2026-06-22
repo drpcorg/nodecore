@@ -15,11 +15,16 @@ type WsSession interface {
 
 	IsClosed() bool
 	LoadConnection() *websocket.Conn
+	// Generation returns a monotonic counter bumped on every successful
+	// SetConnection. It identifies the current connection so that disconnect
+	// events emitted by a reader of a superseded connection can be ignored.
+	Generation() uint64
 }
 
 type WebsocketSession struct {
 	connection *utils.Atomic[*websocket.Conn]
 	connClosed *atomic.Bool
+	generation *atomic.Uint64
 }
 
 func NewWebsocketSession() *WebsocketSession {
@@ -29,12 +34,18 @@ func NewWebsocketSession() *WebsocketSession {
 	return &WebsocketSession{
 		connection: utils.NewAtomic[*websocket.Conn](),
 		connClosed: &connClosed,
+		generation: &atomic.Uint64{},
 	}
 }
 
 func (s *WebsocketSession) SetConnection(conn *websocket.Conn) {
 	s.connection.Store(conn)
 	s.connClosed.Store(false)
+	s.generation.Add(1)
+}
+
+func (s *WebsocketSession) Generation() uint64 {
+	return s.generation.Load()
 }
 
 func (s *WebsocketSession) IsClosed() bool {
