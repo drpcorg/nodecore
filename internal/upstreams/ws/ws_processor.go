@@ -57,8 +57,6 @@ func (b *BaseWsProcessor) Unsubscribe(opId string) {
 	b.requestRegistry.Cancel(opId)
 }
 
-var i = 0
-
 func (b *BaseWsProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		go func() {
