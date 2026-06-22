@@ -34,6 +34,7 @@ const (
 type grpcSessionStore struct {
 	ttl      time.Duration
 	sessions *utils.CMap[string, time.Time]
+	now      func() time.Time
 }
 
 func newGrpcSessionStore(ttl time.Duration) *grpcSessionStore {
@@ -43,6 +44,7 @@ func newGrpcSessionStore(ttl time.Duration) *grpcSessionStore {
 	return &grpcSessionStore{
 		ttl:      ttl,
 		sessions: utils.NewCMap[string, time.Time](),
+		now:      time.Now,
 	}
 }
 
@@ -50,14 +52,14 @@ func (s *grpcSessionStore) Put(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	s.sessions.Store(sessionID, time.Now().Add(s.ttl))
+	s.sessions.Store(sessionID, s.now().Add(s.ttl))
 }
 
 func (s *grpcSessionStore) Exists(sessionID string) bool {
 	if sessionID == "" {
 		return false
 	}
-	now := time.Now()
+	now := s.now()
 
 	expireAt, ok := s.sessions.Load(sessionID)
 	if !ok {

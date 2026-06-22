@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/samber/lo"
 )
 
@@ -128,46 +129,20 @@ func (u *UnbanMethodUpstreamStateEvent) ProcessEvent(state UpstreamState) Upstre
 	return state
 }
 
-type SubscribeUpstreamStateEvent struct {
-	State         SubscribeConnectorState
-	HeadConnector bool
+// CapsUpstreamStateEvent replaces the upstream's capability set wholesale. Caps are
+// produced by the per-chain cap pipeline (caps.CapProcessor aggregating CapDetectors),
+// which already merges every detector's view into one set, so the event carries the
+// full set rather than incremental add/remove.
+type CapsUpstreamStateEvent struct {
+	Caps mapset.Set[Cap]
 }
 
-func (s *SubscribeUpstreamStateEvent) Same(state UpstreamState) bool {
-	if s.HeadConnector {
-		return false
-	}
-	switch s.State {
-	case WsConnected:
-		return state.Caps.Contains(WsCap)
-	case WsDisconnected:
-		return !state.Caps.Contains(WsCap)
-	}
-	return false
+func (c *CapsUpstreamStateEvent) Same(state UpstreamState) bool {
+	return state.Caps != nil && c.Caps != nil && state.Caps.Equal(c.Caps)
 }
 
-func (s *SubscribeUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
-	copyCaps := state.Caps.Clone()
-	switch s.State {
-	case WsConnected:
-		copyCaps.Add(WsCap)
-		// A live ws connector is enough to aggregate pending-tx subscriptions
-		// (eth_subscribe("newPendingTransactions")) locally; unlike newHeads/logs
-		// it does not require the head connector to be ws-driven.
-		copyCaps.Add(PendingTxCap)
-		// A websocket head connector means the head is subscription-driven, so
-		// newHeads can be synthesized locally; logs additionally needs
-		// eth_getLogs. eth_subscribe presence implies an EVM chain.
-		if s.HeadConnector && state.UpstreamMethods != nil && state.UpstreamMethods.HasMethod("eth_subscribe") {
-			copyCaps.Add(NewHeadsCap)
-			if state.UpstreamMethods.HasMethod("eth_getLogs") {
-				copyCaps.Add(LogsCap)
-			}
-		}
-	case WsDisconnected:
-		copyCaps.Clear()
-	}
-	state.Caps = copyCaps
+func (c *CapsUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
+	state.Caps = c.Caps.Clone()
 	return state
 }
 
@@ -191,7 +166,7 @@ func (l *LabelsUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamSta
 }
 
 var _ AbstractUpstreamStateEvent = (*LabelsUpstreamStateEvent)(nil)
-var _ AbstractUpstreamStateEvent = (*SubscribeUpstreamStateEvent)(nil)
+var _ AbstractUpstreamStateEvent = (*CapsUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*UnbanMethodUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*BanMethodUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*BlockUpstreamStateEvent)(nil)

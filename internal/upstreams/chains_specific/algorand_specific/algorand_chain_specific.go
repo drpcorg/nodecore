@@ -10,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -64,6 +65,10 @@ func (a *AlgorandChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		),
 	}
 	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+}
+
+func (a *AlgorandChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	return caps.DefaultCapDetectors(a.upstreamId, input.WsConnector)
 }
 
 func (a *AlgorandChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

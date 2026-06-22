@@ -120,117 +120,56 @@ func TestUnbanMethodUpstreamStateEvent(t *testing.T) {
 	assert.Equal(t, state, event.ProcessEvent(state))
 }
 
-func TestSubscribeUpstreamStateEvent(t *testing.T) {
-	t.Run("ws connected adds capability", func(t *testing.T) {
-		state := newUpstreamState()
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected}
-
-		assert.False(t, event.Same(state))
-
-		nextState := event.ProcessEvent(state)
-
-		assert.False(t, state.Caps.Contains(protocol.WsCap))
-		assert.True(t, nextState.Caps.Contains(protocol.WsCap))
-		// a live ws connector also grants the pending-tx capability
-		assert.True(t, nextState.Caps.Contains(protocol.PendingTxCap))
-		assert.NotSame(t, state.Caps, nextState.Caps)
-		assert.True(t, event.Same(nextState))
-	})
-
-	t.Run("ws disconnected removes capability", func(t *testing.T) {
-		state := newUpstreamState()
-		state.Caps.Add(protocol.WsCap)
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected}
-
-		assert.False(t, event.Same(state))
-
-		nextState := event.ProcessEvent(state)
-
-		assert.True(t, state.Caps.Contains(protocol.WsCap))
-		assert.False(t, nextState.Caps.Contains(protocol.WsCap))
-		assert.NotSame(t, state.Caps, nextState.Caps)
-		assert.True(t, event.Same(nextState))
-	})
-
-	t.Run("unexpected state returns false in Same", func(t *testing.T) {
-		state := newUpstreamState()
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.SubscribeConnectorState(99)}
-
-		assert.False(t, event.Same(state))
-	})
-
-	t.Run("evm head connector ws connect adds newHeads and logs caps", func(t *testing.T) {
-		methodsMock := mocks.NewMethodsMock()
-		methodsMock.On("HasMethod", "eth_subscribe").Return(true)
-		methodsMock.On("HasMethod", "eth_getLogs").Return(true)
-		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: true}
+func TestCapsUpstreamStateEvent(t *testing.T) {
+	t.Run("replaces the cap set wholesale", func(t *testing.T) {
+		state := protocol.DefaultUpstreamState(
+			mocks.NewMethodsMock(),
+			mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+			"u", nil, nil,
+		)
+		event := &protocol.CapsUpstreamStateEvent{
+			Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap),
+		}
 
 		next := event.ProcessEvent(state)
 
 		assert.True(t, next.Caps.Contains(protocol.WsCap))
 		assert.True(t, next.Caps.Contains(protocol.NewHeadsCap))
-		assert.True(t, next.Caps.Contains(protocol.LogsCap))
+		// PendingTxCap was in the old set but not the new one -> dropped.
+		assert.False(t, next.Caps.Contains(protocol.PendingTxCap))
+		// the event carries a clone, mutating it must not touch upstream state
+		assert.NotSame(t, event.Caps, next.Caps)
 	})
 
-	t.Run("evm head connector ws connect without eth_getLogs has no logs cap", func(t *testing.T) {
-		methodsMock := mocks.NewMethodsMock()
-		methodsMock.On("HasMethod", "eth_subscribe").Return(true)
-		methodsMock.On("HasMethod", "eth_getLogs").Return(false)
-		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: true}
-
-		next := event.ProcessEvent(state)
-
-		assert.True(t, next.Caps.Contains(protocol.NewHeadsCap))
-		assert.False(t, next.Caps.Contains(protocol.LogsCap))
-	})
-
-	// A ws connector used only for requests (head connector is e.g. json-rpc)
-	// must not grant local-sub caps - otherwise newHeads routes to local
-	// synthesis with a polled head and emits nothing.
-	t.Run("non-head ws connect grants only WsCap", func(t *testing.T) {
-		methodsMock := mocks.NewMethodsMock()
-		methodsMock.On("HasMethod", "eth_subscribe").Return(true).Maybe()
-		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: false}
-
-		next := event.ProcessEvent(state)
-
-		assert.True(t, next.Caps.Contains(protocol.WsCap))
-		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
-		assert.False(t, next.Caps.Contains(protocol.LogsCap))
-		// pending-tx aggregation only needs a ws connector, not a ws-driven head
-		assert.True(t, next.Caps.Contains(protocol.PendingTxCap))
-	})
-
-	t.Run("non-evm head connector ws connect grants only WsCap", func(t *testing.T) {
-		methodsMock := mocks.NewMethodsMock()
-		methodsMock.On("HasMethod", "eth_subscribe").Return(false)
-		state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "u", nil, nil)
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected, HeadConnector: true}
-
-		next := event.ProcessEvent(state)
-
-		assert.True(t, next.Caps.Contains(protocol.WsCap))
-		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
-		assert.False(t, next.Caps.Contains(protocol.LogsCap))
-	})
-
-	t.Run("ws disconnect removes all sub caps", func(t *testing.T) {
+	t.Run("empty caps clears everything", func(t *testing.T) {
 		state := protocol.DefaultUpstreamState(
 			mocks.NewMethodsMock(),
 			mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap),
 			"u", nil, nil,
 		)
-		event := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected}
+		event := &protocol.CapsUpstreamStateEvent{Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()}
 
 		next := event.ProcessEvent(state)
 
-		assert.False(t, next.Caps.Contains(protocol.WsCap))
-		assert.False(t, next.Caps.Contains(protocol.NewHeadsCap))
-		assert.False(t, next.Caps.Contains(protocol.LogsCap))
-		assert.False(t, next.Caps.Contains(protocol.PendingTxCap))
+		assert.Equal(t, 0, next.Caps.Cardinality())
+	})
+
+	t.Run("Same is true only for an equal set", func(t *testing.T) {
+		state := protocol.DefaultUpstreamState(
+			mocks.NewMethodsMock(),
+			mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+			"u", nil, nil,
+		)
+
+		same := &protocol.CapsUpstreamStateEvent{
+			Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+		}
+		different := &protocol.CapsUpstreamStateEvent{
+			Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+		}
+
+		assert.True(t, same.Same(state))
+		assert.False(t, different.Same(state))
 	})
 }
 

@@ -459,7 +459,7 @@ func mapToEthSubscribeFallback(requestedMethod string, payload []byte) (string, 
 }
 
 func mapEthSubscribeParams(requestedMethod string, payload []byte) ([]byte, error) {
-	methodRaw, _ := json.Marshal(requestedMethod)
+	methodRaw, _ := sonic.Marshal(requestedMethod)
 	params := []json.RawMessage{methodRaw}
 
 	// dproxy NativeSubscribe sends Method as the concrete subscription type and
@@ -473,7 +473,7 @@ func mapEthSubscribeParams(requestedMethod string, payload []byte) ([]byte, erro
 		params = append(params, append(json.RawMessage(nil), payload...))
 	}
 
-	result, err := json.Marshal(params)
+	result, err := sonic.Marshal(params)
 	if err != nil {
 		return nil, err
 	}

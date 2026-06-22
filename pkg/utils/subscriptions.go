@@ -57,6 +57,14 @@ func (s *Subscription[T]) Unsubscribe() {
 type SubscriptionManager[T any] struct {
 	subscriptions CMap[string, *Subscription[T]]
 	name          string
+	// mu serializes Publish against SubscribeWithReplay so that registering a new
+	// subscriber and snapshotting the last published event happen atomically with
+	// respect to a concurrent Publish. Without this a replay-subscriber could read
+	// the last state, then have a Publish run (and miss it, being unregistered),
+	// then register - ending up permanently stale. lastEvent/hasLast are guarded by mu.
+	mu        sync.Mutex
+	lastEvent T
+	hasLast   bool
 }
 
 func (sm *SubscriptionManager[T]) Subscribe(name string) *Subscription[T] {
@@ -77,15 +85,31 @@ func (sm *SubscriptionManager[T]) SubscribeWithSize(name string, size int) *Subs
 	return sub
 }
 
-func (sm *SubscriptionManager[T]) SubscribeWithInitialState(name string, size int, initialState T) *Subscription[T] {
+// SubscribeWithReplay registers a subscriber and, if any event has been published
+// before, seeds it with the most recent one. The snapshot-and-register is done under
+// sm.mu (the same lock Publish holds), so it is atomic with respect to a concurrent
+// Publish: the subscriber either sees a publish that happened entirely before it
+// registered (replayed as the seed) or one that happened entirely after (delivered
+// normally) - never a publish that slips through the gap. Use this for state-style
+// streams where a late subscriber must learn the current state.
+func (sm *SubscriptionManager[T]) SubscribeWithReplay(name string) *Subscription[T] {
+	return sm.SubscribeWithReplaySize(name, 100)
+}
+
+func (sm *SubscriptionManager[T]) SubscribeWithReplaySize(name string, size int) *Subscription[T] {
 	sub := &Subscription[T]{
 		name:    name,
 		Events:  make(chan T, size),
 		manager: sm,
 	}
-	sub.Events <- initialState
 
+	sm.mu.Lock()
+	if sm.hasLast {
+		sub.Events <- sm.lastEvent
+	}
 	_, loaded := sm.subscriptions.LoadOrStore(name, sub)
+	sm.mu.Unlock()
+
 	if loaded {
 		log.Panic().Msgf("Fatal error - %s subscription already exists at %s", name, sm.name)
 	}
@@ -94,6 +118,9 @@ func (sm *SubscriptionManager[T]) SubscribeWithInitialState(name string, size in
 }
 
 func (sm *SubscriptionManager[T]) Publish(event T) {
+	sm.mu.Lock()
+	sm.lastEvent = event
+	sm.hasLast = true
 	sm.subscriptions.Range(func(key string, sub *Subscription[T]) bool {
 		sub.mu.Lock()
 		defer sub.mu.Unlock()
@@ -110,6 +137,7 @@ func (sm *SubscriptionManager[T]) Publish(event T) {
 
 		return true
 	})
+	sm.mu.Unlock()
 	publishRate.WithLabelValues(sm.name).Inc()
 }
 

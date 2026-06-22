@@ -374,8 +374,10 @@ const (
 	LogsCap
 	// PendingTxCap means the upstream has a live websocket connector usable for
 	// eth_subscribe("newPendingTransactions"), so pending-tx subscriptions can be
-	// aggregated locally. Set alongside WsCap; the topics are EVM-only but the cap
-	// is harmless elsewhere since only eth_subscribe clients request them.
+	// aggregated locally. Governed by the cap pipeline: a live ws connector is enough
+	// on most chains, but on chains with a pending-tx validator (e.g. BASE) it is also
+	// gated on txpool_content showing a non-trivial mempool. The topics are EVM-only
+	// but the cap is harmless elsewhere since only eth_subscribe clients request them.
 	PendingTxCap
 )
 

@@ -294,14 +294,16 @@ func TestBaseUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *test
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_AddsWsCapOnConnected(t *testing.T) {
+func TestBaseUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	startUpstream(t, upstream, sub)
 
-	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
+	emit(&protocol.CapsUpstreamStateEvent{
+		Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+	})
 
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
@@ -316,16 +318,18 @@ func TestBaseUpstreamProcessStateEvents_AddsWsCapOnConnected(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsConnectedState(t *testing.T) {
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	startUpstream(t, upstream, sub)
 
-	wsConnectedEvent := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected}
+	capsEvent := &protocol.CapsUpstreamStateEvent{
+		Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+	}
 
-	emit(wsConnectedEvent)
+	emit(capsEvent)
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
 		mustNewUpstreamMethods(t, nil),
@@ -337,22 +341,24 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsConnectedState(t *test
 	expectedState.Status = protocol.Available
 	assertStateEventMatches(t, event, expectedState)
 
-	emit(wsConnectedEvent)
+	emit(capsEvent)
 	assertNoUpstreamEvent(t, sub)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_RemovesWsCapOnDisconnected(t *testing.T) {
+func TestBaseUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	startUpstream(t, upstream, sub)
 
-	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
+	emit(&protocol.CapsUpstreamStateEvent{
+		Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+	})
 	_ = nextUpstreamEvent(t, sub)
 
-	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected})
+	emit(&protocol.CapsUpstreamStateEvent{Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()})
 
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
@@ -367,18 +373,20 @@ func TestBaseUpstreamProcessStateEvents_RemovesWsCapOnDisconnected(t *testing.T)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsDisconnectedState(t *testing.T) {
+func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T) {
 	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
 	startUpstream(t, upstream, sub)
 
-	emit(&protocol.SubscribeUpstreamStateEvent{State: protocol.WsConnected})
+	emit(&protocol.CapsUpstreamStateEvent{
+		Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.PendingTxCap),
+	})
 	_ = nextUpstreamEvent(t, sub)
 
-	wsDisconnectedEvent := &protocol.SubscribeUpstreamStateEvent{State: protocol.WsDisconnected}
-	emit(wsDisconnectedEvent)
+	clearedEvent := &protocol.CapsUpstreamStateEvent{Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()}
+	emit(clearedEvent)
 	event := nextUpstreamEvent(t, sub)
 	expectedState := protocol.DefaultUpstreamState(
 		mustNewUpstreamMethods(t, nil),
@@ -390,7 +398,7 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateWsDisconnectedState(t *t
 	expectedState.Status = protocol.Available
 	assertStateEventMatches(t, event, expectedState)
 
-	emit(wsDisconnectedEvent)
+	emit(clearedEvent)
 	assertNoUpstreamEvent(t, sub)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }

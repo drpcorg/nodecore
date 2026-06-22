@@ -158,7 +158,13 @@ func (b *BaseWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest pro
 }
 
 func (b *BaseWsProcessor) SubscribeWsStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
-	return b.subManager.Subscribe(name)
+	// Replay the last published connection state to the new subscriber. A late
+	// subscriber (e.g. a cap detector started after the connection came up) would
+	// otherwise never learn the connector is live, since WsConnected is published
+	// once on connect. The replay is atomic with respect to a concurrent connect/
+	// disconnect publish, so the subscriber can't miss a state transition in the gap
+	// between snapshotting the state and registering.
+	return b.subManager.SubscribeWithReplay(name)
 }
 
 func NewBaseWsProcessor(
