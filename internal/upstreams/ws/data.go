@@ -70,10 +70,14 @@ func (w *wsWriteEvent) wsEvent() {}
 type wsDisconnectEvent struct {
 	reason string
 	cause  error
+	// generation is the session generation of the connection whose reader
+	// produced this event. The main loop ignores the event if it no longer
+	// matches the session's current generation (a superseded connection).
+	generation uint64
 }
 
-func newWsDisconnectEvent(reason string, cause error) *wsDisconnectEvent {
-	return &wsDisconnectEvent{reason: reason, cause: cause}
+func newWsDisconnectEvent(reason string, cause error, generation uint64) *wsDisconnectEvent {
+	return &wsDisconnectEvent{reason: reason, cause: cause, generation: generation}
 }
 
 func (e *wsDisconnectEvent) wsEvent() {}

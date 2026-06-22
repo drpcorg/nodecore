@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -335,6 +336,103 @@ func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 	}
 }
 
+// TestBaseWsProcessorIgnoresStaleDisconnectAfterReconnect is a regression test for a
+// reconnect storm: when the main loop disconnects out-of-band (here via an unknown
+// response format) while the current connection's reader is still alive, that reader
+// emits a disconnect event AFTER the loop has already reconnected. Without a
+// generation guard that stale event tears down the healthy new connection, which in
+// turn makes the next reader emit another stale event - flapping forever and dropping
+// all subscriptions on every cycle. The fix tags disconnect events with the session
+// generation and ignores stale ones, so exactly two connections are dialed and the
+// second one survives.
+func TestBaseWsProcessorIgnoresStaleDisconnectAfterReconnect(t *testing.T) {
+	var dials atomic.Int32
+	conn2Ready := make(chan *websocket.Conn, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		switch dials.Add(1) {
+		case 1:
+			// First connection: feed an unknown-format message so the main loop
+			// disconnects this connection out-of-band while its reader is alive.
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(`unknown`))
+		case 2:
+			conn2Ready <- conn
+		}
+		// Keep the server side alive until the client closes the socket.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	dialService := mocks.NewDialWsServiceMock()
+	requestRegistry := mocks.NewRequestRegistryMock()
+	wsProtocol := mocks.NewWsProtocolMock()
+	session := wsupstream.NewWebsocketSession()
+
+	dialFunc := func() (*websocket.Conn, error) {
+		conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(server.URL, "http://", "ws://", 1), nil)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+	dialService.On("NewConnectFunc", mock.Anything).Return(wsupstream.DialFunc(dialFunc), nil).Once()
+
+	wsProtocol.On("ParseWsMessage", []byte(`unknown`)).Return(&protocol.WsResponse{Type: protocol.Unknown}, nil).Maybe()
+	validResponse := &protocol.WsResponse{Id: "request-1", Type: protocol.JsonRpc, Message: []byte(`"0x1"`)}
+	wsProtocol.On("ParseWsMessage", []byte(`valid`)).Return(validResponse, nil).Maybe()
+
+	routed := make(chan struct{}, 1)
+	requestRegistry.On("OnRpcMessage", validResponse).Run(func(args mock.Arguments) {
+		routed <- struct{}{}
+	}).Maybe()
+	requestRegistry.On("CancelAll").Maybe()
+
+	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
+	require.NoError(t, err)
+
+	subscription := processor.SubscribeWsStates("test")
+	go func() {
+		for range subscription.Events {
+		}
+	}()
+
+	processor.Start()
+	defer processor.Stop()
+
+	// Wait for the second connection (established after the out-of-band disconnect).
+	var conn2 *websocket.Conn
+	select {
+	case conn2 = <-conn2Ready:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected a reconnect to the second connection")
+	}
+	defer func() { _ = conn2.Close() }()
+
+	// The second connection must stay alive: a message over it is still routed.
+	require.NoError(t, conn2.WriteMessage(websocket.TextMessage, []byte(`valid`)))
+	select {
+	case <-routed:
+	case <-time.After(time.Second):
+		t.Fatal("expected the message over the reconnected connection to be routed")
+	}
+
+	// And no reconnect storm: the stale disconnect from the first connection's
+	// reader must be ignored, so the dial count settles at exactly 2.
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, int32(2), dials.Load(), "the healthy reconnected connection must not be torn down by a stale disconnect")
+}
+
 type processorFixture struct {
 	processor       *wsupstream.BaseWsProcessor
 	dialService     *mocks.DialWsServiceMock
@@ -373,6 +471,7 @@ func newStartedProcessor(t *testing.T) *processorFixture {
 	fixture := newProcessorForNoStart(t)
 	fixture.wsSession.On("IsClosed").Return(false)
 	fixture.wsSession.On("CloseCurrent").Return(nil).Maybe()
+	fixture.wsSession.On("Generation").Return(uint64(1)).Maybe()
 	fixture.requestRegistry.On("CancelAll").Maybe()
 
 	fixture.processor.Start()

@@ -87,6 +87,13 @@ func (b *BaseWsProcessor) Start() {
 				case event := <-b.readEventsChan:
 					switch e := event.(type) {
 					case *wsDisconnectEvent:
+						if e.generation != b.wsSession.Generation() {
+							// Stale event from a reader of a superseded connection.
+							// The current connection is healthy - ignore it, otherwise
+							// we would tear down a live connection and spin into a
+							// perpetual reconnect storm.
+							continue
+						}
 						b.disconnect(e.reason, e.cause)
 						b.subManager.Publish(protocol.WsDisconnected)
 					case *readEvent:
@@ -292,17 +299,18 @@ func (b *BaseWsProcessor) startReader(ctx context.Context) {
 	}
 
 	connection := b.wsSession.LoadConnection()
+	gen := b.wsSession.Generation()
 
 	go func() {
 		for {
 			_, message, err := connection.ReadMessage()
 			if err != nil {
-				sendEventFunc(newWsDisconnectEvent("couldn't read message", err))
+				sendEventFunc(newWsDisconnectEvent("couldn't read message", err, gen))
 				return
 			}
 			wsResponse, err := b.wsProtocol.ParseWsMessage(message)
 			if err != nil {
-				sendEventFunc(newWsDisconnectEvent("couldn't parse ws message", err))
+				sendEventFunc(newWsDisconnectEvent("couldn't parse ws message", err, gen))
 				return
 			}
 

@@ -106,6 +106,11 @@ func (m *WsSessionMock) LoadConnection() *websocket.Conn {
 	return args.Get(0).(*websocket.Conn)
 }
 
+func (m *WsSessionMock) Generation() uint64 {
+	args := m.Called()
+	return args.Get(0).(uint64)
+}
+
 type WsProtocolMock struct {
 	mock.Mock
 }
