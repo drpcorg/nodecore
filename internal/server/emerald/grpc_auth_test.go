@@ -121,15 +121,18 @@ func TestGrpcAuthServiceAuthenticateNilRequest(t *testing.T) {
 }
 
 func TestGrpcSessionStoreTTL(t *testing.T) {
+	now := time.Unix(0, 0)
 	store := newGrpcSessionStore(40 * time.Millisecond)
+	store.now = func() time.Time { return now }
+
 	store.Put("session-1")
 
 	assert.True(t, store.Exists("session-1"))
-	time.Sleep(30 * time.Millisecond)
+	now = now.Add(30 * time.Millisecond)
 	assert.True(t, store.Exists("session-1")) // extends ttl on access
-	time.Sleep(30 * time.Millisecond)
+	now = now.Add(30 * time.Millisecond)
 	assert.True(t, store.Exists("session-1"))
-	time.Sleep(60 * time.Millisecond)
+	now = now.Add(60 * time.Millisecond)
 	assert.False(t, store.Exists("session-1"))
 }
 
