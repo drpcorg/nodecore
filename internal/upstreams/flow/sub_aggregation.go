@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -66,18 +67,21 @@ func resolveSource(
 	strategy UpstreamStrategy,
 	registry *rating.RatingRegistry,
 	engine subengine.Engine,
+	settings config.LocalSubSettings,
 ) (string, subengine.SourceBuilder, SubFilter) {
-	if isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
-	if isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
+	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
 		if filter, err := parseLogFilter(request); err == nil {
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
 		}
 	}
-	if isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
 	}
+	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
+	// local regardless of settings; it builds its own pending-tx source internally.
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
 	}

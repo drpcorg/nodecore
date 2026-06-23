@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -23,6 +24,7 @@ type SubscriptionRequestProcessor struct {
 	engine             subengine.Engine
 	subCtx             *SubCtx
 	registry           *rating.RatingRegistry
+	localSubs          config.LocalSubSettings
 }
 
 func NewSubscriptionRequestProcessor(
@@ -31,6 +33,7 @@ func NewSubscriptionRequestProcessor(
 	engine subengine.Engine,
 	subCtx *SubCtx,
 	registry *rating.RatingRegistry,
+	localSubs config.LocalSubSettings,
 ) *SubscriptionRequestProcessor {
 	return &SubscriptionRequestProcessor{
 		chain:              chain,
@@ -38,6 +41,7 @@ func NewSubscriptionRequestProcessor(
 		engine:             engine,
 		subCtx:             subCtx,
 		registry:           registry,
+		localSubs:          localSubs,
 	}
 }
 
@@ -67,7 +71,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// The shared source emits events only - each client allocates its own
 		// client-facing subscription id below, independent of the single
 		// upstream subscription id.
-		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine)
+		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
 		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
 			responses <- totalFailureWrapper(request, err)

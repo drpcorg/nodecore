@@ -160,18 +160,29 @@ The `tron` bundle is the multi-transport example: it composes `tron-json-rpc` (E
 
 ## Shipped specs
 
-As of today, nodecore embeds the following spec files (see `pkg/methods/specs/`):
+nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/specs/)). They split into **bundles**, which compose transport-specific specs, and **plain** specs, which declare their own methods and `api-connectors` (see [`spec` block](#spec-block)).
 
-```
-algorand        eth-json-rpc   harmony_1                       linea         scroll
-arbitrum        eth-websocket  hyperliquid                     mantle        sei
-aztec           eth            hyperliquid-rest-additional     optimism      solana
-cronos_zkevm    fantom         klaytn                          polygon       solana-json-rpc
-filecoin        harmony_0      klaytn-json-rpc                 polygon_zkevm solana-websocket
-                                klaytn-websocket                rootstock     tron
-                                                                              viction
-                                                                              zk
-```
+### Bundles
+
+| Spec | Composed from |
+| --- | --- |
+| `eth` | `eth-json-rpc`, `eth-websocket` |
+| `solana` | `solana-json-rpc`, `solana-websocket` |
+| `klaytn` | `klaytn-json-rpc`, `klaytn-websocket` |
+| `hyperliquid` | `hyperliquid-eth`, `hyperliquid-rest-additional` |
+| `tron` | `tron-json-rpc`, `tron-rest`, `tron-rest-solidity` |
+
+### Plain specs
+
+Grouped by the transports they declare:
+
+| `api-connectors` | Specs |
+| --- | --- |
+| `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
+| `json-rpc` | `algorand`, `aztec`, `tron-json-rpc` |
+| `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
+| `rest` | `tron-rest` |
+| `rest-additional` | `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
 ## Adding a new method
 
