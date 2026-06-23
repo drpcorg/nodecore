@@ -126,6 +126,11 @@ policies:
     connector-id: memory-connector
     object-max-size: "1000KB"
     ttl: 10s
+  - blockchain-type: "eth"
+    id: memory-policy-3
+    method: "eth_chainId"
+    connector-id: memory-connector
+    ttl: 1h
 ```
 
 The `policies` section defines the rules for which requests should be cached, how long they remain valid, and which connector should store them. Each policy is tied to specific chains and methods, allowing fine-grained caching control.
@@ -133,9 +138,13 @@ The `policies` section defines the rules for which requests should be cached, ho
 `policies` fields:
 
 - `id` - Unique identifier for the policy. **_Required_**, **_Unique_**
-- `chain` - Target blockchain(s) this policy applies to. **_Required_**. Possible values:
+- `chain` - Target blockchain(s) this policy applies to. **_Required_** unless `blockchain-type` is set (the two are mutually exclusive). Possible values:
   - `*` matches all supported chains
   - Multiple chains can be specified with `|` (e.g., `optimism|polygon|ethereum`)
+- `blockchain-type` - Target blockchain type family this policy applies to. Mutually exclusive with `chain` — set exactly one of the two. Useful to cache a method across a whole family without listing every chain. Possible values:
+  - `*` matches all blockchain types
+  - Multiple types can be specified with `|` (e.g., `eth|solana`)
+  - Supported types: `eth`, `eth-beacon-chain`, `solana`, `avm`, `aztec`, `cosmos`, `ton`, `bitcoin`, `near`, `polkadot`, `starknet`
 - `method` - RPC method or method pattern to which the policy applies. **_Required_**. Possible values:
   - exact names (`eth_getBlockByNumber`)
   - wildcards (`debug*` to cover all debug methods or `*` matches all methods)

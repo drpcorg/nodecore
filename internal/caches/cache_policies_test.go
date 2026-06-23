@@ -442,6 +442,52 @@ func TestCachePolicyAllChainThenReceiveResult(t *testing.T) {
 	}
 }
 
+func TestCachePolicyMatchedBlockchainTypeThenReceiveAndStoreResult(t *testing.T) {
+	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	result1 := []byte(`result1`)
+	specMethod := specs.DefaultMethod("method")
+
+	connectorMock := mocks.NewCacheConnectorMock()
+	connectorMock.On("Receive", mock.Anything, mock.Anything).Return(result1, nil)
+	connectorMock.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	// polygon belongs to the "eth" blockchain type family
+	policyCfg := test_utils.PolicyConfigBlockchainType("eth", "*", "conn-id", "10KB", "5s", true)
+	policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
+
+	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
+	assert.True(t, ok)
+	assert.True(t, bytes.Equal(result, result1))
+
+	ok = policy.Store(context.Background(), chains.POLYGON, request, result1)
+	assert.True(t, ok)
+
+	methodsMock.AssertExpectations(t)
+	upSupervisor.AssertExpectations(t)
+	connectorMock.AssertExpectations(t)
+}
+
+func TestCachePolicyNotMatchedBlockchainTypeThenReceiveAndStoreNothing(t *testing.T) {
+	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+	specMethod := specs.DefaultMethod("method")
+
+	// polygon is not part of the "solana" family, so the policy must not apply
+	policyCfg := test_utils.PolicyConfigBlockchainType("solana", "*", "conn-id", "10KB", "5s", true)
+	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
+
+	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
+	assert.False(t, ok)
+	assert.Nil(t, result)
+
+	ok = policy.Store(context.Background(), chains.POLYGON, request, []byte(`result`))
+	assert.False(t, ok)
+
+	methodsMock.AssertExpectations(t)
+	upSupervisor.AssertExpectations(t)
+}
+
 func TestCachePolicySupportedMethodsThenReceiveResultAndStoreOrNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	result1 := []byte(`result1`)

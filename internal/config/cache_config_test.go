@@ -39,16 +39,28 @@ func TestCachePolicyNoIdThenError(t *testing.T) {
 	assert.ErrorContains(t, err, "error during cache policies validation, cause: no policy id under index 0")
 }
 
-func TestCachePolicyNoChainThenError(t *testing.T) {
+func TestCachePolicyNoChainAndNoBlockchainTypeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-empty-chain.yaml")
 	_, err := config.NewAppConfig()
-	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: empty chain setting")
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: either chain or blockchain-type must be set")
+}
+
+func TestCachePolicyBothChainAndBlockchainTypeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-chain-and-blockchain-type.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain and blockchain-type are mutually exclusive")
 }
 
 func TestCachePolicyNotSupportedChainThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/cache/cache-not-supported-chain.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: chain 'not-supported' is not supported")
+}
+
+func TestCachePolicyNotSupportedBlockchainTypeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/cache/cache-not-supported-blockchain-type.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during cache policy 'my_policy' validation, cause: blockchain type 'not-supported' is not supported")
 }
 
 func TestCachePolicyWrongMaxSizeThenError(t *testing.T) {

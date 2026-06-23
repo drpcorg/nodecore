@@ -102,6 +102,19 @@ func PolicyConfig(chain, method, connector, maxSize, ttl string, cacheEmpty bool
 	}
 }
 
+func PolicyConfigBlockchainType(blockchainType, method, connector, maxSize, ttl string, cacheEmpty bool) *config.CachePolicyConfig {
+	return &config.CachePolicyConfig{
+		Id:               "policy",
+		BlockchainType:   blockchainType,
+		Method:           method,
+		FinalizationType: config.None,
+		CacheEmpty:       cacheEmpty,
+		Connector:        connector,
+		ObjectMaxSize:    maxSize,
+		TTL:              ttl,
+	}
+}
+
 func PolicyConfigFinalized(chain, method, connector, maxSize, ttl string, cacheEmpty bool) *config.CachePolicyConfig {
 	return &config.CachePolicyConfig{
 		Id:               "policy",

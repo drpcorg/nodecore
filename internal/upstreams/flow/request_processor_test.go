@@ -9,7 +9,6 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -25,12 +24,11 @@ func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
-	cacheProcessor := mocks.NewCacheProcessorMock()
 	chain := chains.ALEPHZERO
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_subscribe"}
 	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 
-	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
+	processor := flow.NewUnaryRequestProcessor(chain, upSupervisor)
 	response := processor.ProcessRequest(context.Background(), strategy, request)
 
 	assert.IsType(t, &flow.UnaryResponse{}, response)
@@ -40,8 +38,6 @@ func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 	upSupervisor.AssertNotCalled(t, "GetExecutor")
 	upSupervisor.AssertNotCalled(t, "GetUpstream")
 	strategy.AssertNotCalled(t, "SelectUpstream")
-	cacheProcessor.AssertNotCalled(t, "Store")
-	cacheProcessor.AssertNotCalled(t, "Receive")
 
 	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
 	assert.Equal(t, "223", unaryRespWrapper.RequestId)
@@ -49,95 +45,27 @@ func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
 	assert.Equal(t, protocol.ResponseErrorWithData(400, "client error - unable to process a subscription request eth_subscribe", nil), unaryRespWrapper.Response.GetError())
 }
 
-func TestUnaryRequestProcessorReceiveFromCache(t *testing.T) {
-	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	strategy := mocks.NewMockStrategy()
-	cacheProcessor := mocks.NewCacheProcessorMock()
-	chain := chains.POLYGON
-	ctx := context.Background()
-	result := []byte("result")
-	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
-
-	cacheProcessor.On("Receive", ctx, chain, request).Return(result, true)
-
-	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
-	response := processor.ProcessRequest(context.Background(), strategy, request)
-
-	assert.IsType(t, &flow.UnaryResponse{}, response)
-
-	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-	time.Sleep(10 * time.Millisecond)
-
-	upSupervisor.AssertNotCalled(t, "GetExecutor")
-	upSupervisor.AssertNotCalled(t, "GetUpstream")
-	strategy.AssertNotCalled(t, "SelectUpstream")
-	cacheProcessor.AssertNotCalled(t, "Store")
-	cacheProcessor.AssertExpectations(t)
-
-	assert.Equal(t, protocol.Cached, request.RequestObserver().GetRequestKind())
-	assert.Equal(t, "223", unaryRespWrapper.RequestId)
-	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
-	assert.False(t, unaryRespWrapper.Response.HasError())
-	assert.False(t, unaryRespWrapper.Response.HasStream())
-	assert.Equal(t, result, unaryRespWrapper.Response.ResponseResult())
-}
-
-func TestUnaryRequestProcessor_QuorumSkipsCacheReadAndStore(t *testing.T) {
-	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	strategy := mocks.NewMockStrategy()
-	cacheProcessor := mocks.NewCacheProcessorMock()
-	chain := chains.POLYGON
-	err := errors.New("select err")
-	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
-
-	// No cacheProcessor.On("Receive", ...) / ("Store", ...) — if the processor
-	// touches the cache when quorum is requested, the mock will fail.
-	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
-	strategy.On("SelectUpstream", request).Return("", err)
-
-	ctx := quorum.WithParams(context.Background(), quorum.Params{Quorum: 2, QuorumOf: 3})
-	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
-	response := processor.ProcessRequest(ctx, strategy, request)
-
-	time.Sleep(10 * time.Millisecond)
-
-	cacheProcessor.AssertNotCalled(t, "Receive")
-	cacheProcessor.AssertNotCalled(t, "Store")
-
-	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-	assert.Equal(t, "223", unaryRespWrapper.RequestId)
-	assert.True(t, unaryRespWrapper.Response.HasError())
-}
-
 func TestUnaryRequestProcessorCantGetUpstreamThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
-	cacheProcessor := mocks.NewCacheProcessorMock()
 	chain := chains.POLYGON
-	ctx := context.Background()
 	err := errors.New("selection error")
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
 	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 
-	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("", err)
 
-	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
+	processor := flow.NewUnaryRequestProcessor(chain, upSupervisor)
 	response := processor.ProcessRequest(context.Background(), strategy, request)
 
 	assert.IsType(t, &flow.UnaryResponse{}, response)
 
 	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-	time.Sleep(10 * time.Millisecond)
 
 	upSupervisor.AssertNotCalled(t, "GetUpstream")
-	cacheProcessor.AssertNotCalled(t, "Store")
 	upSupervisor.AssertExpectations(t)
 	strategy.AssertExpectations(t)
-	cacheProcessor.AssertExpectations(t)
 
 	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
 	assert.Equal(t, "223", unaryRespWrapper.RequestId)
@@ -148,76 +76,30 @@ func TestUnaryRequestProcessorCantGetUpstreamThenError(t *testing.T) {
 func TestUnaryRequestProcessorNoConnectorThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
-	cacheProcessor := mocks.NewCacheProcessorMock()
 	apiConnector := mocks.NewConnectorMockWithType(specs.RestConnector)
 	chain := chains.POLYGON
-	ctx := context.Background()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
 	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 
-	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
 	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 
-	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
+	processor := flow.NewUnaryRequestProcessor(chain, upSupervisor)
 	response := processor.ProcessRequest(context.Background(), strategy, request)
 
 	assert.IsType(t, &flow.UnaryResponse{}, response)
 
 	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-	time.Sleep(10 * time.Millisecond)
 
-	cacheProcessor.AssertNotCalled(t, "Store")
 	upSupervisor.AssertExpectations(t)
 	strategy.AssertExpectations(t)
-	cacheProcessor.AssertExpectations(t)
 
 	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
 	assert.Equal(t, "223", unaryRespWrapper.RequestId)
 	assert.True(t, unaryRespWrapper.Response.HasError())
 	assert.Equal(t, protocol.ResponseErrorWithData(protocol.NoApiConnectors, "no suitable api connectors to process method eth_call", nil), unaryRespWrapper.Response.GetError())
-}
-
-func TestUnaryRequestProcessorReceiveResponseThenStoreInCache(t *testing.T) {
-	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	strategy := mocks.NewMockStrategy()
-	cacheProcessor := mocks.NewCacheProcessorMock()
-	apiConnector := mocks.NewConnectorMock()
-	chain := chains.POLYGON
-	ctx := context.Background()
-	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	_ = specs.NewMethodSpecLoader().Load()
-	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "eth")
-	result := []byte("result")
-	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", result, protocol.JsonRpc)
-
-	cacheProcessor.On("Receive", ctx, chain, request).Return([]byte{}, false)
-	cacheProcessor.On("Store", ctx, chain, request, result).Return()
-	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
-	strategy.On("SelectUpstream", request).Return("id", nil)
-	upSupervisor.On("GetUpstream", "id").Return(upstream)
-	apiConnector.On("SendRequest", ctx, request).Return(responseHolder)
-
-	processor := flow.NewUnaryRequestProcessor(chain, cacheProcessor, upSupervisor)
-	response := processor.ProcessRequest(context.Background(), strategy, request)
-
-	assert.IsType(t, &flow.UnaryResponse{}, response)
-
-	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-	time.Sleep(10 * time.Millisecond)
-
-	upSupervisor.AssertExpectations(t)
-	strategy.AssertExpectations(t)
-	cacheProcessor.AssertExpectations(t)
-	apiConnector.AssertExpectations(t)
-
-	assert.Equal(t, "id", unaryRespWrapper.UpstreamId)
-	assert.Equal(t, "223", unaryRespWrapper.RequestId)
-	assert.False(t, unaryRespWrapper.Response.HasError())
-	assert.Equal(t, result, unaryRespWrapper.Response.ResponseResult())
 }
 
 func upConfig() *config.Upstream {

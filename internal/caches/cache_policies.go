@@ -38,6 +38,7 @@ type CachePolicy struct {
 	connector          CacheConnector
 	methods            mapset.Set[string]
 	chains             mapset.Set[chains.Chain]
+	blockchainTypes    mapset.Set[chains.BlockchainType]
 	cacheEmpty         bool
 	maxSizeBytes       int
 	ttl                time.Duration
@@ -63,6 +64,7 @@ func NewCachePolicy(
 		cacheEmpty:         policyConfig.CacheEmpty,
 		ttl:                ttl,
 		chains:             getCacheChains(policyConfig.Chain),
+		blockchainTypes:    getCacheBlockchainTypes(policyConfig.BlockchainType),
 		methods:            getCacheMethods(policyConfig.Method),
 		maxSizeBytes:       int(maxSizeInBytes(policyConfig.ObjectMaxSize)),
 		finalizationType:   mapFinalizationType(policyConfig.FinalizationType),
@@ -146,10 +148,10 @@ func maxSizeInBytes(maxSizeStr string) int64 {
 
 	return maxSizeInt * multiplier
 }
-
 func getCacheChains(chainConfig string) mapset.Set[chains.Chain] {
-	if chainConfig == "*" {
+	if chainConfig == "*" || chainConfig == "" {
 		// empty set means that any chain can be processed
+		// (an empty config happens for blockchain-type-based policies)
 		return mapset.NewThreadUnsafeSet[chains.Chain]()
 	}
 
@@ -168,6 +170,30 @@ func getCacheChains(chainConfig string) mapset.Set[chains.Chain] {
 		return nil
 	}
 	return cacheChainsSet
+}
+
+func getCacheBlockchainTypes(blockchainTypeConfig string) mapset.Set[chains.BlockchainType] {
+	if blockchainTypeConfig == "*" || blockchainTypeConfig == "" {
+		// empty set means that any blockchain type can be processed
+		// (an empty config happens for chain-based policies)
+		return mapset.NewThreadUnsafeSet[chains.BlockchainType]()
+	}
+
+	cacheBlockchainTypes := lo.Map(strings.Split(blockchainTypeConfig, "|"), func(item string, index int) string {
+		return strings.TrimSpace(item)
+	})
+	cacheBlockchainTypesSet := mapset.NewThreadUnsafeSet[chains.BlockchainType]()
+	for _, blockchainTypeStr := range cacheBlockchainTypes {
+		if chains.IsValidBlockchainType(blockchainTypeStr) {
+			cacheBlockchainTypesSet.Add(chains.BlockchainType(blockchainTypeStr))
+		}
+	}
+
+	if cacheBlockchainTypesSet.IsEmpty() {
+		// nil means that there are no supported blockchain types in the config, so nothing can be processed
+		return nil
+	}
+	return cacheBlockchainTypesSet
 }
 
 func getCacheMethods(methodConfig string) mapset.Set[string] {
@@ -204,6 +230,17 @@ func (c *CachePolicy) methodMatched(request protocol.RequestHolder) bool {
 
 func (c *CachePolicy) chainNotMatched(chain chains.Chain) bool {
 	return c.chains == nil || (!c.chains.IsEmpty() && !c.chains.ContainsOne(chain))
+}
+
+func (c *CachePolicy) blockchainTypeNotMatched(chain chains.Chain) bool {
+	if c.blockchainTypes == nil {
+		return true
+	}
+	if c.blockchainTypes.IsEmpty() {
+		return false
+	}
+	blockchainType := chains.GetChain(chain.String()).Type
+	return !c.blockchainTypes.ContainsOne(blockchainType)
 }
 
 func getCacheKey(chain chains.Chain, requestHash string) string {
@@ -270,13 +307,13 @@ func (c *CachePolicy) isMethodCacheable(ctx context.Context, chain chains.Chain,
 }
 
 func (c *CachePolicy) baseCacheableCheck(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) bool {
-	if request.IsStream() {
-		return false
-	}
 	if !c.isMethodCacheable(ctx, chain, request) { // check spec config if a requested method is cacheable or not
 		return false
 	}
 	if c.chainNotMatched(chain) { // check policy and request chains
+		return false
+	}
+	if c.blockchainTypeNotMatched(chain) { // check policy and request blockchain types
 		return false
 	}
 	if !c.methods.IsEmpty() { // check policy and request methods
