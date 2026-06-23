@@ -23,7 +23,7 @@ func TestCreateHeadEventProcessor_ReturnsHeadProcessor(t *testing.T) {
 		Options:      testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(conf.ChainName), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(conf.ChainName), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateHeadEventProcessor(context.Background(), conf, connector, chainSpecific, chains.POLYGON)
 
@@ -38,7 +38,7 @@ func TestCreateHealthEventProcessor_ReturnsNilWithoutValidators(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -92,7 +92,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilWhenValidatorsDisabledByChainSpe
 		Options: testUpstreamOptions(withDisableChainValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -105,7 +105,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilOnlyWhenSettingsValidationDisabl
 		Options: testUpstreamOptions(withDisableSettingsValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -118,7 +118,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilWhenOnlyGlobalValidationDisabled
 		Options: testUpstreamOptions(withDisableValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -131,7 +131,7 @@ func TestCreateSettingsEventProcessor_ReturnsSettingsProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -146,7 +146,7 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessorForEvm(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -230,7 +230,7 @@ func TestCreateBlockEventProcessor_ReturnsProcessorForEthereum(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
 
 	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, chainSpecific, chains.GetChain(chains.ETHEREUM.String()))
 

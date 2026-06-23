@@ -22,15 +22,17 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/samber/lo"
 )
 
 type EvmChainSpecificObject struct {
-	ctx          context.Context
-	upstreamId   string
-	pollInterval time.Duration
-	connector    connectors.ApiConnector
-	chain        *chains.ConfiguredChain
-	options      *chains.Options
+	ctx           context.Context
+	upstreamId    string
+	pollInterval  time.Duration
+	connector     connectors.ApiConnector
+	allConnectors []connectors.ApiConnector
+	chain         *chains.ConfiguredChain
+	options       *chains.Options
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
@@ -47,6 +49,10 @@ func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	restAdditional, _ := lo.Find(e.allConnectors, func(c connectors.ApiConnector) bool {
+		return c.GetType() == specs.RestAdditional
+	})
+
 	labelsDetectors := []labels.LabelsDetector{
 		labels.NewClientLabelDetectorHandler(
 			e.upstreamId,
@@ -57,6 +63,7 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
+		eth_labels.NewEthAllInfoLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, restAdditional),
 		archiveLabelsDetector(e),
 	}
 
@@ -199,17 +206,19 @@ func NewEvmChainSpecific(
 	ctx context.Context,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	pollInterval time.Duration,
 	options *chains.Options,
 ) *EvmChainSpecificObject {
 	return &EvmChainSpecificObject{
-		ctx:          ctx,
-		upstreamId:   upstreamId,
-		connector:    connector,
-		chain:        chain,
-		options:      options,
-		pollInterval: pollInterval,
+		ctx:           ctx,
+		upstreamId:    upstreamId,
+		connector:     connector,
+		allConnectors: allConnectors,
+		chain:         chain,
+		options:       options,
+		pollInterval:  pollInterval,
 	}
 }
 

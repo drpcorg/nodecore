@@ -203,6 +203,7 @@ func getChainSpecific(
 			ctx,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			upstreamConnectorsInfo.allConnectors,
 			configuredChain,
 			conf.PollInterval,
 			conf.Options,
