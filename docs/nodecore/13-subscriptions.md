@@ -125,6 +125,14 @@ calling `eth_getTransactionByHash` across available upstreams (first non-null wi
 transaction object. Hashes whose transaction has already been mined or dropped resolve to null and are
 skipped — this is normal, not an error.
 
+> **⚠️ `drpc_pendingTransactions` ignores `enable-new-pending-transactions`.** Because it reuses the
+> shared pending-hash source, a client subscribing to `drpc_pendingTransactions` opens
+> `newPendingTransactions` on **every** WebSocket-capable upstream — exactly the load you may have
+> intended to avoid by setting `enable-new-pending-transactions: false`. That flag only gates the
+> client-facing `newPendingTransactions` topic; it does **not** stop `drpc_pendingTransactions` from
+> tapping the mempool. If your goal is to eliminate mempool tapping entirely, you must also ensure no
+> client subscribes to `drpc_pendingTransactions` (e.g. forbid the method via access-key scoping).
+
 ## Configuration
 
 Local synthesis is controlled per chain under
@@ -162,7 +170,9 @@ Notes:
 - Settings are **per chain** only — there is no global or per-upstream override.
 - They only take effect where the chain actually has the capability; otherwise the topic falls back to
   a node-backed passthrough regardless of the flag.
-- `drpc_pendingTransactions` is **never** gated by these flags — it is always served locally.
+- `drpc_pendingTransactions` is **never** gated by these flags — it is always served locally, and it
+  still taps the mempool on every WebSocket upstream even when `enable-new-pending-transactions: false`
+  (see the warning under [drpc_pendingTransactions](#drpc_pendingtransactions)).
 - Defaults preserve the historical behavior of always synthesizing locally when possible.
 
 ## Termination and errors
