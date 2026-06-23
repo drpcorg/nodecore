@@ -31,6 +31,16 @@ const (
 	Aztec               BlockchainType = "aztec"
 )
 
+func IsValidBlockchainType(t string) bool {
+	switch BlockchainType(t) {
+	case Algorand, Bitcoin, Cosmos, Ethereum, EthereumBeaconChain,
+		Near, Polkadot, Solana, Starknet, Ton, Aztec:
+		return true
+	default:
+		return false
+	}
+}
+
 //go:embed public/chains.yaml
 var chainsCfg []byte
 

@@ -334,23 +334,23 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	} else if request.SpecMethod().DispatchPolicy() != specs.DispatchDefault {
 		if e.dispatchEnabled(request.SpecMethod().DispatchPolicy()) {
 			if request.SpecMethod().DispatchPolicy() == specs.DispatchNotNull {
-				requestProcessor = NewNotNullRequestProcessor(e.upstreamSupervisor)
+				requestProcessor = NewCacheRequestProcessor(e.chain, e.cacheProcessor, NewNotNullRequestProcessor(e.upstreamSupervisor))
 			} else {
 				requestProcessor = NewFanoutRequestProcessor(e.upstreamSupervisor, request.SpecMethod().DispatchPolicy())
 			}
 		} else {
-			requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
+			requestProcessor = NewCacheRequestProcessor(e.chain, e.cacheProcessor, NewUnaryRequestProcessor(e.chain, e.upstreamSupervisor))
 		}
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else if shouldEnforceIntegrity(request.SpecMethod(), e.appConfig.UpstreamConfig.IntegrityConfig) {
 		requestProcessor = NewIntegrityRequestProcessor(
 			e.chain,
 			e.upstreamSupervisor,
-			NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor),
+			NewUnaryRequestProcessor(e.chain, e.upstreamSupervisor),
 		)
 		reqObserver.WithRequestKind(protocol.Unary)
 	} else {
-		requestProcessor = NewUnaryRequestProcessor(e.chain, e.cacheProcessor, e.upstreamSupervisor)
+		requestProcessor = NewCacheRequestProcessor(e.chain, e.cacheProcessor, NewUnaryRequestProcessor(e.chain, e.upstreamSupervisor))
 		reqObserver.WithRequestKind(protocol.Unary)
 	}
 

@@ -67,7 +67,9 @@ func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T)
 
 	processor := exec.createRequestProcessor(request)
 
-	assert.IsType(t, &UnaryRequestProcessor{}, processor)
+	cacheProc, ok := processor.(*CacheRequestProcessor)
+	require.True(t, ok)
+	assert.IsType(t, &UnaryRequestProcessor{}, cacheProc.delegate)
 }
 
 func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
@@ -100,7 +102,9 @@ func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
 
 	processor := exec.createRequestProcessor(request)
 
-	assert.IsType(t, &UnaryRequestProcessor{}, processor)
+	cacheProc, ok := processor.(*CacheRequestProcessor)
+	require.True(t, ok)
+	assert.IsType(t, &UnaryRequestProcessor{}, cacheProc.delegate)
 }
 
 func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T) {
@@ -117,7 +121,9 @@ func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T
 
 	processor := exec.createRequestProcessor(request)
 
-	assert.IsType(t, &UnaryRequestProcessor{}, processor)
+	cacheProc, ok := processor.(*CacheRequestProcessor)
+	require.True(t, ok)
+	assert.IsType(t, &UnaryRequestProcessor{}, cacheProc.delegate)
 }
 
 func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
@@ -136,5 +142,7 @@ func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
 
 	processor := exec.createRequestProcessor(request)
 
-	assert.IsType(t, &NotNullRequestProcessor{}, processor)
+	cacheProc, ok := processor.(*CacheRequestProcessor)
+	require.True(t, ok)
+	assert.IsType(t, &NotNullRequestProcessor{}, cacheProc.delegate)
 }

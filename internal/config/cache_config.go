@@ -29,6 +29,7 @@ type CacheConnectorConfig struct {
 type CachePolicyConfig struct {
 	Id               string           `yaml:"id"`
 	Chain            string           `yaml:"chain"`
+	BlockchainType   string           `yaml:"blockchain-type"`
 	Method           string           `yaml:"method"`
 	FinalizationType FinalizationType `yaml:"finalization-type"`
 	CacheEmpty       bool             `yaml:"cache-empty"`
@@ -174,8 +175,19 @@ func (f FinalizationType) validate() error {
 }
 
 func (p *CachePolicyConfig) validate(connectors mapset.Set[string]) error {
-	if err := validatePolicyChain(p.Chain); err != nil {
-		return err
+	switch {
+	case p.Chain != "" && p.BlockchainType != "":
+		return errors.New("chain and blockchain-type are mutually exclusive")
+	case p.Chain == "" && p.BlockchainType == "":
+		return errors.New("either chain or blockchain-type must be set")
+	case p.Chain != "":
+		if err := validatePolicyChain(p.Chain); err != nil {
+			return err
+		}
+	default:
+		if err := validatePolicyBlockchainType(p.BlockchainType); err != nil {
+			return err
+		}
 	}
 	if err := validateSize(p.ObjectMaxSize); err != nil {
 		return err
@@ -233,6 +245,21 @@ func validatePolicyChain(chain string) error {
 	for _, chainStr := range cacheChainsStr {
 		if !chains.IsSupported(chainStr) {
 			return fmt.Errorf("chain '%s' is not supported", chainStr)
+		}
+	}
+	return nil
+}
+
+func validatePolicyBlockchainType(blockchainType string) error {
+	if blockchainType == "*" {
+		return nil
+	}
+	blockchainTypesStr := lo.Map(strings.Split(blockchainType, "|"), func(item string, index int) string {
+		return strings.TrimSpace(item)
+	})
+	for _, blockchainTypeStr := range blockchainTypesStr {
+		if !chains.IsValidBlockchainType(blockchainTypeStr) {
+			return fmt.Errorf("blockchain type '%s' is not supported", blockchainTypeStr)
 		}
 	}
 	return nil

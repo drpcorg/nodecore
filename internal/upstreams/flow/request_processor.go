@@ -7,10 +7,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -64,14 +62,12 @@ type RequestProcessor interface {
 
 type UnaryRequestProcessor struct {
 	chain              chains.Chain
-	cacheProcessor     caches.CacheProcessor
 	upstreamSupervisor upstreams.UpstreamSupervisor
 }
 
-func NewUnaryRequestProcessor(chain chains.Chain, cacheProcessor caches.CacheProcessor, upstreamSupervisor upstreams.UpstreamSupervisor) *UnaryRequestProcessor {
+func NewUnaryRequestProcessor(chain chains.Chain, upstreamSupervisor upstreams.UpstreamSupervisor) *UnaryRequestProcessor {
 	return &UnaryRequestProcessor{
 		chain:              chain,
-		cacheProcessor:     cacheProcessor,
 		upstreamSupervisor: upstreamSupervisor,
 	}
 }
@@ -83,11 +79,6 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 ) ProcessedResponse {
 	var response *protocol.ResponseHolderWrapper
 	var err error
-	fromCache := false // don't store responses from cache
-	// Quorum-read requests are served fresh from drpc upstreams: cached payloads
-	// don't carry the QR* signature headers, so both cache Receive and Store
-	// are skipped here.
-	_, quorumRequested := quorum.FromContext(ctx)
 
 	if specs.IsSubscribeMethod(chains.GetMethodSpecNameByChain(u.chain), request.Method()) {
 		err = protocol.ClientError(fmt.Errorf("unable to process a subscription request %s", request.Method()))
@@ -97,35 +88,14 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 			Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 		}
 	} else {
-		var result []byte
-		var ok bool
-		if !quorumRequested {
-			result, ok = u.cacheProcessor.Receive(ctx, u.chain, request)
-		}
-		if ok {
-			// change the previous request type since it will not be sent to the upstream
-			request.RequestObserver().
-				WithRequestKind(protocol.Cached)
-			fromCache = true
+		response, err = executeUnaryRequest(ctx, u.chain, request, u.upstreamSupervisor, upstreamStrategy)
+		if err != nil {
 			response = &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				RequestId:  request.Id(),
-				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), result, request.RequestType()),
-			}
-		} else {
-			response, err = executeUnaryRequest(ctx, u.chain, request, u.upstreamSupervisor, upstreamStrategy)
-			if err != nil {
-				response = &protocol.ResponseHolderWrapper{
-					UpstreamId: NoUpstream,
-					RequestId:  request.Id(),
-					Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
-				}
+				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
 		}
-	}
-
-	if !fromCache && !quorumRequested && !response.Response.HasError() && !response.Response.HasStream() {
-		go u.cacheProcessor.Store(ctx, u.chain, request, response.Response.ResponseResult())
 	}
 
 	return &UnaryResponse{ResponseWrapper: response}
