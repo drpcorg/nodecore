@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -36,6 +37,63 @@ func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstre
 }
 
 var _ upstreams.ChainSupervisor = (*stubChainSupervisor)(nil)
+
+// allLocalSubs enables every local subscription type, the default behavior.
+var allLocalSubs = config.LocalSubSettings{NewHeads: true, Logs: true, PendingTx: true}
+
+// allCapsSupervisor reports a chain capable of every local subscription type.
+func allCapsSupervisor() *mocks.UpstreamSupervisorMock {
+	sup := mocks.NewUpstreamSupervisorMock()
+	sup.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
+		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](
+			protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap,
+		)},
+	})
+	return sup
+}
+
+func subscribeRequest(params string) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth")
+}
+
+// TestResolveSourceRespectsLocalSubSettings verifies the per-chain config gates
+// the three node-backed-equivalent local sources, while drpc_pendingTransactions
+// (synthetic, no node-backed equivalent) always stays local.
+func TestResolveSourceRespectsLocalSubSettings(t *testing.T) {
+	newHeads := subscribeRequest(`["newHeads"]`)
+	logs := subscribeRequest(`["logs",{}]`)
+	pendingTx := subscribeRequest(`["newPendingTransactions"]`)
+	drpcPendingTx := subscribeRequest(`["drpc_pendingTransactions"]`)
+
+	resolve := func(req protocol.RequestHolder, settings config.LocalSubSettings) string {
+		key, _, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), req, nil, nil, nil, settings)
+		return key
+	}
+
+	t.Run("all enabled - every type local", func(t *testing.T) {
+		assert.Equal(t, localNewHeadsKey, resolve(newHeads, allLocalSubs))
+		assert.Equal(t, localLogsKey, resolve(logs, allLocalSubs))
+		assert.Equal(t, localPendingTxKey, resolve(pendingTx, allLocalSubs))
+		assert.Equal(t, localDrpcPendingTxKey, resolve(drpcPendingTx, allLocalSubs))
+	})
+
+	t.Run("master off - falls back to generic except drpc", func(t *testing.T) {
+		off := config.LocalSubSettings{}
+		assert.NotEqual(t, localNewHeadsKey, resolve(newHeads, off))
+		assert.NotEqual(t, localLogsKey, resolve(logs, off))
+		assert.NotEqual(t, localPendingTxKey, resolve(pendingTx, off))
+		// drpc_pendingTransactions is never gated.
+		assert.Equal(t, localDrpcPendingTxKey, resolve(drpcPendingTx, off))
+	})
+
+	t.Run("per-type override - only logs stays local", func(t *testing.T) {
+		logsOnly := config.LocalSubSettings{Logs: true}
+		assert.NotEqual(t, localNewHeadsKey, resolve(newHeads, logsOnly))
+		assert.Equal(t, localLogsKey, resolve(logs, logsOnly))
+		assert.NotEqual(t, localPendingTxKey, resolve(pendingTx, logsOnly))
+		assert.Equal(t, localDrpcPendingTxKey, resolve(drpcPendingTx, logsOnly))
+	})
+}
 
 func TestLocalNewHeadsAvailable(t *testing.T) {
 	// nil chain supervisor → not available
@@ -208,7 +266,7 @@ func TestResolveSourceUsesLocalLogsForAnySelector(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := protocol.WithSelectors(logsRequest(`["logs",{}]`), tc.selectors)
-			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil, nil)
+			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil, nil, allLocalSubs)
 			if tc.wantLocal {
 				assert.Equal(t, localLogsKey, key)
 			} else {

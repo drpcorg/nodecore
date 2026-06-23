@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
@@ -35,8 +36,11 @@ func newSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx *flow.Su
 	// node-backed path; tests that want local synthesis override this.
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
-	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil)
+	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil, allLocalSubs)
 }
+
+// allLocalSubs enables every local subscription type (the default).
+var allLocalSubs = config.LocalSubSettings{NewHeads: true, Logs: true, PendingTx: true}
 
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -203,8 +207,8 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	// One shared engine backs both client processors.
 	engine := subengine.NewRegistry(ctx).Get(chains.ETHEREUM)
-	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil)
-	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil)
+	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil, allLocalSubs)
+	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil, allLocalSubs)
 
 	req1 := testEthSubscribeRequestWithId("c1")
 	req2 := testEthSubscribeRequestWithId("c2")

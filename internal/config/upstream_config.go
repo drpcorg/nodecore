@@ -134,10 +134,53 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnecto
 }
 
 type ChainDefaults struct {
-	PollInterval   time.Duration         `yaml:"poll-interval"`
-	Options        *chains.Options       `yaml:"options"`
-	LabelBalancing *LabelBalancingConfig `yaml:"label-balancing"`
-	Dispatch       *DispatchOptions      `yaml:"dispatch"`
+	PollInterval       time.Duration             `yaml:"poll-interval"`
+	Options            *chains.Options           `yaml:"options"`
+	LabelBalancing     *LabelBalancingConfig     `yaml:"label-balancing"`
+	Dispatch           *DispatchOptions          `yaml:"dispatch"`
+	LocalSubscriptions *LocalSubscriptionsConfig `yaml:"local-subscriptions"`
+}
+
+// LocalSubscriptionsConfig controls per-chain local subscription synthesis
+// (newHeads/logs/newPendingTransactions). Enable is the master switch; per-type
+// fields override it. All default to true (enabled), preserving the behavior of
+// always synthesizing locally when the chain has the capability. The synthetic
+// drpc_pendingTransactions method has no node-backed equivalent and is never
+// affected by these flags.
+type LocalSubscriptionsConfig struct {
+	Enable                       *bool `yaml:"enable"`           // master: enable/disable all local synthesis
+	EnableNewHeads               *bool `yaml:"enable-new-heads"` // explicit override, wins over Enable
+	EnableLogs                   *bool `yaml:"enable-logs"`
+	EnableNewPendingTransactions *bool `yaml:"enable-new-pending-transactions"`
+}
+
+// LocalSubSettings is the resolved per-chain decision for which local
+// subscription sources to synthesize.
+type LocalSubSettings struct {
+	NewHeads  bool
+	Logs      bool
+	PendingTx bool
+}
+
+// LocalSubSettings resolves the effective local-synthesis decision for a chain.
+// Defaults are resolved at read time (no setDefaults needed), mirroring
+// GetDispatchOptions. Per type: explicit per-type value wins, else the master
+// Enable, else true (enabled).
+func (u *UpstreamConfig) LocalSubSettings(chainName string) LocalSubSettings {
+	settings := LocalSubSettings{NewHeads: true, Logs: true, PendingTx: true}
+	if u == nil || u.ChainDefaults == nil {
+		return settings
+	}
+	defaults := u.ChainDefaults[chainName]
+	if defaults == nil || defaults.LocalSubscriptions == nil {
+		return settings
+	}
+	ls := defaults.LocalSubscriptions
+	base := lo.FromPtrOr(ls.Enable, true)
+	settings.NewHeads = lo.FromPtrOr(ls.EnableNewHeads, base)
+	settings.Logs = lo.FromPtrOr(ls.EnableLogs, base)
+	settings.PendingTx = lo.FromPtrOr(ls.EnableNewPendingTransactions, base)
+	return settings
 }
 
 // LabelBalancingConfig enables priority-group balancing: upstreams tagged with

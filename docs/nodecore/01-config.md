@@ -14,6 +14,7 @@ The configuration file is the entry point for all nodecore settings. It is organ
 - [Quorum](10-quorum.md) - signed-response quorum verification
 - [Method specs](11-method-specs.md) - per-chain method definitions and how to extend them
 - [gRPC API](12-grpc-server.md) - public gRPC API for querying upstream and chain state
+- [Subscriptions](13-subscriptions.md) - subscription aggregation and locally-synthesized subscriptions
 
 By default, nodecore looks for a configuration file named `./nodecore.yml` in the current directory. You can override this path by setting the `NODECORE_CONFIG_PATH` environment variable. For example, `NODECORE_CONFIG_PATH=/path/to/your/config make run`.
 

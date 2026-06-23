@@ -304,6 +304,11 @@ chain-defaults:
       broadcast: true
       maximum-value: true
       not-null: true
+    local-subscriptions:
+      enable: true
+      enable-new-heads: true
+      enable-logs: true
+      enable-new-pending-transactions: true
   polygon:
     poll-interval: 30s
 ```
@@ -338,6 +343,11 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
 * `<chain>.poll-interval` - How often nodecore polls upstreams of that chain for new head / finality information
   * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** is `1m` in `mode: default`, and the chain's expected block time in `mode: strict`
 * `<chain>.label-balancing` - Per-chain override of the global [label-balancing](#label-balancing) block. When set it fully replaces the global block for this chain
+* `<chain>.local-subscriptions` - Per-chain control over locally-synthesized subscriptions. For `eth_subscribe` topics that nodecore can serve by aggregating across upstreams (`newHeads`, `logs`, `newPendingTransactions`), this decides whether to use that local source or fall back to a plain node-backed passthrough (a single upstream subscription). All toggles default to `true` (local synthesis on, the historical behavior) and only apply where the chain actually has the capability:
+  * `enable` - Master switch for the chain. `enable: false` turns off local synthesis for all three topics
+  * `enable-new-heads` / `enable-logs` / `enable-new-pending-transactions` - Per-topic overrides that win over `enable` (e.g. `enable: false` with `enable-logs: true` keeps only `logs` local)
+  * Note: the synthetic `drpc_pendingTransactions` method has no node-backed equivalent and is **always** served locally — it is never affected by these flags
+  * See [Subscriptions](13-subscriptions.md) for how local synthesis and aggregation work
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
