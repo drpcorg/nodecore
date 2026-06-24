@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,7 +113,7 @@ func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validat
 }
 
 func (a *AlgorandChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
-	statusReq := protocol.NewInternalUpstreamRestRequest("GET", "/v2/status", a.configuredChain.Chain)
+	statusReq := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, a.configuredChain.Chain)
 	statusResp := a.connector.SendRequest(ctx, statusReq)
 	if statusResp.HasError() {
 		return protocol.ZeroBlock{}, statusResp.GetError()
@@ -172,8 +173,14 @@ func (a *AlgorandChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHo
 }
 
 func (a *AlgorandChainSpecificObject) fetchBlockHeader(ctx context.Context, round uint64) (*algorandBlockHeader, error) {
-	path := fmt.Sprintf("/v2/blocks/%d?header-only=true", round)
-	request := protocol.NewInternalUpstreamRestRequest("GET", path, a.configuredChain.Chain)
+	request := protocol.NewInternalUpstreamRestRequest(
+		"GET#/v2/blocks/*",
+		&protocol.RequestParams{
+			PathParams:  []string{strconv.FormatUint(round, 10)},
+			QueryParams: map[string][]string{"header-only": {"true"}},
+		},
+		a.configuredChain.Chain,
+	)
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return nil, response.GetError()

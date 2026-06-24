@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -148,8 +149,11 @@ func (a *AlgorandLowerBoundDetector) hasBlock(round int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	path := fmt.Sprintf("/v2/blocks/%d/hash", round)
-	request := protocol.NewInternalUpstreamRestRequest("GET", path, a.chain)
+	request := protocol.NewInternalUpstreamRestRequest(
+		"GET#/v2/blocks/*/hash",
+		&protocol.RequestParams{PathParams: []string{strconv.FormatInt(round, 10)}},
+		a.chain,
+	)
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
@@ -188,7 +192,7 @@ func (a *AlgorandLowerBoundDetector) fetchLatestRound() (int64, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequest("GET", "/v2/status", a.chain)
+	request := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, a.chain)
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {

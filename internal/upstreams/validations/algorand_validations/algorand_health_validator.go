@@ -65,7 +65,7 @@ func (a *AlgorandHealthValidator) fetchStatus() (*AlgorandStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequest("GET", "/v2/status", a.chain)
+	request := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, a.chain)
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {

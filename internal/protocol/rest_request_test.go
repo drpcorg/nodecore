@@ -1,11 +1,13 @@
 package protocol_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/blake2b"
 )
 
 func TestNewUpstreamRestRequestStoresTemplateVerbatim(t *testing.T) {
@@ -51,68 +53,204 @@ func TestNewUpstreamRestRequestNotStreamingNotSubscribe(t *testing.T) {
 	assert.False(t, req.IsSubscribe())
 }
 
-func TestNewInternalUpstreamRestRequestEncodesVerbAndPath(t *testing.T) {
-	req := protocol.NewInternalUpstreamRestRequest("GET", "/v2/blocks/1/hash", chains.ALGORAND)
+func TestNewInternalUpstreamRestRequestStoresTemplateVerbatim(t *testing.T) {
+	// Internal requests now carry a spec method template as Method() - the same
+	// contract as NewUpstreamRestRequest - not a per-resource literal path. This
+	// keeps the `method` identity bounded and lets the request resolve a real
+	// spec method.
+	req := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, chains.ALGORAND)
 
-	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/blocks/1/hash", req.Method())
+	assert.Equal(t, "GET#/v2/status", req.Method())
 	assert.Equal(t, protocol.Rest, req.RequestType())
-	assert.Nil(t, req.RequestParams(), "internal request without a query has no RequestParams to carry")
+	assert.Equal(t, "1", req.Id())
+	assert.NotNil(t, req.RequestObserver())
+	assert.Nil(t, req.RequestParams(), "a fixed-path request carries no RequestParams")
 }
 
-func TestNewInternalUpstreamRestRequestSplitsQueryOffMethod(t *testing.T) {
-	// algorand_chain_specific.go builds paths like "/v2/blocks/42?header-only=true";
-	// the constructor must strip that into RequestParams so Method() is a clean
-	// template the connector can pass to BuildRestURL.
-	req := protocol.NewInternalUpstreamRestRequest("GET", "/v2/blocks/42?header-only=true", chains.ALGORAND)
+func TestNewInternalUpstreamRestRequestCarriesWildcardCaptures(t *testing.T) {
+	// algorand_chain_specific.go fetches "/v2/blocks/{round}?header-only=true":
+	// the round is a wildcard capture on PathParams and the flag lives on
+	// QueryParams, so Method() stays the bounded template the connector expands
+	// via BuildRestURL.
+	rp := &protocol.RequestParams{
+		PathParams:  []string{"42"},
+		QueryParams: map[string][]string{"header-only": {"true"}},
+	}
+	req := protocol.NewInternalUpstreamRestRequest("GET#/v2/blocks/*", rp, chains.ALGORAND)
 
-	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/blocks/42", req.Method(),
-		"the query must be split off so Method() stays a clean template")
+	assert.Equal(t, "GET#/v2/blocks/*", req.Method(),
+		"the template is the canonical method - the block number must not leak into it")
+	assert.Equal(t, []string{"42"}, req.RequestParams().PathParams)
 	assert.Equal(t, []string{"true"}, req.RequestParams().QueryParams["header-only"])
 }
 
-func TestNewInternalUpstreamRestRequestVerbDefaultsToGet(t *testing.T) {
-	req := protocol.NewInternalUpstreamRestRequest("", "/v2/status", chains.ALGORAND)
+func TestNewInternalUpstreamRestRequestWithBodyForwardsBody(t *testing.T) {
+	body := []byte(`{"num":42}`)
+	req := protocol.NewInternalUpstreamRestRequestWithBody("POST#/wallet/getblock", nil, body, chains.TRON)
 
-	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/status", req.Method(),
-		"empty verb must default to GET so callers that forget to set a method don't blow up downstream")
+	assert.Equal(t, "POST#/wallet/getblock", req.Method())
+	got, err := req.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, body, got)
 }
 
-func TestNewInternalUpstreamRestRequestVerbIsUppercased(t *testing.T) {
-	req := protocol.NewInternalUpstreamRestRequest("post", "/v2/transactions", chains.ALGORAND)
+func TestRestRequestHashPinsEncodingForBareTemplate(t *testing.T) {
+	// With no params or body, the hash is just blake2b(method) - pins the exact
+	// encoding so a future change to calculateRestHash is caught.
+	req := protocol.NewUpstreamRestRequest("id", "GET#/v2/status", nil, nil, "")
 
-	assert.Equal(t, "POST"+protocol.MethodSeparator+"/v2/transactions", req.Method())
+	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte("GET#/v2/status")))
+	assert.Equal(t, expected, req.RequestHash())
 }
 
-func TestNewInternalUpstreamRestRequestPrefixesLeadingSlash(t *testing.T) {
-	req := protocol.NewInternalUpstreamRestRequest("GET", "v2/status", chains.ALGORAND)
+func TestRestRequestHashDistinguishesPathParams(t *testing.T) {
+	// The whole point of the fix: same template, different wildcard capture must
+	// not collide (GET#/v2/blocks/* for two different rounds).
+	one := protocol.NewUpstreamRestRequest("id", "GET#/v2/blocks/*",
+		&protocol.RequestParams{PathParams: []string{"1"}}, nil, "")
+	two := protocol.NewUpstreamRestRequest("id", "GET#/v2/blocks/*",
+		&protocol.RequestParams{PathParams: []string{"2"}}, nil, "")
 
-	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/status", req.Method(),
-		"path without leading slash must be normalised so BuildRestURL produces a valid URL")
+	assert.NotEqual(t, one.RequestHash(), two.RequestHash())
 }
 
-func TestNewInternalUpstreamRestRequestWithQueryStashesParams(t *testing.T) {
-	req := protocol.NewInternalUpstreamRestRequestWithQuery(
-		"GET",
-		"/v2/blocks/1",
-		map[string]string{"header-only": "true"},
-		chains.ALGORAND,
-	)
+func TestRestRequestHashDistinguishesBody(t *testing.T) {
+	// POST routes carry the resource in the body (e.g. tron getblock by number).
+	one := protocol.NewUpstreamRestRequest("id", "POST#/wallet/getblock", nil, []byte(`{"num":1}`), "")
+	two := protocol.NewUpstreamRestRequest("id", "POST#/wallet/getblock", nil, []byte(`{"num":2}`), "")
 
-	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/blocks/1", req.Method(),
-		"query params must NOT be baked into Method() any more - they live on RequestParams")
-	assert.Equal(t, []string{"true"}, req.RequestParams().QueryParams["header-only"])
+	assert.NotEqual(t, one.RequestHash(), two.RequestHash())
 }
 
-func TestNewInternalUpstreamRestRequestWithQueryMergesWithExistingQuery(t *testing.T) {
-	req := protocol.NewInternalUpstreamRestRequestWithQuery(
-		"GET",
-		"/v2/blocks/1?format=json",
-		map[string]string{"header-only": "true"},
-		chains.ALGORAND,
-	)
+func TestRestRequestHashDistinguishesQueryParams(t *testing.T) {
+	one := protocol.NewUpstreamRestRequest("id", "GET#/v2/accounts/*",
+		&protocol.RequestParams{PathParams: []string{"a"}, QueryParams: map[string][]string{"format": {"json"}}}, nil, "")
+	two := protocol.NewUpstreamRestRequest("id", "GET#/v2/accounts/*",
+		&protocol.RequestParams{PathParams: []string{"a"}, QueryParams: map[string][]string{"format": {"msgpack"}}}, nil, "")
 
-	rp := req.RequestParams()
-	assert.Equal(t, "GET"+protocol.MethodSeparator+"/v2/blocks/1", req.Method())
-	assert.Equal(t, []string{"json"}, rp.QueryParams["format"])
-	assert.Equal(t, []string{"true"}, rp.QueryParams["header-only"])
+	assert.NotEqual(t, one.RequestHash(), two.RequestHash())
+}
+
+func TestRestRequestHashIsStableAndIgnoresHeaders(t *testing.T) {
+	// Identical method/params/body -> identical hash, regardless of map order or
+	// headers. Headers are excluded so cache entries stay shareable across
+	// clients with differing auth/tracing headers.
+	mk := func(headers map[string][]string) string {
+		return protocol.NewUpstreamRestRequest("id", "GET#/v2/accounts/*", &protocol.RequestParams{
+			PathParams:  []string{"a"},
+			QueryParams: map[string][]string{"b": {"2"}, "a": {"1"}},
+			Headers:     headers,
+		}, []byte("body"), "").RequestHash()
+	}
+
+	noHeaders := mk(nil)
+	withHeaders := mk(map[string][]string{"Authorization": {"Bearer x"}, "X-Trace": {"abc"}})
+
+	assert.Equal(t, noHeaders, withHeaders, "headers must not affect the hash")
+	assert.Equal(t, noHeaders, mk(nil), "identical inputs must hash identically")
+}
+
+func TestRestRequestHashEmptyForInternalRequest(t *testing.T) {
+	// Internal requests bypass the cache and aren't subscribable, so - like
+	// internal JSON-RPC requests - they carry no hash.
+	req := protocol.NewInternalUpstreamRestRequest("GET#/v2/blocks/*",
+		&protocol.RequestParams{PathParams: []string{"42"}}, chains.ALGORAND)
+
+	assert.Empty(t, req.RequestHash())
+}
+
+func restHash(method string, rp *protocol.RequestParams, body []byte) string {
+	return protocol.NewUpstreamRestRequest("id", method, rp, body, "").RequestHash()
+}
+
+func TestRestRequestHashDistinguishesMethodTemplate(t *testing.T) {
+	rp := &protocol.RequestParams{PathParams: []string{"a"}}
+
+	assert.NotEqual(t,
+		restHash("GET#/v2/accounts/*", rp, nil),
+		restHash("GET#/v2/assets/*", rp, nil),
+		"different templates with the same captures must not collide")
+}
+
+func TestRestRequestHashEqualForIdenticalInputs(t *testing.T) {
+	mk := func() string {
+		return restHash("GET#/v2/blocks/*",
+			&protocol.RequestParams{
+				PathParams:  []string{"42"},
+				QueryParams: map[string][]string{"header-only": {"true"}},
+			}, []byte("body"))
+	}
+
+	assert.Equal(t, mk(), mk(), "two independent constructions with identical inputs must match")
+}
+
+func TestRestRequestHashEqualAcrossStreamAndUnary(t *testing.T) {
+	rp := &protocol.RequestParams{PathParams: []string{"42"}}
+	unary := protocol.NewUpstreamRestRequest("id", "GET#/v2/blocks/*", rp, nil, "")
+	stream := protocol.NewStreamUpstreamRestRequest("id", "GET#/v2/blocks/*", rp, nil, "")
+
+	assert.Equal(t, unary.RequestHash(), stream.RequestHash(),
+		"streaming is a transport flag, not part of request identity")
+}
+
+func TestRestRequestHashQueryKeyOrderIndependent(t *testing.T) {
+	// The map literal order differs but the canonical (sorted) encoding must not.
+	a := restHash("GET#/v2/accounts/*", &protocol.RequestParams{
+		QueryParams: map[string][]string{"a": {"1"}, "b": {"2"}, "c": {"3"}},
+	}, nil)
+	b := restHash("GET#/v2/accounts/*", &protocol.RequestParams{
+		QueryParams: map[string][]string{"c": {"3"}, "b": {"2"}, "a": {"1"}},
+	}, nil)
+
+	assert.Equal(t, a, b)
+}
+
+func TestRestRequestHashPathParamOrderMatters(t *testing.T) {
+	// Two wildcards: the capture order is semantically meaningful, so swapping
+	// them must change the hash.
+	assert.NotEqual(t,
+		restHash("GET#/a/*/b/*", &protocol.RequestParams{PathParams: []string{"1", "2"}}, nil),
+		restHash("GET#/a/*/b/*", &protocol.RequestParams{PathParams: []string{"2", "1"}}, nil))
+}
+
+func TestRestRequestHashNoSegmentBoundaryCollision(t *testing.T) {
+	// The '\n' delimiter between method and captures prevents ambiguous merges:
+	// method "GET#/a" + capture "b" must not hash like method "GET#/ab" with no
+	// captures (or "GET#/a"+"" etc.).
+	withCapture := restHash("GET#/a", &protocol.RequestParams{PathParams: []string{"b"}}, nil)
+	merged := restHash("GET#/ab", nil, nil)
+	concatenated := restHash("GET#/ab", &protocol.RequestParams{PathParams: []string{""}}, nil)
+
+	assert.NotEqual(t, withCapture, merged)
+	assert.NotEqual(t, withCapture, concatenated)
+}
+
+func TestRestRequestHashNilAndEmptyBodyEqual(t *testing.T) {
+	// A nil body and an empty body carry the same (absent) payload identity.
+	assert.Equal(t,
+		restHash("POST#/wallet/getnodeinfo", nil, nil),
+		restHash("POST#/wallet/getnodeinfo", nil, []byte{}))
+}
+
+func TestRestRequestHashBodyPresenceMatters(t *testing.T) {
+	assert.NotEqual(t,
+		restHash("POST#/wallet/getblock", nil, nil),
+		restHash("POST#/wallet/getblock", nil, []byte(`{"num":1}`)))
+}
+
+func TestRestRequestHashQueryPresenceMatters(t *testing.T) {
+	assert.NotEqual(t,
+		restHash("GET#/v2/accounts/*", &protocol.RequestParams{PathParams: []string{"a"}}, nil),
+		restHash("GET#/v2/accounts/*", &protocol.RequestParams{
+			PathParams:  []string{"a"},
+			QueryParams: map[string][]string{"format": {"json"}},
+		}, nil))
+}
+
+func TestRestRequestHashNilParamsEqualsEmptyParams(t *testing.T) {
+	// nil RequestParams and a zero-valued RequestParams describe the same
+	// (no captures, no query) request.
+	assert.Equal(t,
+		restHash("GET#/v2/status", nil, nil),
+		restHash("GET#/v2/status", &protocol.RequestParams{}, nil))
 }

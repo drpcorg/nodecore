@@ -49,7 +49,7 @@ func (t *TronRestSpecific) BlockProcessor() blocks.BlockProcessor {
 
 func (t *TronRestSpecific) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
 	body := []byte(`{"detail": false}`)
-	request := protocol.NewInternalUpstreamRestRequestWithBody("POST", "/wallet/getblock", body, t.chain.Chain)
+	request := protocol.NewInternalUpstreamRestRequestWithBody("POST#/wallet/getblock", nil, body, t.chain.Chain)
 
 	response := t.connector.SendRequest(ctx, request)
 	if response.HasError() {
@@ -63,7 +63,7 @@ func (t *TronRestSpecific) GetLatestBlock(ctx context.Context) (protocol.Block, 
 }
 
 func (t *TronRestSpecific) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
-	request := protocol.NewInternalUpstreamRestRequest("POST", "/wallet/getnodeinfo", t.chain.Chain)
+	request := protocol.NewInternalUpstreamRestRequest("POST#/wallet/getnodeinfo", nil, t.chain.Chain)
 
 	response := t.connector.SendRequest(ctx, request)
 	if response.HasError() {

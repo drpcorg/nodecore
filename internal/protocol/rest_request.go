@@ -1,9 +1,9 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
 	"net/url"
-	"strings"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -12,6 +12,7 @@ import (
 type UpstreamRestRequest struct {
 	id            string
 	method        string
+	requestKey    string
 	body          []byte
 	requestParams *RequestParams
 	specMethod    *specs.Method
@@ -20,44 +21,27 @@ type UpstreamRestRequest struct {
 	isStream      bool
 }
 
-func NewInternalUpstreamRestRequest(httpMethod, path string, chain chains.Chain) *UpstreamRestRequest {
-	return NewInternalUpstreamRestRequestWithBody(httpMethod, path, nil, chain)
+// NewInternalUpstreamRestRequest builds an internally-originated REST request
+// from a spec method template ("GET#/v2/status", "GET#/v2/blocks/*") and the
+// matching RequestParams. Wildcard captures live on requestParams.PathParams
+// and query on requestParams.QueryParams - the connector rebuilds the literal
+// upstream URL from template + captures via utils.BuildRestURL. This mirrors
+// NewUpstreamRestRequest so internal probes carry the bounded template as their
+// Method() (not a per-resource literal path) and resolve a real spec method.
+func NewInternalUpstreamRestRequest(methodTemplate string, requestParams *RequestParams, chain chains.Chain) *UpstreamRestRequest {
+	return NewInternalUpstreamRestRequestWithBody(methodTemplate, requestParams, nil, chain)
 }
 
-func NewInternalUpstreamRestRequestWithBody(httpMethod, path string, body []byte, chain chains.Chain) *UpstreamRestRequest {
-	verb := normaliseVerb(httpMethod)
-	cleanPath, queryParams := extractQuery(normalisePath(path))
-	method := verb + MethodSeparator + cleanPath
-	var rp *RequestParams
-	if len(queryParams) > 0 {
-		rp = &RequestParams{QueryParams: queryParams}
-	}
-	specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChain(chain), method)
+func NewInternalUpstreamRestRequestWithBody(methodTemplate string, requestParams *RequestParams, body []byte, chain chains.Chain) *UpstreamRestRequest {
+	specName := chains.GetMethodSpecNameByChain(chain)
 	return &UpstreamRestRequest{
 		id:            "1",
-		method:        method,
-		requestParams: rp,
-		observer:      NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
-		specMethod:    specMethod,
+		method:        methodTemplate,
 		body:          body,
+		requestParams: requestParams,
+		observer:      NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(methodTemplate),
+		specMethod:    specs.GetSpecMethodWithFallback(specName, methodTemplate),
 	}
-}
-
-func NewInternalUpstreamRestRequestWithQuery(httpMethod, path string, query map[string]string, chain chains.Chain) *UpstreamRestRequest {
-	req := NewInternalUpstreamRestRequest(httpMethod, path, chain)
-	if len(query) == 0 {
-		return req
-	}
-	if req.requestParams == nil {
-		req.requestParams = &RequestParams{}
-	}
-	if req.requestParams.QueryParams == nil {
-		req.requestParams.QueryParams = make(map[string][]string, len(query))
-	}
-	for k, v := range query {
-		req.requestParams.QueryParams[k] = append(req.requestParams.QueryParams[k], v)
-	}
-	return req
 }
 
 func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string) *UpstreamRestRequest {
@@ -65,6 +49,7 @@ func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestPar
 	return &UpstreamRestRequest{
 		id:            id,
 		method:        methodTemplate,
+		requestKey:    calculateRestHash(methodTemplate, requestParams, body),
 		body:          body,
 		requestParams: requestParams,
 		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(methodTemplate),
@@ -76,37 +61,6 @@ func NewStreamUpstreamRestRequest(id, methodTemplate string, requestParams *Requ
 	request := NewUpstreamRestRequest(id, methodTemplate, requestParams, body, specName)
 	request.isStream = true
 	return request
-}
-
-func normaliseVerb(httpMethod string) string {
-	verb := strings.ToUpper(strings.TrimSpace(httpMethod))
-	if verb == "" {
-		return "GET"
-	}
-	return verb
-}
-
-func normalisePath(path string) string {
-	if !strings.HasPrefix(path, "/") {
-		return "/" + path
-	}
-	return path
-}
-
-// extractQuery splits "?k=v&..." off the end of a path. A malformed query
-// is dropped silently - internal callers build these strings themselves
-// from format specifiers, so a parse error is a programmer bug, not a
-// user-supplied payload to surface.
-func extractQuery(path string) (cleanPath string, query map[string][]string) {
-	base, raw, hasQuery := strings.Cut(path, "?")
-	if !hasQuery || raw == "" {
-		return path, nil
-	}
-	values, err := url.ParseQuery(raw)
-	if err != nil || len(values) == 0 {
-		return base, nil
-	}
-	return base, values
 }
 
 func (u *UpstreamRestRequest) RequestObserver() *RequestObserver {
@@ -148,7 +102,7 @@ func (u *UpstreamRestRequest) RequestType() RequestType {
 }
 
 func (u *UpstreamRestRequest) RequestHash() string {
-	return calculateHash([]byte(u.method))
+	return u.requestKey
 }
 
 func (u *UpstreamRestRequest) RequestParams() *RequestParams {
@@ -161,6 +115,32 @@ func (u *UpstreamRestRequest) Selectors() []RequestSelector {
 
 func (u *UpstreamRestRequest) setSelectors(selectors []RequestSelector) {
 	u.selectors = append([]RequestSelector(nil), selectors...)
+}
+
+// calculateRestHash derives a REST request's identity from everything that
+// changes the response: the spec method template, the ordered path captures,
+// the query, and the body. Headers are intentionally excluded - they carry
+// auth/tracing, not resource identity, and would fragment the cache key per
+// client. url.Values.Encode sorts by key so the digest is deterministic
+// regardless of map iteration order.
+func calculateRestHash(method string, params *RequestParams, body []byte) string {
+	var buf bytes.Buffer
+	buf.WriteString(method)
+	if params != nil {
+		for _, p := range params.PathParams {
+			buf.WriteByte('\n')
+			buf.WriteString(p)
+		}
+		if len(params.QueryParams) > 0 {
+			buf.WriteByte('\n')
+			buf.WriteString(url.Values(params.QueryParams).Encode())
+		}
+	}
+	if len(body) > 0 {
+		buf.WriteByte('\n')
+		buf.Write(body)
+	}
+	return calculateHash(buf.Bytes())
 }
 
 var _ RequestHolder = (*UpstreamRestRequest)(nil)

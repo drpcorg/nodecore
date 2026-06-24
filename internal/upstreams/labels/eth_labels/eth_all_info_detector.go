@@ -34,7 +34,7 @@ func (e *EthAllInfoLabelsDetector) DetectLabels() map[string]string {
 		return nil
 	}
 
-	req := protocol.NewInternalUpstreamRestRequestWithBody("POST", "/info", allInfoProbeBody, e.chain)
+	req := protocol.NewInternalUpstreamRestRequestWithBody("POST#/info", nil, allInfoProbeBody, e.chain)
 
 	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
 	defer cancel()

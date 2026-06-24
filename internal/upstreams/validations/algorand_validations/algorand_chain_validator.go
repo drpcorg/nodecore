@@ -81,7 +81,7 @@ func (a *AlgorandChainValidator) fetchGenesis() (*algorandGenesis, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequest("GET", "/genesis", a.chain.Chain)
+	request := protocol.NewInternalUpstreamRestRequest("GET#/genesis", nil, a.chain.Chain)
 
 	response := a.connector.SendRequest(ctx, request)
 	if response.HasError() {
