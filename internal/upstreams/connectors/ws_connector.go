@@ -14,6 +14,10 @@ type WsConnector struct {
 	wsProcessor ws.WsProcessor
 }
 
+func (w *WsConnector) GetUrl() string {
+	return w.wsProcessor.GetUrl()
+}
+
 func (w *WsConnector) Unsubscribe(opId string) {
 	w.wsProcessor.Unsubscribe(opId)
 }

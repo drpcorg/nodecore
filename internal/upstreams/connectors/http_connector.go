@@ -56,6 +56,10 @@ var defaultResponseHeaderDeny = []string{
 func (h *HttpConnector) Unsubscribe(_ string) {
 }
 
+func (h *HttpConnector) GetUrl() string {
+	return h.endpoint
+}
+
 func NewHttpConnectorWithDefaultClient(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,

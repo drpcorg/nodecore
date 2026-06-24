@@ -51,6 +51,11 @@ func NewConnectorMockWithType(connectorType specs.ApiConnectorType) *ConnectorMo
 	return &ConnectorMock{connectorType: connectorType}
 }
 
+func (c *ConnectorMock) GetUrl() string {
+	args := c.Called()
+	return args.String(0)
+}
+
 func (c *ConnectorMock) SubscribeStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {
 	args := c.Called(name)
 	if args.Get(0) == nil {
@@ -113,6 +118,11 @@ func (c *WsConnectorMock) Stop() {
 func (c *WsConnectorMock) Running() bool {
 	args := c.Called()
 	return args.Bool(0)
+}
+
+func (c *WsConnectorMock) GetUrl() string {
+	args := c.Called()
+	return args.String(0)
 }
 
 func (c *WsConnectorMock) SubscribeStates(name string) *utils.Subscription[protocol.SubscribeConnectorState] {

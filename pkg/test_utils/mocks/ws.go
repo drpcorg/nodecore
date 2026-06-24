@@ -16,6 +16,11 @@ func NewWsProcessorMock() *WsProcessorMock {
 	return &WsProcessorMock{}
 }
 
+func (w *WsProcessorMock) GetUrl() string {
+	args := w.Called()
+	return args.String(0)
+}
+
 func (w *WsProcessorMock) Start() {
 	w.Called()
 }

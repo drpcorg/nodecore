@@ -18,6 +18,8 @@ type WsProcessor interface {
 	SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error)
 	Unsubscribe(opId string)
 
+	GetUrl() string
+
 	SubscribeWsStates(name string) *utils.Subscription[protocol.SubscribeConnectorState]
 }
 
@@ -45,6 +47,10 @@ type BaseWsProcessor struct {
 
 	executor   failsafe.Executor[bool]
 	subManager *utils.SubscriptionManager[protocol.SubscribeConnectorState]
+}
+
+func (b *BaseWsProcessor) GetUrl() string {
+	return b.endpoint
 }
 
 func (b *BaseWsProcessor) Unsubscribe(opId string) {
