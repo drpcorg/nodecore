@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -22,10 +23,35 @@ const (
 	hlBlocksToCheck  = 300
 	hlMaxConcurrency = 32
 	mainnetAddress   = "0x2222222222222222222222222222222222222222"
-	testnetAddress   = "0x6ed35e7d6de4b45f4efb8a91eff31afa49362569"
 )
 
 var errHLNativeTxFound = errors.New("hl native tx found")
+
+// ?hl=false => upstream serves native txs (include); ?hl=true => hl-node compliant (exclude).
+// Word boundaries mirror dshackle so "hl=falsey" doesn't accidentally match.
+var (
+	hlFlagFalseRe = regexp.MustCompile(`[?&]hl=false\b`)
+	hlFlagTrueRe  = regexp.MustCompile(`[?&]hl=true\b`)
+)
+
+// hlNativeTxLabelsFromUrl maps the upstream URL's ?hl= flag to routing labels,
+// or nil if the flag is absent.
+func hlNativeTxLabelsFromUrl(rawURL string) map[string]string {
+	switch {
+	case hlFlagFalseRe.MatchString(rawURL):
+		return map[string]string{
+			"include_hl_native_tx": "true",
+			"exclude_hl_native_tx": "false",
+		}
+	case hlFlagTrueRe.MatchString(rawURL):
+		return map[string]string{
+			"exclude_hl_native_tx": "true",
+			"include_hl_native_tx": "false",
+		}
+	default:
+		return nil
+	}
+}
 
 type EthHLTxLabelsDetector struct {
 	upstreamId      string
@@ -39,13 +65,19 @@ type EthHLTxLabelsDetector struct {
 func (e *EthHLTxLabelsDetector) DetectLabels() map[string]string {
 	e.detectCount.Add(1)
 
-	var nativeTxFrom string
 	switch e.chain {
-	case chains.HYPERLIQUID:
-		nativeTxFrom = mainnetAddress
-	case chains.HYPERLIQUID_TESTNET:
-		nativeTxFrom = testnetAddress
+	case chains.HYPERLIQUID, chains.HYPERLIQUID_TESTNET:
 	default:
+		return nil
+	}
+
+	// prefer the explicit ?hl= flag from the upstream URL
+	if labelsFromUrl := hlNativeTxLabelsFromUrl(e.connector.GetUrl()); labelsFromUrl != nil {
+		return labelsFromUrl
+	}
+
+	// no ?hl= flag: block-scan fallback, reliable only on mainnet
+	if e.chain != chains.HYPERLIQUID {
 		return nil
 	}
 
@@ -67,7 +99,7 @@ func (e *EthHLTxLabelsDetector) DetectLabels() map[string]string {
 	for offset := int64(0); offset < hlBlocksToCheck; offset++ {
 		g.Go(func() error {
 			blockNum := new(big.Int).Sub(latest, big.NewInt(offset))
-			if e.blockHasNativeTx(ctx, "0x"+blockNum.Text(16), nativeTxFrom) {
+			if e.blockHasNativeTx(ctx, "0x"+blockNum.Text(16), mainnetAddress) {
 				return errHLNativeTxFound // short-circuit: cancels remaining probes, a native tx has been found
 			}
 			return nil

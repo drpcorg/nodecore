@@ -20,6 +20,10 @@ type ObserverConnector struct {
 	executor              failsafe.Executor[protocol.ResponseHolder]
 }
 
+func (o *ObserverConnector) GetUrl() string {
+	return o.delegate.GetUrl()
+}
+
 func (o *ObserverConnector) Unsubscribe(opId string) {
 	o.delegate.Unsubscribe(opId)
 }

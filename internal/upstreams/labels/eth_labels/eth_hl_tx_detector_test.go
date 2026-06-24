@@ -28,11 +28,69 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilForUnsupportedChain(t *testi
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 
+func TestEthHLTxLabelsDetectorDetectLabelsUsesUrlFlagFalse(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl.example.com/rpc?hl=false")
+
+	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
+
+	result := detector.DetectLabels()
+
+	assert.Equal(t, map[string]string{
+		"include_hl_native_tx": "true",
+		"exclude_hl_native_tx": "false",
+	}, result)
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+func TestEthHLTxLabelsDetectorDetectLabelsUsesUrlFlagTrue(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl.example.com/rpc?hl=true")
+
+	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
+
+	result := detector.DetectLabels()
+
+	assert.Equal(t, map[string]string{
+		"exclude_hl_native_tx": "true",
+		"include_hl_native_tx": "false",
+	}, result)
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilForTestnetWithoutUrlFlag(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl-testnet.example.com")
+
+	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, time.Second, connector)
+
+	result := detector.DetectLabels()
+
+	assert.Nil(t, result)
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+func TestEthHLTxLabelsDetectorDetectLabelsUsesUrlFlagOnTestnet(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl-testnet.example.com/rpc?hl=true")
+
+	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, time.Second, connector)
+
+	result := detector.DetectLabels()
+
+	assert.Equal(t, map[string]string{
+		"exclude_hl_native_tx": "true",
+		"include_hl_native_tx": "false",
+	}, result)
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
 func TestEthHLTxLabelsDetectorDetectLabelsReturnsTrueWhenNativeTxIsFound(t *testing.T) {
 	latestBlockRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.HYPERLIQUID)
 	require.NoError(t, err)
 
 	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl.example.com")
 	receiptBlocks := newReceiptBlockRecorder()
 
 	connector.
@@ -70,10 +128,11 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsTrueWhenNativeTxIsFound(t *test
 }
 
 func TestEthHLTxLabelsDetectorDetectLabelsReturnsFalseWhenNoNativeTxIsFound(t *testing.T) {
-	latestBlockRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.HYPERLIQUID_TESTNET)
+	latestBlockRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.HYPERLIQUID)
 	require.NoError(t, err)
 
 	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl.example.com")
 	receiptBlocks := newReceiptBlockRecorder()
 
 	connector.
@@ -87,7 +146,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsFalseWhenNoNativeTxIsFound(t *t
 		}).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc))
 
-	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, time.Second, connector)
+	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
 	result := detector.DetectLabels()
 
@@ -106,6 +165,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsRunsOnlyEveryFifthProbe(t *testing.T) 
 	require.NoError(t, err)
 
 	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl.example.com")
 	receiptBlocks := newReceiptBlockRecorder()
 
 	connector.
@@ -144,6 +204,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilWhenLatestBlockLookupFails(t
 	require.NoError(t, err)
 
 	connector := mocks.NewConnectorMock()
+	connector.On("GetUrl").Return("https://hl.example.com")
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(latestBlockRequest))).
 		Return(protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)).
