@@ -32,14 +32,14 @@ func TestChainValidator(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	chain := chains.GetChain("ethereum")
 
-	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, chain, 1*time.Second, options).SettingsValidators()
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options).SettingsValidators()
 
 	assert.Len(t, validators, 0)
 
 	options.DisableChainValidation = new(false)
 	options.ValidateCallLimit = new(true)
 
-	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, chain, 1*time.Second, options).SettingsValidators()
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options).SettingsValidators()
 
 	assert.Len(t, validators, 2)
 	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
@@ -177,6 +177,7 @@ func newEvmChainSpecificForChain(chainName string) *specific.EvmChainSpecificObj
 		context.Background(),
 		"id",
 		mocks.NewConnectorMock(),
+		nil,
 		chains.GetChain(chainName),
 		time.Second,
 		&chains.Options{InternalTimeout: time.Second},
