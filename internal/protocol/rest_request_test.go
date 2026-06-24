@@ -1,6 +1,7 @@
 package protocol_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -95,11 +96,19 @@ func TestNewInternalUpstreamRestRequestWithBodyForwardsBody(t *testing.T) {
 }
 
 func TestRestRequestHashPinsEncodingForBareTemplate(t *testing.T) {
-	// With no params or body, the hash is just blake2b(method) - pins the exact
-	// encoding so a future change to calculateRestHash is caught.
+	// Pins the exact section framing (tag + 8-byte big-endian length + data) so a
+	// future change to calculateRestHash is caught. With no params or body the
+	// only section is the method, tagged 'm'.
 	req := protocol.NewUpstreamRestRequest("id", "GET#/v2/status", nil, nil, "")
 
-	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte("GET#/v2/status")))
+	var canonical []byte
+	hdr := make([]byte, 9)
+	hdr[0] = 'm'
+	binary.BigEndian.PutUint64(hdr[1:], uint64(len("GET#/v2/status")))
+	canonical = append(canonical, hdr...)
+	canonical = append(canonical, []byte("GET#/v2/status")...)
+
+	expected := fmt.Sprintf("%x", blake2b.Sum256(canonical))
 	assert.Equal(t, expected, req.RequestHash())
 }
 
@@ -225,6 +234,26 @@ func TestRestRequestHashNoSegmentBoundaryCollision(t *testing.T) {
 	assert.NotEqual(t, withCapture, concatenated)
 }
 
+func TestRestRequestHashQueryBodyNoCollision(t *testing.T) {
+	// A query value and a body must never alias. With a bare separator,
+	// QueryParams{"a":[""]} (encodes to "a=") and body "a=" produced the same
+	// digest; the tagged length-prefixed framing keeps them distinct.
+	viaQuery := restHash("POST#/foo",
+		&protocol.RequestParams{QueryParams: map[string][]string{"a": {""}}}, nil)
+	viaBody := restHash("POST#/foo", nil, []byte("a="))
+
+	assert.NotEqual(t, viaQuery, viaBody)
+}
+
+func TestRestRequestHashCaptureBodyNoCollision(t *testing.T) {
+	// A path capture and a body must never alias.
+	viaCapture := restHash("POST#/foo",
+		&protocol.RequestParams{PathParams: []string{"x"}}, nil)
+	viaBody := restHash("POST#/foo", nil, []byte("x"))
+
+	assert.NotEqual(t, viaCapture, viaBody)
+}
+
 func TestRestRequestHashNilAndEmptyBodyEqual(t *testing.T) {
 	// A nil body and an empty body carry the same (absent) payload identity.
 	assert.Equal(t,
@@ -253,4 +282,86 @@ func TestRestRequestHashNilParamsEqualsEmptyParams(t *testing.T) {
 	assert.Equal(t,
 		restHash("GET#/v2/status", nil, nil),
 		restHash("GET#/v2/status", &protocol.RequestParams{}, nil))
+}
+
+func q(pairs ...string) map[string][]string {
+	m := map[string][]string{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		m[pairs[i]] = append(m[pairs[i]], pairs[i+1])
+	}
+	return m
+}
+
+// TestRestRequestHashNoCollisionsAcrossFamilies is the exhaustive guard: every
+// entry below is a GENUINELY DISTINCT request, so all their hashes must be
+// pairwise unique. The pairs are chosen to alias under weaker framing schemes
+// (bare separator, or tag-without-length): a path capture that swallows a tag
+// byte, a query value vs a body, a capture vs a body, a value injected with the
+// section delimiters, the method prefix swallowing the next section, multi-value
+// vs concatenated, and empty-string captures. The tag + length-prefix framing in
+// calculateRestHash must keep them all distinct.
+func TestRestRequestHashNoCollisionsAcrossFamilies(t *testing.T) {
+	type req struct {
+		name   string
+		method string
+		rp     *protocol.RequestParams
+		body   []byte
+	}
+	cases := []req{
+		// method boundary
+		{"bare-a", "GET#/a", nil, nil},
+		{"bare-b", "GET#/b", nil, nil},
+		{"method-swallows-path", "GET#/apx", nil, nil}, // vs "GET#/a" + capture "x"
+
+		// path capture count vs concatenation (the classic ["y","z"] vs ["ypz"])
+		{"path-x", "GET#/a", &protocol.RequestParams{PathParams: []string{"x"}}, nil},
+		{"path-y", "GET#/a", &protocol.RequestParams{PathParams: []string{"y"}}, nil},
+		{"path-y-z", "GET#/a", &protocol.RequestParams{PathParams: []string{"y", "z"}}, nil},
+		{"path-ypz", "GET#/a", &protocol.RequestParams{PathParams: []string{"ypz"}}, nil},
+		{"path-xy", "GET#/a", &protocol.RequestParams{PathParams: []string{"xy"}}, nil},
+		{"path-x-y", "GET#/a", &protocol.RequestParams{PathParams: []string{"x", "y"}}, nil},
+
+		// empty-string captures must not vanish or merge
+		{"path-empty", "GET#/a", &protocol.RequestParams{PathParams: []string{""}}, nil},
+		{"path-x-empty", "GET#/a", &protocol.RequestParams{PathParams: []string{"x", ""}}, nil},
+		{"path-empty-x", "GET#/a", &protocol.RequestParams{PathParams: []string{"", "x"}}, nil},
+
+		// capture vs query boundary: capture "a" + query "b=1" vs capture "aqb=1"
+		{"path-a+query-b1", "GET#/a", &protocol.RequestParams{PathParams: []string{"a"}, QueryParams: q("b", "1")}, nil},
+		{"path-aqb1", "GET#/a", &protocol.RequestParams{PathParams: []string{"aqb=1"}}, nil},
+
+		// query vs body boundary: query "a=" vs body "a="
+		{"query-a-empty", "GET#/a", &protocol.RequestParams{QueryParams: q("a", "")}, nil},
+		{"body-a-eq", "GET#/a", nil, []byte("a=")},
+
+		// capture vs body boundary: capture "x" vs body "x"
+		{"body-x", "GET#/a", nil, []byte("x")},
+
+		// query value injection must be neutralised by url-encoding
+		{"query-a1-b2", "GET#/a", &protocol.RequestParams{QueryParams: q("a", "1", "b", "2")}, nil},
+		{"query-inject", "GET#/a", &protocol.RequestParams{QueryParams: q("a", "1&b=2")}, nil},
+
+		// multi-value vs concatenated query value
+		{"query-a-1-2", "GET#/a", &protocol.RequestParams{QueryParams: q("a", "1", "a", "2")}, nil},
+		{"query-a-12", "GET#/a", &protocol.RequestParams{QueryParams: q("a", "12")}, nil},
+
+		// body variations
+		{"body-y", "GET#/a", nil, []byte("y")},
+		{"body-ab", "GET#/a", nil, []byte("ab")},
+
+		// everything-at-once, two near-identical full requests
+		{"full-1", "POST#/a/*", &protocol.RequestParams{PathParams: []string{"1"}, QueryParams: q("k", "v")}, []byte("body")},
+		{"full-2", "POST#/a/*", &protocol.RequestParams{PathParams: []string{"2"}, QueryParams: q("k", "v")}, []byte("body")},
+	}
+
+	seen := map[string]string{}
+	for _, c := range cases {
+		h := restHash(c.method, c.rp, c.body)
+		if prev, dup := seen[h]; dup {
+			t.Errorf("hash collision: %q and %q produced the same digest %s", prev, c.name, h)
+			continue
+		}
+		seen[h] = c.name
+	}
+	assert.Len(t, seen, len(cases), "every distinct request must hash uniquely")
 }

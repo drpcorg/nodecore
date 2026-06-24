@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"net/url"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -123,22 +124,31 @@ func (u *UpstreamRestRequest) setSelectors(selectors []RequestSelector) {
 // auth/tracing, not resource identity, and would fragment the cache key per
 // client. url.Values.Encode sorts by key so the digest is deterministic
 // regardless of map iteration order.
+//
+// Each section is framed as tag(1 byte) + length(8-byte big-endian) + data.
+// The length prefix makes the encoding injective, so the input families can
+// never alias - e.g. a query value "a=" and a body "a=" (or a path capture
+// "x" and a body "x") must not collide, which a bare separator would allow.
 func calculateRestHash(method string, params *RequestParams, body []byte) string {
 	var buf bytes.Buffer
-	buf.WriteString(method)
+	writeSection := func(tag byte, data []byte) {
+		var hdr [9]byte
+		hdr[0] = tag
+		binary.BigEndian.PutUint64(hdr[1:], uint64(len(data)))
+		buf.Write(hdr[:])
+		buf.Write(data)
+	}
+	writeSection('m', []byte(method))
 	if params != nil {
 		for _, p := range params.PathParams {
-			buf.WriteByte('\n')
-			buf.WriteString(p)
+			writeSection('p', []byte(p))
 		}
 		if len(params.QueryParams) > 0 {
-			buf.WriteByte('\n')
-			buf.WriteString(url.Values(params.QueryParams).Encode())
+			writeSection('q', []byte(url.Values(params.QueryParams).Encode()))
 		}
 	}
 	if len(body) > 0 {
-		buf.WriteByte('\n')
-		buf.Write(body)
+		writeSection('b', body)
 	}
 	return calculateHash(buf.Bytes())
 }
