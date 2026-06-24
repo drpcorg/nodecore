@@ -223,9 +223,6 @@ func TestRestRequestHashPathParamOrderMatters(t *testing.T) {
 }
 
 func TestRestRequestHashNoSegmentBoundaryCollision(t *testing.T) {
-	// The '\n' delimiter between method and captures prevents ambiguous merges:
-	// method "GET#/a" + capture "b" must not hash like method "GET#/ab" with no
-	// captures (or "GET#/a"+"" etc.).
 	withCapture := restHash("GET#/a", &protocol.RequestParams{PathParams: []string{"b"}}, nil)
 	merged := restHash("GET#/ab", nil, nil)
 	concatenated := restHash("GET#/ab", &protocol.RequestParams{PathParams: []string{""}}, nil)
