@@ -66,7 +66,7 @@ func (t *TronPeersValidator) fetchNodeInfo() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), t.options.InternalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequest("POST", "/wallet/getnodeinfo", t.chain)
+	request := protocol.NewInternalUpstreamRestRequest("POST#/wallet/getnodeinfo", nil, t.chain)
 
 	response := t.connector.SendRequest(ctx, request)
 	if response.HasError() {
@@ -137,7 +137,7 @@ func (t *TronSyncingValidator) fetchLatestBlock() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequest("POST", "/wallet/getblock", t.chain.Chain)
+	request := protocol.NewInternalUpstreamRestRequest("POST#/wallet/getblock", nil, t.chain.Chain)
 
 	response := t.connector.SendRequest(ctx, request)
 	if response.HasError() {

@@ -18,7 +18,7 @@ func NewAlgorandClientLabelsDetector(chain chains.Chain) *AlgorandClientLabelsDe
 }
 
 func (a *AlgorandClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalUpstreamRestRequest("GET", "/versions", a.chain), nil
+	return protocol.NewInternalUpstreamRestRequest("GET#/versions", nil, a.chain), nil
 }
 
 type algorandVersionsResponse struct {

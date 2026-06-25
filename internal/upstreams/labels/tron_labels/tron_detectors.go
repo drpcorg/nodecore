@@ -20,7 +20,7 @@ func NewTronClientLabelsDetector(chain chains.Chain) *TronClientLabelsDetector {
 }
 
 func (t *TronClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalUpstreamRestRequest("POST", "/wallet/getnodeinfo", t.chain), nil
+	return protocol.NewInternalUpstreamRestRequest("POST#/wallet/getnodeinfo", nil, t.chain), nil
 }
 
 type tronNodeInfoResponse struct {

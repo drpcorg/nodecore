@@ -31,6 +31,17 @@ func hasHeaderOnly(r protocol.RequestHolder) bool {
 	return false
 }
 
+// isBlockRound asserts the request targets the bounded block template with the
+// given round captured on PathParams. Internal REST helpers now carry the round
+// as a wildcard capture, not baked into Method().
+func isBlockRound(r protocol.RequestHolder, round string) bool {
+	if r.Method() != "GET#/v2/blocks/*" {
+		return false
+	}
+	rp := r.RequestParams()
+	return rp != nil && len(rp.PathParams) == 1 && rp.PathParams[0] == round
+}
+
 func TestAlgorandSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewAlgorandChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
@@ -101,7 +112,7 @@ func TestAlgorandGetLatestBlockUsesBlockHeader(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/99999" && hasHeaderOnly(r)
+		return isBlockRound(r, "99999") && hasHeaderOnly(r)
 	})).Return(blockResp).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -133,7 +144,7 @@ func TestAlgorandGetLatestBlockFallsBackToRoundBytes(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/99999" && hasHeaderOnly(r)
+		return isBlockRound(r, "99999") && hasHeaderOnly(r)
 	})).Return(blockResp).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -182,7 +193,7 @@ func TestAlgorandGetLatestBlockBlockFetchError(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/42" && hasHeaderOnly(r)
+		return isBlockRound(r, "42") && hasHeaderOnly(r)
 	})).Return(blockErr).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -215,7 +226,7 @@ func TestAlgorandGetFinalizedBlockDelegatesToLatest(t *testing.T) {
 		return r.Method() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/blocks/77777" && hasHeaderOnly(r)
+		return isBlockRound(r, "77777") && hasHeaderOnly(r)
 	})).Return(blockResp).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetFinalizedBlock(ctx)

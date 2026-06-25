@@ -106,7 +106,7 @@ func (t *TronLowerBoundDetector) callGetBlock(body []byte) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequestWithBody("POST", "/wallet/getblock", body, t.chain)
+	request := protocol.NewInternalUpstreamRestRequestWithBody("POST#/wallet/getblock", nil, body, t.chain)
 
 	response := t.connector.SendRequest(ctx, request)
 	if response.HasError() {
