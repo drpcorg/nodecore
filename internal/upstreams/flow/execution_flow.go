@@ -254,7 +254,8 @@ func hasHttpConnector(up upstreams.Upstream, requestType protocol.RequestType) b
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
 		defer e.wg.Done()
-		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
+		metricMethod := utils.SanitizeMetricLabel(request.Method())
+		requestTotalMetric.WithLabelValues(e.chain.String(), metricMethod).Inc()
 
 		if request.SpecMethod() == nil {
 			response := protocol.NewTotalFailure(request, protocol.NotSupportedMethodError(request.Method()))
@@ -291,7 +292,7 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			e.verifyQuorumSignatures(ctx, request, resp.ResponseWrapper)
 
 			if protocol.IsRetryable(resp.ResponseWrapper.Response) {
-				requestErrorsMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
+				requestErrorsMetric.WithLabelValues(e.chain.String(), metricMethod).Inc()
 			}
 
 			reqObserver.AddResult(
