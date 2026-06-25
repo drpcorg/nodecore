@@ -84,7 +84,7 @@ func marshalJsonRPCParams(params any) ([]byte, error) {
 	return sonic.Marshal(params)
 }
 
-func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specName string) *UpstreamJsonRpcRequest {
+func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specName string, selectors ...RequestSelector) *UpstreamJsonRpcRequest {
 	specMethod := specs.GetSpecMethodWithFallback(specName, jsonRpcRequest.Method)
 	return &UpstreamJsonRpcRequest{
 		id:              id,
@@ -92,26 +92,30 @@ func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isS
 		realId:          jsonRpcRequest.Id,
 		requestParams:   jsonRpcRequest.Params,
 		isSub:           isSub,
-		requestKey:      calculateJsonRpcHash(jsonRpcRequest.Method, jsonRpcRequest.Params),
+		requestKey:      calculateJsonRpcHash(jsonRpcRequest.Method, jsonRpcRequest.Params, selectors),
 		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(isSub).WithMethod(jsonRpcRequest.Method),
+		selectors:       selectors,
 	}
 }
 
-func NewStreamUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, specName string) *UpstreamJsonRpcRequest {
-	request := NewUpstreamJsonRpcRequest(id, jsonRpcRequest, false, specName)
+func NewStreamUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, specName string, selectors ...RequestSelector) *UpstreamJsonRpcRequest {
+	request := NewUpstreamJsonRpcRequest(id, jsonRpcRequest, false, specName, selectors...)
 	request.isStream = true
 	return request
 }
 
-func calculateJsonRpcHash(method string, params json.RawMessage) string {
-	var requestHash string
-	if len(params) == 0 {
-		requestHash = calculateHash([]byte(method))
-	} else {
-		requestHash = calculateHash(append(params, []byte(method)...))
-	}
-	return requestHash
+func calculateJsonRpcHash(method string, params json.RawMessage, selectors []RequestSelector) string {
+	// The label key is the request's node-class identity (see LabelCacheKey).
+	// Hashing it alongside method+params keeps responses from one class out of
+	// another class's cache entry. It is empty for class-unconstrained requests,
+	// so their hash is identical to one computed without selectors.
+	labelKey := LabelCacheKey(selectors)
+	buf := make([]byte, 0, len(params)+len(method)+len(labelKey))
+	buf = append(buf, params...)
+	buf = append(buf, method...)
+	buf = append(buf, labelKey...)
+	return calculateHash(buf)
 }
 
 func (u *UpstreamJsonRpcRequest) Id() string {
@@ -239,10 +243,6 @@ func (u *UpstreamJsonRpcRequest) RequestParams() *RequestParams {
 
 func (u *UpstreamJsonRpcRequest) Selectors() []RequestSelector {
 	return append([]RequestSelector(nil), u.selectors...)
-}
-
-func (u *UpstreamJsonRpcRequest) setSelectors(selectors []RequestSelector) {
-	u.selectors = append([]RequestSelector(nil), selectors...)
 }
 
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)

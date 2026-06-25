@@ -239,8 +239,8 @@ func TestHasEffectiveSelectors(t *testing.T) {
 	}))
 }
 
-func logsRequest(params string) protocol.RequestHolder {
-	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth")
+func logsRequest(params string, selectors ...protocol.RequestSelector) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth", selectors...)
 }
 
 func logsSupervisor() *mocks.UpstreamSupervisorMock {
@@ -265,7 +265,7 @@ func TestResolveSourceUsesLocalLogsForAnySelector(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := protocol.WithSelectors(logsRequest(`["logs",{}]`), tc.selectors)
+			req := logsRequest(`["logs",{}]`, tc.selectors...)
 			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil, nil, allLocalSubs)
 			if tc.wantLocal {
 				assert.Equal(t, localLogsKey, key)

@@ -554,3 +554,40 @@ func TestCachePolicySupportedMethodsThenReceiveResultAndStoreOrNothing(t *testin
 	upSupervisor.AssertExpectations(t)
 	connectorMock.AssertExpectations(t)
 }
+
+func TestCachePolicyLabelSelectorsNamespaceTheCacheKey(t *testing.T) {
+	_, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
+
+	connectorMock := mocks.NewCacheConnectorMock()
+	connectorMock.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	policyCfg := test_utils.PolicyConfig("polygon", "*", "conn-id", "10KB", "5s", true)
+	policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
+
+	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "test_method"}
+	reqNoLabel := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
+	reqA := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth", protocol.RequestLabelSelector{Name: "type", Values: []string{"a"}})
+	reqB := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth", protocol.RequestLabelSelector{Name: "type", Values: []string{"b"}})
+
+	assert.True(t, policy.Store(context.Background(), chains.POLYGON, reqNoLabel, []byte(`r`)))
+	assert.True(t, policy.Store(context.Background(), chains.POLYGON, reqA, []byte(`r`)))
+	assert.True(t, policy.Store(context.Background(), chains.POLYGON, reqB, []byte(`r`)))
+
+	keys := make([]string, 0, 3)
+	for _, call := range connectorMock.Calls {
+		if call.Method == "Store" {
+			keys = append(keys, call.Arguments.String(1))
+		}
+	}
+
+	assert.Len(t, keys, 3)
+	// Same method+params, but each request resolves to a distinct cache key: the
+	// node class is hashed into the request key, so one class's response can't be
+	// served to a request that pinned another.
+	assert.NotEqual(t, keys[0], keys[1])
+	assert.NotEqual(t, keys[0], keys[2])
+	assert.NotEqual(t, keys[1], keys[2])
+
+	connectorMock.AssertExpectations(t)
+	upSupervisor.AssertExpectations(t)
+}

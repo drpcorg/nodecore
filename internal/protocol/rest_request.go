@@ -45,21 +45,22 @@ func NewInternalUpstreamRestRequestWithBody(methodTemplate string, requestParams
 	}
 }
 
-func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string) *UpstreamRestRequest {
+func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string, selectors ...RequestSelector) *UpstreamRestRequest {
 	specMethod := specs.GetSpecMethodWithFallback(specName, methodTemplate)
 	return &UpstreamRestRequest{
 		id:            id,
 		method:        methodTemplate,
-		requestKey:    calculateRestHash(methodTemplate, requestParams, body),
+		requestKey:    calculateRestHash(methodTemplate, requestParams, body, selectors),
 		body:          body,
 		requestParams: requestParams,
 		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(methodTemplate),
 		specMethod:    specMethod,
+		selectors:     selectors,
 	}
 }
 
-func NewStreamUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string) *UpstreamRestRequest {
-	request := NewUpstreamRestRequest(id, methodTemplate, requestParams, body, specName)
+func NewStreamUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string, selectors ...RequestSelector) *UpstreamRestRequest {
+	request := NewUpstreamRestRequest(id, methodTemplate, requestParams, body, specName, selectors...)
 	request.isStream = true
 	return request
 }
@@ -114,10 +115,6 @@ func (u *UpstreamRestRequest) Selectors() []RequestSelector {
 	return append([]RequestSelector(nil), u.selectors...)
 }
 
-func (u *UpstreamRestRequest) setSelectors(selectors []RequestSelector) {
-	u.selectors = append([]RequestSelector(nil), selectors...)
-}
-
 // calculateRestHash derives a REST request's identity from everything that
 // changes the response: the spec method template, the ordered path captures,
 // the query, and the body. Headers are intentionally excluded - they carry
@@ -129,7 +126,7 @@ func (u *UpstreamRestRequest) setSelectors(selectors []RequestSelector) {
 // The length prefix makes the encoding injective, so the input families can
 // never alias - e.g. a query value "a=" and a body "a=" (or a path capture
 // "x" and a body "x") must not collide, which a bare separator would allow.
-func calculateRestHash(method string, params *RequestParams, body []byte) string {
+func calculateRestHash(method string, params *RequestParams, body []byte, selectors []RequestSelector) string {
 	var buf bytes.Buffer
 	writeSection := func(tag byte, data []byte) {
 		var hdr [9]byte
@@ -149,6 +146,12 @@ func calculateRestHash(method string, params *RequestParams, body []byte) string
 	}
 	if len(body) > 0 {
 		writeSection('b', body)
+	}
+	// The label key is the request's node-class identity (see LabelCacheKey), so
+	// a labeled request can't read another class's cached response. It is empty
+	// for class-unconstrained requests, leaving their hash unchanged.
+	if labelKey := LabelCacheKey(selectors); labelKey != "" {
+		writeSection('s', []byte(labelKey))
 	}
 	return calculateHash(buf.Bytes())
 }

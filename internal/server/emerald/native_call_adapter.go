@@ -79,9 +79,9 @@ func (jsonRpcNativeCallAdapter) BuildRequest(
 		return nil, nativeCallErrorItem(item.GetId(), protocol.ClientError(err), flow.NoUpstream, nil, nil)
 	}
 	if chunkSize > 0 {
-		return protocol.WithSelectors(protocol.NewStreamUpstreamJsonRpcRequest(requestID, body, chain.MethodSpec), selectors), nil
+		return protocol.NewStreamUpstreamJsonRpcRequest(requestID, body, chain.MethodSpec, selectors...), nil
 	}
-	return protocol.WithSelectors(protocol.NewUpstreamJsonRpcRequest(requestID, body, false, chain.MethodSpec), selectors), nil
+	return protocol.NewUpstreamJsonRpcRequest(requestID, body, false, chain.MethodSpec, selectors...), nil
 }
 
 func (jsonRpcNativeCallAdapter) SendReply(
@@ -138,9 +138,9 @@ func (restNativeCallAdapter) BuildRequest(
 		return nil, nativeCallErrorItem(item.GetId(), protocol.ClientError(err), flow.NoUpstream, nil, nil)
 	}
 	if chunkSize > 0 {
-		return protocol.WithSelectors(protocol.NewStreamUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec), selectors), nil
+		return protocol.NewStreamUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec, selectors...), nil
 	}
-	return protocol.WithSelectors(protocol.NewUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec), selectors), nil
+	return protocol.NewUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec, selectors...), nil
 }
 
 func (restNativeCallAdapter) SendReply(
