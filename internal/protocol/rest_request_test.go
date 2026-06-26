@@ -159,13 +159,16 @@ func TestRestRequestHashIsStableAndIgnoresHeaders(t *testing.T) {
 	assert.Equal(t, noHeaders, mk(nil), "identical inputs must hash identically")
 }
 
-func TestRestRequestHashEmptyForInternalRequest(t *testing.T) {
-	// Internal requests bypass the cache and aren't subscribable, so - like
-	// internal JSON-RPC requests - they carry no hash.
+func TestRestRequestHashForInternalRequest(t *testing.T) {
+	// RequestHash is now computed lazily on first access, so internal requests
+	// produce a real, stable hash (previously empty). They still bypass the
+	// cache in practice, so this only removes the empty-key aliasing risk.
 	req := protocol.NewInternalUpstreamRestRequest("GET#/v2/blocks/*",
 		&protocol.RequestParams{PathParams: []string{"42"}}, chains.ALGORAND)
 
-	assert.Empty(t, req.RequestHash())
+	hash := req.RequestHash()
+	assert.NotEmpty(t, hash)
+	assert.Equal(t, hash, req.RequestHash()) // memoized: same value on repeated calls
 }
 
 func restHash(method string, rp *protocol.RequestParams, body []byte) string {

@@ -27,7 +27,8 @@ type UpstreamJsonRpcRequest struct {
 	isStream bool
 	isSub    bool
 
-	mu sync.Mutex
+	mu             sync.Mutex
+	requestKeyOnce sync.Once
 }
 
 func NewUpstreamJsonRpcRequestWithSpecMethod(method string, params any, specMethod *specs.Method) (*UpstreamJsonRpcRequest, error) {
@@ -92,7 +93,6 @@ func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isS
 		realId:          jsonRpcRequest.Id,
 		requestParams:   jsonRpcRequest.Params,
 		isSub:           isSub,
-		requestKey:      calculateJsonRpcHash(jsonRpcRequest.Method, jsonRpcRequest.Params, selectors),
 		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(isSub).WithMethod(jsonRpcRequest.Method),
 		selectors:       selectors,
@@ -226,6 +226,9 @@ func (u *UpstreamJsonRpcRequest) RequestType() RequestType {
 }
 
 func (u *UpstreamJsonRpcRequest) RequestHash() string {
+	u.requestKeyOnce.Do(func() {
+		u.requestKey = calculateJsonRpcHash(u.method, u.requestParams, u.selectors)
+	})
 	return u.requestKey
 }
 
