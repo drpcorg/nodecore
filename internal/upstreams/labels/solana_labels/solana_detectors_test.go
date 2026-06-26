@@ -32,7 +32,7 @@ func TestSolanaClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	assert.Equal(t, protocol.JsonRpc, request.RequestType())
 	assert.False(t, request.IsStream())
 	assert.False(t, request.IsSubscribe())
-	assert.Empty(t, request.RequestHash())
+	assert.NotEmpty(t, request.RequestHash()) // hash is now computed lazily on access
 	assert.NotNil(t, request.RequestObserver())
 	assert.Equal(t, protocol.InternalUnary, request.RequestObserver().GetRequestKind())
 

@@ -8,7 +8,11 @@ import (
 
 var opts = []cmp.Option{
 	cmp.AllowUnexported(protocol.UpstreamJsonRpcRequest{}),
-	cmpopts.IgnoreFields(protocol.UpstreamJsonRpcRequest{}, "requestObserver", "mu", "specMethod"),
+	// requestKey is a derived cache key, now computed lazily (see RequestHash),
+	// so it's empty until first access; requestKeyOnce holds a sync.Once that
+	// go-cmp can't traverse. Both are ignored - identity is already covered by
+	// method/params/selectors, which requestKey is purely derived from.
+	cmpopts.IgnoreFields(protocol.UpstreamJsonRpcRequest{}, "requestObserver", "mu", "specMethod", "requestKey", "requestKeyOnce"),
 }
 
 func UpstreamJsonRpcRequestMatcher(request protocol.RequestHolder) func(protocol.RequestHolder) bool {
