@@ -272,20 +272,6 @@ type RequestUnsupportedSelector struct {
 
 func (RequestUnsupportedSelector) isRequestSelector() {}
 
-type requestSelectorSetter interface {
-	setSelectors([]RequestSelector)
-}
-
-func WithSelectors(request RequestHolder, selectors []RequestSelector) RequestHolder {
-	if request == nil || len(selectors) == 0 {
-		return request
-	}
-	if setter, ok := request.(requestSelectorSetter); ok {
-		setter.setSelectors(selectors)
-	}
-	return request
-}
-
 type UpstreamSubscriptionResponse interface {
 	ResponseChan() chan *WsResponse
 	OpId() string

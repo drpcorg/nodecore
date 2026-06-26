@@ -149,7 +149,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 	}
 
 	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
-	subscribeRequest := protocol.WithSelectors(protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec), mapDshackleSelectors([]*dshackle.Selector{request.GetSelector()}))
+	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec, mapDshackleSelectors([]*dshackle.Selector{request.GetSelector()})...)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
 
 	executionFlow := flow.NewBaseExecutionFlow(
