@@ -52,4 +52,8 @@ func TestAptosGetLatestBlock(t *testing.T) {
 	assert.Equal(t, uint64(100), block.Height)
 	assert.Equal(t, uint64(5000), block.Slot)
 	assert.Equal(t, blockchain.NewHashIdFromBytes(rawHash), block.Hash)
+
+	parentBytes := make([]byte, 32)
+	parentBytes[31] = 99 // height-1, matching the production heightToBytes encoding
+	assert.Equal(t, blockchain.NewHashIdFromBytes(parentBytes), block.ParentHash)
 }
