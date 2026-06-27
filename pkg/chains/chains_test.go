@@ -35,3 +35,20 @@ func TestGetChainByChainIdAndVersionScopesByType(t *testing.T) {
 	other := GetChainByChainIdAndVersion(Solana, "0x1", "1")
 	assert.Equal(t, UnknownChain, other)
 }
+
+func TestAptosChainsRegistered(t *testing.T) {
+	mainnet := GetChain("aptos-mainnet")
+	assert.Equal(t, APTOS, mainnet.Chain)
+	assert.Equal(t, Aptos, mainnet.Type)
+	assert.Equal(t, "0x1", mainnet.ChainId)
+	assert.Equal(t, "1", mainnet.NetVersion)
+	assert.Equal(t, 1168, mainnet.GrpcId)
+	assert.Equal(t, "aptos", mainnet.MethodSpec)
+	assert.Equal(t, mainnet, GetChain("aptos")) // alias
+	assert.Equal(t, mainnet, GetChainByGrpcId(1168))
+
+	testnet := GetChain("aptos-testnet")
+	assert.Equal(t, APTOS_TESTNET, testnet.Chain)
+	assert.Equal(t, "0x2", testnet.ChainId)
+	assert.Equal(t, 10203, testnet.GrpcId)
+}
