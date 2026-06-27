@@ -217,3 +217,14 @@ func TestNetworkSpecsDisableUnsupportedGetProof(t *testing.T) {
 	restAdditionalMethods := specs.GetSpecMethodsByConnectors("hyperliquid", []specs.ApiConnectorType{specs.RestAdditional})
 	assert.NotContains(t, restAdditionalMethods[specs.DefaultMethodGroup], "eth_getProof")
 }
+
+func TestAptosSpecLoadsAndMatchesRestRoutes(t *testing.T) {
+	loader := specs.NewMethodSpecLoader()
+	err := loader.Load()
+	assert.NoError(t, err)
+
+	template, params, ok := specs.MatchRestMethod("aptos", "GET#/v1/blocks/by_height/12345")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/v1/blocks/by_height/*", template)
+	assert.Equal(t, []string{"12345"}, params)
+}
