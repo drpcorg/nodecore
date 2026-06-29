@@ -3,6 +3,7 @@ package protocol_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -38,11 +39,20 @@ func TestGenerateRequestHashWithParams(t *testing.T) {
 	assert.Equal(t, expected, request.RequestHash())
 }
 
-func TestNotRequestHashForInternalJsonRpcRequest(t *testing.T) {
+func TestRequestHashForInternalJsonRpcRequest(t *testing.T) {
+	// RequestHash is now computed lazily on first access, so internal requests
+	// produce a real, stable hash (previously empty). They still bypass the
+	// cache in practice, so this only removes the empty-key aliasing risk.
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", []byte(`"params"`), chains.ETHEREUM)
-
 	assert.Nil(t, err)
-	assert.Empty(t, request.RequestHash())
+
+	hash := request.RequestHash()
+	assert.NotEmpty(t, hash)
+	assert.Equal(t, hash, request.RequestHash()) // memoized: same value on repeated calls
+
+	other, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", []byte(`"params"`), chains.ETHEREUM)
+	assert.Nil(t, err)
+	assert.Equal(t, hash, other.RequestHash()) // deterministic across instances
 }
 
 func TestInternalJsonRpcRequestNilParamsEncodedAsEmptyArray(t *testing.T) {
@@ -88,4 +98,26 @@ func TestUpstreamRequestParseAndModifyParams(t *testing.T) {
 	param = request.ParseParams(context.Background())
 	assert.IsType(t, &specs.StringParam{}, param)
 	assert.Equal(t, "superValue", param.(*specs.StringParam).Value)
+}
+
+func TestRequestHashIsRaceFreeWithModifyParams(t *testing.T) {
+	// RequestHash and ModifyParams never run concurrently in production
+	// (cacheable vs sticky-send method sets are disjoint), but RequestHash
+	// reads u.requestParams while ModifyParams writes it, so the access must be
+	// synchronized lest a future caller make them overlap. Drive both
+	// concurrently under -race to prove the field access is locked.
+	tagParser := specs.TagParser{ReturnType: specs.StringType, Path: ".[2].hash"}
+	method := specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, &tagParser)
+	request, err := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_call", []any{false, "0x4", map[string]string{"hash": "235"}}, method)
+	assert.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); _ = request.RequestHash() }()
+		go func() { defer wg.Done(); request.ModifyParams(context.Background(), "superValue") }()
+	}
+	wg.Wait()
+
+	assert.NotEmpty(t, request.RequestHash())
 }

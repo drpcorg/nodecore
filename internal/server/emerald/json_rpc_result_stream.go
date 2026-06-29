@@ -11,14 +11,14 @@ import (
 // streamJsonRPCResult extracts the bytes of the "result" field from a
 // JSON-RPC response read from reader and writes them verbatim to output.
 //
-// The first up-to-MaxChunkSize bytes are buffered and inspected with a
-// tokenizer just long enough to locate the result value's start offset and
-// classify its JSON type. From that offset onward, bytes flow through
-// unmodified, with a small byte-level state machine
-// (protocol.ResultCounter) tracking bracket nesting / string escapes /
-// scalar termination to decide when the value ends. No JSON tokens are
-// allocated for the result body — it is copied byte-for-byte.
-func streamJsonRPCResult(reader io.Reader, output io.Writer) error {
+// The result value's start offset and JSON type were already located by the
+// connector's single-pass AnalyzeFirstChunk and are passed in as start /
+// counter, so no re-scan happens here. The first up-to-MaxChunkSize bytes are
+// buffered; from start onward, bytes flow through unmodified, with a small
+// byte-level state machine (protocol.ResultCounter) tracking bracket nesting /
+// string escapes / scalar termination to decide when the value ends. No JSON
+// tokens are allocated for the result body — it is copied byte-for-byte.
+func streamJsonRPCResult(reader io.Reader, output io.Writer, start int, counter protocol.ResultCounter) error {
 	prefix := make([]byte, protocol.MaxChunkSize)
 	n, err := io.ReadFull(reader, prefix)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
@@ -27,9 +27,8 @@ func streamJsonRPCResult(reader io.Reader, output io.Writer) error {
 	prefix = prefix[:n]
 	exhausted := err != nil // io.ReadFull only stops short on EOF / UnexpectedEOF
 
-	start, counter, err := protocol.FindResultStart(prefix)
-	if err != nil {
-		return err
+	if start < 0 || start > len(prefix) {
+		return errors.New("unable to parse stream response: result field is missing")
 	}
 
 	done, err := emitFromBuffer(output, prefix[start:], &counter)

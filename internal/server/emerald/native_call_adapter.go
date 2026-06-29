@@ -174,6 +174,12 @@ func sendReply(
 	if resp, ok := wrapper.Response.(*protocol.BaseUpstreamResponse); ok {
 		headers = resp.ResponseHeaders()
 	}
+	resultStart := -1
+	var resultCounter protocol.ResultCounter
+	if hint, ok := wrapper.Response.GetStreamHint().(protocol.JsonRpcResultStreamHint); ok {
+		resultStart = hint.ResultStart
+		resultCounter = hint.Counter
+	}
 	requestID := parseCallItemID(wrapper.RequestId)
 	finalizationData := nativeCallFinalizationData(wrapper)
 
@@ -186,7 +192,7 @@ func sendReply(
 
 	if wrapper.Response.HasStream() {
 		reader := wrapper.Response.EncodeResponse([]byte("0"))
-		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, wrapper.UpstreamNodeVersion, finalizationData, reader, chunkSize, mode, headers, stream); err != nil {
+		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, wrapper.UpstreamNodeVersion, finalizationData, reader, chunkSize, mode, resultStart, resultCounter, headers, stream); err != nil {
 			replyItem := nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers)
 			replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
 			replyItem.Finalization = finalizationData
@@ -227,6 +233,8 @@ func streamNativeCallBody(
 	reader io.Reader,
 	chunkSize uint32,
 	mode streamMode,
+	resultStart int,
+	resultCounter protocol.ResultCounter,
 	header http.Header,
 	stream dshackle.Blockchain_NativeCallServer,
 ) error {
@@ -250,7 +258,7 @@ func streamNativeCallBody(
 
 	switch mode {
 	case unwrapJsonRpcResultStream:
-		if err := streamJsonRPCResult(reader, emitter); err != nil {
+		if err := streamJsonRPCResult(reader, emitter, resultStart, resultCounter); err != nil {
 			return err
 		}
 	case passThroughStream:

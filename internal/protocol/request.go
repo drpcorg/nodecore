@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -53,9 +54,9 @@ func (r RequestType) String() string {
 	panic(fmt.Sprintf("unknown RequestType - %d", r))
 }
 
-func calculateHash(bytes []byte) string {
-	hash := blake2b.Sum256(bytes)
-	return fmt.Sprintf("%x", hash)
+func calculateHash(b []byte) string {
+	hash := blake2b.Sum256(b)
+	return hex.EncodeToString(hash[:])
 }
 
 func jsonRpcRequestBytes(id json.RawMessage, method string, params json.RawMessage) ([]byte, error) {

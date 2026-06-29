@@ -207,10 +207,12 @@ func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
 }
 
 func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
-	reader := strings.NewReader(`{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`)
+	body := `{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`
+	reader := strings.NewReader(body)
 	stream := &testNativeCallStream{ctx: context.Background()}
+	a := protocol.AnalyzeChunk([]byte(body))
 
-	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, 4, unwrapJsonRpcResultStream, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, 4, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 3)
 
@@ -234,7 +236,7 @@ func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	reader := strings.NewReader(`{"hello":"world"}`)
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, 8, passThroughStream, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, 8, passThroughStream, -1, protocol.ResultCounter{}, nil, stream)
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 3)
 

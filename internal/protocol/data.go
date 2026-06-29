@@ -180,6 +180,11 @@ type ResponseHolder interface {
 	EncodeResponse(realId []byte) io.Reader
 	HasError() bool
 	HasStream() bool
+	// GetStreamHint returns the streaming hint located by the connector's
+	// single-pass first-chunk analysis, or nil when the response carries no
+	// hint (non-streaming, REST, errors, subscriptions). Only the gRPC
+	// result-unwrap consumer uses it.
+	GetStreamHint() StreamHint
 	Id() string
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"net/url"
+	"sync"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -20,6 +21,8 @@ type UpstreamRestRequest struct {
 	observer      *RequestObserver
 	selectors     []RequestSelector
 	isStream      bool
+
+	requestKeyOnce sync.Once
 }
 
 // NewInternalUpstreamRestRequest builds an internally-originated REST request
@@ -50,7 +53,6 @@ func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestPar
 	return &UpstreamRestRequest{
 		id:            id,
 		method:        methodTemplate,
-		requestKey:    calculateRestHash(methodTemplate, requestParams, body, selectors),
 		body:          body,
 		requestParams: requestParams,
 		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(methodTemplate),
@@ -104,6 +106,9 @@ func (u *UpstreamRestRequest) RequestType() RequestType {
 }
 
 func (u *UpstreamRestRequest) RequestHash() string {
+	u.requestKeyOnce.Do(func() {
+		u.requestKey = calculateRestHash(u.method, u.requestParams, u.body, u.selectors)
+	})
 	return u.requestKey
 }
 
