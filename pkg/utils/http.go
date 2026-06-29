@@ -26,8 +26,8 @@ func DefaultDialer() *net.Dialer {
 
 func DefaultHttpTransport() *http.Transport {
 	return &http.Transport{
-		//DialContext:           DefaultDialer().DialContext,
-		//ForceAttemptHTTP2:     true,
+		DialContext:           DefaultDialer().DialContext,
+		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          1024,
 		MaxIdleConnsPerHost:   512,
 		MaxConnsPerHost:       0,

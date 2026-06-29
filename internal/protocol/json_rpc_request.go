@@ -227,7 +227,14 @@ func (u *UpstreamJsonRpcRequest) RequestType() RequestType {
 
 func (u *UpstreamJsonRpcRequest) RequestHash() string {
 	u.requestKeyOnce.Do(func() {
-		u.requestKey = calculateJsonRpcHash(u.method, u.requestParams, u.selectors)
+		// Read requestParams under u.mu so the hash is computed against a
+		// consistent snapshot even if ModifyParams (the only writer, also
+		// holding u.mu) runs concurrently. The lock is taken only on first
+		// computation; repeat calls hit the Once fast path lock-free.
+		u.mu.Lock()
+		params := u.requestParams
+		u.mu.Unlock()
+		u.requestKey = calculateJsonRpcHash(u.method, params, u.selectors)
 	})
 	return u.requestKey
 }

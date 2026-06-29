@@ -3,6 +3,7 @@ package protocol_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -97,4 +98,26 @@ func TestUpstreamRequestParseAndModifyParams(t *testing.T) {
 	param = request.ParseParams(context.Background())
 	assert.IsType(t, &specs.StringParam{}, param)
 	assert.Equal(t, "superValue", param.(*specs.StringParam).Value)
+}
+
+func TestRequestHashIsRaceFreeWithModifyParams(t *testing.T) {
+	// RequestHash and ModifyParams never run concurrently in production
+	// (cacheable vs sticky-send method sets are disjoint), but RequestHash
+	// reads u.requestParams while ModifyParams writes it, so the access must be
+	// synchronized lest a future caller make them overlap. Drive both
+	// concurrently under -race to prove the field access is locked.
+	tagParser := specs.TagParser{ReturnType: specs.StringType, Path: ".[2].hash"}
+	method := specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{SendSticky: true}}, &tagParser)
+	request, err := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_call", []any{false, "0x4", map[string]string{"hash": "235"}}, method)
+	assert.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(2)
+		go func() { defer wg.Done(); _ = request.RequestHash() }()
+		go func() { defer wg.Done(); request.ModifyParams(context.Background(), "superValue") }()
+	}
+	wg.Wait()
+
+	assert.NotEmpty(t, request.RequestHash())
 }
