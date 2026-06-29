@@ -253,10 +253,6 @@ func hasHttpConnector(up upstreams.Upstream, requestType protocol.RequestType) b
 
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
-		//s := time.Now()
-		//defer func() {
-		//	fmt.Println("processRequest time:", time.Since(s))
-		//}()
 		defer e.wg.Done()
 		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 

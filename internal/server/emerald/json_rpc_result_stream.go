@@ -19,10 +19,6 @@ import (
 // string escapes / scalar termination to decide when the value ends. No JSON
 // tokens are allocated for the result body — it is copied byte-for-byte.
 func streamJsonRPCResult(reader io.Reader, output io.Writer, start int, counter protocol.ResultCounter) error {
-	/*	s := time.Now()
-		defer func() {
-			fmt.Println(time.Since(s), "stream done!")
-		}()*/
 	prefix := make([]byte, protocol.MaxChunkSize)
 	n, err := io.ReadFull(reader, prefix)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {

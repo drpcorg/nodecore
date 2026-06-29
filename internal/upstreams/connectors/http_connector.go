@@ -144,12 +144,6 @@ func (h *HttpConnector) SubscribeStates(_ string) *utils.Subscription[protocol.S
 // and applying its own URL/header semantics; the shared dispatch helper
 // only handles network execution and response framing.
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	//s := time.Now()
-	//defer func() {
-	//	if request.IsStream() {
-	//		fmt.Println(time.Since(s))
-	//	}
-	//}()
 	if h.GetType() == specs.JsonRpcConnector {
 		return h.sendJsonRpc(ctx, request)
 	}
