@@ -14,7 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/google/uuid"
-	lru "github.com/hashicorp/golang-lru/v2/expirable"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -125,7 +125,7 @@ func newPendingTxSourceBuilder(
 		go func() {
 			defer close(out)
 			defer stateSub.Unsubscribe()
-			seen := lru.NewLRU[string, struct{}](pendingTxDedupSize, nil, pendingTxDedupTTL)
+			seen, _ := lru.New[string, time.Time](pendingTxDedupSize)
 			feedsAlive := len(subs)
 
 			pendingTxLost := func() bool {
@@ -162,10 +162,10 @@ func newPendingTxSourceBuilder(
 						return
 					}
 					key := string(r.Message)
-					if seen.Contains(key) {
-						continue // same tx hash already emitted from another upstream
+					if t, ok := seen.Get(key); ok && time.Since(t) < pendingTxDedupTTL {
+						continue // same tx hash seen within the TTL window — already emitted
 					}
-					seen.Add(key, struct{}{})
+					seen.Add(key, time.Now())
 					select {
 					case out <- &protocol.WsResponse{Message: r.Message, UpstreamId: r.UpstreamId}:
 					case <-srcCtx.Done():
