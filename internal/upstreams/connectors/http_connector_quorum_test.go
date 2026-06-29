@@ -83,7 +83,10 @@ func TestHttpConnector_NoQuorum_StreamRequestStaysStreamed(t *testing.T) {
 	httpmock.Activate(t)
 	defer httpmock.Deactivate()
 
-	body := []byte(`[` + strings.Repeat(`{"x":1},`, 2048) + `{"x":1}]`)
+	// A well-formed JSON-RPC envelope whose result array overflows the first
+	// chunk, so AnalyzeFirstChunk locates the result and the streaming path is
+	// taken.
+	body := []byte(`{"jsonrpc":"2.0","id":1,"result":[` + strings.Repeat(`{"x":1},`, 2048) + `{"x":1}]}`)
 	httpmock.RegisterResponder("POST", "", func(req *http.Request) (*http.Response, error) {
 		return httpmock.NewBytesResponse(200, body), nil
 	})

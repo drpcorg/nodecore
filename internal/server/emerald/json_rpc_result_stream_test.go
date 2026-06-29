@@ -7,15 +7,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// streamResult mirrors the production wiring: the connector locates the result
+// value via AnalyzeChunk (over the first MaxChunkSize bytes) and the gRPC
+// consumer streams from that offset. Tests supply chunk = the bytes the reader
+// will yield (or its leading portion for error-injecting readers).
+func streamResult(reader io.Reader, out io.Writer, chunk []byte) error {
+	if len(chunk) > protocol.MaxChunkSize {
+		chunk = chunk[:protocol.MaxChunkSize]
+	}
+	a := protocol.AnalyzeChunk(chunk)
+	return streamJsonRPCResult(reader, out, a.ResultStart, a.Counter)
+}
 
 func TestStreamJsonRPCResultExtractsNestedResult(t *testing.T) {
 	var out strings.Builder
 	input := `{"jsonrpc":"2.0","id":1,"result":{"items":[1,{"k":"v","arr":[true,false,null]}],"s":"x"},"ignored":{"deep":[1,2,3]}}`
 
-	err := streamJsonRPCResult(strings.NewReader(input), &out)
+	err := streamResult(strings.NewReader(input), &out, []byte(input))
 	require.NoError(t, err)
 	assert.Equal(t, `{"items":[1,{"k":"v","arr":[true,false,null]}],"s":"x"}`, out.String())
 }
@@ -101,7 +114,7 @@ func TestStreamJsonRPCResultExtractsPrimitiveResult(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(te *testing.T) {
 			var out strings.Builder
-			err := streamJsonRPCResult(strings.NewReader(tc.response), &out)
+			err := streamResult(strings.NewReader(tc.response), &out, []byte(tc.response))
 			require.NoError(te, err)
 			assert.Equal(te, tc.expected, out.String())
 		})
@@ -148,7 +161,7 @@ func TestStreamJsonRPCResultContainerEdgeCases(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(te *testing.T) {
 			var out strings.Builder
-			err := streamJsonRPCResult(strings.NewReader(tc.response), &out)
+			err := streamResult(strings.NewReader(tc.response), &out, []byte(tc.response))
 			require.NoError(te, err)
 			assert.Equal(te, tc.expected, out.String())
 		})
@@ -195,7 +208,7 @@ func TestStreamJsonRPCResultEnvelopeShape(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(te *testing.T) {
 			var out strings.Builder
-			err := streamJsonRPCResult(strings.NewReader(tc.response), &out)
+			err := streamResult(strings.NewReader(tc.response), &out, []byte(tc.response))
 			require.NoError(te, err)
 			assert.Equal(te, tc.expected, out.String())
 		})
@@ -209,7 +222,7 @@ func TestStreamJsonRPCResultLargeResultSpanningChunks(t *testing.T) {
 	body := `{"jsonrpc":"2.0","id":1,"result":[` + inner + `],"trailing":"ignored"}`
 
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(body), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, "["+inner+"]", out.String())
 }
@@ -221,7 +234,7 @@ func TestStreamJsonRPCResultStringResultSpansChunks(t *testing.T) {
 	body := `{"jsonrpc":"2.0","id":1,"result":"` + payload + `"}`
 
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(body), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, `"`+payload+`"`, out.String())
 }
@@ -234,7 +247,7 @@ func TestStreamJsonRPCResultScalarSpansChunks(t *testing.T) {
 	body := `{"jsonrpc":"2.0","id":1,"result":` + digits + `}`
 
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(body), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, digits, out.String())
 }
@@ -248,7 +261,7 @@ func TestStreamJsonRPCResultDrainsTrailingEnvelope(t *testing.T) {
 	cr := &countingReader{src: strings.NewReader(body)}
 
 	var out strings.Builder
-	err := streamJsonRPCResult(cr, &out)
+	err := streamResult(cr, &out, []byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, `42`, out.String())
 	assert.Equal(t, len(body), cr.bytesRead, "entire body should be read so the upstream body closer fires")
@@ -262,42 +275,49 @@ func TestStreamJsonRPCResultHandlesSlowReader(t *testing.T) {
 	want := "[" + inner + "]"
 
 	var out strings.Builder
-	err := streamJsonRPCResult(iotest1ByteReader(strings.NewReader(body)), &out)
+	err := streamResult(iotest1ByteReader(strings.NewReader(body)), &out, []byte(body))
 	require.NoError(t, err)
 	assert.Equal(t, want, out.String())
 }
 
 func TestStreamJsonRPCResultMissingResult(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":"1","error":{"code":-1}}`
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(`{"jsonrpc":"2.0","id":"1","error":{"code":-1}}`), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "result field is missing")
 }
 
 func TestStreamJsonRPCResultInvalidTopLevel(t *testing.T) {
+	// A non-object top level can't yield a result value, so AnalyzeChunk
+	// reports no result and the consumer rejects it with "result field is
+	// missing" (in production the connector would have buffered it instead).
+	body := `[{"result":1}]`
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(`[{"result":1}]`), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "expected json object")
+	assert.Contains(t, err.Error(), "result field is missing")
 }
 
 func TestStreamJsonRPCResultEmptyBody(t *testing.T) {
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(``), &out)
+	err := streamResult(strings.NewReader(``), &out, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to parse stream response")
 }
 
 func TestStreamJsonRPCResultGarbage(t *testing.T) {
+	body := `not json at all`
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(`not json at all`), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to parse stream response")
 }
 
 func TestStreamJsonRPCResultInvalidJSON(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":"1","result":{"a":1`
 	var out strings.Builder
-	err := streamJsonRPCResult(strings.NewReader(`{"jsonrpc":"2.0","id":"1","result":{"a":1`), &out)
+	err := streamResult(strings.NewReader(body), &out, []byte(body))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to parse stream response")
 }
@@ -317,9 +337,10 @@ func TestStreamJsonRPCResultTruncated(t *testing.T) {
 	//   (2) "result value truncated"   — body is larger than MaxChunkSize so
 	//                                    emitFromReader is engaged and hits
 	//                                    EOF before the counter closes.
-	//   (3) "truncated result value"   — FindResultStart sees the "result"
-	//                                    key but the buffer ends before any
-	//                                    byte of the value is available.
+	//   (3) "result field is missing"  — AnalyzeChunk sees the "result" key
+	//                                    but the chunk ends before any byte of
+	//                                    the value, so no result is located
+	//                                    and the consumer rejects start == -1.
 	tests := []struct {
 		name string
 		body string
@@ -373,18 +394,18 @@ func TestStreamJsonRPCResultTruncated(t *testing.T) {
 		{
 			name: "body ends right after ':' before value byte",
 			body: `{"jsonrpc":"2.0","id":1,"result":`,
-			want: "truncated result value",
+			want: "result field is missing",
 		},
 		{
 			name: "body ends with whitespace after ':' before value byte",
 			body: `{"jsonrpc":"2.0","id":1,"result":   `,
-			want: "truncated result value",
+			want: "result field is missing",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(te *testing.T) {
 			var out strings.Builder
-			err := streamJsonRPCResult(strings.NewReader(tc.body), &out)
+			err := streamResult(strings.NewReader(tc.body), &out, []byte(tc.body))
 			require.Error(te, err)
 			assert.Contains(te, err.Error(), tc.want, "got: %s", err.Error())
 			assert.Contains(te, err.Error(), "unable to parse stream response")
@@ -400,7 +421,7 @@ func TestStreamJsonRPCResultTruncatedByReaderEOFMidStream(t *testing.T) {
 	r := &errReader{data: first, err: io.EOF}
 
 	var out strings.Builder
-	err := streamJsonRPCResult(r, &out)
+	err := streamResult(r, &out, first)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to parse stream response")
 	assert.Contains(t, err.Error(), "result value truncated")
@@ -413,7 +434,7 @@ func TestStreamJsonRPCResultReaderErrorBeforeFirstChunk(t *testing.T) {
 	r := &errReader{err: want}
 
 	var out strings.Builder
-	err := streamJsonRPCResult(r, &out)
+	err := streamResult(r, &out, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to parse stream response")
 	assert.ErrorIs(t, err, want)
@@ -430,7 +451,7 @@ func TestStreamJsonRPCResultReaderErrorDuringStream(t *testing.T) {
 	r := &errReader{data: first, err: want}
 
 	var out strings.Builder
-	err := streamJsonRPCResult(r, &out)
+	err := streamResult(r, &out, first)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unable to parse stream response")
 	assert.ErrorIs(t, err, want)
@@ -443,7 +464,7 @@ func TestStreamJsonRPCResultWriterError(t *testing.T) {
 	wantErr := errors.New("downstream pipe broken")
 	w := &errWriter{failAt: 2, err: wantErr}
 
-	err := streamJsonRPCResult(strings.NewReader(body), w)
+	err := streamResult(strings.NewReader(body), w, []byte(body))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, wantErr)
 }
@@ -457,7 +478,7 @@ func TestStreamJsonRPCResultWriterErrorInStreamingPath(t *testing.T) {
 	// Fail well after the first chunk has been emitted.
 	w := &errWriter{failAt: 10000, err: wantErr}
 
-	err := streamJsonRPCResult(strings.NewReader(body), w)
+	err := streamResult(strings.NewReader(body), w, []byte(body))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, wantErr)
 }
@@ -466,11 +487,16 @@ func BenchmarkStreamJsonRPCResult(b *testing.B) {
 	inner := strings.Repeat(`{"address":"0x000000000000000000000000000000000000dead","topics":["0xdeadbeef"],"data":"0x01"},`, 8192)
 	inner = inner[:len(inner)-1] // drop trailing comma
 	body := []byte(`{"jsonrpc":"2.0","id":1,"result":[` + inner + `]}`)
+	chunk := body
+	if len(chunk) > protocol.MaxChunkSize {
+		chunk = chunk[:protocol.MaxChunkSize]
+	}
+	a := protocol.AnalyzeChunk(chunk)
 	b.SetBytes(int64(len(body)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := streamJsonRPCResult(bytes.NewReader(body), io.Discard); err != nil {
+		if err := streamJsonRPCResult(bytes.NewReader(body), io.Discard, a.ResultStart, a.Counter); err != nil {
 			b.Fatal(err)
 		}
 	}

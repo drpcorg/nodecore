@@ -59,6 +59,10 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 }
 
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {
+	//ss := time.Now()
+	//defer func() {
+	//	fmt.Println(time.Since(ss), "native")
+	//}()
 	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
 		return err
 	}

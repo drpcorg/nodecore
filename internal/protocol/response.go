@@ -20,22 +20,33 @@ type HasResponseHeaders interface {
 	ResponseHeaders() http.Header
 }
 
+// noStreamHint is embedded by response types that never carry a streaming
+// result hint (subscriptions, ws, errors); it satisfies the GetStreamHint part
+// of ResponseHolder with a nil hint.
+type noStreamHint struct{}
+
+func (noStreamHint) GetStreamHint() StreamHint { return nil }
+
 type SubscriptionEventResponse struct {
+	noStreamHint
 	id    string
 	event []byte
 }
 
 type SubscriptionMessageResponse struct {
+	noStreamHint
 	id      string
 	message []byte
 }
 
 type SubscriptionResultResponse struct {
+	noStreamHint
 	id     string
 	result []byte
 }
 
 type SubscriptionMethodResultResponse struct {
+	noStreamHint
 	id     string
 	method string
 	result []byte
@@ -231,6 +242,7 @@ var _ SubscriptionResponseHolder = (*SubscriptionResultResponse)(nil)
 var _ SubscriptionResponseHolder = (*SubscriptionMethodResultResponse)(nil)
 
 type WsJsonRpcResponse struct {
+	noStreamHint
 	id     string
 	result []byte
 	error  *ResponseError
@@ -293,6 +305,12 @@ type BaseUpstreamResponse struct {
 	stream          io.Reader
 	responseCode    int
 	responseHeaders http.Header
+	// streamHint carries the single-pass first-chunk analysis (see
+	// AnalyzeFirstChunk) for a streaming response, so the gRPC result-unwrap
+	// consumer can emit the "result" value without re-scanning the chunk. It is
+	// nil when there is no hint (e.g. a REST stream); the HTTP consumer ignores
+	// it and streams the whole envelope.
+	streamHint StreamHint
 }
 
 func (h *BaseUpstreamResponse) ResponseCode() int {
@@ -369,6 +387,19 @@ func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType Requ
 		requestType: requestType,
 		stream:      reader,
 	}
+}
+
+// WithStreamHint attaches the first-chunk analysis produced by
+// AnalyzeFirstChunk so the gRPC result-unwrap consumer can emit the result
+// without re-scanning the chunk. A nil hint leaves the response without one.
+func (h *BaseUpstreamResponse) WithStreamHint(hint StreamHint) *BaseUpstreamResponse {
+	h.streamHint = hint
+	return h
+}
+
+// GetStreamHint returns the streaming hint, or nil if none was recorded.
+func (h *BaseUpstreamResponse) GetStreamHint() StreamHint {
+	return h.streamHint
 }
 
 func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *BaseUpstreamResponse {
@@ -460,6 +491,7 @@ func NewJsonRpcWsUpstreamResponse(messages chan *WsResponse, subOpId string) *Js
 }
 
 type ReplyError struct {
+	noStreamHint
 	id            string
 	ErrorKind     ResponseErrorKind
 	responseError *ResponseError

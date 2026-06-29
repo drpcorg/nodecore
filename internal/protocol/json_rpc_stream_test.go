@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"testing"
@@ -14,7 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProcessFirstChunk(t *testing.T) {
+func TestAnalyzeFirstChunkStreamable(t *testing.T) {
+	// oversized pads a JSON-RPC envelope so its total length exceeds
+	// MaxChunkSize; otherwise Peek reports the whole body is already buffered
+	// and AnalyzeFirstChunk refuses to stream regardless of contents.
+	oversized := func(prefix, suffix string) []byte {
+		pad := bytes.Repeat([]byte("a"), protocol.MaxChunkSize)
+		return append(append([]byte(prefix), pad...), []byte(suffix)...)
+	}
 	tests := []struct {
 		name     string
 		body     []byte
@@ -36,21 +44,6 @@ func TestProcessFirstChunk(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "full string result in one chunk then no stream",
-			body:     []byte(`{"id": 1, "result": "0x1234"}`),
-			expected: false,
-		},
-		{
-			name:     "full scalar result in one chunk then no stream",
-			body:     []byte(`{"id": 1, "result": 42}`),
-			expected: false,
-		},
-		{
-			name:     "full null result in one chunk then no stream",
-			body:     []byte(`{"id": 1, "result": null}`),
-			expected: false,
-		},
-		{
 			name:     "result larger than chunk without error then stream",
 			body:     append([]byte(`{"id": 1, "result": "`), append(bytes.Repeat([]byte("a"), protocol.MaxChunkSize), []byte(`"}`)...)...),
 			expected: true,
@@ -61,8 +54,17 @@ func TestProcessFirstChunk(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "error key anywhere in envelope then no stream",
-			body:     []byte(`{"id": 1, "result": null, "error": {"code": -1}}`),
+			// result located, then a trailing error key still visible inside
+			// the first chunk -> must not stream (dshackle parity, point 1).
+			name:     "trailing error after small result in oversized body then no stream",
+			body:     oversized(`{"id":1,"result":null,"error":{"code":-1},"pad":"`, `"}`),
+			expected: false,
+		},
+		{
+			// oversized body whose envelope has neither result nor error in the
+			// first chunk -> nothing to unwrap, fall back to buffering.
+			name:     "no result and no error in oversized body then no stream",
+			body:     oversized(`{"id":1,"pad":"`, `"}`),
 			expected: false,
 		},
 		{
@@ -79,9 +81,7 @@ func TestProcessFirstChunk(t *testing.T) {
 		t.Run(test.name, func(te *testing.T) {
 			reader := bufio.NewReaderSize(bytes.NewReader(test.body), protocol.MaxChunkSize)
 
-			canBeStreamed := protocol.ResponseCanBeStreamed(reader, protocol.MaxChunkSize)
-
-			assert.Equal(t, test.expected, canBeStreamed)
+			assert.Equal(te, test.expected, protocol.AnalyzeFirstChunk(reader, protocol.MaxChunkSize).Streamable)
 		})
 	}
 }
@@ -95,7 +95,7 @@ func exactChunkSizeBody() []byte {
 	return append(prefix, append(bytes.Repeat([]byte("a"), pad), suffix...)...)
 }
 
-func TestFindResultStart(t *testing.T) {
+func TestAnalyzeChunkResultStart(t *testing.T) {
 	tests := []struct {
 		name     string
 		body     string
@@ -136,23 +136,38 @@ func TestFindResultStart(t *testing.T) {
 			body:     `{"result":[1,2]}`,
 			wantHead: `[1,2]}`,
 		},
+		{
+			// a string value of "error" inside the result must NOT disable
+			// streaming - only an envelope-level error key does (the
+			// false-negative the single pass fixes).
+			name:     "result containing nested error key still streams",
+			body:     `{"jsonrpc":"2.0","id":1,"result":{"error":"x","ok":1}}`,
+			wantHead: `{"error":"x","ok":1}}`,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			start, _, err := protocol.FindResultStart([]byte(test.body))
-			require.NoError(te, err)
-			assert.Equal(te, test.wantHead, test.body[start:])
+			a := protocol.AnalyzeChunk([]byte(test.body))
+			require.True(te, a.Streamable)
+			require.GreaterOrEqual(te, a.ResultStart, 0)
+			assert.Equal(te, test.wantHead, test.body[a.ResultStart:])
+
+			hint := a.Hint()
+			require.NotNil(te, hint, "streamable analysis must produce a hint")
+			assert.Equal(te, protocol.JsonRpc, hint.Type())
+			jsonHint, ok := hint.(protocol.JsonRpcResultStreamHint)
+			require.True(te, ok)
+			assert.Equal(te, a.ResultStart, jsonHint.ResultStart)
 		})
 	}
 }
 
-func TestFindResultStartTruncatedValue(t *testing.T) {
+func TestAnalyzeChunkTruncatedValue(t *testing.T) {
 	// First chunk contains the "result" key but not the full value — the
-	// value continues in a follow-up chunk. FindResultStart must still
-	// succeed on the first chunk and the counter must carry enough state
-	// (depth, inStr, escape) to keep byte-counting across the chunk
-	// boundary until the value really ends.
+	// value continues in a follow-up chunk. AnalyzeChunk must still locate the
+	// value and prime a counter carrying enough state (depth, inStr, escape)
+	// to keep byte-counting across the chunk boundary until the value ends.
 	tests := []struct {
 		name   string
 		chunk1 string
@@ -205,11 +220,13 @@ func TestFindResultStartTruncatedValue(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			start, counter, err := protocol.FindResultStart([]byte(test.chunk1))
-			require.NoError(te, err)
+			a := protocol.AnalyzeChunk([]byte(test.chunk1))
+			require.True(te, a.Streamable)
+			require.GreaterOrEqual(te, a.ResultStart, 0)
+			counter := a.Counter
 
 			var out bytes.Buffer
-			done := stepThrough(&out, &counter, test.chunk1[start:])
+			done := stepThrough(&out, &counter, test.chunk1[a.ResultStart:])
 			require.False(te, done, "value should not have ended in the first chunk")
 			done = stepThrough(&out, &counter, test.chunk2)
 			require.True(te, done, "value should end inside the second chunk")
@@ -239,23 +256,27 @@ func stepThrough(out *bytes.Buffer, counter *protocol.ResultCounter, chunk strin
 	return false
 }
 
-func TestFindResultStartErrors(t *testing.T) {
+func TestAnalyzeChunkNoResult(t *testing.T) {
+	// Every case must report not-streamable with ResultStart == -1: there is
+	// no result value to unwrap, so the connector falls back to buffering.
 	cases := []struct {
 		name string
 		body string
-		want string // substring expected in err
 	}{
-		{name: "error envelope", body: `{"id":1,"error":{"code":-1}}`, want: "result field is missing"},
-		{name: "no result, no error", body: `{"jsonrpc":"2.0","id":1}`, want: "result field is missing"},
-		{name: "top-level array", body: `[1,2,3]`, want: "expected json object"},
-		{name: "empty buffer", body: ``, want: "unable to parse stream response"},
-		{name: "garbage", body: `not json`, want: "unable to parse stream response"},
+		{name: "error envelope", body: `{"id":1,"error":{"code":-1}}`},
+		{name: "no result, no error", body: `{"jsonrpc":"2.0","id":1}`},
+		{name: "top-level array", body: `[1,2,3]`},
+		{name: "empty buffer", body: ``},
+		{name: "garbage", body: `not json`},
+		{name: "result key but value byte not in chunk", body: `{"jsonrpc":"2.0","id":1,"result":`},
+		{name: "result key with only whitespace after colon", body: `{"jsonrpc":"2.0","id":1,"result":   `},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(te *testing.T) {
-			_, _, err := protocol.FindResultStart([]byte(c.body))
-			require.Error(te, err)
-			assert.Contains(te, err.Error(), c.want)
+			a := protocol.AnalyzeChunk([]byte(c.body))
+			assert.False(te, a.Streamable)
+			assert.Equal(te, -1, a.ResultStart)
+			assert.Nil(te, a.Hint(), "non-streamable analysis must not produce a hint")
 		})
 	}
 }
@@ -285,8 +306,9 @@ func TestResultCounter(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
 			env := `{"result":` + test.body + `}`
-			start, counter, err := protocol.FindResultStart([]byte(env))
-			require.NoError(te, err)
+			a := protocol.AnalyzeChunk([]byte(env))
+			require.GreaterOrEqual(te, a.ResultStart, 0)
+			start, counter := a.ResultStart, a.Counter
 			var out bytes.Buffer
 			flush := start
 			for i := start; i < len(env); i++ {
@@ -304,6 +326,98 @@ func TestResultCounter(t *testing.T) {
 			assert.Equal(te, test.want, out.String())
 		})
 	}
+}
+
+// benchChunk builds an ~8KB first chunk of a large eth_getLogs-style response:
+// a streamable array result whose value overflows the chunk. Both the new
+// single pass and the old two-pass baseline walk exactly these bytes.
+func benchChunk() []byte {
+	entry := `{"address":"0x000000000000000000000000000000000000dead","topics":["0xdeadbeef"],"data":"0x01"},`
+	body := []byte(`{"jsonrpc":"2.0","id":1,"result":[`)
+	for len(body) < protocol.MaxChunkSize {
+		body = append(body, entry...)
+	}
+	return body[:protocol.MaxChunkSize]
+}
+
+// BenchmarkAnalyzeChunk measures the new single-pass first-chunk analysis.
+func BenchmarkAnalyzeChunk(b *testing.B) {
+	chunk := benchChunk()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		a := protocol.AnalyzeChunk(chunk)
+		if !a.Streamable {
+			b.Fatal("expected streamable")
+		}
+	}
+}
+
+// BenchmarkOldTwoPass replicates the previous behavior — a full-chunk
+// encoding/json scan for an "error" token (old ResponseCanBeStreamed) followed
+// by a second decoder walk to find the result start (old FindResultStart) —
+// over the same bytes, so the allocation/CPU delta of merging them is visible.
+func BenchmarkOldTwoPass(b *testing.B) {
+	chunk := benchChunk()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if !oldCanBeStreamed(chunk) {
+			b.Fatal("expected streamable")
+		}
+		if _, err := oldFindResultStart(chunk); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// oldCanBeStreamed is a copy of the removed ResponseCanBeStreamed body (minus
+// the bufio.Peek) used only as a benchmark baseline: it tokenizes the entire
+// chunk looking for any "error" string token.
+func oldCanBeStreamed(body []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	for {
+		token, err := dec.Token()
+		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
+			break
+		}
+		if err != nil {
+			return false
+		}
+		if s, ok := token.(string); ok && s == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+// oldFindResultStart is a copy of the removed FindResultStart used only as a
+// benchmark baseline: a second decoder walk locating the result value start.
+func oldFindResultStart(buf []byte) (int, error) {
+	dec := json.NewDecoder(bytes.NewReader(buf))
+	tok, err := dec.Token()
+	if err != nil {
+		return 0, err
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return 0, errors.New("expected json object")
+	}
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return 0, err
+		}
+		key, _ := keyTok.(string)
+		if key != "result" {
+			var skip json.RawMessage
+			if err := dec.Decode(&skip); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		return int(dec.InputOffset()), nil
+	}
+	return 0, errors.New("result field is missing")
 }
 
 func TestCloseReaderCloseOnEOF(t *testing.T) {

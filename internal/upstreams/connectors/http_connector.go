@@ -144,6 +144,12 @@ func (h *HttpConnector) SubscribeStates(_ string) *utils.Subscription[protocol.S
 // and applying its own URL/header semantics; the shared dispatch helper
 // only handles network execution and response framing.
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
+	//s := time.Now()
+	//defer func() {
+	//	if request.IsStream() {
+	//		fmt.Println(time.Since(s))
+	//	}
+	//}()
 	if h.GetType() == specs.JsonRpcConnector {
 		return h.sendJsonRpc(ctx, request)
 	}
@@ -318,15 +324,27 @@ func isSuccessStatus(code int) bool {
 	return code >= 200 && code < 300
 }
 
+// streamDecision is the outcome of inspecting the start of a response body:
+// whether it's safe to stream, plus (for JSON-RPC) the first-chunk analysis
+// hint carried forward to the gRPC result-unwrap consumer so it doesn't
+// re-scan the chunk. hint is nil for REST and for non-streamable responses.
+type streamDecision struct {
+	stream bool
+	hint   protocol.StreamHint
+}
+
 // canStreamFunc decides, after we've started reading the response body,
 // whether it's safe to stream the rest to the client. REST bodies are
 // always streamable; JSON-RPC needs a peek to rule out an error envelope.
-type canStreamFunc func(*bufio.Reader) bool
+type canStreamFunc func(*bufio.Reader) streamDecision
 
-func alwaysStream(_ *bufio.Reader) bool { return true }
+func alwaysStream(_ *bufio.Reader) streamDecision {
+	return streamDecision{stream: true}
+}
 
-func jsonRpcCanStream(r *bufio.Reader) bool {
-	return protocol.ResponseCanBeStreamed(r, protocol.MaxChunkSize)
+func jsonRpcCanStream(r *bufio.Reader) streamDecision {
+	a := protocol.AnalyzeFirstChunk(r, protocol.MaxChunkSize)
+	return streamDecision{stream: a.Streamable, hint: a.Hint()}
 }
 
 // dispatch executes the prepared *http.Request and frames the response as
@@ -352,9 +370,10 @@ func (h *HttpConnector) dispatch(
 
 	if request.IsStream() && isSuccessStatus(resp.StatusCode) && !quorumRequested {
 		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
-		if allowStream(bufReader) {
+		if decision := allowStream(bufReader); decision.stream {
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
-			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType())
+			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType()).
+				WithStreamHint(decision.hint)
 			return streamResp.WithResponseHeaders(h.filterResponseHeaders(resp.Header))
 		}
 		defer utils.CloseBodyReader(ctx, resp.Body)

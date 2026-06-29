@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -106,43 +105,38 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 		return nil, false
 	}
 
-	resultSent := atomic.Bool{}
-	resultChan := make(chan []byte)
-
 	ctx, cancel := context.WithTimeout(ctx, c.receiveTimeout)
 	defer cancel()
 
+	resultChan := make(chan []byte, len(c.policies))
+
 	var wg sync.WaitGroup
 	wg.Add(len(c.policies))
-
 	for _, policy := range c.policies {
 		go func(p *CachePolicy) {
 			defer wg.Done()
-			result, ok := p.Receive(ctx, chain, request)
-
-			if ok && resultSent.CompareAndSwap(false, true) {
-				requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
+			if result, ok := p.Receive(ctx, chain, request); ok {
 				resultChan <- result
-				cancel()
 			}
 		}(policy)
 	}
 
-	// If all policies have responded and none succeeded, cancel early to avoid waiting for the timeout.
+	// Close the channel once every policy has responded so a complete miss
+	// returns immediately instead of waiting out the timeout.
 	go func() {
 		wg.Wait()
-		if !resultSent.Load() {
-			cancel()
-		}
+		close(resultChan)
 	}()
-
-	var result []byte
 
 	select {
 	case <-ctx.Done():
-	case cacheResult := <-resultChan:
-		result = cacheResult
+		return nil, false
+	case result, ok := <-resultChan:
+		if !ok {
+			return nil, false
+		}
+		requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
+		cancel()
+		return result, true
 	}
-
-	return result, len(result) > 0
 }
