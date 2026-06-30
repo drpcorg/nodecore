@@ -12,6 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// writerSink adapts a plain io.Writer to the chunkSink interface, ignoring the
+// final flag, so tests can assert the extracted result bytes without caring
+// about end-of-stream framing.
+type writerSink struct{ w io.Writer }
+
+func (s writerSink) WriteChunk(p []byte, _ bool) error {
+	_, err := s.w.Write(p)
+	return err
+}
+
 // streamResult mirrors the production wiring: the connector locates the result
 // value via AnalyzeChunk (over the first MaxChunkSize bytes) and the gRPC
 // consumer streams from that offset. Tests supply chunk = the bytes the reader
@@ -21,7 +31,7 @@ func streamResult(reader io.Reader, out io.Writer, chunk []byte) error {
 		chunk = chunk[:protocol.MaxChunkSize]
 	}
 	a := protocol.AnalyzeChunk(chunk)
-	return streamJsonRPCResult(reader, out, a.ResultStart, a.Counter)
+	return streamJsonRPCResult(reader, writerSink{out}, a.ResultStart, a.Counter)
 }
 
 func TestStreamJsonRPCResultExtractsNestedResult(t *testing.T) {
@@ -496,7 +506,7 @@ func BenchmarkStreamJsonRPCResult(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := streamJsonRPCResult(bytes.NewReader(body), io.Discard, a.ResultStart, a.Counter); err != nil {
+		if err := streamJsonRPCResult(bytes.NewReader(body), writerSink{io.Discard}, a.ResultStart, a.Counter); err != nil {
 			b.Fatal(err)
 		}
 	}
