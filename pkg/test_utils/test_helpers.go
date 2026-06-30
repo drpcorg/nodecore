@@ -69,15 +69,20 @@ func NewUpstreamRequest(t *testing.T, method string, params any) protocol.Reques
 func CtxWithRemoteAddr(remote string) context.Context {
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	req.RemoteAddr = remote
-	return utils.ContextWithIps(context.Background(), req)
+	// No trusted proxies: the direct peer is the client.
+	return utils.ContextWithIps(context.Background(), req, nil)
 }
 
+// CtxWithXFF simulates a request that arrived through a trusted proxy, so the
+// client IP is taken from X-Forwarded-For.
 func CtxWithXFF(xff string) context.Context {
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req.RemoteAddr = "10.255.255.255:5555"
 	if xff != "" {
 		req.Header.Set("X-Forwarded-For", xff)
 	}
-	return utils.ContextWithIps(context.Background(), req)
+	trusted, _ := utils.ParseTrustedProxies([]string{"10.255.255.255/32"})
+	return utils.ContextWithIps(context.Background(), req, trusted)
 }
 
 func GetResultAsBytes(json []byte) []byte {

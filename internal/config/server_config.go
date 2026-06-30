@@ -8,6 +8,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type ServerConfig struct {
@@ -20,6 +21,11 @@ type ServerConfig struct {
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
 	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
 	TorUrl          string           `yaml:"tor-url"`
+	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies in front of
+	// nodecore. X-Forwarded-For is only honored when the direct peer matches one
+	// of these; otherwise the direct peer is used as the client IP. Empty (the
+	// default) means X-Forwarded-For is never trusted.
+	TrustedProxies []string `yaml:"trusted-proxies"`
 }
 
 type GrpcAuthConfig struct {
@@ -93,6 +99,10 @@ func (s *ServerConfig) validate() error {
 	ports.Add(s.PprofPort)
 	if ports.Contains(s.HealthPort) && s.HealthPort != 0 {
 		return fmt.Errorf("health port %d is already in use", s.HealthPort)
+	}
+
+	if _, err := utils.ParseTrustedProxies(s.TrustedProxies); err != nil {
+		return fmt.Errorf("trusted-proxies validation error - %s", err.Error())
 	}
 
 	if err := s.TlsConfig.validate(); err != nil {
