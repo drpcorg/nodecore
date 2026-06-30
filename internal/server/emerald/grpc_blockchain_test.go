@@ -253,6 +253,58 @@ func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	assert.True(t, stream.sent[2].GetFinalChunk())
 }
 
+func TestStreamNativeCallBodyExactChunkBoundaryEmitsEmptyFinal(t *testing.T) {
+	// The unwrapped result "[1,2,3,4]" is 9 bytes; with chunk_size 3 it splits
+	// into exactly three full chunks, so the terminal frame carries an empty
+	// payload (there is no partial tail to flag final).
+	body := `{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`
+	reader := strings.NewReader(body)
+	stream := &testNativeCallStream{ctx: context.Background()}
+	a := protocol.AnalyzeChunk([]byte(body))
+
+	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, 3, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 4)
+
+	assert.Equal(t, "[1,", string(stream.sent[0].GetPayload()))
+	assert.False(t, stream.sent[0].GetFinalChunk())
+	assert.Equal(t, "2,3", string(stream.sent[1].GetPayload()))
+	assert.False(t, stream.sent[1].GetFinalChunk())
+	assert.Equal(t, ",4]", string(stream.sent[2].GetPayload()))
+	assert.False(t, stream.sent[2].GetFinalChunk())
+	assert.Empty(t, stream.sent[3].GetPayload())
+	assert.True(t, stream.sent[3].GetFinalChunk())
+}
+
+func TestNativeCallChunkEmitterEmitsWithoutLag(t *testing.T) {
+	type frame struct {
+		payload string
+		final   bool
+	}
+	var got []frame
+	e := newNativeCallChunkEmitter(4, func(b []byte, final bool) error {
+		got = append(got, frame{string(b), final})
+		return nil
+	})
+
+	// A full chunk is emitted the moment it completes - no one-chunk hold-back.
+	n, err := e.Write([]byte("0123"))
+	require.NoError(t, err)
+	require.Equal(t, 4, n)
+	require.Len(t, got, 1)
+	assert.Equal(t, "0123", got[0].payload)
+	assert.False(t, got[0].final)
+
+	// The trailing partial chunk only goes out on Finish, flagged final.
+	_, err = e.Write([]byte("45"))
+	require.NoError(t, err)
+	require.Len(t, got, 1, "partial chunk must not be emitted until Finish")
+	require.NoError(t, e.Finish())
+	require.Len(t, got, 2)
+	assert.Equal(t, "45", got[1].payload)
+	assert.True(t, got[1].final)
+}
+
 func TestNativeCallSuccessItemsChunking(t *testing.T) {
 	items := nativeCallSuccessItems(7, "upstream-1", []byte("0123456789"), 4, nil)
 	require.Len(t, items, 3)
