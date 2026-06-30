@@ -214,23 +214,17 @@ func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
 
 	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
 	require.NoError(t, err)
-	// The whole result arrives in one read, so it is forwarded as a single data
-	// frame followed by the terminal empty final frame.
-	require.Len(t, stream.sent, 2)
+	// The whole result arrives in one read and ends within it, so end-of-stream
+	// is folded into that single data frame - no trailing empty frame.
+	require.Len(t, stream.sent, 1)
 
 	assert.Equal(t, "[1,2,3,4]", string(stream.sent[0].GetPayload()))
 	assert.True(t, stream.sent[0].GetChunked())
-	assert.False(t, stream.sent[0].GetFinalChunk())
+	assert.True(t, stream.sent[0].GetFinalChunk())
 
-	assert.Empty(t, stream.sent[1].GetPayload())
-	assert.True(t, stream.sent[1].GetChunked())
-	assert.True(t, stream.sent[1].GetFinalChunk())
-
-	// Response-level metadata is stamped on the first chunk only.
+	// Response-level metadata is stamped on the (first and only) chunk.
 	assert.Equal(t, "erigon/2.60", stream.sent[0].GetUpstreamNodeVersion())
 	assert.Equal(t, "upstream-1", stream.sent[0].GetUpstreamId())
-	assert.Empty(t, stream.sent[1].GetUpstreamNodeVersion())
-	assert.Empty(t, stream.sent[1].GetUpstreamId())
 }
 
 func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
@@ -251,22 +245,33 @@ func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	assert.True(t, stream.sent[1].GetFinalChunk())
 }
 
-func TestStreamNativeCallBodyEmitsTerminalEmptyFinalChunk(t *testing.T) {
-	// end-of-stream is always marked by a trailing empty final frame, since the
-	// io.Writer interface never tells the emitter which write is the last.
-	body := `{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`
+func TestStreamNativeCallBodyEmitsTerminalEmptyFinalChunkFallback(t *testing.T) {
+	// A scalar (number) result whose terminating '}' lands at the very start of
+	// a later read can't be marked final inline: when the result ends, the last
+	// digits have already been emitted as a non-final chunk and the '}' read
+	// produces no data. End-of-stream then falls back to a trailing empty frame.
+	//
+	// We size the result so the digits exactly fill the prefix read plus one
+	// full MaxChunkSize read, leaving the '}' alone in the next read.
+	header := `{"jsonrpc":"2.0","id":"1","result":`
+	digitsInPrefix := protocol.MaxChunkSize - len(header)
+	digits := digitsInPrefix + protocol.MaxChunkSize
+	body := header + strings.Repeat("9", digits) + "}"
 	reader := strings.NewReader(body)
 	stream := &testNativeCallStream{ctx: context.Background()}
-	a := protocol.AnalyzeChunk([]byte(body))
+	a := protocol.AnalyzeChunk([]byte(body)[:protocol.MaxChunkSize])
 
 	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
 	require.NoError(t, err)
-	require.Len(t, stream.sent, 2)
+	require.Len(t, stream.sent, 3)
 
-	assert.Equal(t, "[1,2,3,4]", string(stream.sent[0].GetPayload()))
+	// Two non-final data frames carry all the digits...
 	assert.False(t, stream.sent[0].GetFinalChunk())
-	assert.Empty(t, stream.sent[1].GetPayload())
-	assert.True(t, stream.sent[1].GetFinalChunk())
+	assert.False(t, stream.sent[1].GetFinalChunk())
+	assert.Equal(t, digits, len(stream.sent[0].GetPayload())+len(stream.sent[1].GetPayload()))
+	// ...then the terminal empty frame marks the end.
+	assert.Empty(t, stream.sent[2].GetPayload())
+	assert.True(t, stream.sent[2].GetFinalChunk())
 }
 
 type emitterFrame struct {
@@ -336,6 +341,40 @@ func TestNativeCallChunkEmitterSkipsEmptyWrites(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, n)
 	require.Empty(t, got, "an empty write must not produce a frame")
+}
+
+func TestNativeCallChunkEmitterMarksFinalInline(t *testing.T) {
+	var got []emitterFrame
+	e := collectingEmitter(&got)
+
+	// A non-final chunk followed by a final one - the final flag rides the last
+	// data frame, no trailing empty frame.
+	require.NoError(t, e.WriteChunk([]byte("ab"), false))
+	require.NoError(t, e.WriteChunk([]byte("cd"), true))
+	require.Len(t, got, 2)
+	assert.Equal(t, "ab", got[0].payload)
+	assert.True(t, got[0].first)
+	assert.False(t, got[0].final)
+	assert.Equal(t, "cd", got[1].payload)
+	assert.False(t, got[1].first)
+	assert.True(t, got[1].final)
+
+	// Finish is a no-op once a chunk was already marked final.
+	require.NoError(t, e.Finish())
+	require.Len(t, got, 2)
+}
+
+func TestNativeCallChunkEmitterSingleFinalFrameCarriesFirst(t *testing.T) {
+	var got []emitterFrame
+	e := collectingEmitter(&got)
+
+	// A response that fits in one chunk: the lone frame is both first and final.
+	require.NoError(t, e.WriteChunk([]byte("only"), true))
+	require.NoError(t, e.Finish())
+	require.Len(t, got, 1)
+	assert.Equal(t, "only", got[0].payload)
+	assert.True(t, got[0].first)
+	assert.True(t, got[0].final)
 }
 
 func TestNativeCallSuccessItemsChunking(t *testing.T) {

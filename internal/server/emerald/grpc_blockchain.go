@@ -288,45 +288,66 @@ func nativeCallSuccessItems(
 }
 
 // nativeCallChunkEmitter forwards a byte stream to the client as
-// NativeCallReplyItems without re-framing: each Write (i.e. each upstream read)
-// is emitted as exactly one chunk, the moment it arrives, so bytes reach the
-// client with no added latency. The emit callback receives first=true on the
-// very first chunk so the caller can stamp response-level metadata once instead
-// of on every chunk; Finish sends a terminal empty payload with final=true.
+// NativeCallReplyItems without re-framing: each chunk (i.e. each upstream read)
+// is emitted the moment it arrives, so bytes reach the client with no added
+// latency. The emit callback receives first=true on the very first chunk so the
+// caller can stamp response-level metadata once instead of on every chunk.
 //
-// Each emitted slice aliases the caller's Write buffer with no copy. This is
-// safe because gRPC's stream.Send marshals the payload synchronously before
+// End-of-stream is folded into the last data chunk when the producer can detect
+// it: WriteChunk(p, true) marks p as the final chunk. Producers that can't tell
+// which write is the last (the io.Writer / io.Copy path) leave finality to
+// Finish, which then sends a trailing empty final chunk as a fallback.
+//
+// Each emitted slice aliases the caller's buffer with no copy. This is safe
+// because gRPC's stream.Send marshals the payload synchronously before
 // returning, so an emitted slice never has to outlive its emit call.
 type nativeCallChunkEmitter struct {
-	emitted bool
-	emit    func(chunk []byte, first, final bool) error
+	emitted   bool
+	finalSent bool
+	emit      func(chunk []byte, first, final bool) error
 }
 
 func newNativeCallChunkEmitter(emit func(chunk []byte, first, final bool) error) *nativeCallChunkEmitter {
 	return &nativeCallChunkEmitter{emit: emit}
 }
 
+// Write implements io.Writer for producers that can't signal the last write
+// (the REST passthrough path via io.Copy). Every chunk is non-final; the
+// trailing final marker is left to Finish.
 func (e *nativeCallChunkEmitter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	if err := e.flush(p, false); err != nil {
+	if err := e.WriteChunk(p, false); err != nil {
 		return 0, err
 	}
 	return len(p), nil
 }
 
-func (e *nativeCallChunkEmitter) flush(chunk []byte, final bool) error {
+// WriteChunk emits one chunk, marking it final when the producer knows the
+// response body has ended. Empty non-final writes are skipped; an empty final
+// write is allowed so end-of-stream can be signalled with no payload.
+func (e *nativeCallChunkEmitter) WriteChunk(p []byte, final bool) error {
+	if len(p) == 0 && !final {
+		return nil
+	}
 	first := !e.emitted
 	e.emitted = true
-	return e.emit(chunk, first, final)
+	if final {
+		e.finalSent = true
+	}
+	return e.emit(p, first, final)
 }
 
-// Finish sends the terminal frame: an empty payload with final=true. The
-// io.Writer interface never signals which Write is the last, so end-of-stream is
-// always marked by this trailing empty chunk.
+// Finish guarantees the client sees exactly one final chunk. If a chunk was
+// already marked final inline, it is a no-op; otherwise it sends the terminal
+// empty payload with final=true (the fallback for the io.Writer path and for an
+// empty body).
 func (e *nativeCallChunkEmitter) Finish() error {
-	return e.flush(nil, true)
+	if e.finalSent {
+		return nil
+	}
+	return e.WriteChunk(nil, true)
 }
 
 func nativeCallErrorItem(
