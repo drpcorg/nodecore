@@ -268,7 +268,7 @@ func streamNativeCallBody(
 	default:
 		return fmt.Errorf("unknown stream mode %d", mode)
 	}
-	return emitter.Flush()
+	return emitter.Finish()
 }
 
 // validateRestMethodTemplate checks that a gRPC-supplied method string is

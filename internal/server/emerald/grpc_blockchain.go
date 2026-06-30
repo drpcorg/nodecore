@@ -283,11 +283,17 @@ func nativeCallSuccessItems(
 	return replyItems
 }
 
+// nativeCallChunkEmitter reframes a byte stream into chunk_size-sized
+// NativeCallReplyItems. Each full chunk is emitted the moment it completes
+// (final=false); Finish emits the trailing bytes - or an empty payload when the
+// stream ended on an exact chunk boundary - with final=true.
+//
+// No chunk is held back waiting for the next one, so the first bytes reach the
+// client as early as possible. Each emitted chunk is an independent copy; the
+// buffer churn that costs is addressed separately.
 type nativeCallChunkEmitter struct {
 	chunkSize int
 	pending   []byte
-	lastChunk []byte
-	hasLast   bool
 	emit      func([]byte, bool) error
 }
 
@@ -309,7 +315,7 @@ func (e *nativeCallChunkEmitter) Write(p []byte) (int, error) {
 		e.pending = append(e.pending, p[:available]...)
 		p = p[available:]
 		if len(e.pending) == e.chunkSize {
-			if err := e.pushChunk(append([]byte(nil), e.pending...)); err != nil {
+			if err := e.emit(append([]byte(nil), e.pending...), false); err != nil {
 				return 0, err
 			}
 			e.pending = e.pending[:0]
@@ -318,28 +324,11 @@ func (e *nativeCallChunkEmitter) Write(p []byte) (int, error) {
 	return written, nil
 }
 
-func (e *nativeCallChunkEmitter) Flush() error {
-	if len(e.pending) > 0 {
-		if err := e.pushChunk(append([]byte(nil), e.pending...)); err != nil {
-			return err
-		}
-		e.pending = e.pending[:0]
-	}
-	if e.hasLast {
-		return e.emit(e.lastChunk, true)
-	}
-	return e.emit([]byte{}, true)
-}
-
-func (e *nativeCallChunkEmitter) pushChunk(chunk []byte) error {
-	if e.hasLast {
-		if err := e.emit(e.lastChunk, false); err != nil {
-			return err
-		}
-	}
-	e.lastChunk = chunk
-	e.hasLast = true
-	return nil
+// Finish emits whatever is left as the final chunk. When the stream ended on an
+// exact chunk boundary pending is empty and an empty final payload is sent -
+// the same terminal frame already used for an empty result.
+func (e *nativeCallChunkEmitter) Finish() error {
+	return e.emit(append([]byte(nil), e.pending...), true)
 }
 
 func nativeCallErrorItem(
