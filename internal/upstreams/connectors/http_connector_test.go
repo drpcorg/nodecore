@@ -3,6 +3,7 @@ package connectors_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -234,6 +235,37 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	assert.False(t, r.HasStream())
 	assert.True(t, r.HasError())
 	assert.Equal(t, &protocol.ResponseError{Message: "0x11", Code: -32000}, r.GetError())
+}
+
+// TestUpstreamUrlAndHostNotLeakedOnConnectionFailure guards against leaking
+// upstream infrastructure to the caller when the upstream connection fails.
+// http.Client.Do returns a *url.Error whose Error() embeds the full URL
+// (including any API key in its path/query and the host itself). The
+// client-facing error must reference the upstream by its configured id only;
+// neither the URL/key nor the host may appear in it.
+func TestUpstreamUrlAndHostNotLeakedOnConnectionFailure(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
+
+	cfg := &config.ApiConnectorConfig{
+		Url: "https://eth-mainnet.example.com/v2/SUPER_SECRET_KEY",
+	}
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "").
+		WithUpstreamId("my-upstream-id")
+	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
+	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
+
+	r := connector.SendRequest(context.Background(), req)
+
+	require.True(t, r.HasError())
+	msg := r.GetError().Message
+	assert.NotContains(t, msg, "SUPER_SECRET_KEY", "upstream API key must not reach the client")
+	assert.NotContains(t, msg, "eth-mainnet.example.com", "upstream host (infra) must not reach the client")
+	assert.Contains(t, msg, "my-upstream-id", "client error should reference the upstream by its id")
 }
 
 func TestHttpConnectorSubscribeStates(t *testing.T) {
