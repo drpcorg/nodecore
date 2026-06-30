@@ -270,65 +270,63 @@ func nativeCallSuccessItems(
 		if end > len(payload) {
 			end = len(payload)
 		}
-		replyItems = append(replyItems, &dshackle.NativeCallReplyItem{
-			Id:              requestID,
-			Succeed:         true,
-			Payload:         payload[start:end],
-			Chunked:         true,
-			FinalChunk:      end == len(payload),
-			UpstreamId:      upstreamID,
-			ResponseHeaders: responseHeaders,
-		})
+		item := &dshackle.NativeCallReplyItem{
+			Id:         requestID,
+			Succeed:    true,
+			Payload:    payload[start:end],
+			Chunked:    true,
+			FinalChunk: end == len(payload),
+		}
+		// Response-level metadata travels on the first chunk only.
+		if start == 0 {
+			item.UpstreamId = upstreamID
+			item.ResponseHeaders = responseHeaders
+		}
+		replyItems = append(replyItems, item)
 	}
 	return replyItems
 }
 
-// nativeCallChunkEmitter reframes a byte stream into chunk_size-sized
-// NativeCallReplyItems. Each full chunk is emitted the moment it completes
-// (final=false); Finish emits the trailing bytes - or an empty payload when the
-// stream ended on an exact chunk boundary - with final=true.
+// nativeCallChunkEmitter forwards a byte stream to the client as
+// NativeCallReplyItems without re-framing: each Write (i.e. each upstream read)
+// is emitted as exactly one chunk, the moment it arrives, so bytes reach the
+// client with no added latency. The emit callback receives first=true on the
+// very first chunk so the caller can stamp response-level metadata once instead
+// of on every chunk; Finish sends a terminal empty payload with final=true.
 //
-// No chunk is held back waiting for the next one, so the first bytes reach the
-// client as early as possible. Each emitted chunk is an independent copy; the
-// buffer churn that costs is addressed separately.
+// Each emitted slice aliases the caller's Write buffer with no copy. This is
+// safe because gRPC's stream.Send marshals the payload synchronously before
+// returning, so an emitted slice never has to outlive its emit call.
 type nativeCallChunkEmitter struct {
-	chunkSize int
-	pending   []byte
-	emit      func([]byte, bool) error
+	emitted bool
+	emit    func(chunk []byte, first, final bool) error
 }
 
-func newNativeCallChunkEmitter(chunkSize int, emit func([]byte, bool) error) *nativeCallChunkEmitter {
-	return &nativeCallChunkEmitter{
-		chunkSize: chunkSize,
-		pending:   make([]byte, 0, chunkSize),
-		emit:      emit,
-	}
+func newNativeCallChunkEmitter(emit func(chunk []byte, first, final bool) error) *nativeCallChunkEmitter {
+	return &nativeCallChunkEmitter{emit: emit}
 }
 
 func (e *nativeCallChunkEmitter) Write(p []byte) (int, error) {
-	written := len(p)
-	for len(p) > 0 {
-		available := e.chunkSize - len(e.pending)
-		if available > len(p) {
-			available = len(p)
-		}
-		e.pending = append(e.pending, p[:available]...)
-		p = p[available:]
-		if len(e.pending) == e.chunkSize {
-			if err := e.emit(append([]byte(nil), e.pending...), false); err != nil {
-				return 0, err
-			}
-			e.pending = e.pending[:0]
-		}
+	if len(p) == 0 {
+		return 0, nil
 	}
-	return written, nil
+	if err := e.flush(p, false); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
-// Finish emits whatever is left as the final chunk. When the stream ended on an
-// exact chunk boundary pending is empty and an empty final payload is sent -
-// the same terminal frame already used for an empty result.
+func (e *nativeCallChunkEmitter) flush(chunk []byte, final bool) error {
+	first := !e.emitted
+	e.emitted = true
+	return e.emit(chunk, first, final)
+}
+
+// Finish sends the terminal frame: an empty payload with final=true. The
+// io.Writer interface never signals which Write is the last, so end-of-stream is
+// always marked by this trailing empty chunk.
 func (e *nativeCallChunkEmitter) Finish() error {
-	return e.emit(append([]byte(nil), e.pending...), true)
+	return e.flush(nil, true)
 }
 
 func nativeCallErrorItem(

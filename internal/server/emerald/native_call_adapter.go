@@ -192,7 +192,7 @@ func sendReply(
 
 	if wrapper.Response.HasStream() {
 		reader := wrapper.Response.EncodeResponse([]byte("0"))
-		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, wrapper.UpstreamNodeVersion, finalizationData, reader, chunkSize, mode, resultStart, resultCounter, headers, stream); err != nil {
+		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, wrapper.UpstreamNodeVersion, finalizationData, reader, mode, resultStart, resultCounter, headers, stream); err != nil {
 			replyItem := nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers)
 			replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
 			replyItem.Finalization = finalizationData
@@ -202,9 +202,14 @@ func sendReply(
 	}
 
 	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
-	for _, replyItem := range nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize, headers) {
-		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-		replyItem.Finalization = finalizationData
+	replyItems := nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize, headers)
+	// Response-level metadata travels on the first chunk only; nativeCallSuccessItems
+	// already places UpstreamId/ResponseHeaders there, so match that for the rest.
+	if len(replyItems) > 0 {
+		replyItems[0].UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+		replyItems[0].Finalization = finalizationData
+	}
+	for _, replyItem := range replyItems {
 		if err := stream.Send(replyItem); err != nil {
 			return err
 		}
@@ -231,29 +236,29 @@ func streamNativeCallBody(
 	upstreamNodeVersion string,
 	finalization *dshackle.FinalizationData,
 	reader io.Reader,
-	chunkSize uint32,
 	mode streamMode,
 	resultStart int,
 	resultCounter protocol.ResultCounter,
 	header http.Header,
 	stream dshackle.Blockchain_NativeCallServer,
 ) error {
-	effectiveChunkSize := int(chunkSize)
-	if effectiveChunkSize <= 0 {
-		effectiveChunkSize = protocol.MaxChunkSize
-	}
-	emitter := newNativeCallChunkEmitter(effectiveChunkSize, func(chunk []byte, final bool) error {
-		return stream.Send(&dshackle.NativeCallReplyItem{
-			Id:                  requestID,
-			Succeed:             true,
-			Payload:             chunk,
-			Chunked:             true,
-			FinalChunk:          final,
-			UpstreamId:          upstreamID,
-			UpstreamNodeVersion: upstreamNodeVersion,
-			Finalization:        finalization,
-			ResponseHeaders:     mapHeaders(header),
-		})
+	headerKVs := mapHeaders(header)
+	emitter := newNativeCallChunkEmitter(func(chunk []byte, first, final bool) error {
+		item := &dshackle.NativeCallReplyItem{
+			Id:         requestID,
+			Succeed:    true,
+			Payload:    chunk,
+			Chunked:    true,
+			FinalChunk: final,
+		}
+		// Response-level metadata travels on the first chunk only.
+		if first {
+			item.UpstreamId = upstreamID
+			item.UpstreamNodeVersion = upstreamNodeVersion
+			item.Finalization = finalization
+			item.ResponseHeaders = headerKVs
+		}
+		return stream.Send(item)
 	})
 
 	switch mode {

@@ -212,97 +212,130 @@ func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
 	stream := &testNativeCallStream{ctx: context.Background()}
 	a := protocol.AnalyzeChunk([]byte(body))
 
-	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, 4, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
 	require.NoError(t, err)
-	require.Len(t, stream.sent, 3)
+	// The whole result arrives in one read, so it is forwarded as a single data
+	// frame followed by the terminal empty final frame.
+	require.Len(t, stream.sent, 2)
 
-	assert.Equal(t, "[1,2", string(stream.sent[0].GetPayload()))
+	assert.Equal(t, "[1,2,3,4]", string(stream.sent[0].GetPayload()))
 	assert.True(t, stream.sent[0].GetChunked())
 	assert.False(t, stream.sent[0].GetFinalChunk())
 
-	assert.Equal(t, ",3,4", string(stream.sent[1].GetPayload()))
+	assert.Empty(t, stream.sent[1].GetPayload())
 	assert.True(t, stream.sent[1].GetChunked())
-	assert.False(t, stream.sent[1].GetFinalChunk())
+	assert.True(t, stream.sent[1].GetFinalChunk())
 
-	assert.Equal(t, "]", string(stream.sent[2].GetPayload()))
-	assert.True(t, stream.sent[2].GetChunked())
-	assert.True(t, stream.sent[2].GetFinalChunk())
+	// Response-level metadata is stamped on the first chunk only.
 	assert.Equal(t, "erigon/2.60", stream.sent[0].GetUpstreamNodeVersion())
-	assert.Equal(t, "erigon/2.60", stream.sent[1].GetUpstreamNodeVersion())
-	assert.Equal(t, "erigon/2.60", stream.sent[2].GetUpstreamNodeVersion())
+	assert.Equal(t, "upstream-1", stream.sent[0].GetUpstreamId())
+	assert.Empty(t, stream.sent[1].GetUpstreamNodeVersion())
+	assert.Empty(t, stream.sent[1].GetUpstreamId())
 }
 
 func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	reader := strings.NewReader(`{"hello":"world"}`)
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, 8, passThroughStream, -1, protocol.ResultCounter{}, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, passThroughStream, -1, protocol.ResultCounter{}, nil, stream)
 	require.NoError(t, err)
-	require.Len(t, stream.sent, 3)
+	// The whole body is forwarded as a single frame plus the terminal empty frame.
+	require.Len(t, stream.sent, 2)
 
-	assert.Equal(t, `{"hello"`, string(stream.sent[0].GetPayload()))
+	assert.Equal(t, `{"hello":"world"}`, string(stream.sent[0].GetPayload()))
 	assert.True(t, stream.sent[0].GetChunked())
 	assert.False(t, stream.sent[0].GetFinalChunk())
 
-	assert.Equal(t, `:"world"`, string(stream.sent[1].GetPayload()))
+	assert.Empty(t, stream.sent[1].GetPayload())
 	assert.True(t, stream.sent[1].GetChunked())
-	assert.False(t, stream.sent[1].GetFinalChunk())
-
-	assert.Equal(t, `}`, string(stream.sent[2].GetPayload()))
-	assert.True(t, stream.sent[2].GetChunked())
-	assert.True(t, stream.sent[2].GetFinalChunk())
+	assert.True(t, stream.sent[1].GetFinalChunk())
 }
 
-func TestStreamNativeCallBodyExactChunkBoundaryEmitsEmptyFinal(t *testing.T) {
-	// The unwrapped result "[1,2,3,4]" is 9 bytes; with chunk_size 3 it splits
-	// into exactly three full chunks, so the terminal frame carries an empty
-	// payload (there is no partial tail to flag final).
+func TestStreamNativeCallBodyEmitsTerminalEmptyFinalChunk(t *testing.T) {
+	// end-of-stream is always marked by a trailing empty final frame, since the
+	// io.Writer interface never tells the emitter which write is the last.
 	body := `{"jsonrpc":"2.0","id":"1","result":[1,2,3,4]}`
 	reader := strings.NewReader(body)
 	stream := &testNativeCallStream{ctx: context.Background()}
 	a := protocol.AnalyzeChunk([]byte(body))
 
-	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, 3, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
+	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
 	require.NoError(t, err)
-	require.Len(t, stream.sent, 4)
+	require.Len(t, stream.sent, 2)
 
-	assert.Equal(t, "[1,", string(stream.sent[0].GetPayload()))
+	assert.Equal(t, "[1,2,3,4]", string(stream.sent[0].GetPayload()))
 	assert.False(t, stream.sent[0].GetFinalChunk())
-	assert.Equal(t, "2,3", string(stream.sent[1].GetPayload()))
-	assert.False(t, stream.sent[1].GetFinalChunk())
-	assert.Equal(t, ",4]", string(stream.sent[2].GetPayload()))
-	assert.False(t, stream.sent[2].GetFinalChunk())
-	assert.Empty(t, stream.sent[3].GetPayload())
-	assert.True(t, stream.sent[3].GetFinalChunk())
+	assert.Empty(t, stream.sent[1].GetPayload())
+	assert.True(t, stream.sent[1].GetFinalChunk())
 }
 
-func TestNativeCallChunkEmitterEmitsWithoutLag(t *testing.T) {
-	type frame struct {
-		payload string
-		final   bool
-	}
-	var got []frame
-	e := newNativeCallChunkEmitter(4, func(b []byte, final bool) error {
-		got = append(got, frame{string(b), final})
+type emitterFrame struct {
+	payload string
+	first   bool
+	final   bool
+}
+
+func collectingEmitter(got *[]emitterFrame) *nativeCallChunkEmitter {
+	return newNativeCallChunkEmitter(func(b []byte, first, final bool) error {
+		*got = append(*got, emitterFrame{string(b), first, final})
 		return nil
 	})
+}
 
-	// A full chunk is emitted the moment it completes - no one-chunk hold-back.
+func TestNativeCallChunkEmitterForwardsEachWriteImmediately(t *testing.T) {
+	var got []emitterFrame
+	e := collectingEmitter(&got)
+
+	// Each Write is forwarded as its own frame the moment it arrives - no
+	// re-framing, no hold-back.
 	n, err := e.Write([]byte("0123"))
 	require.NoError(t, err)
 	require.Equal(t, 4, n)
 	require.Len(t, got, 1)
 	assert.Equal(t, "0123", got[0].payload)
+	assert.True(t, got[0].first)
 	assert.False(t, got[0].final)
 
-	// The trailing partial chunk only goes out on Finish, flagged final.
 	_, err = e.Write([]byte("45"))
 	require.NoError(t, err)
-	require.Len(t, got, 1, "partial chunk must not be emitted until Finish")
-	require.NoError(t, e.Finish())
 	require.Len(t, got, 2)
 	assert.Equal(t, "45", got[1].payload)
+	assert.False(t, got[1].first, "first is true only on the very first chunk")
+	assert.False(t, got[1].final)
+
+	// Finish sends the terminal empty final frame.
+	require.NoError(t, e.Finish())
+	require.Len(t, got, 3)
+	assert.Empty(t, got[2].payload)
+	assert.True(t, got[2].final)
+}
+
+func TestNativeCallChunkEmitterForwardsLargeWriteWhole(t *testing.T) {
+	var got []emitterFrame
+	e := collectingEmitter(&got)
+
+	// A large Write is forwarded whole - the emitter never splits.
+	big := strings.Repeat("x", 100_000)
+	_, err := e.Write([]byte(big))
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, big, got[0].payload)
+	assert.True(t, got[0].first)
+
+	require.NoError(t, e.Finish())
+	require.Len(t, got, 2)
+	assert.Empty(t, got[1].payload)
 	assert.True(t, got[1].final)
+}
+
+func TestNativeCallChunkEmitterSkipsEmptyWrites(t *testing.T) {
+	var got []emitterFrame
+	e := collectingEmitter(&got)
+
+	n, err := e.Write(nil)
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+	require.Empty(t, got, "an empty write must not produce a frame")
 }
 
 func TestNativeCallSuccessItemsChunking(t *testing.T) {
@@ -312,14 +345,17 @@ func TestNativeCallSuccessItemsChunking(t *testing.T) {
 	assert.True(t, items[0].GetChunked())
 	assert.False(t, items[0].GetFinalChunk())
 	assert.Equal(t, "0123", string(items[0].GetPayload()))
+	assert.Equal(t, "upstream-1", items[0].GetUpstreamId())
 
 	assert.True(t, items[1].GetChunked())
 	assert.False(t, items[1].GetFinalChunk())
 	assert.Equal(t, "4567", string(items[1].GetPayload()))
+	assert.Empty(t, items[1].GetUpstreamId(), "metadata is stamped on the first chunk only")
 
 	assert.True(t, items[2].GetChunked())
 	assert.True(t, items[2].GetFinalChunk())
 	assert.Equal(t, "89", string(items[2].GetPayload()))
+	assert.Empty(t, items[2].GetUpstreamId(), "metadata is stamped on the first chunk only")
 }
 
 func TestNativeCallSendReplyReturnsSuccessItemWithResponseUpstreamId(t *testing.T) {
