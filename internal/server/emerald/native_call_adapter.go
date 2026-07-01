@@ -261,13 +261,19 @@ func streamNativeCallBody(
 		return stream.Send(item)
 	})
 
+	ctx := stream.Context()
 	switch mode {
 	case unwrapJsonRpcResultStream:
-		if err := streamJsonRPCResult(reader, emitter, resultStart, resultCounter); err != nil {
+		if err := streamJsonRPCResult(ctx, reader, emitter, resultStart, resultCounter); err != nil {
 			return err
 		}
 	case passThroughStream:
-		if _, err := io.Copy(emitter, reader); err != nil {
+		// Read-ahead so the upstream read overlaps the cross-network stream.Send.
+		// The callback never reports done; the loop runs until EOF and Finish
+		// sends the terminal final chunk.
+		if err := streamReadAhead(ctx, reader, func(buf []byte) (bool, error) {
+			return false, emitter.WriteChunk(buf, false)
+		}); err != nil {
 			return err
 		}
 	default:

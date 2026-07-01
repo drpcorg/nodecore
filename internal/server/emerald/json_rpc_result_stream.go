@@ -1,6 +1,7 @@
 package emerald
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,11 +9,92 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 )
 
+const (
+	// streamReadChunkSize is the buffer size for continuation reads from the
+	// upstream body once streaming is underway. It is decoupled from
+	// protocol.MaxChunkSize (8KB), which only gates the first-chunk envelope
+	// analysis: larger reads here mean fewer, bigger gRPC frames and fewer trips
+	// through the read/send loop for a multi-MB body.
+	streamReadChunkSize = 32 * 1024
+	// streamReadAheadDepth bounds how many read-ahead buffers may be in flight
+	// (≈ depth * streamReadChunkSize bytes per stream). It lets the producer keep
+	// draining the upstream while the consumer is blocked in a cross-network
+	// stream.Send.
+	streamReadAheadDepth = 4
+)
+
 // chunkSink receives the extracted result bytes one chunk at a time. final is
 // true on the chunk that completes the result value, so the consumer can mark
 // end-of-stream inline instead of via a trailing empty frame.
 type chunkSink interface {
 	WriteChunk(p []byte, final bool) error
+}
+
+// readChunk carries one read-ahead buffer (or a read error) from the producer
+// goroutine to the consumer.
+type readChunk struct {
+	buf []byte
+	err error
+}
+
+// chunkProcessor consumes one read chunk and reports whether the logical stream
+// is complete (done) so the read-ahead loop can stop emitting and just drain.
+type chunkProcessor func(buf []byte) (done bool, err error)
+
+// streamReadAhead reads from reader in a background goroutine and feeds chunks,
+// in order, to process on the calling goroutine - so an upstream read overlaps
+// the (cross-network) stream.Send that process performs. It always drains reader
+// to EOF, even after process reports done, so the protocol.CloseReader wrapping
+// resp.Body observes EOF and closes the body.
+//
+// Each chunk is a freshly allocated buffer, so the producer never overwrites a
+// buffer still queued in the channel or still being marshaled by process. This
+// matches the chunk emitter's aliasing assumption: stream.Send marshals
+// synchronously, so a buffer is free the moment process returns.
+func streamReadAhead(ctx context.Context, reader io.Reader, process chunkProcessor) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // unblocks a producer parked on the channel send if we return early
+
+	ch := make(chan readChunk, streamReadAheadDepth)
+	go func() {
+		defer close(ch)
+		for {
+			buf := make([]byte, streamReadChunkSize)
+			n, err := reader.Read(buf)
+			if n > 0 {
+				select {
+				case ch <- readChunk{buf: buf[:n]}:
+				case <-ctx.Done():
+					return
+				}
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					select {
+					case ch <- readChunk{err: err}:
+					case <-ctx.Done():
+					}
+				}
+				return
+			}
+		}
+	}()
+
+	done := false
+	for rc := range ch {
+		if rc.err != nil {
+			return rc.err
+		}
+		if done {
+			continue // keep draining so the producer reaches EOF and CloseReader fires
+		}
+		d, err := process(rc.buf)
+		if err != nil {
+			return err
+		}
+		done = d
+	}
+	return nil
 }
 
 // streamJsonRPCResult extracts the bytes of the "result" field from a
@@ -26,7 +108,7 @@ type chunkSink interface {
 // string escapes / scalar termination to decide when the value ends. No JSON
 // tokens are allocated for the result body — it is copied byte-for-byte. The
 // chunk that completes the result value is written with final=true.
-func streamJsonRPCResult(reader io.Reader, sink chunkSink, start int, counter protocol.ResultCounter) error {
+func streamJsonRPCResult(ctx context.Context, reader io.Reader, sink chunkSink, start int, counter protocol.ResultCounter) error {
 	prefix := make([]byte, protocol.MaxChunkSize)
 	n, err := io.ReadFull(reader, prefix)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
@@ -44,19 +126,35 @@ func streamJsonRPCResult(reader io.Reader, sink chunkSink, start int, counter pr
 		return err
 	}
 
-	if !done {
-		if exhausted {
-			return errors.New("unable to parse stream response: result value truncated")
-		}
-		if err := emitFromReader(sink, reader, &counter); err != nil {
-			return err
-		}
+	if done {
+		// The result value fit inside the first chunk. Drain whatever envelope
+		// tail remains so the protocol.CloseReader wrapping the upstream body
+		// observes EOF and closes resp.Body. The tail is small (a few bytes of
+		// trailing keys plus '}').
+		_, _ = io.Copy(io.Discard, reader)
+		return nil
+	}
+	if exhausted {
+		return errors.New("unable to parse stream response: result value truncated")
 	}
 
-	// Drain whatever envelope tail remains so the protocol.CloseReader
-	// wrapping the upstream body observes EOF and closes resp.Body. The
-	// tail is small (a few bytes of trailing keys plus '}').
-	_, _ = io.Copy(io.Discard, reader)
+	// Continuation: a read-ahead goroutine reads the rest of the upstream body
+	// while sink.WriteChunk (-> stream.Send across the network) runs here, so the
+	// two network legs overlap. streamReadAhead drains to EOF, so resp.Body is
+	// closed by CloseReader without an extra io.Copy here.
+	completed := false
+	if err := streamReadAhead(ctx, reader, func(buf []byte) (bool, error) {
+		d, werr := emitFromBuffer(sink, buf, &counter)
+		if d {
+			completed = true
+		}
+		return d, werr
+	}); err != nil {
+		return fmt.Errorf("unable to parse stream response: %w", err)
+	}
+	if !completed {
+		return errors.New("unable to parse stream response: result value truncated")
+	}
 	return nil
 }
 
@@ -90,28 +188,4 @@ func emitFromBuffer(sink chunkSink, buf []byte, counter *protocol.ResultCounter)
 		}
 	}
 	return false, nil
-}
-
-// emitFromReader reads further chunks from reader and feeds them through
-// counter until the result value's end is observed or reader is exhausted.
-func emitFromReader(sink chunkSink, reader io.Reader, counter *protocol.ResultCounter) error {
-	chunk := make([]byte, protocol.MaxChunkSize)
-	for {
-		n, err := reader.Read(chunk)
-		if n > 0 {
-			done, werr := emitFromBuffer(sink, chunk[:n], counter)
-			if werr != nil {
-				return werr
-			}
-			if done {
-				return nil
-			}
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return errors.New("unable to parse stream response: result value truncated")
-			}
-			return fmt.Errorf("unable to parse stream response: %w", err)
-		}
-	}
 }
