@@ -100,15 +100,17 @@ func (r *RatingRegistry) calculateRating() {
 	for _, chSupervisor := range r.upstreamSupervisor.GetChainSupervisors() {
 		upstreamIds := chSupervisor.GetUpstreamIds()
 		methods := chSupervisor.GetMethods()
-		// One (or zero) upstream => trivial order; skip the serialized goja score func.
+		// No upstreams => nothing to rate.
+		if len(upstreamIds) == 0 {
+			continue
+		}
+		// A single upstream => trivial order; skip the serialized goja score func.
 		// GetSortedUpstreams falls back to the single-element shuffled list, same selection.
 		// Still publish a fixed rating gauge for the lone upstream so its metric series
 		// keeps updating for dashboards.
-		if len(upstreamIds) <= 1 {
-			if len(upstreamIds) == 1 {
-				for _, method := range methods {
-					rating.WithLabelValues(chSupervisor.GetChain().String(), method, upstreamIds[0]).Set(singleUpstreamRating)
-				}
+		if len(upstreamIds) == 1 {
+			for _, method := range methods {
+				rating.WithLabelValues(chSupervisor.GetChain().String(), method, upstreamIds[0]).Set(singleUpstreamRating)
 			}
 			continue
 		}
