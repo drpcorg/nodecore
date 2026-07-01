@@ -55,6 +55,16 @@ func streamReadAhead(ctx context.Context, reader io.Reader, process chunkProcess
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel() // unblocks a producer parked on the channel send if we return early
 
+	// On early return (process error), a producer parked in reader.Read would
+	// otherwise linger until the upstream/HTTP timeout releases it, since the
+	// cancel above only covers the channel send. Closing the reader unblocks
+	// that Read deterministically (CloseReader.Close is idempotent, so the
+	// producer's own read-error close is harmless). Readers that aren't Closers
+	// (tests) are left alone.
+	if closer, ok := reader.(io.Closer); ok {
+		defer func() { _ = closer.Close() }()
+	}
+
 	ch := make(chan readChunk, streamReadAheadDepth)
 	go func() {
 		defer close(ch)
@@ -82,11 +92,18 @@ func streamReadAhead(ctx context.Context, reader io.Reader, process chunkProcess
 
 	done := false
 	for rc := range ch {
+		if done {
+			// The logical stream is already complete: keep draining so the
+			// producer reaches EOF and CloseReader closes resp.Body, but ignore
+			// read errors (e.g. cancellation or an upstream reset during the
+			// envelope tail). The full value was already emitted, so surfacing a
+			// late error here would send a spurious error frame after the final
+			// chunk. This mirrors the old io.Copy(io.Discard, reader) drain that
+			// dropped its error.
+			continue
+		}
 		if rc.err != nil {
 			return rc.err
-		}
-		if done {
-			continue // keep draining so the producer reaches EOF and CloseReader fires
 		}
 		d, err := process(rc.buf)
 		if err != nil {

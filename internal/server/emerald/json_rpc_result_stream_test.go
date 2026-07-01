@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -547,6 +548,68 @@ func TestStreamReadAheadReturnsOnProcessError(t *testing.T) {
 	require.ErrorIs(t, err, want)
 }
 
+func TestStreamReadAheadReturnsWhenProcessObservesCancel(t *testing.T) {
+	// Production cancellation path: the reader never reaches EOF, but process
+	// (stream.Send) fails once the context is cancelled. streamReadAhead must
+	// surface that and return promptly instead of looping on the endless reader.
+	ctx, cancel := context.WithCancel(context.Background())
+	r := infiniteReader{chunk: bytes.Repeat([]byte("a"), 1024)}
+
+	err := streamReadAhead(ctx, r, func(buf []byte) (bool, error) {
+		cancel()
+		return false, ctx.Err()
+	})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestStreamJsonRPCResultIgnoresTailErrorAfterResultComplete(t *testing.T) {
+	// The result value completes, then the upstream errors before the envelope
+	// tail arrives (e.g. a reset, or cancellation landing in the drain window).
+	// The full value was already emitted, so streamJsonRPCResult must report
+	// success rather than turn a delivered response into an error.
+	inner := strings.Repeat(`{"x":1},`, 2048) + `{"x":1}` // pushes the result past the 8KB prefix
+	body := `{"jsonrpc":"2.0","id":1,"result":[` + inner + `]`
+	r := &errReader{data: []byte(body), err: errors.New("conn reset")}
+
+	sink := &recordingSink{}
+	chunk := []byte(body)
+	if len(chunk) > protocol.MaxChunkSize {
+		chunk = chunk[:protocol.MaxChunkSize]
+	}
+	a := protocol.AnalyzeChunk(chunk)
+	err := streamJsonRPCResult(context.Background(), r, sink, a.ResultStart, a.Counter)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, sink.finals)
+	assert.True(t, sink.finals[len(sink.finals)-1], "the last emitted chunk must be marked final")
+	var got []byte
+	for _, c := range sink.chunks {
+		got = append(got, c...)
+	}
+	assert.Equal(t, "["+inner+"]", string(got))
+}
+
+func TestStreamReadAheadClosesReaderOnEarlyReturn(t *testing.T) {
+	// process fails on the first chunk while the reader would then block forever
+	// in its next Read. streamReadAhead must Close the reader on the early return
+	// so the parked producer goroutine unblocks deterministically instead of
+	// lingering until an upstream/HTTP timeout.
+	want := errors.New("send failed")
+	r := &blockingCloseReader{data: bytes.Repeat([]byte("a"), 1024), unblock: make(chan struct{})}
+
+	err := streamReadAhead(context.Background(), r, func(buf []byte) (bool, error) {
+		return false, want
+	})
+	require.ErrorIs(t, err, want)
+
+	select {
+	case <-r.unblock:
+		// Close was called, which releases the producer's blocked Read.
+	default:
+		t.Fatal("reader was not closed on early return; the producer goroutine would leak")
+	}
+}
+
 func TestStreamReadAheadStopsAfterDone(t *testing.T) {
 	// Once process reports done, streamReadAhead must keep draining the reader to
 	// EOF (so the CloseReader fires) but must not invoke process again.
@@ -603,6 +666,32 @@ type infiniteReader struct{ chunk []byte }
 
 func (r infiniteReader) Read(p []byte) (int, error) {
 	return copy(p, r.chunk), nil
+}
+
+// blockingCloseReader hands out data once, then blocks in Read until Close is
+// called (which closes unblock). It models a slow upstream whose read only
+// returns once the body is closed, so tests can assert streamReadAhead closes
+// the reader on an early return.
+type blockingCloseReader struct {
+	data    []byte
+	pos     int
+	unblock chan struct{}
+	once    sync.Once
+}
+
+func (r *blockingCloseReader) Read(p []byte) (int, error) {
+	if r.pos < len(r.data) {
+		n := copy(p, r.data[r.pos:])
+		r.pos += n
+		return n, nil
+	}
+	<-r.unblock
+	return 0, io.EOF
+}
+
+func (r *blockingCloseReader) Close() error {
+	r.once.Do(func() { close(r.unblock) })
+	return nil
 }
 
 // errReader emits the bytes in data, then returns err. If data is empty the
