@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"sync"
 
 	"github.com/rs/zerolog"
 )
@@ -353,6 +354,7 @@ type CloseReader struct {
 	readerToClose io.ReadCloser
 	mainReader    io.Reader
 	ctx           context.Context
+	closeOnce     sync.Once
 }
 
 func NewCloseReader(ctx context.Context, mainReader io.Reader, readerToClose io.ReadCloser) *CloseReader {
@@ -363,16 +365,34 @@ func NewCloseReader(ctx context.Context, mainReader io.Reader, readerToClose io.
 	}
 }
 
+// closeBody closes the underlying body exactly once, whether triggered by a
+// read error or an explicit Close. Guarding with a Once keeps the Read-side
+// close and a concurrent teardown Close from double-closing resp.Body.
+func (c *CloseReader) closeBody() {
+	c.closeOnce.Do(func() {
+		if closeErr := c.readerToClose.Close(); closeErr != nil {
+			zerolog.Ctx(c.ctx).Error().Err(closeErr).Msg("couldn't close a body reader during streaming")
+		}
+	})
+}
+
 func (c *CloseReader) Read(p []byte) (n int, err error) {
 	n, err = c.mainReader.Read(p)
 	if err != nil {
 		// during streaming, it's impossible to close resp.Body as usual via defer resp.Body.Close()
 		// so that's necessary to delegate it
-		closeErr := c.readerToClose.Close()
-		if closeErr != nil {
-			zerolog.Ctx(c.ctx).Error().Err(closeErr).Msg("couldn't close a body reader during streaming")
-		}
+		c.closeBody()
 	}
 
 	return n, err
+}
+
+// Close closes the underlying body. It is safe to call multiple times and
+// concurrently with Read: a streaming consumer that aborts early (e.g. the gRPC
+// client disconnected) can call Close to unblock a read-ahead goroutine parked
+// in Read on a slow upstream, so it returns deterministically instead of
+// lingering until the HTTP client timeout fires.
+func (c *CloseReader) Close() error {
+	c.closeBody()
+	return nil
 }

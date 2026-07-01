@@ -252,10 +252,11 @@ func TestStreamNativeCallBodyEmitsTerminalEmptyFinalChunkFallback(t *testing.T) 
 	// produces no data. End-of-stream then falls back to a trailing empty frame.
 	//
 	// We size the result so the digits exactly fill the prefix read plus one
-	// full MaxChunkSize read, leaving the '}' alone in the next read.
+	// full continuation read (streamReadChunkSize), leaving the '}' alone in the
+	// next read.
 	header := `{"jsonrpc":"2.0","id":"1","result":`
 	digitsInPrefix := protocol.MaxChunkSize - len(header)
-	digits := digitsInPrefix + protocol.MaxChunkSize
+	digits := digitsInPrefix + streamReadChunkSize
 	body := header + strings.Repeat("9", digits) + "}"
 	reader := strings.NewReader(body)
 	stream := &testNativeCallStream{ctx: context.Background()}
