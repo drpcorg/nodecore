@@ -82,6 +82,9 @@ func (r *RatingRegistry) Start() {
 
 func (r *RatingRegistry) getShuffledUpstreamIds(chain chains.Chain) []string {
 	upstreamIds := r.upstreamSupervisor.GetChainSupervisor(chain).GetUpstreamIds()
+	if len(upstreamIds) <= 1 {
+		return upstreamIds
+	}
 	mutable.Shuffle(upstreamIds)
 	return upstreamIds
 }
@@ -90,63 +93,66 @@ func (r *RatingRegistry) calculateRating() {
 	newSortedUpstreams := utils.NewCMap[chains.Chain, *utils.CMap[string, []string]]()
 
 	for _, chSupervisor := range r.upstreamSupervisor.GetChainSupervisors() {
+		upstreamIds := chSupervisor.GetUpstreamIds()
+		// One (or zero) upstream => trivial order; skip the serialized goja score func.
+		// GetSortedUpstreams falls back to the single-element shuffled list, same selection.
+		if len(upstreamIds) <= 1 {
+			continue
+		}
+
 		methodUpstreams := utils.NewCMap[string, []string]()
 		methods := chSupervisor.GetMethods()
 		for _, method := range methods {
-			upDataArr := make([]map[string]interface{}, 0)
+			upDataArr := make([]map[string]interface{}, 0, len(upstreamIds))
 
-			for _, upstreamId := range chSupervisor.GetUpstreamIds() {
+			for _, upstreamId := range upstreamIds {
 				dims := r.tracker.GetAllDimensions(chSupervisor.GetChain(), upstreamId, method)
 				upDataArr = append(upDataArr, getUpstreamData(upstreamId, method, dims))
 			}
 
-			if len(upDataArr) > 0 {
-				resultValue, err := r.scoreFunc(nil, r.runtime.ToValue(upDataArr)) // can't be executed in parallel due to a limitation of the goja lib
-				if err != nil {
-					log.Error().Err(err).Msg("couldn't execute the score function")
-					return
-				}
-				result := resultValue.Export()
-				sortResponse, ok := result.(map[string]interface{})
-				if !ok {
-					log.Error().Msgf("unexpected return value %s from the score function, must be an object", reflect.TypeOf(result))
-					return
-				}
-				sortedUpstreamsAsObjects, ok := sortResponse["sortedUpstreams"]
-				if !ok {
-					log.Error().Msg("there must be 'sortedUpstreams' field in the return value from the score function")
-					return
-				}
-				sortedUpstreamsArray, ok := sortedUpstreamsAsObjects.([]interface{})
-				if !ok {
-					log.Error().Msgf("unexpected return value %s from the score function, 'sortedUpstreams' must be an array", reflect.TypeOf(sortedUpstreamsAsObjects))
-					return
-				}
-				scoresAsObjects, ok := sortResponse["scores"]
-				if !ok {
-					log.Error().Msg("there must be 'scores' field in the return value from the score function")
-					return
-				}
-				err = r.processScores(scoresAsObjects, chSupervisor.GetChain(), method)
-				if err != nil {
-					log.Error().Msg(err.Error())
-					return
-				}
-
-				sortedUpstreams := make([]string, 0)
-				for _, upstreamAsObject := range sortedUpstreamsArray {
-					upstream, ok := upstreamAsObject.(string)
-					if !ok {
-						log.Error().Msgf("unexpected value %s in the array 'sortedUpstreams' from the score function, must be string", reflect.TypeOf(upstreamAsObject))
-						return
-					}
-					sortedUpstreams = append(sortedUpstreams, upstream)
-				}
-
-				methodUpstreams.Store(method, sortedUpstreams)
-			} else {
-				log.Debug().Msgf("no upstreams to calculate their rating, chain %s", chSupervisor.GetChain())
+			resultValue, err := r.scoreFunc(nil, r.runtime.ToValue(upDataArr)) // can't be executed in parallel due to a limitation of the goja lib
+			if err != nil {
+				log.Error().Err(err).Msg("couldn't execute the score function")
+				return
 			}
+			result := resultValue.Export()
+			sortResponse, ok := result.(map[string]interface{})
+			if !ok {
+				log.Error().Msgf("unexpected return value %s from the score function, must be an object", reflect.TypeOf(result))
+				return
+			}
+			sortedUpstreamsAsObjects, ok := sortResponse["sortedUpstreams"]
+			if !ok {
+				log.Error().Msg("there must be 'sortedUpstreams' field in the return value from the score function")
+				return
+			}
+			sortedUpstreamsArray, ok := sortedUpstreamsAsObjects.([]interface{})
+			if !ok {
+				log.Error().Msgf("unexpected return value %s from the score function, 'sortedUpstreams' must be an array", reflect.TypeOf(sortedUpstreamsAsObjects))
+				return
+			}
+			scoresAsObjects, ok := sortResponse["scores"]
+			if !ok {
+				log.Error().Msg("there must be 'scores' field in the return value from the score function")
+				return
+			}
+			err = r.processScores(scoresAsObjects, chSupervisor.GetChain(), method)
+			if err != nil {
+				log.Error().Msg(err.Error())
+				return
+			}
+
+			sortedUpstreams := make([]string, 0)
+			for _, upstreamAsObject := range sortedUpstreamsArray {
+				upstream, ok := upstreamAsObject.(string)
+				if !ok {
+					log.Error().Msgf("unexpected value %s in the array 'sortedUpstreams' from the score function, must be string", reflect.TypeOf(upstreamAsObject))
+					return
+				}
+				sortedUpstreams = append(sortedUpstreams, upstream)
+			}
+
+			methodUpstreams.Store(method, sortedUpstreams)
 		}
 
 		newSortedUpstreams.Store(chSupervisor.GetChain(), methodUpstreams)
