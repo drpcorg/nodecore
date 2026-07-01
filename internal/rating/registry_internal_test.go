@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -60,6 +61,16 @@ func TestCalculateRatingSortedUpstreamsSize(t *testing.T) {
 		assert.True(t, methodOk)
 		assert.ElementsMatch(t, []string{"id1", "id2"}, ups)
 	}
+
+	// The single-upstream chain is skipped for sorting but still publishes a fixed rating gauge.
+	assert.Equal(t, float64(singleUpstreamRating), gaugeValue(t, chains.POLYGON, "eth_test1", "id1"))
+}
+
+func gaugeValue(t *testing.T, chain chains.Chain, method, upstreamId string) float64 {
+	t.Helper()
+	var m dto.Metric
+	assert.NoError(t, rating.WithLabelValues(chain.String(), method, upstreamId).Write(&m))
+	return m.GetGauge().GetValue()
 }
 
 func newChainSupervisorWithUpstreams(t *testing.T, chain chains.Chain, methods *mocks.MethodsMock, ids ...string) upstreams.ChainSupervisor {
@@ -70,8 +81,11 @@ func newChainSupervisorWithUpstreams(t *testing.T, chain chains.Chain, methods *
 	for _, id := range ids {
 		chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent(id, protocol.Available, protocol.NewBlockWithHeight(100), methods))
 	}
-	time.Sleep(50 * time.Millisecond)
 
+	// Ingestion is async - poll until all upstreams are registered instead of sleeping.
+	assert.Eventually(t, func() bool {
+		return len(chainSupervisor.GetUpstreamIds()) == len(ids)
+	}, time.Second, 5*time.Millisecond)
 	assert.ElementsMatch(t, ids, chainSupervisor.GetUpstreamIds())
 	return chainSupervisor
 }
