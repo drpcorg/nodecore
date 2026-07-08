@@ -136,6 +136,26 @@ func TestLowerBoundSearchReturnsOneOnTinyChain(t *testing.T) {
 	assert.Equal(t, int64(1), result[0].Bound)
 }
 
+// Plain variant: a previously found bound is confirmed with a single probe (no full re-search).
+func TestLowerBoundSearchPlainReusesCachedBound(t *testing.T) {
+	calculator := plainCalculator()
+	calls := make([]int64, 0)
+	probe := func(height int64) (bool, error) {
+		calls = append(calls, height)
+		return height >= 5, nil
+	}
+
+	first, err := calculator.DetectLowerBound(func() (int64, error) { return 8, nil }, probe)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), first[0].Bound)
+
+	callsAfterFirst := len(calls)
+	second, err := calculator.DetectLowerBound(func() (int64, error) { return 9, nil }, probe)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), second[0].Bound)
+	assert.Equal(t, []int64{5}, calls[callsAfterFirst:])
+}
+
 // Offset variant: a previously found bound is confirmed with a single probe.
 func TestLowerBoundSearchOffsetReusesCachedBound(t *testing.T) {
 	calculator := offsetCalculator(20)

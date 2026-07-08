@@ -155,6 +155,12 @@ func (c *LowerBoundSearchCalculator) initialRange(cached, latest int64) boundRan
 }
 
 func (c *LowerBoundSearchCalculator) detectPlain(cached, latest int64, hasData func(int64) bool) (int64, error) {
+	// Confirm the cached bound with a single probe first: the lower bound only moves up, so if
+	// cached still has data it is still the bound. Keeps steady-state cost at one probe per cycle.
+	if cached > 0 && hasData(cached) {
+		return cached, nil
+	}
+
 	state := c.initialRange(cached, latest)
 	for !state.found {
 		if state.left > state.right {
