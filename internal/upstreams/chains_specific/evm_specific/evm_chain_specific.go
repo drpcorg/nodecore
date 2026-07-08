@@ -79,13 +79,13 @@ func archiveLabelsDetector(e *EvmChainSpecificObject) labels.LabelsDetector {
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
-		evm_bounds.NewEvmStateLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		evm_bounds.NewEvmBlockLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		evm_bounds.NewEvmTxLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmStateLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmBlockLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmTxLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector),
 	}
 	if e.hasMethod("eth_getProof") {
-		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector))
+		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector))
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }

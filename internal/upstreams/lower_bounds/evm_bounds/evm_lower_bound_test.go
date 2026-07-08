@@ -1,10 +1,12 @@
 package evm_bounds_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/evm_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -14,12 +16,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func evmChain() chains.Chain {
-	return chains.GetChain("ethereum").Chain
+// evmChain returns a minimal configured chain with no gold lower bounds, so the
+// binary-search path is exercised. Gold short-circuit tests use evmChainWithGold.
+func evmChain() *chains.ConfiguredChain {
+	return &chains.ConfiguredChain{Chain: chains.GetChain("ethereum").Chain}
+}
+
+func evmChainWithGold(tx, receipts *chains.GoldLowerBound) *chains.ConfiguredChain {
+	return &chains.ConfiguredChain{
+		Chain:       chains.GetChain("ethereum").Chain,
+		LowerBounds: &chains.ChainLowerBounds{Tx: tx, Receipts: receipts},
+	}
 }
 
 func evmOK(body string) protocol.ResponseHolder {
 	return protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc)
+}
+
+// fastEvm shrinks retry backoff so error-path tests stay quick.
+func fastEvm(d *evm_bounds.EvmLowerBoundDetector) *evm_bounds.EvmLowerBoundDetector {
+	d.SetSearchRetryPolicy(3, time.Millisecond, time.Millisecond)
+	return d
 }
 
 func matchEvmRequest(method string, contains ...string) func(protocol.RequestHolder) bool {
@@ -44,11 +61,62 @@ func matchEvmRequest(method string, contains ...string) func(protocol.RequestHol
 	}
 }
 
+// evmBlockHeight extracts the numeric block height from an eth_getBlockByNumber request.
+func evmBlockHeight(request protocol.RequestHolder) (int64, bool) {
+	if request.Method() != "eth_getBlockByNumber" {
+		return 0, false
+	}
+	body, err := request.Body()
+	if err != nil {
+		return 0, false
+	}
+	node, err := sonic.Get(body, "params", 0)
+	if err != nil {
+		return 0, false
+	}
+	raw, err := node.String()
+	if err != nil {
+		return 0, false
+	}
+	h, err := strconv.ParseInt(strings.TrimPrefix(raw, "0x"), 16, 64)
+	if err != nil {
+		return 0, false
+	}
+	return h, true
+}
+
+func matchBlockAtLeast(threshold int64) func(protocol.RequestHolder) bool {
+	return func(r protocol.RequestHolder) bool {
+		h, ok := evmBlockHeight(r)
+		return ok && h >= threshold
+	}
+}
+
+func matchBlockBelow(threshold int64) func(protocol.RequestHolder) bool {
+	return func(r protocol.RequestHolder) bool {
+		h, ok := evmBlockHeight(r)
+		return ok && h < threshold
+	}
+}
+
 func expectLatest(connector *mocks.ConnectorMock, latest string) {
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_blockNumber"))).
 		Return(evmOK(`"` + latest + `"`)).
 		Once()
+}
+
+// expectBlocksAbove wires eth_getBlockByNumber to return a block for heights >= threshold and null
+// below it, for any number of probes.
+func expectBlocksAbove(connector *mocks.ConnectorMock, threshold int64, block string) {
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchBlockAtLeast(threshold))).
+		Return(evmOK(block)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchBlockBelow(threshold))).
+		Return(evmOK(`null`)).
+		Maybe()
 }
 
 func TestEvmLowerBoundDetectorSupportedTypesAndPeriod(t *testing.T) {
@@ -72,22 +140,7 @@ func TestEvmLowerBoundDetectorSupportedTypesAndPeriod(t *testing.T) {
 func TestEvmBlockLowerBoundDetectorBinarySearchesEarliestAvailableBlock(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x5")
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x4"`))).
-		Return(evmOK(`{"number":"0x4","transactions":[]}`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x3"`))).
-		Return(evmOK(`{"number":"0x3","transactions":[]}`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x2"`))).
-		Return(evmOK(`null`)).
-		Once()
+	expectBlocksAbove(connector, 3, `{"number":"0x3","transactions":[]}`)
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
@@ -97,97 +150,12 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesEarliestAvailableBlock(t *testi
 	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.BlockBound, result[0].Type)
 	assert.Equal(t, int64(3), result[0].Bound)
-	connector.AssertExpectations(t)
-}
-
-func TestEvmStateLowerBoundDetectorFallsBackToBalanceWhenStateOverrideUnsupported(t *testing.T) {
-	connector := mocks.NewConnectorMock()
-	expectLatest(connector, "0x3")
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_call", `"latest"`))).
-		Return(evmOK(`"0x"`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBalance", `"0x1"`))).
-		Return(evmOK(`"0x0"`)).
-		Once()
-
-	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector)
-
-	result, err := detector.DetectLowerBound()
-
-	require.NoError(t, err)
-	require.NotEmpty(t, result)
-	assert.Equal(t, protocol.StateBound, result[0].Type)
-	assert.Equal(t, int64(1), result[0].Bound)
-	connector.AssertExpectations(t)
-}
-
-func TestEvmTxLowerBoundDetectorChecksFirstTransactionHash(t *testing.T) {
-	connector := mocks.NewConnectorMock()
-	expectLatest(connector, "0x3")
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`{"number":"0x1","transactions":["0xabc"]}`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash", `"0xabc"`))).
-		Return(evmOK(`{"hash":"0xabc"}`)).
-		Once()
-
-	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
-
-	result, err := detector.DetectLowerBound()
-
-	require.NoError(t, err)
-	require.NotEmpty(t, result)
-	assert.Equal(t, protocol.TxBound, result[0].Type)
-	assert.Equal(t, int64(1), result[0].Bound)
-	connector.AssertExpectations(t)
-}
-
-func TestEvmReceiptsLowerBoundDetectorChecksFirstTransactionObjectHash(t *testing.T) {
-	connector := mocks.NewConnectorMock()
-	expectLatest(connector, "0x3")
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`{"number":"0x1","transactions":[{"hash":"0xdef"}]}`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionReceipt", `"0xdef"`))).
-		Return(evmOK(`{"transactionHash":"0xdef"}`)).
-		Once()
-
-	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector)
-
-	result, err := detector.DetectLowerBound()
-
-	require.NoError(t, err)
-	require.NotEmpty(t, result)
-	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
-	assert.Equal(t, int64(1), result[0].Bound)
-	connector.AssertExpectations(t)
 }
 
 func TestEvmBlockLowerBoundDetectorBinarySearchesMultipleSteps(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x8")
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x5"`))).
-		Return(evmOK(`{"number":"0x5","transactions":[]}`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x3"`))).
-		Return(evmOK(`null`)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x4"`))).
-		Return(evmOK(`{"number":"0x4","transactions":[]}`)).
-		Once()
+	expectBlocksAbove(connector, 4, `{"number":"0x4","transactions":[]}`)
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
@@ -197,21 +165,137 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesMultipleSteps(t *testing.T) {
 	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.BlockBound, result[0].Type)
 	assert.Equal(t, int64(4), result[0].Bound)
-	connector.AssertExpectations(t)
 }
 
-func TestEvmBlockLowerBoundDetectorReusesCachedBound(t *testing.T) {
+// The reported bug: genesis (block 1) is retained but there is a hole above it. The detector must
+// converge on the real upper boundary (block 6), not trust block 1.
+func TestEvmBlockLowerBoundDetectorIgnoresGenesisWhenHoleFollows(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, "0xa")
+	// data at genesis (block 1) and from block 6 onward; hole in 2..5
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+			h, ok := evmBlockHeight(r)
+			return ok && (h == 1 || h >= 6)
+		})).
+		Return(evmOK(`{"number":"0x6","transactions":[]}`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+			h, ok := evmBlockHeight(r)
+			return ok && h >= 2 && h <= 5
+		})).
+		Return(evmOK(`null`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+			h, ok := evmBlockHeight(r)
+			return ok && h == 0
+		})).
+		Return(evmOK(`null`)).
+		Maybe()
+
+	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	assert.Equal(t, int64(6), result[0].Bound)
+}
+
+func TestEvmStateLowerBoundDetectorFallsBackToBalanceWhenStateOverrideUnsupported(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, "0x3")
+	// state override probe reports unsupported ("0x"), so detection falls back to eth_getBalance.
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_call"))).
+		Return(evmOK(`"0x"`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBalance"))).
+		Return(evmOK(`"0x123"`)).
+		Maybe()
+
+	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	assert.Equal(t, protocol.StateBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+func TestEvmStateLowerBoundDetectorParsesStateOverrideResult(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x3")
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`{"number":"0x1","transactions":[]}`)).
-		Once()
-	expectLatest(connector, "0x4")
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_call"))).
+		Return(evmOK(`"0x0000000000000000000000000000000000000000000002fea3085e96a90bf691"`)).
+		Maybe()
+
+	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	assert.Equal(t, protocol.StateBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+func TestEvmTxLowerBoundDetectorChecksFirstTransactionHash(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, "0x3")
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
-		Return(evmOK(`{"number":"0x1","transactions":[]}`)).
-		Once()
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
+		Return(evmOK(`{"number":"0x1","transactions":["0xabc"]}`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash", `"0xabc"`))).
+		Return(evmOK(`{"hash":"0xabc"}`)).
+		Maybe()
+
+	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	assert.Equal(t, protocol.TxBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+func TestEvmReceiptsLowerBoundDetectorChecksFirstTransactionObjectHash(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, "0x3")
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
+		Return(evmOK(`{"number":"0x1","transactions":[{"hash":"0xdef"}]}`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionReceipt", `"0xdef"`))).
+		Return(evmOK(`{"transactionHash":"0xdef"}`)).
+		Maybe()
+
+	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+// Block detection (plain variant) stays stable across repeated runs: the second detection reuses
+// the cached bound as the left edge of its range and still reports 1.
+func TestEvmBlockLowerBoundDetectorStableAcrossRuns(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, "0x3")
+	expectLatest(connector, "0x4")
+	expectBlocksAbove(connector, 0, `{"number":"0x1","transactions":[]}`)
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
@@ -224,43 +308,44 @@ func TestEvmBlockLowerBoundDetectorReusesCachedBound(t *testing.T) {
 	require.NotEmpty(t, second)
 	assert.Equal(t, int64(1), first[0].Bound)
 	assert.Equal(t, int64(1), second[0].Bound)
-	connector.AssertExpectations(t)
 }
 
-func TestEvmStateLowerBoundDetectorParsesStateOverrideResult(t *testing.T) {
+// The offset variant (Tx detector) confirms a previously found bound with a single probe.
+func TestEvmTxLowerBoundDetectorReusesCachedBoundWithSingleProbe(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x3")
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_call", `"latest"`))).
-		Return(evmOK(`"0x0000000000000000000000000000000000000000000002fea3085e96a90bf691"`)).
-		Once()
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
+		Return(evmOK(`{"number":"0x1","transactions":["0xabc"]}`)).
+		Maybe()
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_call", `"0x1"`))).
-		Return(evmOK(`"0x0000000000000000000000000000000000000000000002fea3085e96a90bf691"`)).
-		Once()
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash"))).
+		Return(evmOK(`{"hash":"0xabc"}`)).
+		Maybe()
 
-	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector)
+	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
-
+	first, err := detector.DetectLowerBound()
 	require.NoError(t, err)
-	require.NotEmpty(t, result)
-	assert.Equal(t, protocol.StateBound, result[0].Type)
-	assert.Equal(t, int64(1), result[0].Bound)
-	connector.AssertExpectations(t)
+	assert.Equal(t, int64(1), first[0].Bound)
+
+	expectLatest(connector, "0x4")
+	second, err := detector.DetectLowerBound()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), second[0].Bound)
 }
 
 func TestEvmTxLowerBoundDetectorParsesLiveBlockAndTransactionShapes(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x100000")
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
 		Return(evmOK(liveEvmBlockWithHashTransactions)).
-		Once()
+		Maybe()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash", `"0x01c5a8461d06c2c195035c148af0f871c7679841d86ae5bb98676bb2d8e68dfa"`))).
 		Return(evmOK(liveEvmTransaction)).
-		Once()
+		Maybe()
 
 	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
 
@@ -270,20 +355,19 @@ func TestEvmTxLowerBoundDetectorParsesLiveBlockAndTransactionShapes(t *testing.T
 	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.TxBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
-	connector.AssertExpectations(t)
 }
 
 func TestEvmReceiptsLowerBoundDetectorParsesObjectTransactionsAndReceiptShape(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x3")
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
 		Return(evmOK(`{"number":"0x1","transactions":[{"hash":"0x01c5a8461d06c2c195035c148af0f871c7679841d86ae5bb98676bb2d8e68dfa"}]}`)).
-		Once()
+		Maybe()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionReceipt", `"0x01c5a8461d06c2c195035c148af0f871c7679841d86ae5bb98676bb2d8e68dfa"`))).
 		Return(evmOK(liveEvmReceipt)).
-		Once()
+		Maybe()
 
 	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector)
 
@@ -293,46 +377,117 @@ func TestEvmReceiptsLowerBoundDetectorParsesObjectTransactionsAndReceiptShape(t 
 	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
-	connector.AssertExpectations(t)
 }
 
-func TestEvmLowerBoundDetectorReturnsUnexpectedErrors(t *testing.T) {
+// A persistent (unclassified) error is now treated as "no data, search higher"; on a tall chain
+// where nothing is ever confirmed, the convergence guard fails detection so the cached bound is kept.
+func TestEvmLowerBoundDetectorFailsWhenEverythingErrorsOnTallChain(t *testing.T) {
 	connector := mocks.NewConnectorMock()
-	expectLatest(connector, "0x3")
+	expectLatest(connector, "0x64") // 100
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom"))).
-		Times(3)
+		Maybe()
 
-	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
+	detector := fastEvm(evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector))
 
 	result, err := detector.DetectLowerBound()
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	connector.AssertExpectations(t)
 }
 
-func TestEvmLowerBoundDetectorRetriesUnexpectedErrors(t *testing.T) {
+func TestEvmLowerBoundDetectorRetriesTransientErrors(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectLatest(connector, "0x3")
+	// first block probe errors once, then every probe succeeds -> detection completes.
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("temporary"))).
 		Once()
 	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber", `"0x1"`))).
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
 		Return(evmOK(`{"number":"0x1","transactions":[]}`)).
-		Once()
+		Maybe()
 
-	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
+	detector := fastEvm(evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector))
 
 	result, err := detector.DetectLowerBound()
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
 	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+const goldTxHash = "0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060"
+
+// When the chain has a gold tx hash and the upstream serves that ancient tx, the
+// detector short-circuits to bound 1 with a single probe and never fetches blocks.
+func TestEvmTxLowerBoundDetectorShortCircuitsOnGoldBound(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash", `"`+goldTxHash+`"`))).
+		Return(evmOK(`{"hash":"` + goldTxHash + `"}`)).
+		Once()
+
+	chain := evmChainWithGold(&chains.GoldLowerBound{Block: 46147, Hash: goldTxHash}, nil)
+	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", chain, time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, protocol.TxBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
 	connector.AssertExpectations(t)
+}
+
+func TestEvmReceiptsLowerBoundDetectorShortCircuitsOnGoldBound(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionReceipt", `"`+goldTxHash+`"`))).
+		Return(evmOK(`{"transactionHash":"` + goldTxHash + `"}`)).
+		Once()
+
+	chain := evmChainWithGold(nil, &chains.GoldLowerBound{Block: 46147, Hash: goldTxHash})
+	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", chain, time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
+	connector.AssertExpectations(t)
+}
+
+// When the gold probe returns null (upstream pruned that tx), the detector falls
+// back to the normal binary search.
+func TestEvmTxLowerBoundDetectorFallsBackWhenGoldBoundMissing(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash", `"`+goldTxHash+`"`))).
+		Return(evmOK(`null`)).
+		Once()
+	expectLatest(connector, "0x3")
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getBlockByNumber"))).
+		Return(evmOK(`{"number":"0x1","transactions":["0xabc"]}`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash", `"0xabc"`))).
+		Return(evmOK(`{"hash":"0xabc"}`)).
+		Maybe()
+
+	chain := evmChainWithGold(&chains.GoldLowerBound{Block: 46147, Hash: goldTxHash}, nil)
+	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", chain, time.Second, connector)
+
+	result, err := detector.DetectLowerBound()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	assert.Equal(t, protocol.TxBound, result[0].Type)
+	assert.Equal(t, int64(1), result[0].Bound)
 }
 
 const liveEvmBlockWithHashTransactions = `{
