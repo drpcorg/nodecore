@@ -72,7 +72,7 @@ func (d *beaconLowerBoundDetector) Period() time.Duration {
 }
 
 func newBlockDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetector {
-	notFound := []string{"could not find requested block", "has not been found", "lock not found", "internal server error"}
+	notFound := []string{"could not find requested block", "has not been found", "block not found", "internal server error"}
 	return &beaconLowerBoundDetector{
 		calculator:  lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, protocol.BlockBound, []protocol.LowerBoundType{protocol.BlockBound}, beaconBoundPeriod, beaconBoundMaxOffset),
 		fetchLatest: p.fetchHeadSlot,
@@ -134,7 +134,7 @@ func newBlobDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetect
 	// Pre-Deneb slots answer HTTP 400 "block is pre-Deneb and has no blobs";
 	// they sit below the blob-availability bound, so they must count as a miss
 	// rather than a hard error - otherwise the binary search never converges.
-	notFound := []string{"lock not found", "has not been found", "pre-deneb", "no blobs"}
+	notFound := []string{"block not found", "has not been found", "pre-deneb", "no blobs"}
 	return &beaconLowerBoundDetector{
 		calculator:  lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, protocol.BlobBound, []protocol.LowerBoundType{protocol.BlobBound}, beaconBoundPeriod, beaconBoundMaxOffset),
 		fetchLatest: p.fetchHeadSlot,
