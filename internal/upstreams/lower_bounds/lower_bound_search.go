@@ -3,12 +3,15 @@ package lower_bounds
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
+	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 )
 
 const (
@@ -264,24 +267,32 @@ func (c *LowerBoundSearchCalculator) shiftLeftAndSearch(
 }
 
 func (c *LowerBoundSearchCalculator) withRetryLatestHeight(ctx context.Context, fetchLatestHeight LowerBoundLatestHeightFetcher) (int64, error) {
-	executor := failsafe.NewExecutor(c.createRetryPolicy()).WithContext(ctx)
+	executor := failsafe.NewExecutor(c.createRetryPolicy("")).WithContext(ctx)
 	return executor.GetWithExecution(func(exec failsafe.Execution[int64]) (int64, error) {
 		return fetchLatestHeight(ctx)
 	})
 }
 
 func (c *LowerBoundSearchCalculator) withRetryProbe(ctx context.Context, height int64, probe LowerBoundProbe) (bool, error) {
-	executor := failsafe.NewExecutor(createLowerBoundSearchRetryPolicy[bool](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay)).WithContext(ctx)
+	message := fmt.Sprintf("unable to get data on block %d to calculate lower bounds for upstream '%s'", height, c.UpstreamId)
+	retryPolicy := createLowerBoundSearchRetryPolicy[bool](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay, message, c.allSupportedTypes)
+	executor := failsafe.NewExecutor(retryPolicy).WithContext(ctx)
 	return executor.GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
 		return probe(ctx, height)
 	})
 }
 
-func (c *LowerBoundSearchCalculator) createRetryPolicy() failsafe.Policy[int64] {
-	return createLowerBoundSearchRetryPolicy[int64](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay)
+func (c *LowerBoundSearchCalculator) createRetryPolicy(onExceedsMessage string) failsafe.Policy[int64] {
+	return createLowerBoundSearchRetryPolicy[int64](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay, onExceedsMessage, c.allSupportedTypes)
 }
 
-func createLowerBoundSearchRetryPolicy[T any](attempts int, baseDelay, maxDelay time.Duration) failsafe.Policy[T] {
+func createLowerBoundSearchRetryPolicy[T any](
+	attempts int,
+	baseDelay,
+	maxDelay time.Duration,
+	onExceedsMessage string,
+	types []protocol.LowerBoundType,
+) failsafe.Policy[T] {
 	if attempts <= 0 {
 		attempts = 1
 	}
@@ -297,6 +308,14 @@ func createLowerBoundSearchRetryPolicy[T any](attempts int, baseDelay, maxDelay 
 	retryPolicy.WithBackoff(baseDelay, maxDelay)
 	retryPolicy.HandleIf(func(result T, err error) bool {
 		return err != nil
+	})
+	retryPolicy.OnRetriesExceeded(func(f failsafe.ExecutionEvent[T]) {
+		if f.LastError() != nil && onExceedsMessage != "" {
+			stringTypes := lo.Map(types, func(item protocol.LowerBoundType, index int) string {
+				return item.String()
+			})
+			log.Warn().Msgf("%s, bound types %s, cause - %s", onExceedsMessage, strings.Join(stringTypes, ","), f.LastError())
+		}
 	})
 	retryPolicy.ReturnLastFailure()
 
