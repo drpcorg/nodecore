@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
@@ -222,6 +223,15 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
+	case chains.EthereumBeaconChain:
+		return beacon_specific.NewBeaconChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	case chains.Solana:

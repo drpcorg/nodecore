@@ -350,6 +350,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "aztec"
 	case Algorand:
 		return "algorand"
+	case EthereumBeaconChain:
+		return "eth-beacon-chain"
 	}
 
 	return ""

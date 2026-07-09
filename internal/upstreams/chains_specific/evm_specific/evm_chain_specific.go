@@ -57,7 +57,9 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		labels.NewClientLabelDetectorHandler(
 			e.upstreamId,
 			e.connector,
-			eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc),
+			eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+				return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain.Chain)
+			}),
 			e.options.InternalTimeout,
 		),
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
