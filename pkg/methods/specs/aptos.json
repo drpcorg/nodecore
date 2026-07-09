@@ -12,6 +12,7 @@
   "methods": [
     { "name": "GET#/v1", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/-/healthy", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/v1/info", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/spec", "params": [] },
     { "name": "GET#/v1/blocks/by_height/*", "params": [] },
     { "name": "GET#/v1/blocks/by_version/*", "params": [] },
@@ -20,15 +21,23 @@
     { "name": "GET#/v1/accounts/*/modules", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/accounts/*/resource/*", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/accounts/*/module/*", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/v1/accounts/*/transactions", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/v1/accounts/*/transaction_summaries", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/v1/accounts/*/events/*", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/v1/accounts/*/events/*/*", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/v1/accounts/*/balance/*", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/transactions", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/transactions/by_hash/*", "params": [] },
     { "name": "GET#/v1/transactions/by_version/*", "params": [] },
+    { "name": "GET#/v1/transactions/auxiliary_info", "params": [] },
+    { "name": "GET#/v1/transactions/wait_by_hash/*", "params": [], "settings": { "cacheable": false } },
     { "name": "POST#/v1/transactions", "params": [], "settings": { "cacheable": false } },
     { "name": "POST#/v1/transactions/simulate", "params": [], "settings": { "cacheable": false } },
     { "name": "POST#/v1/transactions/batch", "params": [], "settings": { "cacheable": false } },
+    { "name": "POST#/v1/transactions/encode_submission", "params": [], "settings": { "cacheable": false } },
     { "name": "POST#/v1/view", "params": [], "settings": { "cacheable": false } },
     { "name": "GET#/v1/estimate_gas_price", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/v1/events/*", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/v1/tables/*/item", "params": [], "settings": { "cacheable": false } }
+    { "name": "POST#/v1/tables/*/item", "params": [], "settings": { "cacheable": false } },
+    { "name": "POST#/v1/tables/*/raw_item", "params": [], "settings": { "cacheable": false } }
   ]
 }
