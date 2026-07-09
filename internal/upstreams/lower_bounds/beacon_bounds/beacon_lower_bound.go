@@ -104,9 +104,6 @@ func newStateDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetec
 	}
 }
 
-// newEpochDetector searches in epoch units (slot / 32). The latest height and the
-// resulting bound are epoch numbers; the probe converts an epoch back to its first
-// slot to query attestation rewards.
 func newEpochDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetector {
 	notFound := []string{"could not get requested state", "missing state", "could not find requested block"}
 	return &beaconLowerBoundDetector{
