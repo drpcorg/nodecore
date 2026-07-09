@@ -6,6 +6,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations/aptos_validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
@@ -21,13 +22,8 @@ func (a *AptosClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, e
 	return protocol.NewInternalUpstreamRestRequest("GET#/v1", nil, a.chain), nil
 }
 
-type aptosLedgerInfoLabels struct {
-	NodeRole string `json:"node_role"`
-	GitHash  string `json:"git_hash"`
-}
-
 func (a *AptosClientLabelsDetector) ClientVersionAndType(data []byte) (string, string, error) {
-	var info aptosLedgerInfoLabels
+	var info aptos_validations.AptosLedgerInfo
 	if err := sonic.Unmarshal(data, &info); err != nil {
 		return "", "", fmt.Errorf("aptos /v1 payload unparseable: %w", err)
 	}

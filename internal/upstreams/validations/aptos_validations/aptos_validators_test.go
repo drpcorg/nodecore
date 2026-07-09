@@ -61,3 +61,13 @@ func TestAptosChainValidatorFatalOnMismatch(t *testing.T) {
 	v := aptos_validations.NewAptosChainValidator("id", conn, chains.GetChain("aptos-testnet"), time.Second)
 	assert.Equal(t, validations.FatalSettingError, v.Validate())
 }
+
+func TestAptosChainValidatorRetriesOnMissingChainId(t *testing.T) {
+	conn := mocks.NewConnectorMock()
+	// A 200 body without chain_id (e.g. a gateway's JSON error envelope) is a
+	// transient fetch problem, not proof of a wrong chain: retry, don't kill.
+	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isLedger)).
+		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{}`), 200, protocol.Rest))
+	v := aptos_validations.NewAptosChainValidator("id", conn, chains.GetChain("aptos-mainnet"), time.Second)
+	assert.Equal(t, validations.SettingsError, v.Validate())
+}

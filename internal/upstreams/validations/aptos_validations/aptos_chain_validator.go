@@ -2,20 +2,15 @@ package aptos_validations
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
-	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 )
-
-var errAptosEmptyLedgerInfo = errors.New("aptos node returned empty ledger info")
 
 type AptosChainValidator struct {
 	upstreamId      string
@@ -54,6 +49,13 @@ func (a *AptosChainValidator) Validate() validations.ValidationSettingResult {
 		log.Error().Err(err).Msgf("failed to fetch aptos ledger info for upstream '%s'", a.upstreamId)
 		return validations.SettingsError
 	}
+	// A body without chain_id (e.g. a gateway's 200 error envelope) is a
+	// transient fetch problem, not proof of a wrong chain: retry, don't kill
+	// the upstream. No real Aptos network uses chain_id 0.
+	if info.ChainId == 0 {
+		log.Warn().Msgf("aptos upstream '%s' returned ledger info without chain_id; will retry validation", a.upstreamId)
+		return validations.SettingsError
+	}
 	if info.ChainId == expectedId {
 		return validations.Valid
 	}
@@ -74,20 +76,7 @@ func (a *AptosChainValidator) fetchLedgerInfo() (*AptosLedgerInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
 	defer cancel()
 
-	request := protocol.NewInternalUpstreamRestRequest("GET#/v1", nil, a.chain.Chain)
-	response := a.connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return nil, response.GetError()
-	}
-	raw := response.ResponseResult()
-	if len(raw) == 0 {
-		return nil, errAptosEmptyLedgerInfo
-	}
-	var info AptosLedgerInfo
-	if err := sonic.Unmarshal(raw, &info); err != nil {
-		return nil, err
-	}
-	return &info, nil
+	return FetchLedgerInfo(ctx, a.connector, a.chain.Chain)
 }
 
 var _ validations.SettingsValidator = (*AptosChainValidator)(nil)

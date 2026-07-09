@@ -2,10 +2,8 @@ package aptos_specific
 
 import (
 	"context"
-	"encoding/hex"
+	"encoding/binary"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -63,12 +61,17 @@ func (a *AptosChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol
 	}
 	version, _ := aptos_validations.ParseU64(info.LedgerVersion)
 
-	hash, err := a.fetchBlockHash(ctx, height)
-	if err != nil {
-		return protocol.ZeroBlock{}, fmt.Errorf("couldn't fetch aptos block %d: %w", height, err)
-	}
-	parent := blockchain.NewHashIdFromBytes(heightToBytes(subOne(height)))
+	hash, parent := syntheticHashes(height)
 	return protocol.NewBlock(height, version, hash, parent), nil
+}
+
+// syntheticHashes builds the block id and parent id for a head event. The
+// Aptos REST head-poll path exposes no parent hash, so both ids are
+// deterministic height encodings (the Solana pattern): block(N).ParentHash
+// always equals block(N-1).Hash and parent-linkage checks in head-stream
+// consumers hold. height is guaranteed > 0 by the caller.
+func syntheticHashes(height uint64) (blockchain.HashId, blockchain.HashId) {
+	return heightToHashId(height), heightToHashId(height - 1)
 }
 
 func (a *AptosChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
@@ -145,71 +148,13 @@ func (a *AptosChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (a *AptosChainSpecificObject) fetchLedgerInfo(ctx context.Context) (*aptos_validations.AptosLedgerInfo, error) {
-	request := protocol.NewInternalUpstreamRestRequest("GET#/v1", nil, a.configuredChain.Chain)
-	response := a.connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return nil, response.GetError()
-	}
-	var info aptos_validations.AptosLedgerInfo
-	if err := sonic.Unmarshal(response.ResponseResult(), &info); err != nil {
-		return nil, fmt.Errorf("couldn't parse aptos ledger info: %w", err)
-	}
-	return &info, nil
+	return aptos_validations.FetchLedgerInfo(ctx, a.connector, a.configuredChain.Chain)
 }
 
-// fetchBlockHash reads the block hash for the given height. Aptos returns it as
-// a 0x-prefixed 32-byte hex string; on a decode miss we fall back to a
-// deterministic encoding of the height so HeadEvents never carry an empty hash.
-func (a *AptosChainSpecificObject) fetchBlockHash(ctx context.Context, height uint64) (blockchain.HashId, error) {
-	request := protocol.NewInternalUpstreamRestRequest(
-		"GET#/v1/blocks/by_height/*",
-		&protocol.RequestParams{
-			PathParams:  []string{strconv.FormatUint(height, 10)},
-			QueryParams: map[string][]string{"with_transactions": {"false"}},
-		},
-		a.configuredChain.Chain,
-	)
-	response := a.connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return blockchain.EmptyHash, response.GetError()
-	}
-	var body struct {
-		BlockHash string `json:"block_hash"`
-	}
-	if err := sonic.Unmarshal(response.ResponseResult(), &body); err != nil {
-		return blockchain.EmptyHash, err
-	}
-	if decoded, ok := decodeHexHash(body.BlockHash); ok {
-		return blockchain.NewHashIdFromBytes(decoded), nil
-	}
-	return blockchain.NewHashIdFromBytes(heightToBytes(height)), nil
-}
-
-func decodeHexHash(raw string) ([]byte, bool) {
-	raw = strings.TrimPrefix(strings.TrimSpace(raw), "0x")
-	if raw == "" {
-		return nil, false
-	}
-	if decoded, err := hex.DecodeString(raw); err == nil && len(decoded) > 0 {
-		return decoded, true
-	}
-	return nil, false
-}
-
-func heightToBytes(height uint64) []byte {
+func heightToHashId(height uint64) blockchain.HashId {
 	out := make([]byte, 32)
-	for i := 0; i < 8; i++ {
-		out[31-i] = byte(height & 0xff)
-		height >>= 8
-	}
-	return out
-}
-
-func subOne(height uint64) uint64 {
-	if height == 0 {
-		return 0
-	}
-	return height - 1
+	binary.BigEndian.PutUint64(out[24:], height)
+	return blockchain.NewHashIdFromBytes(out)
 }
 
 var _ chains_specific.ChainSpecific = (*AptosChainSpecificObject)(nil)

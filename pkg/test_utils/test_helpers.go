@@ -261,13 +261,7 @@ func NewBeaconChainSpecific(ctx context.Context, connector connectors.ApiConnect
 }
 
 func NewAptosChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aptos_specific.AptosChainSpecificObject {
-	options := &chains.Options{
-		InternalTimeout:         5 * time.Second,
-		ValidationInterval:      10 * time.Second,
-		DisableChainValidation:  new(false),
-		DisableHealthValidation: new(false),
-	}
-	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, options)
+	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, newTestChainOptions())
 }
 
 func newTestChainOptions() *chains.Options {
