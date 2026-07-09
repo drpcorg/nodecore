@@ -554,7 +554,7 @@ Supported connector types:
 
 - `json-rpc` - HTTP-based JSON-RPC. Available on every chain family
 - `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
-- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON, and the Ethereum/Gnosis Beacon Chain). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`
+- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON, Aptos, and the Ethereum/Gnosis Beacon Chain). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`. Aptos upstreams use `rest` exclusively, serving the fullnode `/v1/*` API
 - `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
 - `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: an upstream cannot consist of only `rest-additional` connectors - at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket`) must also be configured
 
@@ -602,7 +602,7 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 `upstreams` fields:
 
 - `id` - Unique identifier of the upstream. **_Required_**, **_Unique_**
-- `chain` - The chain this upstream serves (e.g. `ethereum`, `polygon`, `solana`, `algorand`, `aztec-mainnet`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
+- `chain` - The chain this upstream serves (e.g. `ethereum`, `polygon`, `solana`, `algorand`, `aztec-mainnet`, `aptos-mainnet`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
 - `connectors` - The access endpoints for this upstream. **_Required_**, **_at least one_**. There can be only one connector of each type per upstream, and at least one connector must be a plain type (not `rest-additional`). Each connector has:
   - `type` - one of `json-rpc`, `websocket`, `rest`, `grpc`, `rest-additional`. **_Required_**
   - `url` - full endpoint URL. **_Required_**
@@ -636,6 +636,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 |---|---|---|---|
 | Chain id / `net_version` | EVM | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Confirms the upstream is actually serving the configured chain. Fails at startup remove the upstream from the pool; runtime drift triggers re-removal |
 | Aztec chain validator | Aztec | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the Aztec node's chain-id endpoint |
+| Aptos chain validator | Aptos | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the `chain_id` from the Aptos ledger-info endpoint (`GET /v1`) |
 | `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers` |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
@@ -643,12 +644,14 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Health validator (Solana) | Solana | `disable-health-validation` | Calls the Solana `getHealth` RPC and propagates the result |
 | Health validator (Aztec) | Aztec | `disable-health-validation` | Probes Aztec node health |
 | Health validator (Algorand) | Algorand | `disable-health-validation` | Probes Algorand node health |
+| Health validator (Aptos) | Aptos | `disable-health-validation` | Calls the Aptos `GET /v1/-/healthy` endpoint and propagates the result |
 | Health validator (Beacon) | Beacon Chain | `disable-health-validation` | Calls `GET /eth/v1/node/health` and marks the upstream available only on a 2xx response |
 | Syncing validator (Beacon) | Beacon Chain | `validate-syncing` (set to `false`) | Probes `GET /eth/v1/node/syncing`; marks the upstream `Syncing` when `is_syncing` is true and `Unavailable` when `el_offline` is true |
 | Peers validator (Beacon) | Beacon Chain | `validate-peers` / `min-peers` | Probes `GET /eth/v1/node/peer_count` and marks the upstream immature while connected peers are below `min-peers` |
-| Lower-bound detector | Solana, Algorand, Aztec | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
+| Lower-bound detector | Solana, Algorand, Aztec, Aptos | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
 | Lower-bound detector (Beacon) | Beacon Chain | `disable-lower-bounds-detection` | Binary-searches the earliest retained block, state, epoch (attestation rewards), and blob-sidecar slots so requests against pruned ranges are routed away |
 | Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
+| Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
 
 `disable-validation` is the master switch and overrides every per-validator flag.
