@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -12,8 +13,8 @@ import (
 // firstTxHash fetches a block and returns its first transaction hash, used by the
 // tx and receipts probes. It handles both eth_getBlockByNumber transaction shapes
 // (array of hash strings, or array of tx objects).
-func (e *EvmLowerBoundDetector) firstTxHash(height int64) (string, bool, error) {
-	raw, available, err := e.call("eth_getBlockByNumber", []any{evmBlockTag(height), false})
+func (e *EvmLowerBoundDetector) firstTxHash(ctx context.Context, height int64) (string, bool, error) {
+	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
 	if err != nil || !available || isEvmNullResult(raw) {
 		return "", available && !isEvmNullResult(raw), err
 	}

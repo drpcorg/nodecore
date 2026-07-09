@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -41,35 +42,35 @@ func NewEvmStateLowerBoundDetector(
 	)
 }
 
-func (e *EvmLowerBoundDetector) hasState(height int64) (bool, error) {
-	if e.supportsStateOverride() {
-		available, err := e.hasStateWithOverride(height)
+func (e *EvmLowerBoundDetector) hasState(ctx context.Context, height int64) (bool, error) {
+	if e.supportsStateOverride(ctx) {
+		available, err := e.hasStateWithOverride(ctx, height)
 		if err == nil && available {
 			return true, nil
 		}
 		// Match dshackle behavior: state override is preferred, but a failed
 		// per-block override probe falls back to eth_getBalance.
 	}
-	return e.hasStateWithBalance(height)
+	return e.hasStateWithBalance(ctx, height)
 }
 
-func (e *EvmLowerBoundDetector) hasStateWithOverride(height int64) (bool, error) {
-	raw, available, err := e.call("eth_call", stateOverrideParams(evmBlockTag(height)))
+func (e *EvmLowerBoundDetector) hasStateWithOverride(ctx context.Context, height int64) (bool, error) {
+	raw, available, err := e.call(ctx, "eth_call", stateOverrideParams(evmBlockTag(height)))
 	if err != nil || !available {
 		return available, err
 	}
 	return !isEvmEmptyHexResult(raw), nil
 }
 
-func (e *EvmLowerBoundDetector) hasStateWithBalance(height int64) (bool, error) {
-	raw, available, err := e.call("eth_getBalance", []any{evmZeroAddress, evmBlockTag(height)})
+func (e *EvmLowerBoundDetector) hasStateWithBalance(ctx context.Context, height int64) (bool, error) {
+	raw, available, err := e.call(ctx, "eth_getBalance", []any{evmZeroAddress, evmBlockTag(height)})
 	if err != nil || !available {
 		return available, err
 	}
 	return !isEvmNullResult(raw), nil
 }
 
-func (e *EvmLowerBoundDetector) supportsStateOverride() bool {
+func (e *EvmLowerBoundDetector) supportsStateOverride(ctx context.Context) bool {
 	switch evmStateOverrideSupport(e.stateOverrideSupport.Load()) {
 	case evmStateOverrideSupported:
 		return true
@@ -77,7 +78,7 @@ func (e *EvmLowerBoundDetector) supportsStateOverride() bool {
 		return false
 	}
 
-	raw, available, err := e.call("eth_call", stateOverrideParams("latest"))
+	raw, available, err := e.call(ctx, "eth_call", stateOverrideParams("latest"))
 	if err == nil && available && !isEvmEmptyHexResult(raw) {
 		e.stateOverrideSupport.Store(int32(evmStateOverrideSupported))
 		return true

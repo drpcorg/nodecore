@@ -1,6 +1,7 @@
 package tron_bounds_test
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -127,7 +128,7 @@ func TestTronLowerBoundDetector_FansOutOneSearchToAllFourBoundTypes(t *testing.T
 
 	detector := tron_bounds.NewTronLowerBoundDetector("id", chains.TRON, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 
 	// One search returns one bound, the detector fans it out to all four types.
@@ -155,7 +156,7 @@ func TestTronLowerBoundDetector_AllAvailableReturnsOneForAllTypes(t *testing.T) 
 
 	detector := tron_bounds.NewTronLowerBoundDetector("id", chains.TRON, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.Len(t, result, 4)
 	for _, b := range result {
@@ -171,7 +172,7 @@ func TestTronLowerBoundDetector_LatestEmptyBodyFails(t *testing.T) {
 
 	detector := fastTron(tron_bounds.NewTronLowerBoundDetector("id", chains.TRON, time.Second, connector))
 
-	_, err := detector.DetectLowerBound()
+	_, err := detector.DetectLowerBound(context.Background())
 	require.Error(t, err)
 }
 
@@ -183,7 +184,7 @@ func TestTronLowerBoundDetector_LatestConnectorErrorPropagates(t *testing.T) {
 
 	detector := fastTron(tron_bounds.NewTronLowerBoundDetector("id", chains.TRON, time.Second, connector))
 
-	_, err := detector.DetectLowerBound()
+	_, err := detector.DetectLowerBound(context.Background())
 	require.Error(t, err)
 }
 
@@ -205,7 +206,7 @@ func TestTronLowerBoundDetector_EmptyBodyOnProbeMeansBlockMissing(t *testing.T) 
 
 	detector := tron_bounds.NewTronLowerBoundDetector("id", chains.TRON, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.Len(t, result, 4)
 	for _, b := range result {
@@ -233,7 +234,7 @@ func TestTronLowerBoundDetector_BodyWithoutBlockIDCountsAsMissing(t *testing.T) 
 
 	detector := tron_bounds.NewTronLowerBoundDetector("id", chains.TRON, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.Len(t, result, 4)
 	for _, b := range result {

@@ -62,32 +62,32 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 	}
 }
 
-func (e *EvmLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	if results, ok := e.detectFromGoldBound(); ok {
+func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	if results, ok := e.detectFromGoldBound(ctx); ok {
 		return results, nil
 	}
-	return e.LowerBoundSearchCalculator.DetectLowerBound(e.fetchLatestHeight, e.probe)
+	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
 }
 
-func (e *EvmLowerBoundDetector) probe(height int64) (bool, error) {
+func (e *EvmLowerBoundDetector) probe(ctx context.Context, height int64) (bool, error) {
 	switch e.MainBoundType {
 	case protocol.StateBound:
-		return e.hasState(height)
+		return e.hasState(ctx, height)
 	case protocol.BlockBound:
-		return e.hasBlock(height)
+		return e.hasBlock(ctx, height)
 	case protocol.TxBound:
-		return e.hasTx(height)
+		return e.hasTx(ctx, height)
 	case protocol.ReceiptsBound:
-		return e.hasReceipts(height)
+		return e.hasReceipts(ctx, height)
 	case protocol.ProofBound:
-		return e.hasProof(height)
+		return e.hasProof(ctx, height)
 	default:
 		return false, fmt.Errorf("unsupported EVM lower-bound type %s", e.MainBoundType.String())
 	}
 }
 
-func (e *EvmLowerBoundDetector) fetchLatestHeight() (int64, error) {
-	raw, available, err := e.call("eth_blockNumber", []any{})
+func (e *EvmLowerBoundDetector) fetchLatestHeight(ctx context.Context) (int64, error) {
+	raw, available, err := e.call(ctx, "eth_blockNumber", []any{})
 	if err != nil {
 		return 0, err
 	}
@@ -97,8 +97,8 @@ func (e *EvmLowerBoundDetector) fetchLatestHeight() (int64, error) {
 	return parseHexInt(raw)
 }
 
-func (e *EvmLowerBoundDetector) call(method string, params any) ([]byte, bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+func (e *EvmLowerBoundDetector) call(ctx context.Context, method string, params any) ([]byte, bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params, e.chain.Chain)

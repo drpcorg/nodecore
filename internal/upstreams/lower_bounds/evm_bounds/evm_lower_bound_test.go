@@ -1,6 +1,7 @@
 package evm_bounds_test
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
@@ -144,7 +145,7 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesEarliestAvailableBlock(t *testi
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -159,7 +160,7 @@ func TestEvmBlockLowerBoundDetectorBinarySearchesMultipleSteps(t *testing.T) {
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -197,7 +198,7 @@ func TestEvmBlockLowerBoundDetectorIgnoresGenesisWhenHoleFollows(t *testing.T) {
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -219,7 +220,7 @@ func TestEvmStateLowerBoundDetectorFallsBackToBalanceWhenStateOverrideUnsupporte
 
 	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -237,7 +238,7 @@ func TestEvmStateLowerBoundDetectorParsesStateOverrideResult(t *testing.T) {
 
 	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -259,7 +260,7 @@ func TestEvmTxLowerBoundDetectorChecksFirstTransactionHash(t *testing.T) {
 
 	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -281,7 +282,7 @@ func TestEvmReceiptsLowerBoundDetectorChecksFirstTransactionObjectHash(t *testin
 
 	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -299,9 +300,9 @@ func TestEvmBlockLowerBoundDetectorStableAcrossRuns(t *testing.T) {
 
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	first, err := detector.DetectLowerBound()
+	first, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	second, err := detector.DetectLowerBound()
+	second, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 
 	require.NotEmpty(t, first)
@@ -325,12 +326,12 @@ func TestEvmTxLowerBoundDetectorReusesCachedBoundWithSingleProbe(t *testing.T) {
 
 	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	first, err := detector.DetectLowerBound()
+	first, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), first[0].Bound)
 
 	expectLatest(connector, "0x4")
-	second, err := detector.DetectLowerBound()
+	second, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), second[0].Bound)
 }
@@ -349,7 +350,7 @@ func TestEvmTxLowerBoundDetectorParsesLiveBlockAndTransactionShapes(t *testing.T
 
 	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -371,7 +372,7 @@ func TestEvmReceiptsLowerBoundDetectorParsesObjectTransactionsAndReceiptShape(t 
 
 	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -391,7 +392,7 @@ func TestEvmLowerBoundDetectorFailsWhenEverythingErrorsOnTallChain(t *testing.T)
 
 	detector := fastEvm(evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector))
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
@@ -412,7 +413,7 @@ func TestEvmLowerBoundDetectorRetriesTransientErrors(t *testing.T) {
 
 	detector := fastEvm(evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector))
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)
@@ -433,7 +434,7 @@ func TestEvmTxLowerBoundDetectorShortCircuitsOnGoldBound(t *testing.T) {
 	chain := evmChainWithGold(&chains.GoldLowerBound{Block: 46147, Hash: goldTxHash}, nil)
 	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", chain, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.Len(t, result, 1)
@@ -452,7 +453,7 @@ func TestEvmReceiptsLowerBoundDetectorShortCircuitsOnGoldBound(t *testing.T) {
 	chain := evmChainWithGold(nil, &chains.GoldLowerBound{Block: 46147, Hash: goldTxHash})
 	detector := evm_bounds.NewEvmReceiptsLowerBoundDetector("id", chain, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.Len(t, result, 1)
@@ -482,7 +483,7 @@ func TestEvmTxLowerBoundDetectorFallsBackWhenGoldBoundMissing(t *testing.T) {
 	chain := evmChainWithGold(&chains.GoldLowerBound{Block: 46147, Hash: goldTxHash}, nil)
 	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", chain, time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
 	require.NotEmpty(t, result)

@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -28,8 +29,8 @@ func NewEvmBlockLowerBoundDetector(
 	)
 }
 
-func (e *EvmLowerBoundDetector) hasBlock(height int64) (bool, error) {
-	raw, available, err := e.call("eth_getBlockByNumber", []any{evmBlockTag(height), false})
+func (e *EvmLowerBoundDetector) hasBlock(ctx context.Context, height int64) (bool, error) {
+	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
 	if err != nil || !available {
 		return available, err
 	}

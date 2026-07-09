@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -20,12 +21,12 @@ func NewEvmTxLowerBoundDetector(
 	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.TxBound, evmLowerBoundMaxOffset)
 }
 
-func (e *EvmLowerBoundDetector) hasTx(height int64) (bool, error) {
-	txHash, available, err := e.firstTxHash(height)
+func (e *EvmLowerBoundDetector) hasTx(ctx context.Context, height int64) (bool, error) {
+	txHash, available, err := e.firstTxHash(ctx, height)
 	if err != nil || !available {
 		return available, err
 	}
-	raw, available, err := e.call("eth_getTransactionByHash", []any{txHash})
+	raw, available, err := e.call(ctx, "eth_getTransactionByHash", []any{txHash})
 	if err != nil || !available {
 		return available, err
 	}

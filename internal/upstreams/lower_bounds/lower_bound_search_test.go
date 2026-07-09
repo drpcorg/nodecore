@@ -1,7 +1,9 @@
 package lower_bounds_test
 
 import (
+	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,8 +34,9 @@ func TestLowerBoundSearchBinarySearchesEarliestAvailable(t *testing.T) {
 	calls := make([]int64, 0)
 
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 8, nil },
-		func(height int64) (bool, error) {
+		context.Background(),
+		func(context.Context) (int64, error) { return 8, nil },
+		func(_ context.Context, height int64) (bool, error) {
 			calls = append(calls, height)
 			return height >= 4, nil
 		},
@@ -54,8 +57,9 @@ func TestLowerBoundSearchIgnoresGenesisWhenHoleFollows(t *testing.T) {
 	calls := make([]int64, 0)
 
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 10, nil },
-		func(height int64) (bool, error) {
+		context.Background(),
+		func(context.Context) (int64, error) { return 10, nil },
+		func(_ context.Context, height int64) (bool, error) {
 			calls = append(calls, height)
 			// data at genesis and from 6 onward, hole in 2..5
 			return height == 1 || height >= 6, nil
@@ -74,8 +78,9 @@ func TestLowerBoundSearchTreatsPersistentErrorAsNoData(t *testing.T) {
 	calculator := plainCalculator()
 
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 8, nil },
-		func(height int64) (bool, error) {
+		context.Background(),
+		func(context.Context) (int64, error) { return 8, nil },
+		func(_ context.Context, height int64) (bool, error) {
 			if height < 4 {
 				return false, errors.New("boom")
 			}
@@ -93,8 +98,9 @@ func TestLowerBoundSearchRetriesTransientErrorThenSucceeds(t *testing.T) {
 	attempts := 0
 
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 1, nil },
-		func(height int64) (bool, error) {
+		context.Background(),
+		func(context.Context) (int64, error) { return 1, nil },
+		func(_ context.Context, height int64) (bool, error) {
 			attempts++
 			if attempts == 1 {
 				return false, errors.New("temporary")
@@ -114,8 +120,9 @@ func TestLowerBoundSearchFailsWhenNothingRetainedOnTallChain(t *testing.T) {
 	calculator := plainCalculator()
 
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 100, nil },
-		func(height int64) (bool, error) { return false, nil },
+		context.Background(),
+		func(context.Context) (int64, error) { return 100, nil },
+		func(_ context.Context, height int64) (bool, error) { return false, nil },
 	)
 
 	require.Error(t, err)
@@ -127,8 +134,9 @@ func TestLowerBoundSearchReturnsOneOnTinyChain(t *testing.T) {
 
 	// latest is small (<=10), so the convergence guard does not fire and block 1 is reported.
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 1, nil },
-		func(height int64) (bool, error) { return true, nil },
+		context.Background(),
+		func(context.Context) (int64, error) { return 1, nil },
+		func(_ context.Context, height int64) (bool, error) { return true, nil },
 	)
 
 	require.NoError(t, err)
@@ -140,17 +148,17 @@ func TestLowerBoundSearchReturnsOneOnTinyChain(t *testing.T) {
 func TestLowerBoundSearchPlainReusesCachedBound(t *testing.T) {
 	calculator := plainCalculator()
 	calls := make([]int64, 0)
-	probe := func(height int64) (bool, error) {
+	probe := func(_ context.Context, height int64) (bool, error) {
 		calls = append(calls, height)
 		return height >= 5, nil
 	}
 
-	first, err := calculator.DetectLowerBound(func() (int64, error) { return 8, nil }, probe)
+	first, err := calculator.DetectLowerBound(context.Background(), func(context.Context) (int64, error) { return 8, nil }, probe)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), first[0].Bound)
 
 	callsAfterFirst := len(calls)
-	second, err := calculator.DetectLowerBound(func() (int64, error) { return 9, nil }, probe)
+	second, err := calculator.DetectLowerBound(context.Background(), func(context.Context) (int64, error) { return 9, nil }, probe)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), second[0].Bound)
 	assert.Equal(t, []int64{5}, calls[callsAfterFirst:])
@@ -160,17 +168,17 @@ func TestLowerBoundSearchPlainReusesCachedBound(t *testing.T) {
 func TestLowerBoundSearchOffsetReusesCachedBound(t *testing.T) {
 	calculator := offsetCalculator(20)
 	calls := make([]int64, 0)
-	probe := func(height int64) (bool, error) {
+	probe := func(_ context.Context, height int64) (bool, error) {
 		calls = append(calls, height)
 		return height >= 5, nil
 	}
 
-	first, err := calculator.DetectLowerBound(func() (int64, error) { return 8, nil }, probe)
+	first, err := calculator.DetectLowerBound(context.Background(), func(context.Context) (int64, error) { return 8, nil }, probe)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), first[0].Bound)
 
 	callsAfterFirst := len(calls)
-	second, err := calculator.DetectLowerBound(func() (int64, error) { return 9, nil }, probe)
+	second, err := calculator.DetectLowerBound(context.Background(), func(context.Context) (int64, error) { return 9, nil }, probe)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), second[0].Bound)
 	// Second run confirms the cached bound with exactly one probe.
@@ -184,8 +192,9 @@ func TestLowerBoundSearchOffsetToleratesHoleWithinLimit(t *testing.T) {
 	// Data everywhere from 3 up, except a single hole at 6. A plain search probing middle 6
 	// would wrongly move higher; the offset scan finds data at 5 just below it.
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 12, nil },
-		func(height int64) (bool, error) {
+		context.Background(),
+		func(context.Context) (int64, error) { return 12, nil },
+		func(_ context.Context, height int64) (bool, error) {
 			if height == 6 {
 				return false, nil
 			}
@@ -205,11 +214,43 @@ func TestLowerBoundSearchOffsetAbandonsHoleBeyondLimit(t *testing.T) {
 	// Genuine bound is 9; blocks below it are missing. With maxOffset=2 the downward scan from a
 	// no-data middle gives up quickly and the search proceeds upward to the real boundary.
 	result, err := calculator.DetectLowerBound(
-		func() (int64, error) { return 12, nil },
-		func(height int64) (bool, error) { return height >= 9, nil },
+		context.Background(),
+		func(context.Context) (int64, error) { return 12, nil },
+		func(_ context.Context, height int64) (bool, error) { return height >= 9, nil },
 	)
 
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Equal(t, int64(9), result[0].Bound)
+}
+
+// A cancelled context stops the retry loop between attempts instead of exhausting all
+// configured attempts: the probe keeps erroring, but once ctx is cancelled the search
+// returns promptly rather than retrying up to the (default 30) attempt ceiling.
+func TestLowerBoundSearchStopsRetryingOnContextCancellation(t *testing.T) {
+	// Use the production retry defaults (30 attempts, 1s base delay): without cancellation
+	// this fetch would keep retrying for a long time. With ctx cancelled after the first
+	// attempt, failsafe must abort quickly.
+	calculator := lower_bounds.NewLowerBoundSearchCalculator("up-1", protocol.BlockBound, time.Minute)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var attempts atomic.Int64
+
+	start := time.Now()
+	result, err := calculator.DetectLowerBound(
+		ctx,
+		func(context.Context) (int64, error) {
+			attempts.Add(1)
+			cancel() // cancel right after the first attempt
+			return 0, errors.New("boom")
+		},
+		func(_ context.Context, height int64) (bool, error) { return false, nil },
+	)
+
+	require.Error(t, err)
+	assert.Nil(t, result)
+	// The retry loop must not have run anywhere near the 30-attempt ceiling, and it must
+	// have returned well before the first 1s backoff would have elapsed had it continued.
+	assert.LessOrEqual(t, attempts.Load(), int64(2))
+	assert.Less(t, time.Since(start), time.Second)
 }

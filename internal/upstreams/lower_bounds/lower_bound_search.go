@@ -1,6 +1,7 @@
 package lower_bounds
 
 import (
+	"context"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -16,9 +17,9 @@ const (
 	defaultLowerBoundSearchRetryMaxDelay  = 1 * time.Minute
 )
 
-type LowerBoundProbe func(height int64) (bool, error)
+type LowerBoundProbe func(ctx context.Context, height int64) (bool, error)
 
-type LowerBoundLatestHeightFetcher func() (int64, error)
+type LowerBoundLatestHeightFetcher func(ctx context.Context) (int64, error)
 
 type boundRange struct {
 	left    int64
@@ -80,10 +81,11 @@ func NewLowerBoundSearchCalculatorWithOffset(
 }
 
 func (c *LowerBoundSearchCalculator) DetectLowerBound(
+	ctx context.Context,
 	fetchLatestHeight LowerBoundLatestHeightFetcher,
 	probe LowerBoundProbe,
 ) ([]protocol.LowerBoundData, error) {
-	latest, err := c.withRetryLatestHeight(fetchLatestHeight)
+	latest, err := c.withRetryLatestHeight(ctx, fetchLatestHeight)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch latest height for upstream '%s': %w", c.UpstreamId, err)
 	}
@@ -92,7 +94,7 @@ func (c *LowerBoundSearchCalculator) DetectLowerBound(
 	}
 
 	hasData := func(height int64) bool {
-		available, err := c.withRetryProbe(height, probe)
+		available, err := c.withRetryProbe(ctx, height, probe)
 		return err == nil && available
 	}
 
@@ -261,17 +263,17 @@ func (c *LowerBoundSearchCalculator) shiftLeftAndSearch(
 	}
 }
 
-func (c *LowerBoundSearchCalculator) withRetryLatestHeight(fetchLatestHeight LowerBoundLatestHeightFetcher) (int64, error) {
-	executor := failsafe.NewExecutor(c.createRetryPolicy())
+func (c *LowerBoundSearchCalculator) withRetryLatestHeight(ctx context.Context, fetchLatestHeight LowerBoundLatestHeightFetcher) (int64, error) {
+	executor := failsafe.NewExecutor(c.createRetryPolicy()).WithContext(ctx)
 	return executor.GetWithExecution(func(exec failsafe.Execution[int64]) (int64, error) {
-		return fetchLatestHeight()
+		return fetchLatestHeight(ctx)
 	})
 }
 
-func (c *LowerBoundSearchCalculator) withRetryProbe(height int64, probe LowerBoundProbe) (bool, error) {
-	executor := failsafe.NewExecutor(createLowerBoundSearchRetryPolicy[bool](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay))
+func (c *LowerBoundSearchCalculator) withRetryProbe(ctx context.Context, height int64, probe LowerBoundProbe) (bool, error) {
+	executor := failsafe.NewExecutor(createLowerBoundSearchRetryPolicy[bool](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay)).WithContext(ctx)
 	return executor.GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
-		return probe(height)
+		return probe(ctx, height)
 	})
 }
 

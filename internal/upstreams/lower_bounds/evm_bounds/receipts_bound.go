@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -20,12 +21,12 @@ func NewEvmReceiptsLowerBoundDetector(
 	return newEvmLowerBoundDetector(upstreamId, chain, internalTimeout, connector, protocol.ReceiptsBound, evmLowerBoundMaxOffset)
 }
 
-func (e *EvmLowerBoundDetector) hasReceipts(height int64) (bool, error) {
-	txHash, available, err := e.firstTxHash(height)
+func (e *EvmLowerBoundDetector) hasReceipts(ctx context.Context, height int64) (bool, error) {
+	txHash, available, err := e.firstTxHash(ctx, height)
 	if err != nil || !available {
 		return available, err
 	}
-	raw, available, err := e.call("eth_getTransactionReceipt", []any{txHash})
+	raw, available, err := e.call(ctx, "eth_getTransactionReceipt", []any{txHash})
 	if err != nil || !available {
 		return available, err
 	}

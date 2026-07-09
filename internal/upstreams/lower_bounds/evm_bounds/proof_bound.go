@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -19,8 +20,8 @@ func NewEvmProofLowerBoundDetector(
 	return newEvmLowerBoundDetectorWithSupportedTypes(upstreamId, chain, internalTimeout, connector, protocol.ProofBound, []protocol.LowerBoundType{protocol.ProofBound}, 0)
 }
 
-func (e *EvmLowerBoundDetector) hasProof(height int64) (bool, error) {
-	raw, available, err := e.call("eth_getProof", []any{evmZeroAddress, []string{}, evmBlockTag(height)})
+func (e *EvmLowerBoundDetector) hasProof(ctx context.Context, height int64) (bool, error) {
+	raw, available, err := e.call(ctx, "eth_getProof", []any{evmZeroAddress, []string{}, evmBlockTag(height)})
 	if err != nil || !available {
 		return available, err
 	}
