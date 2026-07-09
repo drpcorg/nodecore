@@ -1,6 +1,7 @@
 package solana_bounds_test
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
@@ -70,7 +71,7 @@ func TestSolanaLowerBoundDetectorDetectLowerBound(t *testing.T) {
 
 	detector := solana_bounds.NewSolanaLowerBoundDetector("id", time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -95,7 +96,7 @@ func TestSolanaLowerBoundDetectorDetectLowerBoundDoesNotReturnZeroValues(t *test
 
 	detector := solana_bounds.NewSolanaLowerBoundDetector("id", time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	assert.NoError(t, err)
 	assert.Len(t, result, 2)
@@ -124,7 +125,7 @@ func TestSolanaLowerBoundDetectorDetectLowerBoundRetriesAfterFirstAvailableBlock
 
 	detector := solana_bounds.NewSolanaLowerBoundDetector("id", time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	assert.NoError(t, err)
 	assert.Equal(t, []protocol.LowerBoundType{protocol.SlotBound, protocol.StateBound}, []protocol.LowerBoundType{result[0].Type, result[1].Type})
@@ -150,7 +151,7 @@ func TestSolanaLowerBoundDetectorDetectLowerBoundRetriesAfterGetBlockError(t *te
 
 	detector := solana_bounds.NewSolanaLowerBoundDetector("id", time.Second, connector)
 
-	result, err := detector.DetectLowerBound()
+	result, err := detector.DetectLowerBound(context.Background())
 
 	assert.NoError(t, err)
 	assert.Equal(t, []protocol.LowerBoundType{protocol.SlotBound, protocol.StateBound}, []protocol.LowerBoundType{result[0].Type, result[1].Type})

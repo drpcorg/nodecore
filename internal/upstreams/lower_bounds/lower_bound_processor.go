@@ -113,14 +113,14 @@ func (b *BaseLowerBoundProcessor) detectLowerBound(
 		defer close(boundsChan)
 		// delay detection the first bound
 		time.Sleep(b.initialDelay)
-		b.processBounds(detector, boundsChan)
+		b.processBounds(ctx, detector, boundsChan)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(detector.Period()):
-				b.processBounds(detector, boundsChan)
+				b.processBounds(ctx, detector, boundsChan)
 			}
 		}
 	}()
@@ -129,10 +129,11 @@ func (b *BaseLowerBoundProcessor) detectLowerBound(
 }
 
 func (b *BaseLowerBoundProcessor) processBounds(
+	ctx context.Context,
 	detector LowerBoundDetector,
 	boundsChan chan protocol.LowerBoundData,
 ) {
-	bounds, err := detector.DetectLowerBound()
+	bounds, err := detector.DetectLowerBound(ctx)
 	if err != nil {
 		log.
 			Error().

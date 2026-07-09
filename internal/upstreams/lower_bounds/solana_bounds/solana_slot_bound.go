@@ -25,15 +25,15 @@ type SolanaLowerBoundDetector struct {
 	executor failsafe.Executor[solanaLowerBound]
 }
 
-func (s *SolanaLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	result, err := s.executor.GetWithExecution(func(exec failsafe.Execution[solanaLowerBound]) (solanaLowerBound, error) {
+func (s *SolanaLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	result, err := s.executor.WithContext(ctx).GetWithExecution(func(exec failsafe.Execution[solanaLowerBound]) (solanaLowerBound, error) {
 		var zero solanaLowerBound
-		slot, err := s.getFirstAvailableBlock()
+		slot, err := s.getFirstAvailableBlock(ctx)
 		if err != nil {
 			return zero, err
 		}
 
-		block, err := s.getBlock(slot)
+		block, err := s.getBlock(ctx, slot)
 		if err != nil {
 			return zero, err
 		}
@@ -57,8 +57,8 @@ func (s *SolanaLowerBoundDetector) Period() time.Duration {
 	return period
 }
 
-func (s *SolanaLowerBoundDetector) getFirstAvailableBlock() (int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *SolanaLowerBoundDetector) getFirstAvailableBlock(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getFirstAvailableBlock", nil, chains.SOLANA)
@@ -77,8 +77,8 @@ func (s *SolanaLowerBoundDetector) getFirstAvailableBlock() (int64, error) {
 	return int64(max(number, 1)), nil
 }
 
-func (s *SolanaLowerBoundDetector) getBlock(number int64) (int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *SolanaLowerBoundDetector) getBlock(ctx context.Context, number int64) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	params := map[string]any{

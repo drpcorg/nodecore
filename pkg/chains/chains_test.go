@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetChainByGrpcId(t *testing.T) {
@@ -20,4 +21,21 @@ func TestGetChainByGrpcId(t *testing.T) {
 func TestGetChainByGrpcIdUnknown(t *testing.T) {
 	unknown := GetChainByGrpcId(-1)
 	assert.Equal(t, UnknownChain, unknown)
+}
+
+func TestGoldLowerBoundsParsedFromConfig(t *testing.T) {
+	ethereum := GetChain("ethereum")
+	require.NotNil(t, ethereum.LowerBounds)
+	require.NotNil(t, ethereum.LowerBounds.Tx)
+	require.NotNil(t, ethereum.LowerBounds.Receipts)
+
+	const expectedHash = "0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060"
+	assert.Equal(t, expectedHash, ethereum.LowerBounds.Tx.Hash)
+	assert.Equal(t, uint64(46147), ethereum.LowerBounds.Tx.Block)
+	assert.Equal(t, expectedHash, ethereum.LowerBounds.Receipts.Hash)
+}
+
+func TestGoldLowerBoundsAbsentWhenNotConfigured(t *testing.T) {
+	// Bitcoin has no lower-bounds section in chains.yaml.
+	assert.Nil(t, GetChain("bitcoin").LowerBounds)
 }

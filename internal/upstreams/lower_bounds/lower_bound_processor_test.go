@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,7 +99,7 @@ func TestBaseLowerBoundServiceSubscribeReturnsSubscription(t *testing.T) {
 
 func TestBaseLowerBoundServiceUsesCustomInitialDelay(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(100, 1000, protocol.StateBound),
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
@@ -121,7 +122,7 @@ func TestBaseLowerBoundServiceUsesCustomInitialDelay(t *testing.T) {
 func TestBaseLowerBoundServicePublishesBoundsAndPredictsThem(t *testing.T) {
 	now := time.Now().Unix()
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(100, now, protocol.StateBound),
 		protocol.NewLowerBoundData(200, now, protocol.SlotBound),
 	}, nil).Once()
@@ -149,7 +150,7 @@ func TestBaseLowerBoundServicePublishesBoundsAndPredictsThem(t *testing.T) {
 func TestBaseLowerBoundServicePredictLowerBoundUsesOffset(t *testing.T) {
 	now := time.Now().Unix()
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(100, now, protocol.StateBound),
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
@@ -171,11 +172,11 @@ func TestBaseLowerBoundServicePredictLowerBoundUsesOffset(t *testing.T) {
 
 func TestBaseLowerBoundServiceIgnoresDetectorErrorAndPublishesOnRetry(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return(nil, errors.New("temporary")).Once()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return(nil, errors.New("temporary")).Once()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(101, 1001, protocol.StateBound),
 	}, nil).Once()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData(nil), nil).Maybe()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData(nil), nil).Maybe()
 	detector.On("SupportedTypes").Return([]protocol.LowerBoundType{protocol.StateBound}).Maybe()
 	detector.On("Period").Return(20 * time.Millisecond).Maybe()
 
@@ -195,13 +196,13 @@ func TestBaseLowerBoundServiceIgnoresDetectorErrorAndPublishesOnRetry(t *testing
 
 func TestBaseLowerBoundServiceIgnoresLowerBoundThatMovesBackwards(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(100, 1000, protocol.StateBound),
 	}, nil).Once()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(99, 1001, protocol.StateBound),
 	}, nil).Once()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData(nil), nil).Maybe()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData(nil), nil).Maybe()
 	detector.On("Period").Return(20 * time.Millisecond).Maybe()
 
 	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
@@ -221,13 +222,13 @@ func TestBaseLowerBoundServiceIgnoresLowerBoundThatMovesBackwards(t *testing.T) 
 
 func TestBaseLowerBoundServiceAcceptsArchivalBoundOne(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(100, 1000, protocol.StateBound),
 	}, nil).Once()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(1, 1001, protocol.StateBound),
 	}, nil).Once()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData(nil), nil).Maybe()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData(nil), nil).Maybe()
 	detector.On("Period").Return(20 * time.Millisecond).Maybe()
 
 	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
@@ -248,13 +249,13 @@ func TestBaseLowerBoundServiceAcceptsArchivalBoundOne(t *testing.T) {
 
 func TestBaseLowerBoundServicePublishesBoundsFromMultipleDetectors(t *testing.T) {
 	d1 := mocks.NewLowerBoundDetectorMock()
-	d1.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	d1.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(50, 1000, protocol.StateBound),
 	}, nil).Once()
 	d1.On("Period").Return(time.Hour).Maybe()
 
 	d2 := mocks.NewLowerBoundDetectorMock()
-	d2.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	d2.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(70, 1000, protocol.SlotBound),
 	}, nil).Once()
 	d2.On("Period").Return(time.Hour).Maybe()
@@ -282,7 +283,7 @@ func TestBaseLowerBoundServicePublishesBoundsFromMultipleDetectors(t *testing.T)
 
 func TestBaseLowerBoundServiceStopStopsLifecycle(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(10, 1000, protocol.StateBound),
 	}, nil).Maybe()
 	detector.On("Period").Return(time.Hour).Maybe()
@@ -298,7 +299,7 @@ func TestBaseLowerBoundServiceStopStopsLifecycle(t *testing.T) {
 
 func TestBaseLowerBoundServiceSecondStartDoesNotDuplicatePublishing(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
-	detector.On("DetectLowerBound").Return([]protocol.LowerBoundData{
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
 		protocol.NewLowerBoundData(77, 1000, protocol.StateBound),
 	}, nil).Once()
 	detector.On("Period").Return(time.Hour).Maybe()
