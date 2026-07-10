@@ -219,7 +219,6 @@ This document describes all Prometheus metrics exposed by nodecore on the `metri
 **Labels:**
 
 - `chain` - The blockchain network
-- `method` - The RPC method name
 - `upstream` - The upstream ID
 
 **Buckets:** [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50]
@@ -227,6 +226,8 @@ This document describes all Prometheus metrics exposed by nodecore on the `metri
 **Source:** `internal/dimensions/tracker.go`
 
 **Use Case:** Measure latency distribution for requests to specific upstreams.
+
+> **Note:** unlike the request counters, this histogram deliberately has no `method` label — each histogram label combination produces a series per bucket, so a per-method histogram would make the `/metrics` exposition grow with the number of methods × upstreams and eventually exceed scrapers' response-size limits. Per-method latency quantiles are still tracked internally and used for upstream rating.
 
 ---
 

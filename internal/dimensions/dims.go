@@ -74,7 +74,7 @@ func (d *UpstreamDimensions) TrackSuccessfulRetries() {
 func (d *UpstreamDimensions) TrackRequestDuration(duration float64) {
 	d.quantileTracker.add(duration)
 	key := d.key.Load()
-	requestDurationMetric.WithLabelValues(key.chain.String(), key.method, key.upstreamId).Observe(duration)
+	requestDurationMetric.WithLabelValues(key.chain.String(), key.upstreamId).Observe(duration)
 }
 
 func (d *UpstreamDimensions) TrackTotalRequests() {

@@ -39,6 +39,11 @@ var errorTotalMetric = prometheus.NewCounterVec(
 	[]string{"chain", "method", "upstream"},
 )
 
+// requestDurationMetric intentionally has no `method` label: histogram buckets
+// multiply every label combination by len(DefBuckets)+2 series, so a per-method
+// histogram makes the /metrics exposition grow with (methods x upstreams) until
+// scrapers hit their response-size limits. Per-method latency quantiles are still
+// tracked internally (see quantileTracker) and used for upstream rating.
 var requestDurationMetric = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Namespace: config.AppName,
@@ -47,7 +52,7 @@ var requestDurationMetric = prometheus.NewHistogramVec(
 		Buckets:   DefBuckets,
 		Help:      "The duration of RPC requests to upstreams",
 	},
-	[]string{"chain", "method", "upstream"},
+	[]string{"chain", "upstream"},
 )
 
 var headLagMetric = prometheus.NewGaugeVec(
