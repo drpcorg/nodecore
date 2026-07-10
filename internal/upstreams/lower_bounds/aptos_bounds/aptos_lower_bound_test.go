@@ -1,6 +1,7 @@
 package aptos_bounds_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestAptosLowerBoundEmitsOldestStateAndBlock(t *testing.T) {
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(body), 200, protocol.Rest))
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)
-	bounds, err := d.DetectLowerBound()
+	bounds, err := d.DetectLowerBound(context.Background())
 	assert.NoError(t, err)
 
 	got := map[protocol.LowerBoundType]int64{}
@@ -43,7 +44,7 @@ func TestAptosLowerBoundClampsArchiveZeroToOne(t *testing.T) {
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(body), 200, protocol.Rest))
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)
-	bounds, err := d.DetectLowerBound()
+	bounds, err := d.DetectLowerBound(context.Background())
 	assert.NoError(t, err)
 
 	got := map[protocol.LowerBoundType]int64{}
@@ -62,7 +63,7 @@ func TestAptosLowerBoundFallsBackOnMissingOldestFields(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"message":"upstream error"}`), 200, protocol.Rest))
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)
-	bounds, err := d.DetectLowerBound()
+	bounds, err := d.DetectLowerBound(context.Background())
 	assert.NoError(t, err)
 	assert.Len(t, bounds, 1)
 	assert.Equal(t, protocol.UnknownBound, bounds[0].Type)
@@ -79,10 +80,10 @@ func TestAptosLowerBoundRetainsCachedBoundsOnError(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil))).Once()
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)
-	_, err := d.DetectLowerBound()
+	_, err := d.DetectLowerBound(context.Background())
 	assert.NoError(t, err)
 
-	bounds, err := d.DetectLowerBound()
+	bounds, err := d.DetectLowerBound(context.Background())
 	assert.NoError(t, err)
 
 	got := map[protocol.LowerBoundType]int64{}
@@ -99,7 +100,7 @@ func TestAptosLowerBoundFallsBackToUnknownOnError(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)
-	bounds, err := d.DetectLowerBound()
+	bounds, err := d.DetectLowerBound(context.Background())
 	assert.NoError(t, err)
 	assert.Len(t, bounds, 1)
 	assert.Equal(t, protocol.UnknownBound, bounds[0].Type)

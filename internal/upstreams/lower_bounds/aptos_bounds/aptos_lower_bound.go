@@ -52,8 +52,8 @@ func NewAptosLowerBoundDetector(
 // Aptos state queries are version-addressed (ledger_version params), so
 // clients matching on LOWER_BOUND_STATE must pass versions, not heights.
 // BlockBound is in block-height space.
-func (a *AptosLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	info, err := a.fetchLedgerInfo()
+func (a *AptosLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	info, err := a.fetchLedgerInfo(ctx)
 	if err != nil {
 		return a.fallback(err), nil
 	}
@@ -119,8 +119,8 @@ func (a *AptosLowerBoundDetector) Period() time.Duration {
 	return aptosPeriod
 }
 
-func (a *AptosLowerBoundDetector) fetchLedgerInfo() (*aptos_validations.AptosLedgerInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AptosLowerBoundDetector) fetchLedgerInfo(ctx context.Context) (*aptos_validations.AptosLedgerInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	return aptos_validations.FetchLedgerInfo(ctx, a.connector, a.chain)
