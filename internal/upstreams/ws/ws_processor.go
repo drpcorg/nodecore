@@ -199,7 +199,7 @@ func NewBaseWsProcessor(
 		requestRegistry: requestRegistry,
 		readEventsChan:  make(chan wsEvent, 100),
 		writeEventsChan: make(chan wsEvent, 100),
-		executor:        failsafe.NewExecutor[bool](createConnectionRetryPolicy(endpoint)),
+		executor:        failsafe.With[bool](createConnectionRetryPolicy(endpoint)),
 	}, nil
 }
 
