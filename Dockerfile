@@ -27,7 +27,7 @@ RUN go run cmd/chains/init_chains.go && \
     -o /app/nodecore cmd/nodecore/main.go
 
 # Final stage
-FROM alpine:3.18
+FROM alpine:3.24
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
