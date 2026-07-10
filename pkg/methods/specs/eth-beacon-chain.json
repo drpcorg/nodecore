@@ -83,6 +83,55 @@
       }
     },
     {
+      "name": "GET#/eth/v1/beacon/states/*/validators",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v1/beacon/states/*/validator_balances",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/eth/v1/beacon/states/*/validator_identities",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v1/beacon/states/*/pending_consolidations",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v1/beacon/states/*/pending_deposits",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v1/beacon/states/*/pending_partial_withdrawals",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v1/beacon/states/*/proposer_lookahead",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
       "name": "GET#/eth/v1/beacon/headers",
       "params": [],
       "settings": {
@@ -167,21 +216,7 @@
       }
     },
     {
-      "name": "GET#/eth/v1/beacon/deposit_snapshot",
-      "params": [],
-      "settings": {
-        "cacheable": false
-      }
-    },
-    {
       "name": "GET#/eth/v1/beacon/rewards/blocks/*",
-      "params": [],
-      "settings": {
-        "cacheable": false
-      }
-    },
-    {
-      "name": "POST#/eth/v1/beacon/rewards/blocks/*",
       "params": [],
       "settings": {
         "cacheable": false
@@ -301,13 +336,6 @@
     },
     {
       "name": "POST#/eth/v1/beacon/pool/bls_to_execution_changes",
-      "params": [],
-      "settings": {
-        "cacheable": false
-      }
-    },
-    {
-      "name": "GET#/eth/v1/builder/states/*/expected_withdrawals",
       "params": [],
       "settings": {
         "cacheable": false
@@ -504,6 +532,69 @@
     },
     {
       "name": "POST#/eth/v1/validator/liveness/*",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v1/debug/beacon/data_column_sidecars/*",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/eth/v1/validator/beacon_committee_selections",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v2/beacon/blocks/*/attestations",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v2/beacon/pool/attestations",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/eth/v2/beacon/pool/attestations",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v2/beacon/pool/attester_slashings",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/eth/v2/beacon/pool/attester_slashings",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/eth/v2/validator/aggregate_attestation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/eth/v2/validator/aggregate_and_proofs",
       "params": [],
       "settings": {
         "cacheable": false

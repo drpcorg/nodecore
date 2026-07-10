@@ -17,7 +17,7 @@ func TestBeaconChainSpecLoadsAndMatchesRestPaths(t *testing.T) {
 	require.NotNil(t, groups)
 	defaultGroup, ok := groups[specs.DefaultMethodGroup]
 	require.True(t, ok)
-	assert.Len(t, defaultGroup, 71)
+	assert.Len(t, defaultGroup, 84)
 
 	// Beacon responses are alias-addressed (head/finalized), so caching is off.
 	for _, method := range defaultGroup {
