@@ -18,22 +18,21 @@ const (
 
 var semverLikeRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+`)
 
-type EthClientLabelMapping func(data []byte) (string, error)
-
-var EthMappingFunc EthClientLabelMapping = func(data []byte) (string, error) {
+var EthMappingFunc labels.EthClientLabelMapping = func(data []byte) (string, error) {
 	var raw string
 	err := sonic.Unmarshal(data, &raw)
 	return raw, err
 }
 
 type EthClientLabelsDetector struct {
-	upstreamId  string
-	chain       chains.Chain
-	mappingFunc EthClientLabelMapping
+	upstreamId    string
+	chain         chains.Chain
+	mappingFunc   labels.EthClientLabelMapping
+	nodeTypeReqFn func() (protocol.RequestHolder, error)
 }
 
 func (e *EthClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain)
+	return e.nodeTypeReqFn()
 }
 
 func (e *EthClientLabelsDetector) ClientVersionAndType(data []byte) (string, string, error) {
@@ -47,11 +46,17 @@ func (e *EthClientLabelsDetector) ClientVersionAndType(data []byte) (string, str
 	return clientVersion, clientType, nil
 }
 
-func NewEthClientLabelsDetector(upstreamId string, chain chains.Chain, mappingFunc EthClientLabelMapping) *EthClientLabelsDetector {
+func NewEthClientLabelsDetector(
+	upstreamId string,
+	chain chains.Chain,
+	mappingFunc labels.EthClientLabelMapping,
+	nodeTypeReqFn func() (protocol.RequestHolder, error),
+) *EthClientLabelsDetector {
 	return &EthClientLabelsDetector{
-		upstreamId:  upstreamId,
-		chain:       chain,
-		mappingFunc: mappingFunc,
+		upstreamId:    upstreamId,
+		chain:         chain,
+		mappingFunc:   mappingFunc,
+		nodeTypeReqFn: nodeTypeReqFn,
 	}
 }
 

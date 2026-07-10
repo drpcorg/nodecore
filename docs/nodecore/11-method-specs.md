@@ -181,7 +181,7 @@ Grouped by the transports they declare:
 | `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
 | `json-rpc` | `algorand`, `aztec`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
-| `rest` | `tron-rest` |
+| `rest` | `eth-beacon-chain`, `tron-rest` |
 | `rest-additional` | `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
 ## Adding a new method

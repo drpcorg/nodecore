@@ -12,7 +12,9 @@ import (
 )
 
 func TestEthClientLabelsDetectorNodeTypeRequest(t *testing.T) {
-	detector := eth_labels.NewEthClientLabelsDetector("upstream-id", chains.ETHEREUM, eth_labels.EthMappingFunc)
+	detector := eth_labels.NewEthClientLabelsDetector("upstream-id", chains.ETHEREUM, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+		return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, chains.ETHEREUM)
+	})
 
 	request, err := detector.NodeTypeRequest()
 	require.NoError(t, err)
@@ -136,6 +138,8 @@ func TestEthClientLabelsDetectorClientVersionAndType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			detector := eth_labels.NewEthClientLabelsDetector("upstream-id", chains.ETHEREUM, func([]byte) (string, error) {
 				return tt.raw, tt.mappingErr
+			}, func() (protocol.RequestHolder, error) {
+				return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, chains.ETHEREUM)
 			})
 
 			version, clientType, err := detector.ClientVersionAndType([]byte(`ignored`))
