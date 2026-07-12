@@ -61,6 +61,7 @@ type Request struct {
 type Response struct {
 	ResponseReader io.Reader
 	Order          int
+	Suppress       bool
 }
 
 type FastJSONSerializer struct{}
@@ -204,10 +205,24 @@ func handleResponse(
 	code := http.StatusOK
 	httpResponse := reqCtx.Response()
 	if !requestHandler.IsSingle() {
-		responses := utils.Map(handleResp.responseWrappers, func(wrapper *protocol.ResponseHolderWrapper) *Response {
-			return requestHandler.ResponseEncode(wrapper.Response)
-		})
-		responseReader = ArraySortingStream(ctx, responses, requestHandler.RequestCount())
+		expected := requestHandler.RequestCount()
+		if expected == 0 {
+			for range handleResp.responseWrappers {
+			}
+			code = http.StatusNoContent
+		} else {
+			responses := make(chan *Response)
+			go func() {
+				defer close(responses)
+				for wrapper := range handleResp.responseWrappers {
+					response := requestHandler.ResponseEncode(wrapper.Response)
+					if !response.Suppress {
+						responses <- response
+					}
+				}
+			}()
+			responseReader = ArraySortingStream(ctx, responses, expected)
+		}
 	} else {
 		select {
 		case <-ctx.Done():
@@ -219,11 +234,16 @@ func handleResponse(
 			)
 		case responseWrapper, ok := <-handleResp.responseWrappers:
 			if ok {
-				httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
-				code = protocol.ToHttpCode(responseWrapper.Response)
-				responseReader = requestHandler.ResponseEncode(responseWrapper.Response).ResponseReader
+				response := requestHandler.ResponseEncode(responseWrapper.Response)
+				if response.Suppress {
+					code = http.StatusNoContent
+				} else {
+					httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
+					code = protocol.ToHttpCode(responseWrapper.Response)
+					responseReader = response.ResponseReader
 
-				copyUpstreamResponseHeaders(httpResponse.Header(), responseWrapper.Response)
+					copyUpstreamResponseHeaders(httpResponse.Header(), responseWrapper.Response)
+				}
 			}
 		}
 	}
@@ -266,6 +286,10 @@ func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
 }
 
 func writeResponse(httpResponse *echo.Response, code int, responseReader io.Reader) error {
+	if responseReader == nil {
+		httpResponse.WriteHeader(code)
+		return nil
+	}
 	if httpResponse.Header().Get(echo.HeaderContentType) == "" {
 		httpResponse.Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	}
