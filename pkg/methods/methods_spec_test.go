@@ -217,3 +217,39 @@ func TestNetworkSpecsDisableUnsupportedGetProof(t *testing.T) {
 	restAdditionalMethods := specs.GetSpecMethodsByConnectors("hyperliquid", []specs.ApiConnectorType{specs.RestAdditional})
 	assert.NotContains(t, restAdditionalMethods[specs.DefaultMethodGroup], "eth_getProof")
 }
+
+func TestAptosSpecLoadsAndMatchesRestRoutes(t *testing.T) {
+	loader := specs.NewMethodSpecLoader()
+	err := loader.Load()
+	assert.NoError(t, err)
+
+	template, params, ok := specs.MatchRestMethod("aptos", "GET#/v1/blocks/by_height/12345")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/v1/blocks/by_height/*", template)
+	assert.Equal(t, []string{"12345"}, params)
+}
+
+func TestAptosSpecMatchesNestedAccountAndTableRoutes(t *testing.T) {
+	loader := specs.NewMethodSpecLoader()
+	err := loader.Load()
+	assert.NoError(t, err)
+
+	// wildcards span exactly one path segment, so every nested fullnode route
+	// needs its own template
+	for method, want := range map[string]string{
+		"GET#/v1/info":                                     "GET#/v1/info",
+		"GET#/v1/accounts/0xabc/transactions":              "GET#/v1/accounts/*/transactions",
+		"GET#/v1/accounts/0xabc/transaction_summaries":     "GET#/v1/accounts/*/transaction_summaries",
+		"GET#/v1/transactions/auxiliary_info":              "GET#/v1/transactions/auxiliary_info",
+		"GET#/v1/accounts/0xabc/events/2":                  "GET#/v1/accounts/*/events/*",
+		"GET#/v1/accounts/0xabc/events/0x1::m::Events/key": "GET#/v1/accounts/*/events/*/*",
+		"GET#/v1/accounts/0xabc/balance/0x1::coin::Coin":   "GET#/v1/accounts/*/balance/*",
+		"GET#/v1/transactions/wait_by_hash/0xhash":         "GET#/v1/transactions/wait_by_hash/*",
+		"POST#/v1/transactions/encode_submission":          "POST#/v1/transactions/encode_submission",
+		"POST#/v1/tables/0xhandle/raw_item":                "POST#/v1/tables/*/raw_item",
+	} {
+		template, _, ok := specs.MatchRestMethod("aptos", method)
+		assert.True(t, ok, method)
+		assert.Equal(t, want, template, method)
+	}
+}
