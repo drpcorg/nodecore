@@ -110,12 +110,12 @@ func NewSolanaLowerBoundDetector(upstreamId string, internalTimeout time.Duratio
 		upstreamId:      upstreamId,
 		connector:       connector,
 		internalTimeout: internalTimeout,
-		executor:        failsafe.NewExecutor(createDetectionRetryPolicy(upstreamId)),
+		executor:        failsafe.With(createDetectionRetryPolicy(upstreamId)),
 	}
 }
 
 func createDetectionRetryPolicy(upstreamId string) failsafe.Policy[solanaLowerBound] {
-	retryPolicy := retrypolicy.Builder[solanaLowerBound]()
+	retryPolicy := retrypolicy.NewBuilder[solanaLowerBound]()
 
 	retryPolicy.WithMaxAttempts(20)
 	retryPolicy.WithBackoff(1*time.Second, 60*time.Second)

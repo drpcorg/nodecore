@@ -267,7 +267,7 @@ func (c *LowerBoundSearchCalculator) shiftLeftAndSearch(
 }
 
 func (c *LowerBoundSearchCalculator) withRetryLatestHeight(ctx context.Context, fetchLatestHeight LowerBoundLatestHeightFetcher) (int64, error) {
-	executor := failsafe.NewExecutor(c.createRetryPolicy("")).WithContext(ctx)
+	executor := failsafe.With(c.createRetryPolicy("")).WithContext(ctx)
 	return executor.GetWithExecution(func(exec failsafe.Execution[int64]) (int64, error) {
 		return fetchLatestHeight(ctx)
 	})
@@ -276,7 +276,7 @@ func (c *LowerBoundSearchCalculator) withRetryLatestHeight(ctx context.Context, 
 func (c *LowerBoundSearchCalculator) withRetryProbe(ctx context.Context, height int64, probe LowerBoundProbe) (bool, error) {
 	message := fmt.Sprintf("unable to get data on block %d to calculate lower bounds for upstream '%s'", height, c.UpstreamId)
 	retryPolicy := createLowerBoundSearchRetryPolicy[bool](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay, message, c.allSupportedTypes)
-	executor := failsafe.NewExecutor(retryPolicy).WithContext(ctx)
+	executor := failsafe.With(retryPolicy).WithContext(ctx)
 	return executor.GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
 		return probe(ctx, height)
 	})
@@ -303,7 +303,7 @@ func createLowerBoundSearchRetryPolicy[T any](
 		maxDelay = baseDelay
 	}
 
-	retryPolicy := retrypolicy.Builder[T]()
+	retryPolicy := retrypolicy.NewBuilder[T]()
 	retryPolicy.WithMaxAttempts(attempts)
 	retryPolicy.WithBackoff(baseDelay, maxDelay)
 	retryPolicy.HandleIf(func(result T, err error) bool {
