@@ -144,7 +144,7 @@ The `policies` section defines the rules for which requests should be cached, ho
 - `blockchain-type` - Target blockchain type family this policy applies to. Mutually exclusive with `chain` — set exactly one of the two. Useful to cache a method across a whole family without listing every chain. Possible values:
   - `*` matches all blockchain types
   - Multiple types can be specified with `|` (e.g., `eth|solana`)
-  - Supported types: `eth`, `eth-beacon-chain`, `solana`, `avm`, `aztec`, `cosmos`, `ton`, `bitcoin`, `near`, `polkadot`, `starknet`
+  - Supported types: `eth`, `eth-beacon-chain`, `solana`, `avm`, `aztec`, `aptos`, `cosmos`, `ton`, `bitcoin`, `near`, `polkadot`, `starknet`
 - `method` - RPC method or method pattern to which the policy applies. **_Required_**. Possible values:
   - exact names (`eth_getBlockByNumber`)
   - wildcards (`debug*` to cover all debug methods or `*` matches all methods)

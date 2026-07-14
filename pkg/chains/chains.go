@@ -29,12 +29,13 @@ const (
 	Starknet            BlockchainType = "starknet"
 	Ton                 BlockchainType = "ton"
 	Aztec               BlockchainType = "aztec"
+	Aptos               BlockchainType = "aptos"
 )
 
 func IsValidBlockchainType(t string) bool {
 	switch BlockchainType(t) {
 	case Algorand, Bitcoin, Cosmos, Ethereum, EthereumBeaconChain,
-		Near, Polkadot, Solana, Starknet, Ton, Aztec:
+		Near, Polkadot, Solana, Starknet, Ton, Aztec, Aptos:
 		return true
 	default:
 		return false
@@ -240,9 +241,9 @@ func GetChainByGrpcId(grpcId int) *ConfiguredChain {
 	return found
 }
 
-func GetChainByChainIdAndVersion(chainId, netVersion string) *ConfiguredChain {
+func GetChainByChainIdAndVersion(blockchainType BlockchainType, chainId, netVersion string) *ConfiguredChain {
 	for _, chain := range chains {
-		if chain.ChainId == chainId && chain.NetVersion == netVersion {
+		if chain.Type == blockchainType && chain.ChainId == chainId && chain.NetVersion == netVersion {
 			return chain
 		}
 	}
@@ -352,6 +353,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "algorand"
 	case EthereumBeaconChain:
 		return "eth-beacon-chain"
+	case Aptos:
+		return "aptos"
 	}
 
 	return ""

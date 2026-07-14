@@ -41,7 +41,7 @@ upstream-config:
           url: https://path-to-polygon-provider.com
 ```
 
-> **Supported chains and protocols**: nodecore supports the chains defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, Fantom, Linea, Mantle, Scroll, zkSync, and others), Solana, Algorand, and Aztec. Supported upstream protocols are `json-rpc`, `websocket`, `rest`; the exact set available for each chain is declared by the chain's method spec (see [Method specs](11-method-specs.md)).
+> **Supported chains and protocols**: nodecore supports the chains defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, Fantom, Linea, Mantle, Scroll, zkSync, and others), Solana, Algorand, Aztec, and Aptos. Supported upstream protocols are `json-rpc`, `websocket`, `rest`; the exact set available for each chain is declared by the chain's method spec (see [Method specs](11-method-specs.md)).
 
 ## Full configuration
 

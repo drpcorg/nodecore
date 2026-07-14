@@ -7,6 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats/hook"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
@@ -232,6 +233,14 @@ func getChainSpecific(
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			conf.PollInterval,
+			conf.Options,
+		), nil
+	case chains.Aptos:
+		return aptos_specific.NewAptosChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
 			conf.Options,
 		), nil
 	case chains.Solana:
