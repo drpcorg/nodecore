@@ -53,6 +53,28 @@ var defaultResponseHeaderDeny = []string{
 	"Server",
 }
 
+// defaultRequestHeaderDeny is the request-side mirror of the response deny
+// list: RFC 7230 §6.1 hop-by-hop headers plus Host and Content-Length (both
+// owned by the transport for the *outgoing* request) and Accept-Encoding.
+// Accept-Encoding must stay with the transport: forwarding the client's value
+// disables Go's transparent decompression, so a gzip upstream body would ride
+// through unmarked (Content-Encoding is stripped from responses) and get
+// compressed a second time by the server gzip middleware (issue #268).
+var defaultRequestHeaderDeny = mapset.NewThreadUnsafeSet(
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",
+	"Trailer",
+	"Trailers",
+	"Transfer-Encoding",
+	"Upgrade",
+	"Host",
+	"Content-Length",
+	"Accept-Encoding",
+)
+
 func (h *HttpConnector) Unsubscribe(_ string) {
 }
 
@@ -245,14 +267,20 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 
 // applyClientHeaders forwards per-request client headers onto the upstream
 // request, except keys the connector config already owns - those are
-// typically auth tokens that a curious client must not be able to override.
-// HTTP headers are case-insensitive, so the conflict check canonicalises
-// both sides via http.CanonicalHeaderKey; without this, a config
+// typically auth tokens that a curious client must not be able to override -
+// and keys in defaultRequestHeaderDeny, which belong to the nodecore<->upstream
+// hop rather than to the client.
+// HTTP headers are case-insensitive, so both checks canonicalise
+// via http.CanonicalHeaderKey; without this, a config
 // "Authorization" + a client "authorization" would slip past as distinct
 // strings and both end up on the wire after req.Header.Add canonicalises.
 func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string) {
 	for k, vs := range headers {
-		if _, taken := h.additionalHeaders[http.CanonicalHeaderKey(k)]; taken {
+		canonical := http.CanonicalHeaderKey(k)
+		if defaultRequestHeaderDeny.Contains(canonical) {
+			continue
+		}
+		if _, taken := h.additionalHeaders[canonical]; taken {
 			continue
 		}
 		for _, v := range vs {

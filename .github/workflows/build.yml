@@ -18,12 +18,15 @@ env:
   GO_VERSION: ${{ inputs.go-version || '1.26.5' }}
 
 jobs:
+  # The go version is intentionally NOT part of the matrix: it would end up in
+  # the check name (build (ubuntu-latest, 1.26.0)), and the required status
+  # contexts in the main ruleset break on every version bump. GO_VERSION env
+  # (fed by the workflow_call input) is the single source instead.
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go-version: ["1.26.5"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -34,7 +37,7 @@ jobs:
       - name: Setup Go project
         uses: ./.github/actions/setup-go-project
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ env.GO_VERSION }}
           cache-key-suffix: "build-${{ matrix.os }}"
 
       - name: Get version metadata
@@ -53,6 +56,6 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: nodecore-${{ matrix.os }}-${{ matrix.go-version }}-${{ steps.version_meta.outputs.sha }}
+          name: nodecore-${{ matrix.os }}-${{ env.GO_VERSION }}-${{ steps.version_meta.outputs.sha }}
           path: nodecore
           retention-days: 7
