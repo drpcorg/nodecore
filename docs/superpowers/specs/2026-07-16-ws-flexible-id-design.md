@@ -107,5 +107,7 @@ call sites — the type is private to the parser.
   or verify-then-trust) is a separate, coordinated change: a single provider
   switching alone becomes the minority voice and gets flagged as forked —
   exactly the incident that surfaced this bug.
-- Consider reporting the notification-vs-canonical hash mismatch upstream to
-  the ethermint/evmos maintainers.
+- Consider reporting the notification-vs-canonical hash mismatch upstream.
+  The original evmos/ethermint repo is archived (April 2024); the living
+  successor is **cosmos/evm**, and affected chains vendor their own forks —
+  those are the actionable places for a report.
