@@ -183,6 +183,20 @@ func (b *BaseChainSupervisor) processEvents() {
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
 					b.upstreamStates.Store(event.Id, eventType.State)
 					b.updateState()
+				case *protocol.ValidUpstreamEvent:
+					// Symmetric to RemoveUpstreamEvent: a recovered upstream is
+					// re-registered right away from the event's state snapshot.
+					// Relying on a later StateUpstreamEvent instead would leave a
+					// node that came back unchanged out of the chain forever -
+					// those events are suppressed unless some sub-state differs.
+					if eventType.State != nil {
+						availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
+						b.upstreamStates.Store(event.Id, eventType.State)
+						b.updateState()
+						if !eventType.State.HeadData.IsEmptyByHeight() {
+							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})
+						}
+					}
 				}
 			}
 		}
