@@ -37,7 +37,7 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 					continue
 				}
 				log.Warn().Msgf("upstream '%s' settings are valid", u.id)
-				eventType = &protocol.ValidUpstreamEvent{}
+				eventType = &protocol.ValidUpstreamEvent{State: &state}
 				validUpstream = true
 			case *protocol.BanMethodUpstreamStateEvent:
 				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.upConfig.Methods.EnableMethods, stateEvent.Method) {
