@@ -346,7 +346,14 @@ type RemoveUpstreamEvent struct{}
 
 func (r RemoveUpstreamEvent) eventData() {}
 
-type ValidUpstreamEvent struct{}
+// ValidUpstreamEvent carries the upstream-state snapshot taken at the moment
+// the settings validators declared the upstream healthy again. The chain
+// supervisor uses it to re-register the upstream immediately; without the
+// snapshot the re-add would have to wait for a later StateUpstreamEvent,
+// which only fires when some sub-state actually changes.
+type ValidUpstreamEvent struct {
+	State *UpstreamState
+}
 
 func (r ValidUpstreamEvent) eventData() {}
 
