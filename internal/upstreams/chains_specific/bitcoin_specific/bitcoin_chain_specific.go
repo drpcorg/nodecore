@@ -12,8 +12,11 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels/bitcoin_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/bitcoin_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations/bitcoin_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
@@ -55,43 +58,51 @@ func (b *BitcoinChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 	return nil
 }
 
-// LabelsProcessor has no detectors yet - client-version labelling lands in a
-// later task. NewBaseLabelsProcessor returns nil for an empty detector list,
-// which satisfies the labels.LabelsProcessor interface as a no-op.
 func (b *BitcoinChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	return labels.NewBaseLabelsProcessor(b.ctx, b.upstreamId, []labels.LabelsDetector{}, b.labelsDelay)
+	labelsDetectors := []labels.LabelsDetector{
+		labels.NewClientLabelDetectorHandler(
+			b.upstreamId,
+			b.connector,
+			bitcoin_labels.NewBitcoinClientLabelsDetector(b.configuredChain.Chain),
+			b.internalTimeout,
+		),
+	}
+	return labels.NewBaseLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
 }
 
 func (b *BitcoinChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
 	return caps.DefaultCapDetectors(b.upstreamId, input.WsConnector)
 }
 
-// LowerBoundProcessor has no detectors yet - prune-aware bounds land in a
-// later task. NewBaseLowerBoundProcessor returns nil for an empty detector
-// list, which satisfies the lower_bounds.LowerBoundProcessor interface as a
-// no-op.
 func (b *BitcoinChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
+	detectors := []lower_bounds.LowerBoundDetector{
+		bitcoin_bounds.NewBitcoinLowerBoundDetector(
+			b.upstreamId,
+			b.configuredChain.Chain,
+			b.internalTimeout,
+			b.connector,
+		),
+	}
 	return lower_bounds.NewBaseLowerBoundProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.configuredChain.AverageRemoveSpeed(),
-		[]lower_bounds.LowerBoundDetector{},
+		detectors,
 	)
 }
 
-// HealthValidators has no validators yet - health/syncing checks land in a
-// later task; the disable-option short-circuit is kept so the shape matches
-// what every other family already does.
 func (b *BitcoinChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
 	if b.options != nil && *b.options.DisableHealthValidation {
 		return []validations.Validator[protocol.AvailabilityStatus]{}
 	}
-	return []validations.Validator[protocol.AvailabilityStatus]{}
+	validatePeers := b.options != nil && b.options.ValidatePeers != nil && *b.options.ValidatePeers
+	return []validations.Validator[protocol.AvailabilityStatus]{
+		bitcoin_validations.NewBitcoinHealthValidator(
+			b.upstreamId, b.connector, b.configuredChain, b.internalTimeout, validatePeers,
+		),
+	}
 }
 
-// SettingsValidators has no validators yet - genesis-hash chain validation
-// lands in a later task; the disable-option short-circuit is kept so the
-// shape matches what every other family already does.
 func (b *BitcoinChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
 	if b.configuredChain == nil || b.configuredChain.ChainId == "" {
 		return nil
@@ -99,7 +110,9 @@ func (b *BitcoinChainSpecificObject) SettingsValidators() []validations.Validato
 	if b.options != nil && *b.options.DisableChainValidation {
 		return []validations.Validator[validations.ValidationSettingResult]{}
 	}
-	return []validations.Validator[validations.ValidationSettingResult]{}
+	return []validations.Validator[validations.ValidationSettingResult]{
+		bitcoin_validations.NewBitcoinChainValidator(b.upstreamId, b.connector, b.configuredChain, b.internalTimeout),
+	}
 }
 
 // GetLatestBlock polls getbestblockhash, then getblockheader on that hash to
