@@ -20,9 +20,9 @@ API support, so these chains can be removed from dshackle.
   the emerald proto for BITCOIN/DOGECOIN).
 - **Out of scope (YAGNI):** wallet methods beyond the dshackle surface; ZMQ
   or WebSocket-style head subscriptions (bitcoind has none we consume);
-  Litecoin/other UTXO chains (nothing registered in Consul today); deployment automation
-  ansible filter changes (deferred until the family passes live validation
-  from a laptop-run nodecore instance — see Testing).
+  Litecoin/other UTXO chains (no nodes deployed today); deployment automation
+  changes (deferred until the family passes live validation from a laptop-run
+  nodecore instance — see Testing).
 
 ## Approach
 
@@ -178,15 +178,24 @@ handles; verified during implementation with a live node.
    handling. `sendrawtransaction` is exercised for real only on
    **dogecoin-testnet**; on mainnets only with a deterministically invalid
    transaction (expected error passthrough), nothing is broadcast.
-3. **Staged rollout (after laptop validation, separate step).** Wire the
-   deployment automation (basic auth + esplora meta), enable bitcoin on
-   one production nodecore instance while dshackle still serves the chain,
-   compare error rates and responses, then drop `bitcoin`/`dogecoin` from
-   `INCLUDE_TO_DSHACKLE`.
+   **Executed 2026-07-17 — passed.** nodecore ran locally against
+   a production bitcoin node (mainnet + esplora) and a production dogecoin
+   node (mainnet/testnet):
+   65 PASS / 3 FAIL / 0 SKIP. The only failures are the unknown-method error
+   *text* (`foobarmethod`): nodecore rejects unknown methods locally from the
+   method spec and synthesizes its own -32601 message instead of forwarding —
+   standard nodecore behavior for every family, code preserved, accepted.
+   Findings: dogecoin testnet genesis `bb0a78…59e` verified live; wallet-built
+   bitcoind returns `-18 No wallet is loaded` (not -32601) for
+   `getreceivedbyaddress` and nodecore passes it through verbatim;
+   `listunspent` UTXO sets match esplora exactly (7 UTXOs on the probe
+   address); lower-bounds detection is off by default outside strict mode
+   (`option_defaults.go`), enabled explicitly it published BLOCK=1/TX=1 for
+   the unpruned node; dogecoin 1.14 accepts int verbosity for
+   getblock/getrawtransaction, so no bool-form divergence exists in practice.
 
 ## Out of scope / follow-ups
 
-- Deployment automation changes ship only after step 2 passes.
 - near, ripple, starknet, ton follow as separate family designs reusing this
   template; celestia/stellar additionally need `chains.yaml` registry entries
   (they are absent there today).
