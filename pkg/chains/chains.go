@@ -25,6 +25,7 @@ const (
 	EthereumBeaconChain BlockchainType = "eth-beacon-chain"
 	Near                BlockchainType = "near"
 	Polkadot            BlockchainType = "polkadot"
+	Ripple              BlockchainType = "ripple"
 	Solana              BlockchainType = "solana"
 	Starknet            BlockchainType = "starknet"
 	Ton                 BlockchainType = "ton"
@@ -35,7 +36,7 @@ const (
 func IsValidBlockchainType(t string) bool {
 	switch BlockchainType(t) {
 	case Algorand, Bitcoin, Cosmos, Ethereum, EthereumBeaconChain,
-		Near, Polkadot, Solana, Starknet, Ton, Aztec, Aptos:
+		Near, Polkadot, Ripple, Solana, Starknet, Ton, Aztec, Aptos:
 		return true
 	default:
 		return false
@@ -359,6 +360,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "bitcoin"
 	case Near:
 		return "near"
+	case Ripple:
+		return "ripple"
 	}
 
 	return ""

@@ -275,6 +275,21 @@ func TestNearSpecLoads(t *testing.T) {
 	assert.Nil(t, spec)
 }
 
+func TestRippleSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("ripple", "ledger")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("ripple", "submit")
+	assert.NotNil(t, spec)
+	assert.True(t, spec.IsBroadcastDispatch())
+
+	spec = specs.GetSpecMethod("ripple", "subscribe")
+	assert.Nil(t, spec)
+}
+
 func TestAptosSpecMatchesNestedAccountAndTableRoutes(t *testing.T) {
 	loader := specs.NewMethodSpecLoader()
 	err := loader.Load()

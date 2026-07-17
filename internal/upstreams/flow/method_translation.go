@@ -19,15 +19,30 @@ type methodTranslator interface {
 	TranslateResponse(request, upstreamRequest protocol.RequestHolder, upstreamHeadHeight uint64, response protocol.ResponseHolder) protocol.ResponseHolder
 }
 
+// wildcardMethod registers a translator for every method of a spec. An exact
+// (spec, method) entry always takes precedence over the spec's wildcard.
+const wildcardMethod = "*"
+
 var methodTranslators = map[string]map[string]methodTranslator{
 	"bitcoin": {
 		"getblocknumber": &jsonRpcMethodAlias{specName: "bitcoin", target: "getblockcount"},
 		"listunspent":    &bitcoinListUnspentTranslator{specName: "bitcoin"},
 	},
+	"ripple": {
+		wildcardMethod: &rippleErrorNormalizer{},
+	},
 }
 
 func getMethodTranslator(specName, method string) methodTranslator {
-	return methodTranslators[specName][method]
+	return lookupMethodTranslator(methodTranslators, specName, method)
+}
+
+func lookupMethodTranslator(registry map[string]map[string]methodTranslator, specName, method string) methodTranslator {
+	specTranslators := registry[specName]
+	if translator, ok := specTranslators[method]; ok {
+		return translator
+	}
+	return specTranslators[wildcardMethod]
 }
 
 // jsonRpcMethodAlias resends the request under another JSON-RPC method name,

@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Ripple methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "ripple",
+    "type": "bundle"
+  },
+  "spec-imports": ["ripple-json-rpc"]
+}

@@ -145,6 +145,11 @@ func (b *BaseLowerBoundProcessor) processBounds(
 		return
 	}
 
+	// detectors whose history backfills (bound moves down) opt out of the
+	// monotonic filter below via the DecreasingBoundDetector capability
+	decreasing, ok := detector.(DecreasingBoundDetector)
+	allowDecrease := ok && decreasing.AllowsBoundDecrease()
+
 	for _, data := range bounds {
 		var bound int64
 		lastBound, ok := b.lowerBounds.GetLastBound(data.Type)
@@ -154,7 +159,7 @@ func (b *BaseLowerBoundProcessor) processBounds(
 			bound = lastBound.Bound
 		}
 
-		if data.Bound >= bound || data.Bound == 1 {
+		if allowDecrease || data.Bound >= bound || data.Bound == 1 {
 			b.publishBound(data, boundsChan)
 		}
 	}

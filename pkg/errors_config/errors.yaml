@@ -215,6 +215,7 @@ retryable-errors:
   - re: "HTTP Code: (5|4|429)"
   - re: "(read|failed): connection reset by peer"
   - str: "Mismatch type bool with value string"
+  - str: "xrpl node-health error"
 
 non-retryable-errors:
   - str: execution reverted

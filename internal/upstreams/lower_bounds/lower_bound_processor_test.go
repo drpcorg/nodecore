@@ -220,6 +220,47 @@ func TestBaseLowerBoundServiceIgnoresLowerBoundThatMovesBackwards(t *testing.T) 
 	detector.AssertExpectations(t)
 }
 
+// decreasingDetectorMock is a detector mock that additionally implements the
+// lower_bounds.DecreasingBoundDetector capability, opting out of the
+// processor's monotonic filter.
+type decreasingDetectorMock struct {
+	*mocks.LowerBoundDetectorMock
+}
+
+func (d *decreasingDetectorMock) AllowsBoundDecrease() bool {
+	return true
+}
+
+var _ lower_bounds.DecreasingBoundDetector = (*decreasingDetectorMock)(nil)
+
+func TestBaseLowerBoundServicePublishesDecreasingBoundWithCapability(t *testing.T) {
+	inner := mocks.NewLowerBoundDetectorMock()
+	inner.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
+		protocol.NewLowerBoundData(100, 1000, protocol.StateBound),
+	}, nil).Once()
+	inner.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
+		protocol.NewLowerBoundData(99, 1001, protocol.StateBound),
+	}, nil).Once()
+	inner.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData(nil), nil).Maybe()
+	inner.On("Period").Return(20 * time.Millisecond).Maybe()
+	detector := &decreasingDetectorMock{LowerBoundDetectorMock: inner}
+
+	service := lower_bounds.NewBaseLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	sub := service.Subscribe("sub-1")
+	defer sub.Unsubscribe()
+
+	done := startService(t, service)
+	defer stopService(t, service, done)
+
+	first := waitForLowerBound(t, sub.Events, 200*time.Millisecond)
+	second := waitForLowerBound(t, sub.Events, 200*time.Millisecond)
+
+	assert.Equal(t, int64(100), first.Bound)
+	assert.Equal(t, int64(99), second.Bound)
+	assert.Equal(t, int64(99), service.PredictLowerBound(protocol.StateBound, 0))
+	inner.AssertExpectations(t)
+}
+
 func TestBaseLowerBoundServiceAcceptsArchivalBoundOne(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
 	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
