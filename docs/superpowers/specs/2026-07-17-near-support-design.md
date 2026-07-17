@@ -155,6 +155,16 @@ mechanism.
    gas_price, validators, unknown method, invalid params. `send_tx` only
    with a deterministically invalid transaction on both networks (expected
    error passthrough, nothing broadcast).
+   **Executed 2026-07-17 — passed.** 42/42 checks identical across mainnet
+   and testnet, byte-identical payloads for all deterministic cases including
+   GC'd-block UNKNOWN_BLOCK, PARSE_ERROR and the ~10s unknown-tx
+   TIMEOUT_ERROR passthrough. Expected differences only: nodecore's own
+   -32601 text for unknown/absent-from-spec methods (local allowlist,
+   standard for all families), and HTTP transport status on the timeout case
+   (node replies 408, nodecore returns the identical JSON-RPC error with
+   200 — nodecore-wide behavior). Lower bounds verified live:
+   STATE=BLOCK=the node's earliest_block_height.
+
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
 ## Out of scope / follow-ups
