@@ -1,0 +1,139 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Bitcoin JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "bitcoin-json-rpc",
+    "api-connectors": ["json-rpc"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "getblock",
+      "params": []
+    },
+    {
+      "name": "gettransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "gettxout",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getmemorypool",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getrawmempool",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getmempoolinfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getblockheader",
+      "params": []
+    },
+    {
+      "name": "getblockhash",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getrawtransaction",
+      "params": []
+    },
+    {
+      "name": "estimatesmartfee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getbestblockhash",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getblocknumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getblockcount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getreceivedbyaddress",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getblockchaininfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getconnectioncount",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getnetworkinfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "sendrawtransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "broadcast"
+      }
+    },
+    {
+      "name": "listunspent",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

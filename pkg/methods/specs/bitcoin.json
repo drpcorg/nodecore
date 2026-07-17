@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Bitcoin methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "bitcoin",
+    "type": "bundle"
+  },
+  "spec-imports": ["bitcoin-json-rpc", "bitcoin-esplora"]
+}

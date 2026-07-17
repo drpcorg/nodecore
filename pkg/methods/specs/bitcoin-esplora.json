@@ -1,0 +1,22 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Bitcoin esplora methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "bitcoin-esplora",
+    "api-connectors": ["rest-additional"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "GET#/address/*/utxo",
+      "group": "additional",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

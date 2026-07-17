@@ -229,6 +229,28 @@ func TestAptosSpecLoadsAndMatchesRestRoutes(t *testing.T) {
 	assert.Equal(t, []string{"12345"}, params)
 }
 
+func TestBitcoinSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("bitcoin", "getblock")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("bitcoin", "sendrawtransaction")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("bitcoin", "listunspent")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("bitcoin", "eth_call")
+	assert.Nil(t, spec)
+
+	template, params, ok := specs.MatchRestMethod("bitcoin", "GET#/address/bc1qxyz/utxo")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/address/*/utxo", template)
+	assert.Equal(t, []string{"bc1qxyz"}, params)
+}
+
 func TestAptosSpecMatchesNestedAccountAndTableRoutes(t *testing.T) {
 	loader := specs.NewMethodSpecLoader()
 	err := loader.Load()

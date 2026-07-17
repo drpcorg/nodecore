@@ -44,6 +44,11 @@ func TestAptosBlockchainTypeIsValid(t *testing.T) {
 	assert.True(t, IsValidBlockchainType("aptos"))
 }
 
+func TestBitcoinAndDogecoinMethodSpecNameIsBitcoin(t *testing.T) {
+	assert.Equal(t, "bitcoin", GetMethodSpecNameByChain(BITCOIN))
+	assert.Equal(t, "bitcoin", GetMethodSpecNameByChain(DOGECOIN))
+}
+
 func TestGetChainByChainIdAndVersionScopesByType(t *testing.T) {
 	// Ethereum mainnet is registered with chain-id 0x1 / net-version 1.
 	eth := GetChainByChainIdAndVersion(Ethereum, "0x1", "1")
