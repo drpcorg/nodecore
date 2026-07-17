@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -262,6 +263,16 @@ func NewBeaconChainSpecific(ctx context.Context, connector connectors.ApiConnect
 
 func NewAptosChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aptos_specific.AptosChainSpecificObject {
 	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, newTestChainOptions())
+}
+
+func NewBitcoinChainSpecific(ctx context.Context, connector connectors.ApiConnector) *bitcoin_specific.BitcoinChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return bitcoin_specific.NewBitcoinChainSpecificObject(ctx, chains.GetChain("bitcoin-mainnet"), "id", connector, options)
 }
 
 func newTestChainOptions() *chains.Options {

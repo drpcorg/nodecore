@@ -29,7 +29,12 @@ func parseJsonRpcBody(id string, body []byte, responseCode int) *BaseUpstreamRes
 			result = []byte(rawResult)
 		}
 	}
-	if errorNode, err := searcher.GetByPath("error"); err == nil {
+	// A JSON `null` error is how bitcoind (and other JSON-RPC 1.0-style
+	// servers) spell "no error" - it always sends the "error" key, even on
+	// success. Treat it the same as an absent key rather than as an error,
+	// otherwise every successful bitcoind response would be misparsed as a
+	// failure.
+	if errorNode, err := searcher.GetByPath("error"); err == nil && errorNode.TypeSafe() != ast.V_NULL {
 		if errorRaw, err := errorNode.Raw(); err == nil {
 			bodyBytes := []byte(errorRaw)
 			if errorNode.TypeSafe() == ast.V_STRING {
