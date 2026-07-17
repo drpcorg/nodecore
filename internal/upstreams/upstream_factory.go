@@ -119,7 +119,7 @@ func createConnector(
 ) (connectors.ApiConnector, error) {
 	switch connectorConfig.GetApiConnectorType() {
 	case specs.JsonRpcConnector:
-		return newHttpConnectorWithId(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
 	case specs.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
@@ -138,27 +138,12 @@ func createConnector(
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.RestConnector:
-		return newHttpConnectorWithId(connectorConfig, specs.RestConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
 	case specs.RestAdditional:
-		return newHttpConnectorWithId(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}
-}
-
-// newHttpConnectorWithId builds an HTTP connector and tags it with the upstream
-// id so failure messages can name the upstream without exposing its URL.
-func newHttpConnectorWithId(
-	connectorConfig *config.ApiConnectorConfig,
-	connectorType specs.ApiConnectorType,
-	torProxyUrl string,
-	upId string,
-) (connectors.ApiConnector, error) {
-	conn, err := connectors.NewHttpConnector(connectorConfig, connectorType, torProxyUrl)
-	if err != nil {
-		return nil, err
-	}
-	return conn.WithUpstreamId(upId), nil
 }
 
 func createSettingValidationProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[validations.ValidationSettingResult] {

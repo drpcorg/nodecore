@@ -63,7 +63,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -125,7 +125,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -151,7 +151,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -184,7 +184,7 @@ func TestHttpConnectorType(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector, err := connectors.NewHttpConnector(cfg, test.connType, "")
+			connector, err := connectors.NewHttpConnector(cfg, test.connType, "", "test-upstream")
 			assert.NoError(te, err)
 
 			assert.Equal(te, test.connType, connector.GetType())
@@ -203,7 +203,7 @@ func TestJsonRpcRequest200CodeThenNoStream(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
 
@@ -226,7 +226,7 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
 
@@ -254,8 +254,7 @@ func TestUpstreamUrlAndHostNotLeakedOnConnectionFailure(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "https://eth-mainnet.example.com/v2/SUPER_SECRET_KEY",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "").
-		WithUpstreamId("my-upstream-id")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "my-upstream-id")
 	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
 
@@ -272,7 +271,7 @@ func TestHttpConnectorSubscribeStates(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 
 	sub := connector.SubscribeStates("name")
 
@@ -291,7 +290,7 @@ func TestHttpConnectorSubscribeStates(t *testing.T) {
 
 func newRestConnector(t *testing.T, cfg *config.ApiConnectorConfig) *connectors.HttpConnector {
 	t.Helper()
-	return connectors.NewHttpConnectorWithDefaultClient(cfg, specs.RestConnector, "")
+	return connectors.NewHttpConnectorWithDefaultClient(cfg, specs.RestConnector, "", "test-upstream")
 }
 
 func TestRestRequest_LiteralTemplateExpandsToVerbAndPath(t *testing.T) {
@@ -767,7 +766,7 @@ func TestJsonRpc_ResponseHeaderDenyListApplies(t *testing.T) {
 		})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 
 	r := connector.SendRequest(context.Background(), req)

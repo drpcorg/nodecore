@@ -61,21 +61,19 @@ func (h *HttpConnector) GetUrl() string {
 	return h.endpoint
 }
 
-// WithUpstreamId tags the connector with the id of the upstream it serves so
-// that client-facing failure messages can reference the upstream without
-// exposing its URL/host (which carries credentials and reveals infrastructure).
-func (h *HttpConnector) WithUpstreamId(id string) *HttpConnector {
-	h.upstreamId = id
-	return h
-}
-
+// The upstreamId constructor parameter tags the connector with the id of the
+// upstream it serves so that client-facing failure messages can reference the
+// upstream without exposing its URL/host (which carries credentials and
+// reveals infrastructure).
 func NewHttpConnectorWithDefaultClient(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
+	upstreamId string,
 ) *HttpConnector {
 	return &HttpConnector{
 		endpoint:              connectorConfig.Url,
+		upstreamId:            upstreamId,
 		httpClient:            http.DefaultClient,
 		connectorType:         connectorType,
 		additionalHeaders:     canonicalizeHeaders(connectorConfig.Headers),
@@ -88,6 +86,7 @@ func NewHttpConnector(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
+	upstreamId string,
 ) (*HttpConnector, error) {
 	endpoint, err := url.Parse(connectorConfig.Url)
 	if err != nil {
@@ -126,6 +125,7 @@ func NewHttpConnector(
 
 	return &HttpConnector{
 		endpoint:              connectorConfig.Url,
+		upstreamId:            upstreamId,
 		httpClient:            client,
 		connectorType:         connectorType,
 		additionalHeaders:     canonicalizeHeaders(connectorConfig.Headers),
