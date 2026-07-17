@@ -140,6 +140,19 @@ No translations, no bans, no aliases.
    passthrough, nothing submitted). Mainnet corpus is impossible today (no
    node deployed) — chain validation for `SN_MAIN` is covered by unit tests;
    note for rollout.
+   **Executed 2026-07-17 — passed.** 28/29 checks identical against the
+   production sepolia node (byte-exact results including the large getClass
+   payload, `Block not found` (24) / -32602 passthroughs with juno's `data`
+   field, and the junk addInvokeTransaction/estimateFee validation errors).
+   The single "FAIL" was a wrong test premise: `juno_version` is not
+   client-exposed — matching dshackle, where it is likewise only an internal
+   label probe. Notes: `starknet_getEvents` takes the bare filter object
+   (no `{"filter":...}` wrapper — juno parses the wrapper as an empty
+   filter); nodecore returns its -32601 for out-of-spec methods with HTTP
+   400 vs juno's 200 (standard nodecore behavior). Verified-archive lower
+   bound published live (STATE/BLOCK=1). Mainnet corpus impossible (no node
+   deployed); `SN_MAIN` validation covered by unit tests — rollout note.
+
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
 ## Out of scope / follow-ups
