@@ -181,6 +181,19 @@ connector-availability filtering, as with esplora).
    methods only with deterministically invalid BoCs (expected error
    passthrough, nothing broadcast). Testnet corpus impossible (no node) —
    zerostate validation for testnet covered by unit tests; rollout note.
+   **Executed 2026-07-17 — passed.** 27/27 checks identical against the
+   production mainnet node (v2 compared with the volatile `@extra` field
+   stripped): block/account/config reads byte-exact, the `jsonRPC` wrapper,
+   deep-history `LITE_SERVER_NOTREADY` with **HTTP-status parity** (500/500),
+   422 validation on both APIs, invalid `sendBoc` error passthrough, v3
+   reads incl. the empty-200 semantics. The `/api/v2` base-path joining and
+   v3 `rest-additional` routing verified live; the non-archival liteserver
+   correctly reports UnknownBound. The one designed difference: REST paths
+   absent from the spec get nodecore's own 400 (`the method GET#/x does not
+   exist/is not available`) instead of v2's 404 envelope. Testnet corpus
+   impossible (no node); testnet zerostate verified against the public
+   endpoint and covered by unit tests — rollout note.
+
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
 ## Out of scope / follow-ups
