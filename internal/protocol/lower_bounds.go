@@ -17,6 +17,8 @@ const (
 	LogsBound
 	TraceBound
 	ProofBound
+	EpochBound
+	BlobBound
 )
 
 func (t LowerBoundType) String() string {
@@ -39,6 +41,10 @@ func (t LowerBoundType) String() string {
 		return "TRACE"
 	case ProofBound:
 		return "PROOF"
+	case EpochBound:
+		return "EPOCH"
+	case BlobBound:
+		return "BLOB"
 	}
 	panic(fmt.Sprintf("unknown lower bound type %d", t))
 }

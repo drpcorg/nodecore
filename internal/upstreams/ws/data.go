@@ -30,7 +30,7 @@ func NewRequestFrame(requestId string, subType string, body []byte) *RequestFram
 }
 
 func createConnectionRetryPolicy(url string) failsafe.Policy[bool] {
-	retryPolicy := retrypolicy.Builder[bool]()
+	retryPolicy := retrypolicy.NewBuilder[bool]()
 
 	retryPolicy.WithMaxAttempts(-1) // endless retries
 	retryPolicy.WithBackoff(1*time.Second, 60*time.Second)

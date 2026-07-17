@@ -14,7 +14,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -246,6 +248,20 @@ func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConne
 		DisableHealthValidation: new(false),
 	}
 	return algorand_specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)
+}
+
+func NewBeaconChainSpecific(ctx context.Context, connector connectors.ApiConnector) *beacon_specific.BeaconChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return beacon_specific.NewBeaconChainSpecificObject(ctx, chains.GetChain("eth-beacon-chain"), "id", connector, time.Hour, options)
+}
+
+func NewAptosChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aptos_specific.AptosChainSpecificObject {
+	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, newTestChainOptions())
 }
 
 func newTestChainOptions() *chains.Options {

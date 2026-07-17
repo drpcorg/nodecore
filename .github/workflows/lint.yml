@@ -8,21 +8,21 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: "1.26.0"
+        default: "1.26.5"
   pull_request:
   push:
     branches:
       - main
 
 env:
-  GO_VERSION: ${{ inputs.go-version || '1.26.0' }}
+  GO_VERSION: ${{ inputs.go-version || '1.26.5' }}
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1

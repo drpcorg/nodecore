@@ -26,7 +26,7 @@ const (
 )
 
 func ValidatorExecutor(upstreamId, validationName string, ignoreErrors []string) failsafe.Executor[protocol.ResponseHolder] {
-	retryPolicy := retrypolicy.Builder[protocol.ResponseHolder]()
+	retryPolicy := retrypolicy.NewBuilder[protocol.ResponseHolder]()
 
 	retryPolicy.WithMaxAttempts(RetryMaxAttempts)
 	retryPolicy.WithBackoff(100*time.Millisecond, 500*time.Millisecond)
@@ -46,7 +46,7 @@ func ValidatorExecutor(upstreamId, validationName string, ignoreErrors []string)
 
 	retryPolicy.ReturnLastFailure()
 
-	return failsafe.NewExecutor[protocol.ResponseHolder](retryPolicy.Build())
+	return failsafe.With[protocol.ResponseHolder](retryPolicy.Build())
 }
 
 type Validator[R any] interface {

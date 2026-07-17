@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.0-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -27,7 +27,7 @@ RUN go run cmd/chains/init_chains.go && \
     -o /app/nodecore cmd/nodecore/main.go
 
 # Final stage
-FROM alpine:3.18
+FROM alpine:3.24
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 

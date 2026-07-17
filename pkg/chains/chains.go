@@ -29,12 +29,13 @@ const (
 	Starknet            BlockchainType = "starknet"
 	Ton                 BlockchainType = "ton"
 	Aztec               BlockchainType = "aztec"
+	Aptos               BlockchainType = "aptos"
 )
 
 func IsValidBlockchainType(t string) bool {
 	switch BlockchainType(t) {
 	case Algorand, Bitcoin, Cosmos, Ethereum, EthereumBeaconChain,
-		Near, Polkadot, Solana, Starknet, Ton, Aztec:
+		Near, Polkadot, Solana, Starknet, Ton, Aztec, Aptos:
 		return true
 	default:
 		return false
@@ -62,6 +63,22 @@ type ChainData struct {
 	NetVersion           string                 `yaml:"net-version"`
 	CallValidateContract string                 `yaml:"call-validate-contract"`
 	GasPriceCondition    []string               `yaml:"gas-price-condition"`
+	LowerBounds          *ChainLowerBounds      `yaml:"lower-bounds"`
+}
+
+// GoldLowerBound is a known-oldest data point for a chain, sourced from the
+// bundled chains.yaml. It is used to quickly detect whether an upstream is
+// fully archival for tx/receipts data without a full binary search.
+type GoldLowerBound struct {
+	Block uint64 `yaml:"block"`
+	Hash  string `yaml:"hash"`
+}
+
+// ChainLowerBounds holds the per-chain gold lower bounds. Only tx and receipts
+// carry a hash and are consulted during lower-bound detection.
+type ChainLowerBounds struct {
+	Tx       *GoldLowerBound `yaml:"tx"`
+	Receipts *GoldLowerBound `yaml:"receipts"`
 }
 
 type Protocol struct {
@@ -95,6 +112,7 @@ type ConfiguredChain struct {
 	MethodSpec           string
 	CallValidateContract string
 	GasPriceCondition    []string
+	LowerBounds          *ChainLowerBounds
 }
 
 var UnknownChain = &ConfiguredChain{
@@ -223,9 +241,9 @@ func GetChainByGrpcId(grpcId int) *ConfiguredChain {
 	return found
 }
 
-func GetChainByChainIdAndVersion(chainId, netVersion string) *ConfiguredChain {
+func GetChainByChainIdAndVersion(blockchainType BlockchainType, chainId, netVersion string) *ConfiguredChain {
 	for _, chain := range chains {
-		if chain.ChainId == chainId && chain.NetVersion == netVersion {
+		if chain.Type == blockchainType && chain.ChainId == chainId && chain.NetVersion == netVersion {
 			return chain
 		}
 	}
@@ -300,6 +318,7 @@ func configureChainsFromBytes(rawYaml []byte) (map[string]*ConfiguredChain, map[
 				MethodSpec:           methodSpec,
 				CallValidateContract: chain.CallValidateContract,
 				GasPriceCondition:    append([]string(nil), chain.GasPriceCondition...),
+				LowerBounds:          chain.LowerBounds,
 			}
 
 			for _, shortName := range chain.ShortNames {
@@ -332,6 +351,10 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "aztec"
 	case Algorand:
 		return "algorand"
+	case EthereumBeaconChain:
+		return "eth-beacon-chain"
+	case Aptos:
+		return "aptos"
 	}
 
 	return ""

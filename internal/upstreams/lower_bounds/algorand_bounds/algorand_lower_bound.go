@@ -44,8 +44,8 @@ func NewAlgorandLowerBoundDetector(
 	}
 }
 
-func (a *AlgorandLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	latest, err := a.fetchLatestRound()
+func (a *AlgorandLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	latest, err := a.fetchLatestRound(ctx)
 	if err != nil {
 		return a.fallback(fmt.Errorf("cannot fetch latest round: %w", err)), nil
 	}
@@ -54,7 +54,7 @@ func (a *AlgorandLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundDa
 	}
 
 	cached := a.lastBound.Load()
-	bound, err := a.locateBound(cached, latest)
+	bound, err := a.locateBound(ctx, cached, latest)
 	if err != nil {
 		return a.fallback(err), nil
 	}
@@ -96,18 +96,18 @@ func (a *AlgorandLowerBoundDetector) fallback(reason error) []protocol.LowerBoun
 	}
 }
 
-func (a *AlgorandLowerBoundDetector) locateBound(cached, latest int64) (int64, error) {
+func (a *AlgorandLowerBoundDetector) locateBound(ctx context.Context, cached, latest int64) (int64, error) {
 	if cached > 0 {
-		available, err := a.hasBlock(cached)
+		available, err := a.hasBlock(ctx, cached)
 		if err != nil {
 			return 0, err
 		}
 		if available {
 			return cached, nil
 		}
-		return a.binarySearchLower(cached+1, latest)
+		return a.binarySearchLower(ctx, cached+1, latest)
 	}
-	available, err := a.hasBlock(1)
+	available, err := a.hasBlock(ctx, 1)
 	if err != nil {
 		return 0, err
 	}
@@ -117,10 +117,10 @@ func (a *AlgorandLowerBoundDetector) locateBound(cached, latest int64) (int64, e
 	if latest < 2 {
 		return 0, fmt.Errorf("algorand upstream '%s' retains no blocks (last-round=%d)", a.upstreamId, latest)
 	}
-	return a.binarySearchLower(2, latest)
+	return a.binarySearchLower(ctx, 2, latest)
 }
 
-func (a *AlgorandLowerBoundDetector) binarySearchLower(lo, hi int64) (int64, error) {
+func (a *AlgorandLowerBoundDetector) binarySearchLower(ctx context.Context, lo, hi int64) (int64, error) {
 	if lo > hi {
 		return 0, fmt.Errorf("algorand upstream '%s' empty search range [%d, %d]", a.upstreamId, lo, hi)
 	}
@@ -128,7 +128,7 @@ func (a *AlgorandLowerBoundDetector) binarySearchLower(lo, hi int64) (int64, err
 	var result int64
 	for left <= right {
 		mid := left + (right-left)/2
-		available, err := a.hasBlock(mid)
+		available, err := a.hasBlock(ctx, mid)
 		if err != nil {
 			return 0, err
 		}
@@ -145,8 +145,8 @@ func (a *AlgorandLowerBoundDetector) binarySearchLower(lo, hi int64) (int64, err
 	return result, nil
 }
 
-func (a *AlgorandLowerBoundDetector) hasBlock(round int64) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AlgorandLowerBoundDetector) hasBlock(ctx context.Context, round int64) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest(
@@ -188,8 +188,8 @@ func (a *AlgorandLowerBoundDetector) hasBlock(round int64) (bool, error) {
 	return false, fmt.Errorf("algorand upstream '%s' /v2/blocks/%d/hash returned an unrecognised body", a.upstreamId, round)
 }
 
-func (a *AlgorandLowerBoundDetector) fetchLatestRound() (int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AlgorandLowerBoundDetector) fetchLatestRound(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, a.chain)
