@@ -14,7 +14,7 @@ a starknet upstream fails with `no method spec with name ''`.
 ## Scope
 
 - **In scope:** juno/pathfinder JSON-RPC 2.0 upstreams (plain HTTP, no auth,
-  root path); the 24-method surface currently served by dshackle; poll-based
+  root path); the 25-method surface currently served by dshackle; poll-based
   head tracking; real chain-id validation (dshackle has none for starknet);
   syncing health; juno/pathfinder client labels; lower bounds.
 - **Out of scope (YAGNI):** WebSocket subscriptions (juno is in
@@ -112,7 +112,7 @@ count to validate.
 
 ### Method spec (`pkg/methods/specs/starknet.json`)
 
-The 24 methods dshackle serves, all `cacheable: false` in v1:
+The 25 methods dshackle serves, all `cacheable: false` in v1:
 
 | group | methods | dispatch |
 |---|---|---|
