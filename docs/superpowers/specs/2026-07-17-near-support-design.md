@@ -14,7 +14,7 @@ dshackle.
 ## Scope
 
 - **In scope:** neard JSON-RPC 2.0 upstreams (plain HTTP, no auth, no WS —
-  nearcore has no subscriptions at all); the 15-method surface currently
+  nearcore has no subscriptions at all); the 14-method surface currently
   served by dshackle (see method table); optimistic head tracking; chain-id
   validation; syncing/peers health; client version labels; dynamic GC-window
   lower bounds.
@@ -126,7 +126,7 @@ unlike bitcoin where two forks both report `main`).
 
 ### Method spec (`pkg/methods/specs/near.json`)
 
-The 15 methods dshackle serves, all `cacheable: false` in v1:
+The 14 methods dshackle serves, all `cacheable: false` in v1:
 
 | group | methods | notes |
 |---|---|---|

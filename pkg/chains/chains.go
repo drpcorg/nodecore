@@ -357,6 +357,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "aptos"
 	case Bitcoin:
 		return "bitcoin"
+	case Near:
+		return "near"
 	}
 
 	return ""

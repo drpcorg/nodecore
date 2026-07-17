@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "NEAR methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "near",
+    "type": "bundle"
+  },
+  "spec-imports": ["near-json-rpc"]
+}
