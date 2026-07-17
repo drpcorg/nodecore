@@ -355,6 +355,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "eth-beacon-chain"
 	case Aptos:
 		return "aptos"
+	case Bitcoin:
+		return "bitcoin"
 	}
 
 	return ""

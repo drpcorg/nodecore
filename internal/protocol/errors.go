@@ -227,6 +227,13 @@ func QuorumNotSupportedError(reason string) *ResponseError {
 
 const InvalidParams = -32602
 
+func InvalidParamsError(message string) *ResponseError {
+	return &ResponseError{
+		Code:    InvalidParams,
+		Message: message,
+	}
+}
+
 func UnsupportedBlockTagError(chain, tag string) *ResponseError {
 	return &ResponseError{
 		Code:    InvalidParams,

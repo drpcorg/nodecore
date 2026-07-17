@@ -189,12 +189,29 @@ func sendUnaryRequest(
 ) (*protocol.ResponseHolderWrapper, error) {
 	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.GetId())
 
-	apiConnector := getMethodConnector(upstream, request.SpecMethod())
+	upstreamRequest := request
+	translator := getMethodTranslator(chains.GetMethodSpecNameByChain(upstream.GetChain()), request.Method())
+	if translator != nil {
+		translated, err := translator.TranslateRequest(ctx, request)
+		if err != nil {
+			return &protocol.ResponseHolderWrapper{
+				RequestId:  request.Id(),
+				UpstreamId: upstream.GetId(),
+				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
+			}, nil
+		}
+		upstreamRequest = translated
+	}
+
+	apiConnector := getMethodConnector(upstream, upstreamRequest.SpecMethod())
 	if apiConnector == nil {
 		return nil, protocol.NoApiConnectorsError(request.Method())
 	}
 
-	response := apiConnector.SendRequest(ctx, request)
+	response := apiConnector.SendRequest(ctx, upstreamRequest)
+	if translator != nil {
+		response = translator.TranslateResponse(request, upstreamRequest, upstream.GetCurrentHeadHeight(), response)
+	}
 
 	if response.ResponseCode() == http.StatusTooManyRequests && upstream.GetUpstreamState().AutoTuneRateLimiter != nil {
 		upstream.GetUpstreamState().AutoTuneRateLimiter.IncErrors()
