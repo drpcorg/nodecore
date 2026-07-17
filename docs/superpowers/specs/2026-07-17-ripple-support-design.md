@@ -216,6 +216,17 @@ apply twice). Clio-only methods (`ledger_index`, `nft_history`, `nft_info`,
    from the spec), invalid params, clio-only methods on rippled
    (`unknownCmd` passthrough). `submit` only with a deterministically invalid
    blob on both networks; nothing broadcast.
+   **Executed 2026-07-17 — passed.** 46/46 checks identical across mainnet
+   and testnet; every deterministic case byte-exact on the full `result`
+   object, including error passthroughs (`lgrNotFound`, `txnNotFound`,
+   `invalidParams`, `unknownCmd`, invalid `submit`) and the `ledger_data`
+   pagination marker. Live findings: `path_find` over HTTP errors as
+   `noEvents` (passed through byte-exact); `channel_verify` with a bad
+   signature is a *success* with `signature_verified:false`, not an error;
+   `network_id` absent on mainnet on both paths. Lower bounds published live
+   from `complete_ledgers`. Methods absent from the spec (e.g. `version`)
+   get nodecore's own -32601 — standard for all families.
+
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
 ## Out of scope / follow-ups
