@@ -1,0 +1,41 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TON indexer v3 methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "ton-index-v3",
+    "api-connectors": ["rest-additional"],
+    "type": "plain"
+  },
+  "methods": [
+    { "name": "GET#/api/v3/accountStates", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/addressBook", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/walletStates", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/actions", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/events", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/addressInformation", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "POST#/api/v3/estimateFee", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "POST#/api/v3/message", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "POST#/api/v3/runGetMethod", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/walletInformation", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/adjacentTransactions", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/blocks", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/masterchainBlockShardState", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/masterchainBlockShards", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/masterchainInfo", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/messages", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/transactions", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/transactionsByMasterchainBlock", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/transactionsByMessage", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/jetton/burns", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/jetton/masters", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/jetton/transfers", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/jetton/wallets", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/nft/collections", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/nft/items", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/nft/transfers", "group": "additional", "params": [], "settings": { "cacheable": false } },
+    { "name": "GET#/api/v3/topAccountsByBalance", "group": "additional", "params": [], "settings": { "cacheable": false } }
+  ]
+}
