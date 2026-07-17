@@ -136,15 +136,21 @@ kept passthrough-only for surface parity — the node's own error is returned.
 
 ### Esplora translation (`listunspent`)
 
-Esplora is an optional `rest-additional` connector on the upstream (the same
-mechanism tron uses for its solidity endpoint). `listunspent` is intercepted
-in `bitcoin_specific`: the address argument maps to
+Esplora is an optional `rest-additional` connector on the upstream. Design
+note (discovered during implementation): nodecore has no per-chain
+request-rewrite hook — tron's solidity endpoint is a set of first-class REST
+methods, not a translation — so the interception lives in a small generic
+`(spec, method) → {buildRequest, reshapeResponse}` transformer registry in
+the flow layer (consulted in `sendUnaryRequest` before the connector call),
+not in `bitcoin_specific`. For `listunspent` the address argument maps to
 `GET /address/{addr}/utxo`, and the esplora response is converted to the
 bitcoind `listunspent` result shape (txid, vout, address, amount in BTC from
 sats, confirmations computed from current head vs `status.block_height`).
-Upstreams without an esplora connector get `listunspent` banned via the
-existing method-ban mechanism, so routing skips them (dogecoin has no
-esplora today).
+`listunspent` is declared only in the esplora spec (`rest-additional`), so
+upstreams without an esplora connector never advertise it and routing skips
+them statically — no runtime ban needed (dogecoin has no esplora today).
+`getblocknumber` → `getblockcount` uses the same registry as a pure
+request-rewrite.
 
 ### Authentication
 

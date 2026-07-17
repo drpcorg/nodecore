@@ -245,6 +245,15 @@ func TestBitcoinSpecLoads(t *testing.T) {
 	spec = specs.GetSpecMethod("bitcoin", "eth_call")
 	assert.Nil(t, spec)
 
+	// listunspent is served via esplora, so it resolves only for upstreams with
+	// the rest-additional connector
+	jsonRpcMethods := specs.GetSpecMethodsByConnectors("bitcoin", []specs.ApiConnectorType{specs.JsonRpcConnector})
+	assert.NotContains(t, jsonRpcMethods[specs.DefaultMethodGroup], "listunspent")
+	assert.Contains(t, jsonRpcMethods[specs.DefaultMethodGroup], "getblocknumber")
+
+	restAdditionalMethods := specs.GetSpecMethodsByConnectors("bitcoin", []specs.ApiConnectorType{specs.RestAdditional})
+	assert.Contains(t, restAdditionalMethods[specs.DefaultMethodGroup], "listunspent")
+
 	template, params, ok := specs.MatchRestMethod("bitcoin", "GET#/address/bc1qxyz/utxo")
 	assert.True(t, ok)
 	assert.Equal(t, "GET#/address/*/utxo", template)

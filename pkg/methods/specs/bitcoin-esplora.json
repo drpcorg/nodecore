@@ -17,6 +17,14 @@
       "settings": {
         "cacheable": false
       }
+    },
+    {
+      "name": "listunspent",
+      "group": "additional",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
     }
   ]
 }

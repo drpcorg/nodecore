@@ -127,13 +127,6 @@
         "cacheable": false,
         "dispatch": "broadcast"
       }
-    },
-    {
-      "name": "listunspent",
-      "params": [],
-      "settings": {
-        "cacheable": false
-      }
     }
   ]
 }
