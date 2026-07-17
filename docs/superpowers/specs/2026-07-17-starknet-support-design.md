@@ -1,7 +1,7 @@
 # Starknet family support — design
 
 Date: 2026-07-17
-Status: draft (pending approval)
+Status: approved (pre-implementation)
 
 ## Goal
 
