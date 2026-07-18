@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
@@ -220,6 +221,14 @@ func getChainSpecific(
 		), nil
 	case chains.Algorand:
 		return algorand_specific.NewAlgorandChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
+	case chains.Bitcoin:
+		return bitcoin_specific.NewBitcoinChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,
