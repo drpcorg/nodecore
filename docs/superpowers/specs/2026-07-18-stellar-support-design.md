@@ -145,6 +145,17 @@ No translations, no bans, no aliases, no envelope work.
    invalid envelope (error-in-result passthrough), `sendTransaction` only
    with an invalid envelope (`-32602 invalid_xdr` passthrough, nothing
    enqueued).
+   **Executed 2026-07-18 — passed.** 34 PASS / 0 FAIL / 2 SKIP (the
+   anticipated valid-LedgerKey XDR case) across mainnet and testnet:
+   ledgers/transactions/events arrays byte-exact (node-local envelope
+   fields stripped), NOT_FOUND and error-in-result simulateTransaction
+   passthroughs identical, invalid-XDR sendTransaction -32602 identical,
+   passphrases and retention windows verified. Live corrections: v27's
+   out-of-window message reads "start ledger (N) must be between the oldest
+   ledger: X and the latest ledger: Y for this rpc instance" (live-window
+   numbers — never compare byte-exact), and `getEvents` does accept
+   `endLedger`. Bounds published live (BLOCK=TX=oldestLedger).
+
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
 ## Out of scope / follow-ups
