@@ -1,7 +1,7 @@
 # Stellar family support — design
 
 Date: 2026-07-18
-Status: draft (pending approval)
+Status: approved (pre-implementation)
 
 ## Goal
 
