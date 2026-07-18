@@ -122,7 +122,7 @@ func createConnector(
 ) (connectors.ApiConnector, error) {
 	switch connectorConfig.GetApiConnectorType() {
 	case specs.JsonRpcConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
 	case specs.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
@@ -141,9 +141,9 @@ func createConnector(
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.RestConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
 	case specs.RestAdditional:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}
