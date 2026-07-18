@@ -309,6 +309,21 @@ func TestNearSpecLoads(t *testing.T) {
 	assert.Nil(t, spec)
 }
 
+func TestStellarSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("stellar", "getLatestLedger")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("stellar", "sendTransaction")
+	assert.NotNil(t, spec)
+	assert.False(t, spec.IsBroadcastDispatch())
+
+	spec = specs.GetSpecMethod("stellar", "loadAccount")
+	assert.Nil(t, spec)
+}
+
 func TestRippleSpecLoads(t *testing.T) {
 	err := specs.NewMethodSpecLoader().Load()
 	assert.NoError(t, err)

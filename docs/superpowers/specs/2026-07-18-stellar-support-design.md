@@ -93,7 +93,7 @@ consumes it). `GetFinalizedBlock` = `GetLatestBlock` (close == finality).
 
 `StellarChainValidator`: `getNetwork {}` → `passphrase` compared (exact,
 case-sensitive — passphrases are canonical strings) against
-`chain.ChainId`. Mismatch → FatalSettingError; fetch error → SettingsError.
+`chain.ChainId`. Note: the registry loader lowercases every chain-id globally, so the compare is case-insensitive (EqualFold) in practice — safe, the two passphrases differ in far more than case. Mismatch → FatalSettingError; fetch error → SettingsError.
 
 ### Health validation
 

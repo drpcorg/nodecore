@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Stellar methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "stellar",
+    "type": "bundle"
+  },
+  "spec-imports": ["stellar-json-rpc"]
+}
