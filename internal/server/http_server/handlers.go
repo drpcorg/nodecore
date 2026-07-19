@@ -152,18 +152,30 @@ func (j *JsonRpcHandler) GetRequestType() protocol.RequestType {
 }
 
 func (j *JsonRpcHandler) RequestCount() int {
-	return len(j.jsonRpcRequests)
+	count := 0
+	for _, request := range j.jsonRpcRequests {
+		if len(bytes.TrimSpace(request.Id)) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 	upstreamRequests := make([]protocol.RequestHolder, 0)
 
-	for i, jsonRpcReq := range j.jsonRpcRequests {
+	responseOrder := 0
+	for _, jsonRpcReq := range j.jsonRpcRequests {
 		id, err := uuid.NewUUID()
 		if err != nil {
 			return nil, err
 		}
-		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, i)
+		order := -1
+		if len(bytes.TrimSpace(jsonRpcReq.Id)) > 0 {
+			order = responseOrder
+			responseOrder++
+		}
+		j.idMap[id.String()] = lo.T2(jsonRpcReq.Id, order)
 
 		specName := chains.GetMethodSpecNameByChainName(j.preReq.Chain)
 		isSub := j.isWsCtx && specs.IsSubscribeMethod(specName, jsonRpcReq.Method)
@@ -194,5 +206,6 @@ func (j *JsonRpcHandler) ResponseEncode(response protocol.ResponseHolder) *Respo
 	return &Response{
 		ResponseReader: response.EncodeResponse(realId),
 		Order:          order,
+		Suppress:       ok && len(bytes.TrimSpace(idPair.A)) == 0,
 	}
 }

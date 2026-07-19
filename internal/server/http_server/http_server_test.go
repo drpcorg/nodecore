@@ -7,16 +7,101 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/server/http_server"
 	servernodecore "github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
+
+func TestHttpJsonRpcNotificationReturnsNoContent(t *testing.T) {
+	upSup := mocks.NewUpstreamSupervisorMock()
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
+	upSup.On("GetChainSupervisor", chains.POLYGON).Return(nil)
+
+	request, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/polygon", strings.NewReader(
+		`{"jsonrpc":"2.0","method":"net_version","params":[]}`,
+	))
+	require.NoError(t, err)
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusNoContent, response.StatusCode)
+	assert.Empty(t, body)
+}
+
+func TestWebsocketJsonRpcNotificationIsSilentAndConnectionStaysOpen(t *testing.T) {
+	upSup := mocks.NewUpstreamSupervisorMock()
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil).Twice()
+	upSup.On("GetChainSupervisor", chains.POLYGON).Return(nil).Twice()
+
+	wsURL, err := url.Parse(ts.URL)
+	require.NoError(t, err)
+	wsURL.Scheme = "ws"
+	wsURL.Path = "/queries/polygon"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(
+		`{"jsonrpc":"2.0","method":"net_version","params":[]}`,
+	)))
+	messages := make(chan []byte, 1)
+	readErrors := make(chan error, 1)
+	go func() {
+		_, message, readErr := conn.ReadMessage()
+		if readErr != nil {
+			readErrors <- readErr
+			return
+		}
+		messages <- message
+	}()
+	select {
+	case message := <-messages:
+		t.Fatalf("notification unexpectedly produced a websocket frame: %s", message)
+	case err := <-readErrors:
+		t.Fatalf("websocket closed after notification: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(
+		`{"jsonrpc":"2.0","id":7,"method":"net_version","params":[]}`,
+	)))
+	select {
+	case message := <-messages:
+		assert.JSONEq(t, `{"id":7,"jsonrpc":"2.0","error":{"message":"no available upstreams to process a request","code":1}}`, string(message))
+	case err := <-readErrors:
+		t.Fatalf("websocket closed before regular response: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for regular websocket response")
+	}
+}
 
 func TestHttpServerOptionsRequest(t *testing.T) {
 	tests := []struct {

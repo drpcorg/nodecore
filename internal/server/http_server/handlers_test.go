@@ -1,6 +1,7 @@
 package http_server_test
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -15,6 +16,77 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestJsonRpcHandlerSuppressesNotificationResponses(t *testing.T) {
+	handler, err := http_server.NewJsonRpcHandler(
+		&http_server.Request{Chain: "ethereum"},
+		strings.NewReader(`{"jsonrpc":"2.0","method":"net_version","params":[]}`),
+		true,
+	)
+	require.NoError(t, err)
+	request, err := handler.RequestDecode(context.Background())
+	require.NoError(t, err)
+	require.Len(t, request.UpstreamRequests, 1)
+
+	response := handler.ResponseEncode(protocol.NewSimpleHttpUpstreamResponse(
+		request.UpstreamRequests[0].Id(), []byte(`"1"`), protocol.JsonRpc,
+	))
+
+	assert.True(t, response.Suppress)
+	assert.Equal(t, 0, handler.RequestCount())
+}
+
+func TestJsonRpcHandlerRespondsToExplicitNullId(t *testing.T) {
+	handler, err := http_server.NewJsonRpcHandler(
+		&http_server.Request{Chain: "ethereum"},
+		strings.NewReader(`{"jsonrpc":"2.0","id":null,"method":"net_version","params":[]}`),
+		true,
+	)
+	require.NoError(t, err)
+	request, err := handler.RequestDecode(context.Background())
+	require.NoError(t, err)
+
+	response := handler.ResponseEncode(protocol.NewSimpleHttpUpstreamResponse(
+		request.UpstreamRequests[0].Id(), []byte(`"1"`), protocol.JsonRpc,
+	))
+	body, err := io.ReadAll(response.ResponseReader)
+	require.NoError(t, err)
+
+	assert.False(t, response.Suppress)
+	assert.Equal(t, 1, handler.RequestCount())
+	assert.JSONEq(t, `{"id":null,"jsonrpc":"2.0","result":"1"}`, string(body))
+}
+
+func TestJsonRpcHandlerOrdersMixedBatchWithoutNotifications(t *testing.T) {
+	handler, err := http_server.NewJsonRpcHandler(
+		&http_server.Request{Chain: "ethereum"},
+		strings.NewReader(`[
+			{"jsonrpc":"2.0","method":"net_version","params":[]},
+			{"jsonrpc":"2.0","id":7,"method":"eth_chainId","params":[]}
+		]`),
+		false,
+	)
+	require.NoError(t, err)
+	request, err := handler.RequestDecode(context.Background())
+	require.NoError(t, err)
+	require.Len(t, request.UpstreamRequests, 2)
+
+	notification := handler.ResponseEncode(protocol.NewSimpleHttpUpstreamResponse(
+		request.UpstreamRequests[0].Id(), []byte(`"1"`), protocol.JsonRpc,
+	))
+	regular := handler.ResponseEncode(protocol.NewSimpleHttpUpstreamResponse(
+		request.UpstreamRequests[1].Id(), []byte(`"0x1"`), protocol.JsonRpc,
+	))
+
+	assert.True(t, notification.Suppress)
+	assert.Equal(t, -1, notification.Order)
+	assert.False(t, regular.Suppress)
+	assert.Equal(t, 0, regular.Order)
+	assert.Equal(t, 1, handler.RequestCount())
+	regularBody, err := io.ReadAll(regular.ResponseReader)
+	require.NoError(t, err)
+	assert.True(t, bytes.Contains(regularBody, []byte(`"id":7`)))
+}
 
 // TestMain loads a dedicated test_specs/ fixture so the REST parser tests
 // can exercise wildcard / multi-verb / literal-beats-wildcard cases without
