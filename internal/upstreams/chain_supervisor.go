@@ -45,10 +45,21 @@ type BaseChainSupervisor struct {
 	tracker         dimensions.DimensionTracker
 	subChainMethods mapset.Set[string]
 
+	validateLag bool
+	getUpstream func(string) Upstream
+	lastLag     map[string]int64
+
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 }
 
-func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker dimensions.DimensionTracker) *BaseChainSupervisor {
+func NewBaseChainSupervisor(
+	ctx context.Context,
+	chain chains.Chain,
+	fc choice.ForkChoice,
+	tracker dimensions.DimensionTracker,
+	validateLag bool,
+	getUpstream func(string) Upstream,
+) *BaseChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
 	state.Store(
 		ChainSupervisorState{
@@ -72,6 +83,9 @@ func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.F
 		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
 		state:           state,
 		subChainMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
+		validateLag:     validateLag,
+		getUpstream:     getUpstream,
+		lastLag:         make(map[string]int64),
 		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
 	}
 }
@@ -88,7 +102,7 @@ func (b *BaseChainSupervisor) Start() {
 			select {
 			case <-b.ctx.Done():
 				return
-			case <-time.After(30 * time.Second):
+			case <-time.After(3 * time.Second):
 			}
 
 			b.monitor()
@@ -163,6 +177,7 @@ func (b *BaseChainSupervisor) processEvents() {
 					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
 						upHead := upState.HeadData
 						b.upstreamStates.Delete(event.Id)
+						delete(b.lastLag, event.Id)
 
 						b.updateState()
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
@@ -270,9 +285,6 @@ func (b *BaseChainSupervisor) calculateFinalizationLags() {
 }
 
 func (b *BaseChainSupervisor) calculateHeadLags() {
-	if b.tracker == nil {
-		return
-	}
 	state := b.state.Load()
 
 	b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
@@ -280,7 +292,19 @@ func (b *BaseChainSupervisor) calculateHeadLags() {
 		if state.HeadData.Head.Height >= val.HeadData.Height {
 			headLag = state.HeadData.Head.Height - val.HeadData.Height
 		}
-		b.tracker.GetChainDimensions(b.chain, key).TrackHeadLag(headLag)
+		if b.tracker != nil {
+			b.tracker.GetChainDimensions(b.chain, key).TrackHeadLag(headLag)
+		}
+
+		if b.validateLag && b.getUpstream != nil {
+			lag := int64(headLag)
+			if b.lastLag[key] != lag {
+				b.lastLag[key] = lag
+				if up := b.getUpstream(key); up != nil {
+					up.UpdateHeadLag(lag)
+				}
+			}
+		}
 		return true
 	})
 }

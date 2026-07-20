@@ -318,6 +318,13 @@ func (a AvailabilityStatus) String() string {
 	panic(fmt.Sprintf("unknown status %d", a))
 }
 
+func StatusByLag(lag int64, avail AvailabilityStatus, syncingLag int64) AvailabilityStatus {
+	if avail == Available && lag > syncingLag {
+		return Syncing
+	}
+	return avail
+}
+
 type UpstreamEvent struct {
 	Id        string
 	Chain     chains.Chain

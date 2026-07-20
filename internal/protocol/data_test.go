@@ -179,3 +179,18 @@ func TestLabelsCopy(t *testing.T) {
 	assert.Equal(t, "archive", copiedTier)
 	assert.NotSame(t, labels, copiedLabels)
 }
+
+func TestStatusByLag(t *testing.T) {
+	syncingLag := int64(10)
+
+	// Available with lag within the threshold stays Available.
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(0, protocol.Available, syncingLag))
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(10, protocol.Available, syncingLag))
+
+	// Available with lag beyond the threshold is downgraded to Syncing.
+	assert.Equal(t, protocol.Syncing, protocol.StatusByLag(11, protocol.Available, syncingLag))
+
+	// A non-Available base status is returned unchanged regardless of lag.
+	assert.Equal(t, protocol.Unavailable, protocol.StatusByLag(1000, protocol.Unavailable, syncingLag))
+	assert.Equal(t, protocol.Immature, protocol.StatusByLag(1000, protocol.Immature, syncingLag))
+}

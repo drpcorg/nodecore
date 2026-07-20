@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
@@ -33,7 +34,7 @@ func newUpstreamCtx(cancelFunc context.CancelFunc, mainLifecycle *utils.BaseLife
 
 type BaseUpstream struct {
 	id               string
-	chain            chains.Chain
+	configuredChain  *chains.ConfiguredChain
 	vendorType       UpstreamVendor
 	apiConnectors    []connectors.ApiConnector
 	subManager       *utils.SubscriptionManager[protocol.UpstreamEvent]
@@ -44,6 +45,8 @@ type BaseUpstream struct {
 	groupLabels      mapset.Set[string]
 	upstreamCtx      *upstreamCtx
 	emitter          event_processors.Emitter
+
+	headLag atomic.Int64
 
 	processorAggregator *event_processors.UpstreamProcessorAggregator
 }
@@ -79,7 +82,7 @@ func NewBaseUpstream(
 			creationData.autoTune,
 		),
 	)
-	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 100)
+	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 1000)
 	emitter := func(event protocol.AbstractUpstreamStateEvent) {
 		stateChan <- event
 	}
@@ -87,7 +90,7 @@ func NewBaseUpstream(
 	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
 	upstream := &BaseUpstream{
 		id:               conf.Id,
-		chain:            configuredChain.Chain,
+		configuredChain:  configuredChain,
 		vendorType:       getUpstreamVendor(conf.Connectors),
 		apiConnectors:    creationData.upstreamConnectorsInfo.allConnectors,
 		upstreamCtx:      newUpstreamCtx(cancelFunc, mainLifecycle),
@@ -135,7 +138,7 @@ func NewBaseUpstreamWithParams(
 	ctx, cancel := context.WithCancel(context.Background())
 
 	if stateChan == nil {
-		stateChan = new(make(chan protocol.AbstractUpstreamStateEvent, 100))
+		stateChan = new(make(chan protocol.AbstractUpstreamStateEvent, 1000))
 	}
 	if emitter == nil {
 		var f event_processors.Emitter = func(event protocol.AbstractUpstreamStateEvent) {
@@ -151,7 +154,7 @@ func NewBaseUpstreamWithParams(
 	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", id), ctx)
 	return &BaseUpstream{
 		id:                  id,
-		chain:               chain,
+		configuredChain:     chains.GetChain(chain.String()),
 		upstreamCtx:         newUpstreamCtx(cancel, mainLifecycle),
 		upstreamState:       upState,
 		apiConnectors:       apiConnectors,
@@ -189,7 +192,7 @@ func (u *BaseUpstream) GetId() string {
 }
 
 func (u *BaseUpstream) GetChain() chains.Chain {
-	return u.chain
+	return u.configuredChain.Chain
 }
 
 func (u *BaseUpstream) GetGroupLabels() mapset.Set[string] {
@@ -287,6 +290,14 @@ func (u *BaseUpstream) UpdateLowerBound(data protocol.LowerBoundData) {
 	u.emitter(&protocol.LowerBoundUpstreamStateEvent{Data: data})
 }
 
+func (u *BaseUpstream) UpdateHeadLag(lag int64) {
+	if lag < 0 {
+		lag = 0
+	}
+	u.headLag.Store(lag)
+	u.emitter(&protocol.StatusUpstreamStateEvent{Lag: new(lag)})
+}
+
 func (u *BaseUpstream) BanMethod(method string) {
 	u.emitter(&protocol.BanMethodUpstreamStateEvent{Method: method})
 }
@@ -310,7 +321,7 @@ func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) meth
 	connectorTypes := lo.Map(u.apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
 		return item.GetType()
 	})
-	newMethods, _ := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(u.chain), newConfig, connectorTypes)
+	newMethods, _ := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(u.configuredChain.Chain), newConfig, connectorTypes)
 	return newMethods
 }
 
