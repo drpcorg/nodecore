@@ -307,8 +307,8 @@ func (b *BaseChainSupervisor) calculateHeadLags() {
 			lag := int64(headLag)
 			over := protocol.LagExceeds(lag, b.syncingLag)
 			if b.lastOver[key] != over {
-				b.lastOver[key] = over
 				if up := b.getUpstream(key); up != nil {
+					b.lastOver[key] = over
 					up.UpdateHeadLag(lag)
 				}
 			}
