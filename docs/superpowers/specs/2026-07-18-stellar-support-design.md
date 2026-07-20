@@ -212,6 +212,13 @@ No translations, no bans, no aliases, no envelope work.
    Remaining quirk (follow-up): Horizon root is only reachable as
    `/queries/{chain}//` — an empty rest path falls through to the JSON-RPC
    parser.
+   **Mainnet Horizon re-run 2026-07-20 (27.0.0, ~1350-ledger window,
+   30-day backfill in progress) — 22 PASS / 0 FAIL**, same corpus with REF
+   = latest−500; bounds BLOCK=TX=63563520 == live `history_elder_ledger`
+   fetched the same minute (elder held steady throughout the run, so no
+   decrease-republish was exercised live), and both POST
+   `/transactions{,_async}` now byte-exact (`transaction_malformed` 400)
+   with the fixed binary.
 
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
