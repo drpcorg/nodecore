@@ -26,9 +26,9 @@ API support, so these chains can be removed from dshackle.
 
 ## Approach
 
-Bitcoin is modelled as a **JSON-RPC blockchain family** following the
-Algorand/Aptos template: a `bitcoin_specific` chain-specific package plus a
-data-driven method spec. A runtime-only extension is not viable for a new
+Bitcoin is modelled as a **JSON-RPC blockchain family**: a `bitcoin_specific`
+chain-specific package plus a data-driven method spec. A runtime-only
+extension is not viable for a new
 family (compile-time factory switch), consistent with prior family additions.
 
 One family covers both bitcoin and dogecoin: Dogecoin Core is a Bitcoin Core
