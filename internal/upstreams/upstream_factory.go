@@ -146,6 +146,8 @@ func createConnector(
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.RestConnector:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
+	case specs.RestIndexer:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
 	case specs.RestAdditional:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
 	default:
@@ -286,6 +288,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			upstreamConnectorsInfo.allConnectors,
 			conf.Options,
 		), nil
 	case chains.Starknet:

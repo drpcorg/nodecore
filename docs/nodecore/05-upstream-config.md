@@ -556,7 +556,8 @@ Supported connector types:
 - `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
 - `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON, Aptos, and the Ethereum/Gnosis Beacon Chain). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`. Aptos upstreams use `rest` exclusively, serving the fullnode `/v1/*` API
 - `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
-- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: an upstream cannot consist of only `rest-additional` connectors - at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket`) must also be configured
+- `rest-indexer` - a **self-contained indexer REST API** running next to the node API (e.g. the TON v3 indexer). This is a plain type: it may be an upstream's only connector (a standalone indexer upstream with its own head/health/bounds) or sit alongside the node-API connector on one upstream; see [TON deployment modes](#ton-deployment-modes)
+- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: it cannot work standalone at all - an upstream cannot consist of only `rest-additional` connectors, at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket` / `rest-indexer`) must also be configured
 
 By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each incoming request.
 
@@ -568,6 +569,40 @@ Every upstream must also track its head (latest block / finalization state). The
   - `mode: strict` - prefers the most capable type, in reverse order `websocket` → `grpc` → `rest` → `json-rpc`
 
 `rest-additional` connectors are never chosen as the head connector.
+
+### TON deployment modes
+
+TON exposes two self-contained APIs: the **v2 HTTP API** (toncenter `ton-http-api`, connector type `rest`, base URL must include the `/api/v2` prefix) and the **v3 indexer** (toncenter `ton-indexer`, connector type `rest-indexer`, no path prefix). They have independent data windows — the v2 window is the backing liteserver's block retention, the v3 window is whatever range the indexer has been backfilled with — and independent failure modes (a stalled indexer does not affect the liteserver, and vice versa). Any combination is possible in practice: a non-archival node with a genesis-deep index, or the reverse.
+
+Two deployment modes are supported:
+
+- **Split (recommended)** - two upstreams of the same chain: a v2 upstream (single `rest` connector) and a v3 upstream (single `rest-indexer` connector — a plain type, fully legal on its own). Each upstream gets full independent accounting: its own head, health (v3: `masterchainInfo` freshness), chain validation (v2: zerostate hashes, v3: `global_id`), client labels, and lower bounds (v2: archival probe; v3: `first.seqno`, which may legally *decrease* when the index is backfilled deeper). Method routing between the two happens automatically: each upstream only advertises the methods its connector type carries.
+- **Combined** - one upstream with both connectors. This works, but **all validations and calculations (head, health, chain validation, labels, lower bounds) are computed from the primary connector's API only** (the head/internal connector — `rest`, i.e. v2, in `mode: default`); the other connector serves its methods and takes no part in any accounting. nodecore logs a warning at upstream creation to make this explicit. Use this mode only when the v3 index's data window and health can be assumed to track the v2 node's (e.g. an indexer colocated with, and fed from, that same node).
+
+```yaml
+# Split mode (recommended)
+upstreams:
+  - id: ton-node
+    chain: ton
+    connectors:
+      - type: rest
+        url: http://ton-node:8081/api/v2
+  - id: ton-index-v3
+    chain: ton
+    connectors:
+      - type: rest-indexer
+        url: http://ton-index:8082
+
+# Combined mode (non-primary connector = methods only; logs a warning)
+upstreams:
+  - id: ton-combined
+    chain: ton
+    connectors:
+      - type: rest
+        url: http://ton-node:8081/api/v2
+      - type: rest-indexer
+        url: http://ton-index:8082
+```
 
 ### Tor .onion upstreams
 

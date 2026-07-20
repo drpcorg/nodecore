@@ -276,16 +276,17 @@ func TestTonSpecLoads(t *testing.T) {
 	spec = specs.GetSpecMethod("ton", "eth_call")
 	assert.Nil(t, spec)
 
-	// v3 indexer methods are served via the rest-additional connector, so they
-	// resolve only for upstreams that have it
+	// v3 indexer methods are served via the rest-indexer connector (a plain
+	// type - a standalone v3 upstream is legal), so they resolve only for
+	// upstreams that have it
 	restMethods := specs.GetSpecMethodsByConnectors("ton", []specs.ApiConnectorType{specs.RestConnector})
 	assert.NotContains(t, restMethods[specs.DefaultMethodGroup], "GET#/api/v3/masterchainInfo")
 	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "GET#/getMasterchainInfo")
 	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "POST#/jsonRPC")
 
-	restAdditionalMethods := specs.GetSpecMethodsByConnectors("ton", []specs.ApiConnectorType{specs.RestAdditional})
-	assert.Contains(t, restAdditionalMethods[specs.DefaultMethodGroup], "GET#/api/v3/masterchainInfo")
-	assert.NotContains(t, restAdditionalMethods[specs.DefaultMethodGroup], "GET#/getMasterchainInfo")
+	restIndexerMethods := specs.GetSpecMethodsByConnectors("ton", []specs.ApiConnectorType{specs.RestIndexer})
+	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/api/v3/masterchainInfo")
+	assert.NotContains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/getMasterchainInfo")
 
 	template, params, ok := specs.MatchRestMethod("ton", "GET#/getAddressBalance")
 	assert.True(t, ok)

@@ -12,14 +12,17 @@ API support, so the chain can be served by nodecore instead of dshackle.
 
 ## Scope
 
-- **In scope:** toncenter-style REST upstreams with **two API generations on
-  two connectors**: the v2 HTTP API (`rest` connector, base URL carries the
-  `/api/v2` prefix) and the v3 indexer (`rest-additional` connector) — the
-  same two-connector mechanism the bitcoin family uses for esplora; the
-  dshackle method surface (v2 REST + `POST /jsonRPC` wrapper + `/api/v3/*`);
-  poll-based head tracking; race-free chain validation via zerostate hashes;
-  liveness health; client labels from the v2 OpenAPI document; archival
-  probe lower bounds.
+- **In scope:** toncenter-style REST upstreams with **two self-contained
+  APIs**: the v2 HTTP API (`rest` connector, base URL carries the `/api/v2`
+  prefix) and the v3 indexer (`rest-additional` connector). Unlike
+  dshackle's `additional_endpoints` kludge, v3 is a first-class citizen with
+  **two deployment modes** (see Deployment modes): split — a standalone v3
+  upstream with fully independent accounting (head, health, chain
+  validation, labels, lower bounds via the v3 API) — and combined — both
+  connectors on one upstream, where accounting is v2-only and the v3
+  connector serves methods only, with a warning logged. The dshackle method
+  surface (v2 REST + `POST /jsonRPC` wrapper + `/api/v3/*`); race-free chain
+  validation via zerostate hashes (v2) / `global_id` (v3).
 - **Out of scope (YAGNI):** WebSocket (none exists in either API); cache
   tag-parsers (`cacheable: false` v1); v3-vs-v2 head divergence detection
   (follow-up); binary-search history-depth detection for non-archival
@@ -85,6 +88,43 @@ v3 (toncenter `ton-indexer`, separate port, advertised via the
   entirely (see Chain validation).
 
 ## Architecture
+
+### Deployment modes: v3 is not "additional"
+
+The v2 API's data window is the liteserver's sliding block retention; the
+v3 window is whatever range the indexer was backfilled with. They are
+independent in both directions — a non-archival liteserver can sit next to a
+genesis-deep index and vice versa — and they fail independently (a stalled
+indexer must not poison the node's health). nodecore's accounting (head,
+health, bounds — all reported to the platform per upstream) cannot express
+two windows on one upstream, so:
+
+- **Split mode (recommended):** two upstreams of chain `ton` — a v2
+  upstream (single `rest` connector) and a **standalone v3 upstream**
+  (single `rest-indexer` connector - a plain type; both APIs already register as
+  separate Consul services). Each has full independent accounting:
+
+  | | v2 upstream | v3 upstream |
+  |---|---|---|
+  | head | `getMasterchainInfo` | `/api/v3/masterchainInfo` |
+  | health | v2 liveness | `last.gen_utime` freshness |
+  | chain validation | zerostate hashes | `last.global_id` (-239/-3) |
+  | labels | `openapi.json` | `doc.json` ("TON Index (Go)") |
+  | lower bounds | `lookupBlock seqno=1` probe | `first.seqno` — advertised directly; **may decrease** on deeper backfill (reuses the ripple `DecreasingBoundDetector` opt-in) |
+
+  Method routing between the two upstreams is automatic: each advertises
+  only the methods its connector type carries.
+- **Combined mode (allowed, warned):** one upstream with both connectors.
+  All accounting is computed from the v2 API; the v3 connector serves the
+  `/api/v3/*` methods and takes part in **no** validations or calculations.
+  A warning is logged at upstream creation stating exactly that.
+
+Shared-machinery changes this requires: a family capability
+removed: instead the v3 connector is the new PLAIN type `rest-indexer` - a
+self-contained indexer API that is legal standalone by construction, needing no
+validation exceptions; it maps to the poll head in
+`createHead`. Other families are unaffected — an esplora-only bitcoin
+upstream is still rejected at config time.
 
 ### Factory and type plumbing
 
@@ -193,6 +233,15 @@ connector-availability filtering, as with esplora).
    exist/is not available`) instead of v2's 404 envelope. Testnet corpus
    impossible (no node); testnet zerostate verified against the public
    endpoint and covered by unit tests — rollout note.
+
+   **Deployment-modes rework validated live 2026-07-20.** Split mode: the
+   standalone v3 upstream tracks its own head via `/api/v3/masterchainInfo`
+   and publishes its own bounds (STATE/BLOCK = the index floor `first.seqno`)
+   while the v2 upstream honestly reports UnknownBound (non-archival
+   liteserver) — two independent accounting profiles on one chain, method
+   routing splitting automatically. Combined mode: the warning fires at
+   upstream creation and all accounting runs via v2 (archival probe →
+   UnknownBound), with `/api/v3/*` methods served as before.
 
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
