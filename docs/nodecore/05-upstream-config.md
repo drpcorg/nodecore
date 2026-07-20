@@ -637,6 +637,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Chain id / `net_version` | EVM | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Confirms the upstream is actually serving the configured chain. Fails at startup remove the upstream from the pool; runtime drift triggers re-removal |
 | Aztec chain validator | Aztec | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the Aztec node's chain-id endpoint |
 | Aptos chain validator | Aptos | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the `chain_id` from the Aptos ledger-info endpoint (`GET /v1`) |
+| Bitcoin chain validator | Bitcoin | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing `getblockhash 0` against the expected genesis hash per chain (`getblockchaininfo.chain` is a secondary signal - it cannot distinguish bitcoin from dogecoin) |
 | `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers` |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
@@ -648,10 +649,13 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Health validator (Beacon) | Beacon Chain | `disable-health-validation` | Calls `GET /eth/v1/node/health` and marks the upstream available only on a 2xx response |
 | Syncing validator (Beacon) | Beacon Chain | `validate-syncing` (set to `false`) | Probes `GET /eth/v1/node/syncing`; marks the upstream `Syncing` when `is_syncing` is true and `Unavailable` when `el_offline` is true |
 | Peers validator (Beacon) | Beacon Chain | `validate-peers` / `min-peers` | Probes `GET /eth/v1/node/peer_count` and marks the upstream immature while connected peers are below `min-peers` |
+| Health validator (Bitcoin) | Bitcoin | `disable-health-validation` | Reads `getblockchaininfo`: `initialblockdownload` or a `headers - blocks` gap beyond the chain's lag threshold marks the upstream `Syncing`. With `validate-peers` on, `getconnectioncount` of zero marks it `Unavailable` |
 | Lower-bound detector | Solana, Algorand, Aztec, Aptos | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
 | Lower-bound detector (Beacon) | Beacon Chain | `disable-lower-bounds-detection` | Binary-searches the earliest retained block, state, epoch (attestation rewards), and blob-sidecar slots so requests against pruned ranges are routed away |
+| Lower-bound detector (Bitcoin) | Bitcoin | `disable-lower-bounds-detection` | Publishes `pruneheight` as the block/transaction lower bound when `getblockchaininfo.pruned` is true, and `1` (archive) otherwise |
 | Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
 | Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
+| Client label detector (Bitcoin) | Bitcoin | `disable-labels-detection` | Parses `getnetworkinfo.subversion` (`/Satoshi:26.1.0/`) into client type and version labels |
 
 `disable-validation` is the master switch and overrides every per-validator flag.
