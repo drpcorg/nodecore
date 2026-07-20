@@ -29,8 +29,8 @@ dshackle.
 
 ## Approach
 
-NEAR follows the **bitcoin family template** (JSON-RPC, poll-only head,
-data-driven method spec): a `near_specific` chain-specific package plus
+NEAR is modelled as a JSON-RPC blockchain family with a poll-only head and
+a data-driven method spec: a `near_specific` chain-specific package plus
 `pkg/methods/specs/near.json`. It is strictly simpler than bitcoin — a single
 `status` call powers health, chain validation, labels and lower bounds; there
 is no esplora-style secondary connector and no method aliases to translate.
