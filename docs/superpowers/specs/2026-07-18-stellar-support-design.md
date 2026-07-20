@@ -200,13 +200,17 @@ No translations, no bans, no aliases, no envelope work.
    before-window `GET /ledgers/1` → 410 `before_history` problem+json,
    `GET /accounts/GINVALID` → 400, all-zeros tx hash → 404, same-asset
    order_book (200), bad trade_aggregations (400); root/fee_stats/accounts
-   shape-identical (live state). FAILs: `POST /transactions` and
-   `/transactions_async` — two nodecore-side blockers: RestHandler rejects
-   non-empty non-JSON bodies ("no valid json"), and the http connector
-   forces `Content-Type: application/json` (Set before client-header Add,
-   Horizon reads the first value) → 415 `unsupported_media_type` even with
-   `tx` in the query string. Also: Horizon root is only reachable as
-   `/queries/{chain}//` — empty rest path falls through to the JSON-RPC
+   shape-identical (live state). The two initial FAILs — `POST
+   /transactions` and `/transactions_async` — exposed two generic REST-path
+   bugs, both fixed and re-verified live the same day: RestHandler rejected
+   non-empty non-JSON bodies (now JSON validity is only enforced when the
+   Content-Type says/implies JSON, so form-urlencoded submissions pass
+   through opaquely), and the connector's default `Content-Type:
+   application/json` stacked ahead of the client's value (client
+   Content-Type now replaces the default). After the fixes both submissions
+   pass through byte-exact (Horizon's own `transaction_malformed` 400).
+   Remaining quirk (follow-up): Horizon root is only reachable as
+   `/queries/{chain}//` — an empty rest path falls through to the JSON-RPC
    parser.
 
 3. **Staged rollout** is deployment-side work, out of scope for this repo.

@@ -295,6 +295,14 @@ func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string
 		if _, taken := h.additionalHeaders[canonical]; taken {
 			continue
 		}
+		// Content-Type is single-valued and applyConfigHeaders pre-sets the
+		// JSON default - a client-declared type (e.g. Horizon's form posts)
+		// must REPLACE it, not stack behind it (upstreams read the first
+		// value).
+		if canonical == "Content-Type" && len(vs) > 0 {
+			req.Header.Set(k, vs[0])
+			continue
+		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
