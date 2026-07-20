@@ -18,8 +18,8 @@ submodule to that commit and the PR lands after the registry merges.
 
 ## Scope
 
-- **In scope:** two self-contained Stellar APIs, deployed in the TON-style
-  split/combined modes:
+- **In scope:** two self-contained Stellar APIs, deployed in split or
+  combined mode (one upstream per API, or both connectors on one upstream):
   - **stellar-rpc** (JSON-RPC 2.0, `json-rpc` connector): the full 12-method
     API; head via `getLatestLedger`, passphrase chain validation, getHealth
     health, version labels, retention-window lower bounds.
@@ -34,10 +34,10 @@ submodule to that commit and the PR lands after the registry merges.
     labels from `horizon_version`, and lower bounds from
     `history_elder_ledger` — which moves **both ways** (retention reaper up,
     `db reingest range` backfill down) and therefore opts into
-    `DecreasingBoundDetector`, like ripple and the ton v3 indexer.
+    `DecreasingBoundDetector`.
   - Combined (json-rpc + rest on one upstream): accounting follows the
     primary connector (json-rpc in default mode), the other connector serves
-    methods only, warning logged — same contract as TON.
+    methods only, and a warning is logged.
 - **Out of scope (YAGNI):** Horizon SSE streaming (`Accept:
   text/event-stream` is per-request opt-in; without it every endpoint serves
   plain JSON, so the REST connector works untouched — an SSE request through

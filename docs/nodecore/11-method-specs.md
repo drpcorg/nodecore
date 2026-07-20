@@ -175,6 +175,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `ripple` | `ripple-json-rpc` |
 | `starknet` | `starknet-json-rpc` |
 | `ton` | `ton-http-v2`, `ton-index-v3` |
+| `stellar` | `stellar-json-rpc`, `stellar-horizon` |
 
 ### Plain specs
 
@@ -183,9 +184,9 @@ Grouped by the transports they declare:
 | `api-connectors` | Specs |
 | --- | --- |
 | `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
-| `json-rpc` | `algorand`, `aztec`, `near-json-rpc`, `ripple-json-rpc`, `starknet-json-rpc`, `tron-json-rpc` |
+| `json-rpc` | `algorand`, `aztec`, `near-json-rpc`, `ripple-json-rpc`, `starknet-json-rpc`, `stellar-json-rpc`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
-| `rest` | `aptos`, `eth-beacon-chain`, `ton-http-v2`, `tron-rest` |
+| `rest` | `aptos`, `eth-beacon-chain`, `stellar-horizon`, `ton-http-v2`, `tron-rest` |
 | `rest-indexer` | `ton-index-v3` |
 | `rest-additional` | `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
