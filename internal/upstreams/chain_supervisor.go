@@ -102,7 +102,7 @@ func (b *BaseChainSupervisor) Start() {
 			select {
 			case <-b.ctx.Done():
 				return
-			case <-time.After(3 * time.Second):
+			case <-time.After(30 * time.Second):
 			}
 
 			b.monitor()
