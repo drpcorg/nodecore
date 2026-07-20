@@ -46,8 +46,9 @@ type BaseChainSupervisor struct {
 	subChainMethods mapset.Set[string]
 
 	validateLag bool
+	syncingLag  int64
 	getUpstream func(string) Upstream
-	lastLag     map[string]int64
+	lastOver    map[string]bool
 
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 }
@@ -84,8 +85,9 @@ func NewBaseChainSupervisor(
 		state:           state,
 		subChainMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
 		validateLag:     validateLag,
+		syncingLag:      chains.GetChain(chain.String()).Settings.Lags.Syncing,
 		getUpstream:     getUpstream,
-		lastLag:         make(map[string]int64),
+		lastOver:        make(map[string]bool),
 		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
 	}
 }
@@ -102,7 +104,7 @@ func (b *BaseChainSupervisor) Start() {
 			select {
 			case <-b.ctx.Done():
 				return
-			case <-time.After(30 * time.Second):
+			case <-time.After(3 * time.Second):
 			}
 
 			b.monitor()
@@ -177,7 +179,7 @@ func (b *BaseChainSupervisor) processEvents() {
 					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
 						upHead := upState.HeadData
 						b.upstreamStates.Delete(event.Id)
-						delete(b.lastLag, event.Id)
+						delete(b.lastOver, event.Id)
 
 						b.updateState()
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
@@ -297,9 +299,15 @@ func (b *BaseChainSupervisor) calculateHeadLags() {
 		}
 
 		if b.validateLag && b.getUpstream != nil {
+			// Push a lag update only when the upstream crosses the syncing
+			// threshold (over -> under or under -> over), not on every per-block
+			// lag change. The derived status only flips at that boundary, so this
+			// bounds emissions to ~2 per syncing episode and keeps the upstream
+			// emitter off the per-block hot path.
 			lag := int64(headLag)
-			if b.lastLag[key] != lag {
-				b.lastLag[key] = lag
+			over := protocol.LagExceeds(lag, b.syncingLag)
+			if b.lastOver[key] != over {
+				b.lastOver[key] = over
 				if up := b.getUpstream(key); up != nil {
 					up.UpdateHeadLag(lag)
 				}

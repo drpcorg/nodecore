@@ -193,4 +193,19 @@ func TestStatusByLag(t *testing.T) {
 	// A non-Available base status is returned unchanged regardless of lag.
 	assert.Equal(t, protocol.Unavailable, protocol.StatusByLag(1000, protocol.Unavailable, syncingLag))
 	assert.Equal(t, protocol.Immature, protocol.StatusByLag(1000, protocol.Immature, syncingLag))
+
+	// A non-positive threshold means "not configured" and disables the
+	// downgrade entirely, so even a huge lag keeps the base status.
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(1000, protocol.Available, 0))
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(1000, protocol.Available, -1))
+}
+
+func TestLagExceeds(t *testing.T) {
+	assert.True(t, protocol.LagExceeds(11, 10))
+	assert.False(t, protocol.LagExceeds(10, 10))
+	assert.False(t, protocol.LagExceeds(0, 10))
+
+	// A non-positive threshold is never exceeded.
+	assert.False(t, protocol.LagExceeds(1000, 0))
+	assert.False(t, protocol.LagExceeds(1000, -1))
 }

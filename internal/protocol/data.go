@@ -318,8 +318,15 @@ func (a AvailabilityStatus) String() string {
 	panic(fmt.Sprintf("unknown status %d", a))
 }
 
+// LagExceeds reports whether a head lag is large enough to matter. A
+// non-positive threshold means "not configured" and disables the check, so an
+// upstream is never downgraded on a chain that has no syncing threshold.
+func LagExceeds(lag, syncingLag int64) bool {
+	return syncingLag > 0 && lag > syncingLag
+}
+
 func StatusByLag(lag int64, avail AvailabilityStatus, syncingLag int64) AvailabilityStatus {
-	if avail == Available && lag > syncingLag {
+	if avail == Available && LagExceeds(lag, syncingLag) {
 		return Syncing
 	}
 	return avail

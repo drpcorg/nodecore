@@ -378,6 +378,12 @@ func (s *lagStub) lastLag() (int64, bool) {
 	return s.lags[len(s.lags)-1], true
 }
 
+func (s *lagStub) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.lags)
+}
+
 func TestChainSupervisorPropagatesHeadLag(t *testing.T) {
 	stubs := map[string]*lagStub{"id1": {}, "id2": {}}
 	getUpstream := func(id string) upstreams.Upstream {
@@ -431,6 +437,42 @@ func TestChainSupervisorDoesNotPropagateHeadLagWhenDisabled(t *testing.T) {
 	assert.Never(t, func() bool {
 		_, ok := stub.lastLag()
 		return ok
+	}, 200*time.Millisecond, 20*time.Millisecond)
+}
+
+// A lag change that keeps the upstream on the same side of the syncing threshold
+// (arbitrum's is 40) must not produce a new push - only threshold crossings do.
+func TestChainSupervisorPropagatesHeadLagOnlyOnThresholdCrossing(t *testing.T) {
+	stubs := map[string]*lagStub{"id1": {}, "id2": {}}
+	getUpstream := func(id string) upstreams.Upstream {
+		if s, ok := stubs[id]; ok {
+			return s
+		}
+		return nil
+	}
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, true, getUpstream)
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	// id1 at 100; id2 raises the leader to 300 → id1 lags 200 (> 40) → one push.
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id1", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
+	publishHeadEvent(chainSupervisor, "id1", protocol.Available, protocol.NewBlockWithHeight(100))
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id2", protocol.Available, protocol.NewBlockWithHeight(300), methodsMock))
+	publishHeadEvent(chainSupervisor, "id2", protocol.Available, protocol.NewBlockWithHeight(300))
+
+	assert.Eventually(t, func() bool {
+		l1, ok := stubs["id1"].lastLag()
+		return ok && l1 == 200
+	}, eventuallyWait, eventuallyTick)
+
+	// id2 pushes the leader further to 500 → id1 now lags 400, still over the
+	// threshold. The over/under state is unchanged, so no additional push fires.
+	publishHeadEvent(chainSupervisor, "id2", protocol.Available, protocol.NewBlockWithHeight(500))
+
+	assert.Never(t, func() bool {
+		return stubs["id1"].count() > 1
 	}, 200*time.Millisecond, 20*time.Millisecond)
 }
 
