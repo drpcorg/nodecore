@@ -289,6 +289,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			upstreamConnectorsInfo.allConnectors,
 			conf.Options,
 		), nil
 	case chains.Ton:

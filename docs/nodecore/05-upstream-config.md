@@ -604,6 +604,15 @@ upstreams:
         url: http://ton-index:8082
 ```
 
+### Stellar deployment modes
+
+Stellar mirrors the TON pattern with its two self-contained APIs: **stellar-rpc** (JSON-RPC 2.0, connector type `json-rpc`) and **Horizon** (REST, connector type `rest` — deprecated by SDF in favor of RPC, but with no shutdown date and a query surface much of which has no RPC equivalent). Their data windows are independent (RPC retention window vs Horizon's `history_elder_ledger`, which the retention reaper moves up and a `db reingest range` backfill can move *down*), as are their failure modes.
+
+- **Split (recommended)** - a stellar-rpc upstream (single `json-rpc` connector) and a Horizon upstream (single `rest` connector, a plain type). Each gets full independent accounting: Horizon's comes entirely from Horizon itself (head via `GET /ledgers?order=desc&limit=1`, health via `GET /health`, chain validation via the root `network_passphrase`, labels from `horizon_version`, lower bounds from `history_elder_ledger` with decrease support).
+- **Combined** - one upstream with both connectors; accounting follows the primary connector (`json-rpc` in `mode: default`), the other serves methods only, a warning is logged.
+
+Horizon's SSE streaming (`Accept: text/event-stream`) is not supported: without that header every Horizon endpoint serves plain JSON and works normally; an SSE request through nodecore will hang until the connector timeout.
+
 ### Tor .onion upstreams
 
 NodeCore supports connecting to upstreams hosted as Tor hidden services (`.onion` addresses) for both `json-rpc` and `websocket` connectors. This provides enhanced privacy and censorship resistance.

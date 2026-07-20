@@ -322,6 +322,39 @@ func TestStellarSpecLoads(t *testing.T) {
 
 	spec = specs.GetSpecMethod("stellar", "loadAccount")
 	assert.Nil(t, spec)
+
+	spec = specs.GetSpecMethod("stellar", "GET#/ledgers")
+	assert.NotNil(t, spec)
+
+	// horizon methods are served via the rest connector (a plain type - a
+	// standalone horizon upstream is legal), so they resolve only for
+	// upstreams that have it; stellar-rpc methods stay json-rpc-only
+	jsonRpcMethods := specs.GetSpecMethodsByConnectors("stellar", []specs.ApiConnectorType{specs.JsonRpcConnector})
+	assert.Contains(t, jsonRpcMethods[specs.DefaultMethodGroup], "getLatestLedger")
+	assert.NotContains(t, jsonRpcMethods[specs.DefaultMethodGroup], "GET#/ledgers")
+
+	restMethods := specs.GetSpecMethodsByConnectors("stellar", []specs.ApiConnectorType{specs.RestConnector})
+	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "GET#/ledgers")
+	assert.NotContains(t, restMethods[specs.DefaultMethodGroup], "getLatestLedger")
+
+	template, params, ok := specs.MatchRestMethod("stellar", "GET#/accounts/GABC123/transactions")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/accounts/*/transactions", template)
+	assert.Equal(t, []string{"GABC123"}, params)
+
+	// /paths terminates on the same trie node that owns the strict-receive /
+	// strict-send literal children; there is no wildcard under /paths, so the
+	// static sub-routes always win and the shorter template still matches on
+	// its own
+	template, params, ok = specs.MatchRestMethod("stellar", "GET#/paths/strict-receive")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/paths/strict-receive", template)
+	assert.Empty(t, params)
+
+	template, params, ok = specs.MatchRestMethod("stellar", "GET#/paths")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/paths", template)
+	assert.Empty(t, params)
 }
 
 func TestRippleSpecLoads(t *testing.T) {

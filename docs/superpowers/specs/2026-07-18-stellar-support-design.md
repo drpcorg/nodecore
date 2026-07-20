@@ -18,16 +18,39 @@ submodule to that commit and the PR lands after the registry merges.
 
 ## Scope
 
-- **In scope:** stellar-rpc JSON-RPC 2.0 upstreams (HTTP POST only, no auth);
-  the full 12-method API; poll-based head tracking; passphrase chain
-  validation; getHealth-based health; version labels; retention-window lower
-  bounds.
-- **Out of scope (YAGNI):** Horizon (we run stellar-rpc only); WS (the
-  server has none); cache tag-parsers (`cacheable: false` v1); broadcast
-  dispatch for `sendTransaction` (safe — identical envelopes are idempotent,
-  core answers `DUPLICATE` — but needs status reconciliation; v1 has one
-  node per network anyway); retention-aware retry of `getTransaction`
-  `NOT_FOUND` results (node-local, meaningful only with mixed-depth pools).
+- **In scope:** two self-contained Stellar APIs, deployed in the TON-style
+  split/combined modes:
+  - **stellar-rpc** (JSON-RPC 2.0, `json-rpc` connector): the full 12-method
+    API; head via `getLatestLedger`, passphrase chain validation, getHealth
+    health, version labels, retention-window lower bounds.
+  - **Horizon** (`rest` connector): the full public REST surface (~45 path
+    templates — deprecated by SDF in favor of RPC but with no shutdown date,
+    still on maintenance releases, and much of its query surface has NO RPC
+    equivalent). Standalone horizon upstream = single `rest` connector (a
+    plain type, legal by construction); its accounting comes entirely from
+    Horizon itself: head via `GET /ledgers?order=desc&limit=1`
+    (hash+sequence), health via `GET /health` (database_connected / core_up
+    / core_synced), chain validation via the root `network_passphrase`,
+    labels from `horizon_version`, and lower bounds from
+    `history_elder_ledger` — which moves **both ways** (retention reaper up,
+    `db reingest range` backfill down) and therefore opts into
+    `DecreasingBoundDetector`, like ripple and the ton v3 indexer.
+  - Combined (json-rpc + rest on one upstream): accounting follows the
+    primary connector (json-rpc in default mode), the other connector serves
+    methods only, warning logged — same contract as TON.
+- **Out of scope (YAGNI):** Horizon SSE streaming (`Accept:
+  text/event-stream` is per-request opt-in; without it every endpoint serves
+  plain JSON, so the REST connector works untouched — an SSE request through
+  nodecore will just hang until the connector timeout; documented, follow-up
+  with WS/SSE machinery); friendbot (a testnet 307 redirect to an external
+  service, not node data); admin endpoints (separate listener anyway); cache
+  tag-parsers (`cacheable: false` v1); broadcast dispatch for submissions
+  (both APIs are idempotent by envelope hash — RPC answers `DUPLICATE`,
+  Horizon returns the stored result — but reconciliation is a follow-up);
+  retention-aware retry of `NOT_FOUND`/`before_history` (410) answers
+  (node-local, meaningful only with mixed-depth pools — Horizon's
+  `before_history` is the ready-made retry-on-deeper-node signal for that
+  follow-up).
 
 ## Approach
 
@@ -123,6 +146,19 @@ broadcast yet):
 getHealth, getNetwork, getVersionInfo, getLatestLedger, getLedgers,
 getLedgerEntries, getEvents, getTransaction, getTransactions, getFeeStats,
 sendTransaction, simulateTransaction.
+
+A second spec `stellar-horizon.json` (`api-connectors: ["rest"]`) carries the
+Horizon REST surface: root `GET#/`, `GET#/health`, `GET#/fee_stats`,
+accounts (+ transactions/operations/payments/effects/trades/offers/data
+sub-resources), ledgers (+subs), transactions (+subs, `POST#/transactions`,
+`POST#/transactions_async`), operations/payments/effects, offers (+trades),
+order_book, trades, trade_aggregations, assets, claimable_balances (+subs),
+liquidity_pools (+subs), paths (strict-receive/strict-send + the legacy
+`GET#/paths` alias). Horizon errors are RFC-7807 `problem+json` with the
+status mirrored in the body — nodecore's REST error path classifies them
+as-is and passes bodies through byte-exact (`before_history` 410 = the
+node-local retention miss; `stale_history`/`still_ingesting` 503 = node
+health). The `stellar.json` bundle imports both specs.
 
 No translations, no bans, no aliases, no envelope work.
 
