@@ -93,6 +93,18 @@ func TestStellarHorizonHealthSyncingOnCoreNotSynced(t *testing.T) {
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
+// A live syncing Horizon answers /health with HTTP 503 while the body still
+// carries the booleans - the validator must read the body through the
+// transport error and report Syncing, not Unavailable (observed on a real
+// node during its initial ingest).
+func TestStellarHorizonHealthSyncingOnCoreNotSyncedWith503(t *testing.T) {
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
+		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, false), 503, protocol.Rest))
+	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	assert.Equal(t, protocol.Syncing, v.Validate())
+}
+
 func TestStellarHorizonHealthUnavailableOnDatabaseDisconnected(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).

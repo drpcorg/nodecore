@@ -55,11 +55,16 @@ func FetchStellarHorizonHealth(connector connectors.ApiConnector, chain chains.C
 	request := protocol.NewInternalUpstreamRestRequest("GET#/health", nil, chain)
 
 	response := connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return nil, response.GetError()
-	}
+	// Horizon answers /health with HTTP 503 while unhealthy (e.g. its captive
+	// core is still syncing) but the body still carries the health booleans -
+	// parse the body regardless of the status so the caller can distinguish
+	// "syncing" from "down". Only fall back to the transport error when the
+	// body is not the health document.
 	var health StellarHorizonHealth
 	if err := sonic.Unmarshal(response.ResponseResult(), &health); err != nil {
+		if response.HasError() {
+			return nil, response.GetError()
+		}
 		return nil, err
 	}
 	return &health, nil
