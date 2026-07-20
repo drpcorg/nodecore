@@ -191,6 +191,23 @@ No translations, no bans, no aliases, no envelope work.
    ledger: X and the latest ledger: Y for this rpc instance" (live-window
    numbers — never compare byte-exact), and `getEvents` does accept
    `endLedger`. Bounds published live (BLOCK=TX=oldestLedger).
+   **Horizon flavor executed 2026-07-20 against our own testnet Horizon
+   (27.0.0, ~420-ledger history window) — 20 PASS / 2 FAIL of 22.** Upstream
+   AVAILABLE, bounds BLOCK=TX=3705280 == live `history_elder_ledger`, head
+   parsed. Byte-exact through nodecore: ledgers list records, ledger-by-seq
+   + its transactions/operations/effects/payments, tx-by-hash +
+   operations/effects, account transactions/operations, health,
+   before-window `GET /ledgers/1` → 410 `before_history` problem+json,
+   `GET /accounts/GINVALID` → 400, all-zeros tx hash → 404, same-asset
+   order_book (200), bad trade_aggregations (400); root/fee_stats/accounts
+   shape-identical (live state). FAILs: `POST /transactions` and
+   `/transactions_async` — two nodecore-side blockers: RestHandler rejects
+   non-empty non-JSON bodies ("no valid json"), and the http connector
+   forces `Content-Type: application/json` (Set before client-header Add,
+   Horizon reads the first value) → 415 `unsupported_media_type` even with
+   `tx` in the query string. Also: Horizon root is only reachable as
+   `/queries/{chain}//` — empty rest path falls through to the JSON-RPC
+   parser.
 
 3. **Staged rollout** is deployment-side work, out of scope for this repo.
 
