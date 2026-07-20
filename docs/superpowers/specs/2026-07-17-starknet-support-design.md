@@ -28,8 +28,8 @@ a starknet upstream fails with `no method spec with name ''`.
 ## Approach
 
 Starknet is the most standard family so far: plain JSON-RPC 2.0 with proper
-top-level errors, no envelope quirks, no translations. It follows the
-near/bitcoin template directly.
+top-level errors, no envelope quirks, no translations. It is a plain JSON-RPC
+family with a poll-only head and a data-driven method spec.
 
 ### Verified live API shapes (from our production sepolia node, juno v0.16.4)
 
