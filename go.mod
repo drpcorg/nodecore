@@ -25,7 +25,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jarcoal/httpmock v1.4.1
 	github.com/juju/ratelimit v1.0.2
-	github.com/klauspost/compress v1.19.0
+	github.com/klauspost/compress v1.19.1
 	github.com/labstack/echo-contrib v0.50.1
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/pashagolub/pgxmock/v4 v4.9.0
@@ -43,7 +43,7 @@ require (
 	golang.org/x/crypto v0.54.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sync v0.22.0
-	google.golang.org/grpc v1.82.0
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
