@@ -50,13 +50,13 @@ jobs:
         run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Download Ubuntu artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nodecore-ubuntu-latest-1.26.5-${{ steps.short_sha.outputs.sha }}
           path: ./artifacts/ubuntu
 
       - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nodecore-macos-latest-1.26.5-${{ steps.short_sha.outputs.sha }}
           path: ./artifacts/macos
