@@ -38,7 +38,7 @@ func createValidEvent(id string, status protocol.AvailabilityStatus, head protoc
 // requires some sub-state to actually change - a node that comes back
 // identical to how it left would never be re-added.
 func TestChainSupervisorValidUpstreamEventRestoresRemovedUpstream(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -85,7 +85,7 @@ func TestChainSupervisorValidUpstreamEventRestoresRemovedUpstream(t *testing.T) 
 // A ValidUpstreamEvent without a state snapshot (defensive case) must not
 // panic or register a nil state.
 func TestChainSupervisorValidUpstreamEventWithoutStateIsIgnored(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 
 	go chainSupervisor.Start()
 

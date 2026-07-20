@@ -182,7 +182,6 @@ func (b *BaseUpstreamSupervisor) processEvents() {
 						upstream.Resume()
 					}
 				}
-				fmt.Println(event.Id, b.GetUpstream(event.Id).GetUpstreamState())
 
 				chainSupervisor.PublishUpstreamEvent(event)
 			}
