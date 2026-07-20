@@ -36,8 +36,8 @@ EVM family. This design is about native rippled.
 
 ## Approach
 
-Ripple follows the bitcoin/near family template (JSON-RPC, poll-only head,
-data-driven method spec) with **two XRPL-specific twists**:
+Ripple is a JSON-RPC blockchain family with a poll-only head and a
+data-driven method spec, with **two XRPL-specific twists**:
 
 1. **Non-standard envelope.** rippled HTTP API is `{"method", "params":
    [{one object}]}` — no `jsonrpc`, no `id`; responses are `{"result": {...,
