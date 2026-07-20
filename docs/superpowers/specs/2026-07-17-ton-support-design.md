@@ -34,7 +34,8 @@ API support, so the chain can be served by nodecore instead of dshackle.
 
 ## Approach
 
-TON is a REST family (aptos template) with the bitcoin two-connector twist.
+TON is a REST blockchain family whose two self-contained APIs ride on two
+connector types.
 No translations, no envelope surgery.
 
 ### Verified live API shapes (from our production mainnet node)
@@ -186,7 +187,7 @@ Period 15 min. Our only node today is non-archival → expect UnknownBound.
 
 ### Method spec (`pkg/methods/specs/ton.json`)
 
-Bundle of two specs (bitcoin/esplora pattern):
+Bundle of two specs, one per API:
 
 - `ton-http-v2.json`, `api-connectors: ["rest"]` — dshackle's v2 surface:
   the account/block/transaction/config GET methods, `POST#/runGetMethod`,
