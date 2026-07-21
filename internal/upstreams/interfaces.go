@@ -34,6 +34,7 @@ type ChainSupervisor interface {
 	GetUpstreamState(upstreamId string) *protocol.UpstreamState
 	GetSortedUpstreamIds(filterFunc FilterUpstream, sortFunc SortUpstream) []string
 	GetUpstreamIds() []string
+	NextIndex() uint64
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
@@ -69,6 +70,7 @@ type Upstream interface {
 	PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64
 
 	UpdateHead(height, slot uint64)
+	UpdateHeadLag(lag int64)
 	UpdateBlock(block protocol.Block, blockType protocol.BlockType)
 	UpdateLowerBound(data protocol.LowerBoundData)
 	BanMethod(method string)

@@ -75,7 +75,7 @@ func gaugeValue(t *testing.T, chain chains.Chain, method, upstreamId string) flo
 
 func newChainSupervisorWithUpstreams(t *testing.T, chain chains.Chain, methods *mocks.MethodsMock, ids ...string) upstreams.ChainSupervisor {
 	t.Helper()
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chain, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chain, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	go chainSupervisor.Start()
 
 	for _, id := range ids {

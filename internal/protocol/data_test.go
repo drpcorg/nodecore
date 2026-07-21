@@ -179,3 +179,33 @@ func TestLabelsCopy(t *testing.T) {
 	assert.Equal(t, "archive", copiedTier)
 	assert.NotSame(t, labels, copiedLabels)
 }
+
+func TestStatusByLag(t *testing.T) {
+	syncingLag := int64(10)
+
+	// Available with lag within the threshold stays Available.
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(0, protocol.Available, syncingLag))
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(10, protocol.Available, syncingLag))
+
+	// Available with lag beyond the threshold is downgraded to Syncing.
+	assert.Equal(t, protocol.Syncing, protocol.StatusByLag(11, protocol.Available, syncingLag))
+
+	// A non-Available base status is returned unchanged regardless of lag.
+	assert.Equal(t, protocol.Unavailable, protocol.StatusByLag(1000, protocol.Unavailable, syncingLag))
+	assert.Equal(t, protocol.Immature, protocol.StatusByLag(1000, protocol.Immature, syncingLag))
+
+	// A non-positive threshold means "not configured" and disables the
+	// downgrade entirely, so even a huge lag keeps the base status.
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(1000, protocol.Available, 0))
+	assert.Equal(t, protocol.Available, protocol.StatusByLag(1000, protocol.Available, -1))
+}
+
+func TestLagExceeds(t *testing.T) {
+	assert.True(t, protocol.LagExceeds(11, 10))
+	assert.False(t, protocol.LagExceeds(10, 10))
+	assert.False(t, protocol.LagExceeds(0, 10))
+
+	// A non-positive threshold is never exceeded.
+	assert.False(t, protocol.LagExceeds(1000, 0))
+	assert.False(t, protocol.LagExceeds(1000, -1))
+}

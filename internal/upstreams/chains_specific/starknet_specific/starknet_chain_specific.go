@@ -31,6 +31,7 @@ type StarknetChainSpecificObject struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	options         *chains.Options
+	pollInterval    time.Duration
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
@@ -41,6 +42,7 @@ func NewStarknetChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	pollInterval time.Duration,
 	options *chains.Options,
 ) *StarknetChainSpecificObject {
 	return &StarknetChainSpecificObject{
@@ -48,6 +50,7 @@ func NewStarknetChainSpecificObject(
 		upstreamId:      upstreamId,
 		connector:       connector,
 		options:         options,
+		pollInterval:    pollInterval,
 		internalTimeout: options.InternalTimeout,
 		labelsDelay:     options.ValidationInterval * 5,
 		configuredChain: configuredChain,
@@ -55,7 +58,16 @@ func NewStarknetChainSpecificObject(
 }
 
 func (s *StarknetChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return nil
+	return blocks.NewBaseBlockProcessor(
+		s.ctx,
+		s.upstreamId,
+		s.pollInterval,
+		s.internalTimeout,
+		s.options.FinalizedBlockDetectionDisabled(),
+		true, // starknet has no "safe" block concept, only l2/l1 acceptance
+		s.connector,
+		s,
+	)
 }
 
 func (s *StarknetChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -70,18 +82,14 @@ func (s *StarknetChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
 }
 
-func (s *StarknetChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
-	return caps.DefaultCapDetectors(s.upstreamId, input.WsConnector)
+func (s *StarknetChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
+	// no ws transport in v1 scope, so no ws-derived caps can ever be asserted
+	return nil
 }
 
 func (s *StarknetChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
-		starknet_bounds.NewStarknetLowerBoundDetector(
-			s.upstreamId,
-			s.configuredChain.Chain,
-			s.internalTimeout,
-			s.connector,
-		),
+		starknet_bounds.NewStarknetLowerBoundDetector(s.upstreamId),
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(
 		s.ctx,
@@ -114,13 +122,25 @@ func (s *StarknetChainSpecificObject) SettingsValidators() []validations.Validat
 	}
 }
 
-// GetLatestBlock polls starknet_getBlockWithTxHashes("latest") - the
-// L2-finalized head, same source dshackle used. blockHashAndNumber would be
-// cheaper but lacks parent_hash.
+// GetLatestBlock polls starknet_getBlockWithTxHashes("latest") - the newest
+// ACCEPTED_ON_L2 block, same source dshackle used. blockHashAndNumber would
+// be cheaper but lacks parent_hash.
 func (s *StarknetChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
+	return s.fetchBlockByTag(ctx, "latest")
+}
+
+// GetFinalizedBlock polls the "l1_accepted" tag (RPC spec >= 0.9): the newest
+// block already ACCEPTED_ON_L1, which lags "latest" by hours. On pre-0.9
+// upstreams the tag errors out and the block processor disables finalized
+// detection for them.
+func (s *StarknetChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
+	return s.fetchBlockByTag(ctx, "l1_accepted")
+}
+
+func (s *StarknetChainSpecificObject) fetchBlockByTag(ctx context.Context, tag string) (protocol.Block, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"starknet_getBlockWithTxHashes",
-		[]any{"latest"},
+		[]any{tag},
 		s.configuredChain.Chain,
 	)
 	if err != nil {
@@ -133,15 +153,9 @@ func (s *StarknetChainSpecificObject) GetLatestBlock(ctx context.Context) (proto
 
 	block, err := s.ParseBlock(response.ResponseResult())
 	if err != nil {
-		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the starknet latest block: %w", err)
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the starknet %s block: %w", tag, err)
 	}
 	return block, nil
-}
-
-// GetFinalizedBlock delegates to GetLatestBlock; a distinct l1_accepted head
-// is a follow-up no consumer asks for today.
-func (s *StarknetChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
-	return s.GetLatestBlock(ctx)
 }
 
 // ParseBlock expects the payload shape of starknet_getBlockWithTxHashes:

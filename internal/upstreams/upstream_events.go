@@ -14,6 +14,12 @@ import (
 func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
 	validUpstream := initialValid
+	// baseAvail is the availability reported by health probes (setStatus),
+	// tracked here rather than in the shared UpstreamState because only the
+	// derived effective availability is of interest to consumers. It is combined
+	// with the upstream's current head lag (u.headLag) to derive the effective
+	// availability published on UpstreamState.Status.
+	baseAvail := u.upstreamState.Load().Status
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,6 +62,19 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Remove(stateEvent.Method)
 				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+			case *protocol.StatusUpstreamStateEvent:
+				if !validUpstream {
+					continue
+				}
+				if stateEvent.Lag == nil {
+					baseAvail = stateEvent.Status
+				}
+				newAvail := protocol.StatusByLag(u.headLag.Load(), baseAvail, u.configuredChain.Settings.Lags.Syncing)
+				if newAvail != state.Status {
+					state.Status = newAvail
+					u.publishUpstreamEvent(state, eventType)
+				}
+				continue
 			case *protocol.HeadUpstreamStateEvent:
 				state = stateEvent.ProcessEvent(state)
 				eventType = &protocol.HeadUpstreamEvent{Status: state.Status, Head: state.HeadData}
@@ -76,7 +95,7 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 func (u *BaseUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
 		Id:        u.id,
-		Chain:     u.chain,
+		Chain:     u.configuredChain.Chain,
 		EventType: eventType,
 	}
 }

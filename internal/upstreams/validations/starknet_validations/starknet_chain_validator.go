@@ -39,6 +39,11 @@ func NewStarknetChainValidator(
 func (s *StarknetChainValidator) Validate() validations.ValidationSettingResult {
 	chainId, err := s.fetchChainId()
 	if err != nil {
+		if errors.Is(err, errStarknetEmptyChainId) {
+			// no chain id means we can't tell what network the node is on - unusable as configured
+			log.Error().Err(err).Msgf("failed to validate the chain of starknet upstream '%s'", s.upstreamId)
+			return validations.FatalSettingError
+		}
 		log.Error().Err(err).Msgf("failed to fetch starknet chain id for upstream '%s'", s.upstreamId)
 		return validations.SettingsError
 	}

@@ -2,7 +2,6 @@ package near_validations
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -13,36 +12,56 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var errNearNoPeers = errors.New("near node has no active peers")
-
-type NearHealthValidator struct {
-	upstreamId      string
+// nearStatusClient holds what a `status` call needs; validators embed it and
+// call fetchNearStatus without passing params around.
+type nearStatusClient struct {
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
-	validatePeers   bool
 }
 
-func NewNearHealthValidator(
+func (n *nearStatusClient) fetchNearStatus() (*NearStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), n.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []any{}, n.chain.Chain)
+	if err != nil {
+		return nil, err
+	}
+	response := n.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return nil, response.GetError()
+	}
+	var status NearStatus
+	if err := sonic.Unmarshal(response.ResponseResult(), &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// NearSyncingValidator checks the node's own sync state via `status`:
+// the explicit syncing flag plus a stale-head guard.
+type NearSyncingValidator struct {
+	nearStatusClient
+	upstreamId string
+}
+
+func NewNearSyncingValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	internalTimeout time.Duration,
-	validatePeers bool,
-) *NearHealthValidator {
-	return &NearHealthValidator{
-		upstreamId:      upstreamId,
-		connector:       connector,
-		chain:           chain,
-		internalTimeout: internalTimeout,
-		validatePeers:   validatePeers,
+) *NearSyncingValidator {
+	return &NearSyncingValidator{
+		nearStatusClient: nearStatusClient{connector: connector, chain: chain, internalTimeout: internalTimeout},
+		upstreamId:       upstreamId,
 	}
 }
 
-func (n *NearHealthValidator) Validate() protocol.AvailabilityStatus {
-	status, err := fetchNearStatus(n.connector, n.chain.Chain, n.internalTimeout)
+func (n *NearSyncingValidator) Validate() protocol.AvailabilityStatus {
+	status, err := n.fetchNearStatus()
 	if err != nil {
-		log.Error().Err(err).Msgf("near upstream '%s' health validation failed", n.upstreamId)
+		log.Error().Err(err).Msgf("near upstream '%s' syncing validation failed", n.upstreamId)
 		return protocol.Unavailable
 	}
 	if status.SyncInfo.Syncing {
@@ -64,56 +83,7 @@ func (n *NearHealthValidator) Validate() protocol.AvailabilityStatus {
 			}
 		}
 	}
-	if n.validatePeers {
-		peers, err := n.fetchActivePeers()
-		if err != nil {
-			log.Error().Err(err).Msgf("failed to fetch near network info for upstream '%s'", n.upstreamId)
-			return protocol.Unavailable
-		}
-		if peers == 0 {
-			log.Error().Err(errNearNoPeers).Msgf("near upstream '%s' has no active peers", n.upstreamId)
-			return protocol.Unavailable
-		}
-	}
 	return protocol.Available
-}
-
-func (n *NearHealthValidator) fetchActivePeers() (uint64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), n.internalTimeout)
-	defer cancel()
-
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("network_info", []any{}, n.chain.Chain)
-	if err != nil {
-		return 0, err
-	}
-	response := n.connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return 0, response.GetError()
-	}
-	var info nearNetworkInfo
-	if err := sonic.Unmarshal(response.ResponseResult(), &info); err != nil {
-		return 0, err
-	}
-	return info.NumActivePeers, nil
-}
-
-func fetchNearStatus(connector connectors.ApiConnector, chain chains.Chain, timeout time.Duration) (*NearStatus, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []any{}, chain)
-	if err != nil {
-		return nil, err
-	}
-	response := connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return nil, response.GetError()
-	}
-	var status NearStatus
-	if err := sonic.Unmarshal(response.ResponseResult(), &status); err != nil {
-		return nil, err
-	}
-	return &status, nil
 }
 
 type NearStatus struct {
@@ -133,8 +103,4 @@ type NearSyncInfo struct {
 	Syncing             bool   `json:"syncing"`
 }
 
-type nearNetworkInfo struct {
-	NumActivePeers uint64 `json:"num_active_peers"`
-}
-
-var _ validations.HealthValidator = (*NearHealthValidator)(nil)
+var _ validations.HealthValidator = (*NearSyncingValidator)(nil)

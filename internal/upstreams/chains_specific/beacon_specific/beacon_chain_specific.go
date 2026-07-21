@@ -64,7 +64,7 @@ func NewBeaconChainSpecificObject(
 // GetFinalizedBlock (GET /eth/v1/beacon/headers/finalized). Safe-block detection
 // is disabled - beacon has no "safe" head and doesn't implement GetSafeBlock.
 func (b *BeaconChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewEthLikeBlockProcessor(
+	return blocks.NewBaseBlockProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.pollInterval,
