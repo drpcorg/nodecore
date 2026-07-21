@@ -261,6 +261,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	case chains.Ripple:

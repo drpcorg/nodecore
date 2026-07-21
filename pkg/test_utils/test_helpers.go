@@ -19,6 +19,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -170,7 +171,7 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -242,6 +243,16 @@ func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnecto
 	return aztec_specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
 }
 
+func NewNearChainSpecific(ctx context.Context, connector connectors.ApiConnector) *near_specific.NearChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return near_specific.NewNearChainSpecificObject(ctx, chains.GetChain("near"), "id", connector, time.Second, options)
+}
+
 func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConnector) *starknet_specific.StarknetChainSpecificObject {
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
@@ -302,7 +313,7 @@ func newTestChainOptions() *chains.Options {
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 
 	go chainSupervisor.Start()
 

@@ -51,7 +51,6 @@ func TestNearLowerBoundDetector_SupportedTypesAndPeriod(t *testing.T) {
 		[]protocol.LowerBoundType{
 			protocol.StateBound,
 			protocol.BlockBound,
-			protocol.UnknownBound,
 		},
 		detector.SupportedTypes(),
 	)
@@ -74,23 +73,19 @@ func TestNearLowerBoundDetector_EarliestHeightReturnsStateAndBlockBounds(t *test
 	assert.Equal(t, int64(207157933), got[protocol.BlockBound])
 }
 
-func TestNearLowerBoundDetector_ErrorWithCacheRetainsCachedBound(t *testing.T) {
+func TestNearLowerBoundDetector_RetriesTransientErrorThenSucceeds(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
-		Return(nearStatusResponse(207157933)).
+		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).
 		Once()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
-		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError()))
+		Return(nearStatusResponse(207157933))
 
 	detector := near_bounds.NewNearLowerBoundDetector("id", chains.NEAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 2)
-
-	result, err = detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 	got := boundsByType(t, result)
@@ -98,7 +93,7 @@ func TestNearLowerBoundDetector_ErrorWithCacheRetainsCachedBound(t *testing.T) {
 	assert.Equal(t, int64(207157933), got[protocol.BlockBound])
 }
 
-func TestNearLowerBoundDetector_ErrorWithoutCacheEmitsUnknownBound(t *testing.T) {
+func TestNearLowerBoundDetector_ErrorReturnsError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
@@ -107,13 +102,11 @@ func TestNearLowerBoundDetector_ErrorWithoutCacheEmitsUnknownBound(t *testing.T)
 	detector := near_bounds.NewNearLowerBoundDetector("id", chains.NEAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.UnknownBound, result[0].Type)
-	assert.Equal(t, int64(0), result[0].Bound)
+	require.Error(t, err)
+	assert.Nil(t, result)
 }
 
-func TestNearLowerBoundDetector_ZeroEarliestHeightFallsBack(t *testing.T) {
+func TestNearLowerBoundDetector_ZeroEarliestHeightReturnsError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
@@ -122,13 +115,11 @@ func TestNearLowerBoundDetector_ZeroEarliestHeightFallsBack(t *testing.T) {
 	detector := near_bounds.NewNearLowerBoundDetector("id", chains.NEAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.UnknownBound, result[0].Type)
-	assert.Equal(t, int64(0), result[0].Bound)
+	require.ErrorContains(t, err, "no earliest_block_height")
+	assert.Nil(t, result)
 }
 
-func TestNearLowerBoundDetector_AbsentEarliestHeightFallsBack(t *testing.T) {
+func TestNearLowerBoundDetector_AbsentEarliestHeightReturnsError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
@@ -137,32 +128,6 @@ func TestNearLowerBoundDetector_AbsentEarliestHeightFallsBack(t *testing.T) {
 	detector := near_bounds.NewNearLowerBoundDetector("id", chains.NEAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.UnknownBound, result[0].Type)
-	assert.Equal(t, int64(0), result[0].Bound)
-}
-
-func TestNearLowerBoundDetector_ZeroEarliestHeightRetainsCachedBound(t *testing.T) {
-	connector := mocks.NewConnectorMock()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
-		Return(nearStatusResponse(207157933)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchNearStatusRequest())).
-		Return(nearStatusResponse(0))
-
-	detector := near_bounds.NewNearLowerBoundDetector("id", chains.NEAR, time.Second, connector)
-
-	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 2)
-
-	result, err = detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 2)
-	got := boundsByType(t, result)
-	assert.Equal(t, int64(207157933), got[protocol.StateBound])
-	assert.Equal(t, int64(207157933), got[protocol.BlockBound])
+	require.ErrorContains(t, err, "no earliest_block_height")
+	assert.Nil(t, result)
 }

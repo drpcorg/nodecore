@@ -14,10 +14,8 @@ import (
 var errNearEmptyChainId = errors.New("near node returned empty chain_id")
 
 type NearChainValidator struct {
-	upstreamId      string
-	connector       connectors.ApiConnector
-	chain           *chains.ConfiguredChain
-	internalTimeout time.Duration
+	nearStatusClient
+	upstreamId string
 }
 
 func NewNearChainValidator(
@@ -27,22 +25,21 @@ func NewNearChainValidator(
 	internalTimeout time.Duration,
 ) *NearChainValidator {
 	return &NearChainValidator{
-		upstreamId:      upstreamId,
-		connector:       connector,
-		chain:           chain,
-		internalTimeout: internalTimeout,
+		nearStatusClient: nearStatusClient{connector: connector, chain: chain, internalTimeout: internalTimeout},
+		upstreamId:       upstreamId,
 	}
 }
 
 func (n *NearChainValidator) Validate() validations.ValidationSettingResult {
-	status, err := fetchNearStatus(n.connector, n.chain.Chain, n.internalTimeout)
+	status, err := n.fetchNearStatus()
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch near status for upstream '%s'", n.upstreamId)
 		return validations.SettingsError
 	}
 	if status.ChainId == "" {
+		// no chain_id means we can't tell what network the node is on - unusable as configured
 		log.Error().Err(errNearEmptyChainId).Msgf("failed to validate the chain of near upstream '%s'", n.upstreamId)
-		return validations.SettingsError
+		return validations.FatalSettingError
 	}
 	// for near chains.yaml holds network-name chain-ids: mainnet/testnet/betanet
 	if strings.EqualFold(status.ChainId, n.chain.ChainId) {

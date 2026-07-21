@@ -24,7 +24,7 @@ import (
 )
 
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	specMethod := specs.MethodWithSettings("eth_superTest", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(false)}, nil)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
@@ -55,7 +55,7 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 }
 
 func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -143,7 +143,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 		},
 	}
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet("eth_superTest"))
 
@@ -339,7 +339,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
 	_ = specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 

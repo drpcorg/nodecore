@@ -58,7 +58,7 @@ func NewStarknetChainSpecificObject(
 }
 
 func (s *StarknetChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewEthLikeBlockProcessor(
+	return blocks.NewBaseBlockProcessor(
 		s.ctx,
 		s.upstreamId,
 		s.pollInterval,
