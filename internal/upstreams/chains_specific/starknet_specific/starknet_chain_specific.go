@@ -103,11 +103,13 @@ func (s *StarknetChainSpecificObject) HealthValidators() []validations.Validator
 	if s.options != nil && *s.options.DisableHealthValidation {
 		return []validations.Validator[protocol.AvailabilityStatus]{}
 	}
-	return []validations.Validator[protocol.AvailabilityStatus]{
-		starknet_validations.NewStarknetHealthValidator(
+	validators := make([]validations.Validator[protocol.AvailabilityStatus], 0)
+	if s.options != nil && s.options.ValidateSyncing != nil && *s.options.ValidateSyncing {
+		validators = append(validators, starknet_validations.NewStarknetSyncingValidator(
 			s.upstreamId, s.connector, s.configuredChain, s.internalTimeout,
-		),
+		))
 	}
+	return validators
 }
 
 func (s *StarknetChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {

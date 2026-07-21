@@ -16,20 +16,20 @@ import (
 )
 
 // no peer validation: juno syncs from the feeder gateway, there is no p2p peer count
-type StarknetHealthValidator struct {
+type StarknetSyncingValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
 }
 
-func NewStarknetHealthValidator(
+func NewStarknetSyncingValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	internalTimeout time.Duration,
-) *StarknetHealthValidator {
-	return &StarknetHealthValidator{
+) *StarknetSyncingValidator {
+	return &StarknetSyncingValidator{
 		upstreamId:      upstreamId,
 		connector:       connector,
 		chain:           chain,
@@ -37,10 +37,10 @@ func NewStarknetHealthValidator(
 	}
 }
 
-func (s *StarknetHealthValidator) Validate() protocol.AvailabilityStatus {
+func (s *StarknetSyncingValidator) Validate() protocol.AvailabilityStatus {
 	syncStatus, err := s.fetchSyncStatus()
 	if err != nil {
-		log.Error().Err(err).Msgf("starknet upstream '%s' health validation failed", s.upstreamId)
+		log.Error().Err(err).Msgf("starknet upstream '%s' syncing validation failed", s.upstreamId)
 		return protocol.Unavailable
 	}
 	if syncStatus.syncObject == nil {
@@ -96,7 +96,7 @@ func (n *starknetBlockNum) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *StarknetHealthValidator) fetchSyncStatus() (*starknetSyncStatus, error) {
+func (s *StarknetSyncingValidator) fetchSyncStatus() (*starknetSyncStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
 	defer cancel()
 
@@ -120,4 +120,4 @@ func (s *StarknetHealthValidator) fetchSyncStatus() (*starknetSyncStatus, error)
 	return &starknetSyncStatus{syncObject: &syncObject}, nil
 }
 
-var _ validations.HealthValidator = (*StarknetHealthValidator)(nil)
+var _ validations.HealthValidator = (*StarknetSyncingValidator)(nil)
