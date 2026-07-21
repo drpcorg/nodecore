@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -12,7 +11,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/rs/zerolog/log"
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
 )
 
 // Non-archival nodes garbage-collect a sliding ~5-epoch window, so the
@@ -20,20 +20,22 @@ import (
 // often to keep the bound close to the real GC boundary.
 const nearPeriod = 3 * time.Minute
 
+const (
+	nearRetryAttempts = 3
+	nearRetryDelay    = 500 * time.Millisecond
+)
+
 var errNearNoEarliestHeight = errors.New("near node reported no earliest_block_height")
 
-var nearEmittedBoundTypes = []protocol.LowerBoundType{
-	protocol.StateBound,
-	protocol.BlockBound,
-}
-
+// NearLowerBoundDetector reads earliest_block_height from the `status`
+// response - nearcore publishes its GC boundary directly, one RPC per
+// refresh. On any error the detector returns (nil, err): the processor
+// logs it, skips the tick, and the previously cached bound stays in place.
 type NearLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           chains.Chain
 	internalTimeout time.Duration
-
-	lastBound atomic.Int64
 }
 
 func NewNearLowerBoundDetector(
@@ -51,57 +53,37 @@ func NewNearLowerBoundDetector(
 }
 
 func (n *NearLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
-	status, err := n.fetchStatus(ctx)
+	retryPolicy := retrypolicy.NewBuilder[*nearStatus]().
+		WithMaxAttempts(nearRetryAttempts).
+		WithDelay(nearRetryDelay).
+		ReturnLastFailure().
+		Build()
+	status, err := failsafe.With(retryPolicy).WithContext(ctx).Get(func() (*nearStatus, error) {
+		return n.fetchStatus(ctx)
+	})
 	if err != nil {
-		return n.fallback(fmt.Errorf("cannot fetch node status: %w", err)), nil
+		return nil, fmt.Errorf("cannot fetch near status for upstream '%s': %w", n.upstreamId, err)
 	}
 
 	bound := status.SyncInfo.EarliestBlockHeight
 	if bound <= 0 {
 		// Zero or absent means the node did not report its GC boundary,
 		// not that the full history is available.
-		return n.fallback(errNearNoEarliestHeight), nil
+		return nil, errNearNoEarliestHeight
 	}
-	n.lastBound.Store(bound)
 
-	return nearBounds(bound), nil
+	return []protocol.LowerBoundData{
+		protocol.NewLowerBoundDataNow(bound, protocol.StateBound),
+		protocol.NewLowerBoundDataNow(bound, protocol.BlockBound),
+	}, nil
 }
 
 func (n *NearLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
-	return append(append([]protocol.LowerBoundType{}, nearEmittedBoundTypes...), protocol.UnknownBound)
+	return []protocol.LowerBoundType{protocol.StateBound, protocol.BlockBound}
 }
 
 func (n *NearLowerBoundDetector) Period() time.Duration {
 	return nearPeriod
-}
-
-// fallback decides what to publish when the calculation cannot complete.
-// If a previous tick produced a bound, re-emit it so the router keeps using
-// the last known good value. Otherwise emit UnknownBound=0 so consumers get
-// an explicit "we don't know" signal instead of silence.
-func (n *NearLowerBoundDetector) fallback(reason error) []protocol.LowerBoundData {
-	if cached := n.lastBound.Load(); cached > 0 {
-		log.Warn().Err(reason).Msgf(
-			"near upstream '%s' lower-bound calculation failed; retaining cached bound=%d",
-			n.upstreamId, cached,
-		)
-		return nearBounds(cached)
-	}
-	log.Warn().Err(reason).Msgf(
-		"near upstream '%s' lower-bound calculation failed and no cache available; emitting UnknownBound",
-		n.upstreamId,
-	)
-	return []protocol.LowerBoundData{
-		protocol.NewLowerBoundDataNow(0, protocol.UnknownBound),
-	}
-}
-
-func nearBounds(bound int64) []protocol.LowerBoundData {
-	bounds := make([]protocol.LowerBoundData, 0, len(nearEmittedBoundTypes))
-	for _, bt := range nearEmittedBoundTypes {
-		bounds = append(bounds, protocol.NewLowerBoundDataNow(bound, bt))
-	}
-	return bounds
 }
 
 func (n *NearLowerBoundDetector) fetchStatus(ctx context.Context) (*nearStatus, error) {

@@ -41,8 +41,9 @@ func (n *NearChainValidator) Validate() validations.ValidationSettingResult {
 		return validations.SettingsError
 	}
 	if status.ChainId == "" {
+		// no chain_id means we can't tell what network the node is on - unusable as configured
 		log.Error().Err(errNearEmptyChainId).Msgf("failed to validate the chain of near upstream '%s'", n.upstreamId)
-		return validations.SettingsError
+		return validations.FatalSettingError
 	}
 	// for near chains.yaml holds network-name chain-ids: mainnet/testnet/betanet
 	if strings.EqualFold(status.ChainId, n.chain.ChainId) {

@@ -35,7 +35,7 @@ type TronRestSpecific struct {
 }
 
 func (t *TronRestSpecific) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewEthLikeBlockProcessor(
+	return blocks.NewBaseBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,

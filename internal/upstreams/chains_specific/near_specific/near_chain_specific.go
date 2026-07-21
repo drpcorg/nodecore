@@ -31,6 +31,7 @@ type NearChainSpecificObject struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	options         *chains.Options
+	pollInterval    time.Duration
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
@@ -41,6 +42,7 @@ func NewNearChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	pollInterval time.Duration,
 	options *chains.Options,
 ) *NearChainSpecificObject {
 	return &NearChainSpecificObject{
@@ -48,6 +50,7 @@ func NewNearChainSpecificObject(
 		upstreamId:      upstreamId,
 		connector:       connector,
 		options:         options,
+		pollInterval:    pollInterval,
 		internalTimeout: options.InternalTimeout,
 		labelsDelay:     options.ValidationInterval * 5,
 		configuredChain: configuredChain,
@@ -55,7 +58,16 @@ func NewNearChainSpecificObject(
 }
 
 func (n *NearChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return nil
+	return blocks.NewBaseBlockProcessor(
+		n.ctx,
+		n.upstreamId,
+		n.pollInterval,
+		n.internalTimeout,
+		n.options.FinalizedBlockDetectionDisabled(),
+		true, // near has no "safe" block concept, only optimistic/final
+		n.connector,
+		n,
+	)
 }
 
 func (n *NearChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -70,8 +82,9 @@ func (n *NearChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return labels.NewBaseLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
 }
 
-func (n *NearChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
-	return caps.DefaultCapDetectors(n.upstreamId, input.WsConnector)
+func (n *NearChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
+	// nearcore has no websocket transport, so no ws-derived caps can ever be asserted
+	return nil
 }
 
 func (n *NearChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -95,12 +108,17 @@ func (n *NearChainSpecificObject) HealthValidators() []validations.Validator[pro
 	if n.options != nil && *n.options.DisableHealthValidation {
 		return []validations.Validator[protocol.AvailabilityStatus]{}
 	}
-	validatePeers := n.options != nil && n.options.ValidatePeers != nil && *n.options.ValidatePeers
-	return []validations.Validator[protocol.AvailabilityStatus]{
-		near_validations.NewNearHealthValidator(
-			n.upstreamId, n.connector, n.configuredChain, n.internalTimeout, validatePeers,
+	validators := []validations.Validator[protocol.AvailabilityStatus]{
+		near_validations.NewNearSyncingValidator(
+			n.upstreamId, n.connector, n.configuredChain, n.internalTimeout,
 		),
 	}
+	if n.options != nil && n.options.ValidatePeers != nil && *n.options.ValidatePeers {
+		validators = append(validators, near_validations.NewNearPeersValidator(
+			n.upstreamId, n.connector, n.configuredChain, n.internalTimeout,
+		))
+	}
+	return validators
 }
 
 func (n *NearChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
@@ -121,9 +139,8 @@ func (n *NearChainSpecificObject) GetLatestBlock(ctx context.Context) (protocol.
 	return n.fetchBlockByFinality(ctx, "optimistic")
 }
 
-// GetFinalizedBlock fetches the "final" head. It is not tracked in a separate
-// poll loop (BlockProcessor is nil), but callers asking explicitly get the
-// correct finalized block instead of an optimistic alias.
+// GetFinalizedBlock fetches the "final" head; the block processor polls it
+// alongside the optimistic head tracked by the head processor.
 func (n *NearChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
 	return n.fetchBlockByFinality(ctx, "final")
 }
