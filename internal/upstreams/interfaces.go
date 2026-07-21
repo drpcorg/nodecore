@@ -34,6 +34,7 @@ type ChainSupervisor interface {
 	GetUpstreamState(upstreamId string) *protocol.UpstreamState
 	GetSortedUpstreamIds(filterFunc FilterUpstream, sortFunc SortUpstream) []string
 	GetUpstreamIds() []string
+	NextIndex() uint64
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
