@@ -61,7 +61,7 @@ func TestStarknetHealthAvailableOnFalse(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`false`), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -69,7 +69,7 @@ func TestStarknetHealthSyncingOnTrue(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`true`), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
@@ -79,7 +79,7 @@ func TestStarknetHealthAvailableOnSmallLagHexNums(t *testing.T) {
 	body := `{"starting_block_hash":"0x4b","starting_block_num":"0x4b","current_block_hash":"0x9c3a4a2e6d7b1f","current_block_num":"0xb8b2fa","highest_block_hash":"0x9c3a4a2e6d7c22","highest_block_num":"0xb8b2fc"}`
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -89,7 +89,7 @@ func TestStarknetHealthSyncingOnBigLagHexNums(t *testing.T) {
 	body := `{"starting_block_hash":"0x4b","starting_block_num":"0x4b","current_block_hash":"0x9c3a4a2e6d7b1f","current_block_num":"0xb8b2fa","highest_block_hash":"0x9c3a4a2e6d7c22","highest_block_num":"0xb8b3fa"}`
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
@@ -99,7 +99,7 @@ func TestStarknetHealthAvailableOnSmallLagNumberNums(t *testing.T) {
 	body := `{"starting_block_num":75,"current_block_num":12107318,"highest_block_num":12107320}`
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -108,7 +108,7 @@ func TestStarknetHealthSyncingOnBigLagNumberNums(t *testing.T) {
 	body := `{"starting_block_num":75,"current_block_num":12000000,"highest_block_num":12107320}`
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
@@ -116,7 +116,7 @@ func TestStarknetHealthUnavailableOnGarbage(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"current_block_num":"not-a-number"}`), protocol.JsonRpc))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
@@ -124,6 +124,6 @@ func TestStarknetHealthUnavailableOnError(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
-	v := starknet_validations.NewStarknetHealthValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
+	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
