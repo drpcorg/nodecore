@@ -5,6 +5,7 @@ This `upstream-config` section defines how nodecore discovers, evaluates, and in
 ```yaml
 upstream-config:
   mode: default
+  balancing-strategy: rating
   integrity:
     enabled: true
   failsafe-config:
@@ -48,6 +49,12 @@ upstream-config:
     calculation-interval: 5s
     calculation-function-name: "defaultLatencyErrorRatePolicyFunc"
     #calculation-function-file-path: "path/to/func"
+  label-balancing:
+    order:
+      - full
+      - archive
+    pass-on-error: false
+    include-default: true
   upstreams:
     - id: my-super-upstream
       chain: ethereum
@@ -104,7 +111,9 @@ It brings together:
 3. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter), hedging (duplicate a slow request after a delay, with a cap on parallel hedges), and a per-request `timeout` budget.
 4. Chain defaults (`chain-defaults`) - Per-chain operational defaults: poll interval, validation toggles, and detector toggles. See [Validators and labels](#validators-and-labels) below.
 5. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
-6. Upstreams (`upstreams`) - The actual provider entries.
+6. Balancing strategy (`balancing-strategy`) - Selects how a normal request picks an upstream: `rating` (score-ordered, the default) or `base` (round-robin). See [balancing-strategy](#balancing-strategy) below.
+7. Label balancing (`label-balancing`) - Optional priority-group routing layered on top of rating: tag upstreams with `group-labels` and serve requests from the highest-priority group first. See [label-balancing](#label-balancing) below.
+8. Upstreams (`upstreams`) - The actual provider entries.
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, (4) apply rate limiting to control request throughput, and (5) toggle the validators and label detectors that observe each upstream's health.
 
@@ -146,6 +155,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
 | `disable-labels-detection` | `true` (off) | `false` (on) |
 | `validate-syncing` | `false` (off) | `true` (on) |
+| `validate-lag` | `false` (off) | `true` (on) |
 | `validate-peers` | `false` (off) | `true` (on) |
 | `validate-call-limit` | `false` (off) | `true` (on) |
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
@@ -311,6 +321,7 @@ chain-defaults:
       enable-new-pending-transactions: true
   polygon:
     poll-interval: 30s
+    balancing-strategy: base
 ```
 
 The `chain-defaults` section defines per-chain baseline settings. `<chain>.options` apply to upstreams of that chain unless explicitly overridden in the upstream configuration; `<chain>.dispatch` controls routing policies for the whole chain and is not a per-upstream setting.
@@ -348,6 +359,8 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `enable-new-heads` / `enable-logs` / `enable-new-pending-transactions` - Per-topic overrides that win over `enable` (e.g. `enable: false` with `enable-logs: true` keeps only `logs` local)
   * Note: the synthetic `drpc_pendingTransactions` method has no node-backed equivalent and is **always** served locally — it is never affected by these flags
   * See [Subscriptions](13-subscriptions.md) for how local synthesis and aggregation work
+* `<chain>.balancing-strategy` - Per-chain override of the global [`balancing-strategy`](#balancing-strategy). Selects how a normal request (one not already handled by a more specific path such as sticky-send, quorum, dispatch, or [label-balancing](#label-balancing)) picks an upstream: `rating` orders candidates by their [score-policy](#score-policy-config) rating, `base` uses plain round-robin. When unset, the chain inherits the global value
+* `<chain>.validate-lag` - When enabled, derives each upstream's availability from how far its head trails the chain head. An `Available` upstream that lags behind the best observed head by more than the chain's `settings.lags.syncing` threshold (a chain-metadata value from the embedded `chains.yaml`, overridable via [`NODECORE_EXTRA_CHAINS_PATH`](#extending-the-chain-registry-at-startup)) is marked `Syncing`, which deprioritizes it during routing until it catches up; when the lag drops back within the threshold the upstream's probe-reported status is restored. If a chain has no positive `settings.lags.syncing` threshold (i.e. `0` or unset), the check is disabled for that chain and no upstream is ever downgraded by lag. Unlike `validate-syncing`, which asks each node about its own sync state, this compares heads *across* upstreams of the chain, so it catches nodes that report healthy but silently fall behind. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
@@ -506,6 +519,30 @@ How groups are traversed:
 
 The per-upstream `group-labels` field (see [Fields](#fields)) assigns an upstream to one or
 more groups. Labels not present in `order` route the upstream to the default group.
+
+## balancing-strategy
+
+```yaml
+upstream-config:
+  # global default — applies to every chain unless overridden under chain-defaults
+  balancing-strategy: base
+  chain-defaults:
+    ethereum:
+      # per-chain override
+      balancing-strategy: rating
+```
+
+`balancing-strategy` selects how a **normal** request picks an upstream — that is, a request
+not already handled by a more specific routing path (sticky-send, quorum, dispatch, or
+[label-balancing](#label-balancing), all of which keep priority over this setting):
+
+- `rating` (**_default_**) - orders candidates by their [score-policy](#score-policy-config)
+  rating and prefers the best-scored available upstream.
+- `base` - plain round-robin across the chain's available upstreams, ignoring rating.
+
+It is configured as a **global default** under `upstream-config.balancing-strategy` (applies to
+every chain) and can be **overridden per chain** under `chain-defaults.<chain>.balancing-strategy`.
+Resolution order is per-chain override → global default → `rating`.
 
 ## upstreams
 

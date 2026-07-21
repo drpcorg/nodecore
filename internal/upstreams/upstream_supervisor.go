@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -162,7 +163,7 @@ func (b *BaseUpstreamSupervisor) processEvents() {
 			return
 		case event, ok := <-b.eventsChan:
 			if ok {
-				chainSupervisor, exists := b.chainSupervisors.LoadOrStore(event.Chain, NewBaseChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice(), b.tracker))
+				chainSupervisor, exists := b.chainSupervisors.LoadOrStore(event.Chain, NewBaseChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice(), b.tracker, b.upstreamsConfig.ValidateLagFor(event.Chain.String()), b.GetUpstream))
 
 				if !exists {
 					chainSupervisor.Start()

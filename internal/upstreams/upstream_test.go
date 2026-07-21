@@ -656,6 +656,46 @@ func TestBaseUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(
 	assertNoUpstreamEvent(t, sub)
 }
 
+func TestBaseUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
+	// The test upstream is on ethereum, whose syncing lag threshold is 6.
+	upstream, _, sub := newTestBaseUpstream(t, nil, nil, nil)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	// setLag beyond the threshold downgrades the derived status to Syncing while
+	// preserving the base availability.
+	upstream.UpdateHeadLag(100)
+	event := nextUpstreamEvent(t, sub)
+	stateEvent, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	require.True(t, ok)
+	assert.Equal(t, protocol.Syncing, stateEvent.State.Status)
+	assert.Equal(t, protocol.Syncing, upstream.GetUpstreamState().Status)
+
+	// setLag back within the threshold restores Available (recovery).
+	upstream.UpdateHeadLag(1)
+	event = nextUpstreamEvent(t, sub)
+	stateEvent, ok = event.EventType.(*protocol.StateUpstreamEvent)
+	require.True(t, ok)
+	assert.Equal(t, protocol.Available, stateEvent.State.Status)
+	assert.Equal(t, protocol.Available, upstream.GetUpstreamState().Status)
+}
+
+func TestBaseUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *testing.T) {
+	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Unavailable})
+	_ = nextUpstreamEvent(t, sub)
+	require.Equal(t, protocol.Unavailable, upstream.GetUpstreamState().Status)
+
+	// A small lag (setLag) must not upgrade an Unavailable upstream; the derived
+	// status stays Unavailable, so nothing new is published.
+	upstream.UpdateHeadLag(1)
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, protocol.Unavailable, upstream.GetUpstreamState().Status)
+}
+
 func newTestBaseUpstream(
 	t *testing.T,
 	upConfig *config.Upstream,
