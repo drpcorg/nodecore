@@ -230,9 +230,9 @@ const (
 	UnknownType ApiConnectorType = iota
 	JsonRpcConnector
 	RestConnector
+	RestIndexer // a self-contained indexer REST API next to the node API (e.g. the TON v3 indexer); a plain type - may be an upstream's only connector
 	GrpcConnector
 	WebsocketConnector
-	RestIndexer    // a self-contained indexer REST API next to the node API (e.g. the TON v3 indexer); a plain type - may be an upstream's only connector
 	RestAdditional // is used for connectors that provide extra REST methods, but they can't be used for chain-specific
 )
 

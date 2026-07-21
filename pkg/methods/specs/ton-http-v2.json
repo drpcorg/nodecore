@@ -6,40 +6,228 @@
   },
   "spec": {
     "name": "ton-http-v2",
-    "api-connectors": ["rest"],
+    "api-connectors": [
+      "rest"
+    ],
     "type": "plain"
   },
   "methods": [
-    { "name": "GET#/getAddressInformation", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getExtendedAddressInformation", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getWalletInformation", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getAddressBalance", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getAddressState", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/packAddress", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/unpackAddress", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getTokenData", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/detectAddress", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getMasterchainInfo", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getMasterchainBlockSignatures", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getShardBlockProof", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getConsensusBlock", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/lookupBlock", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/shards", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getBlockHeader", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getOutMsgQueueSizes", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getTransactions", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getBlockTransactions", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getBlockTransactionsExt", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/tryLocateTx", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/tryLocateResultTx", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/tryLocateSourceTx", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getConfigParam", "params": [], "settings": { "cacheable": false } },
-    { "name": "GET#/getConfigAll", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/runGetMethod", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/sendBoc", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/sendBocReturnHash", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/sendQuery", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/estimateFee", "params": [], "settings": { "cacheable": false } },
-    { "name": "POST#/jsonRPC", "params": [], "settings": { "cacheable": false } }
+    {
+      "name": "GET#/getAddressInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getExtendedAddressInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getWalletInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getAddressBalance",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getAddressState",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/packAddress",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/unpackAddress",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getTokenData",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/detectAddress",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getMasterchainInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getMasterchainBlockSignatures",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getShardBlockProof",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getConsensusBlock",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/lookupBlock",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/shards",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getBlockHeader",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getOutMsgQueueSizes",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getBlockTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getBlockTransactionsExt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/tryLocateTx",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/tryLocateResultTx",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/tryLocateSourceTx",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getConfigParam",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/getConfigAll",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/runGetMethod",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/sendBoc",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/sendBocReturnHash",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/sendQuery",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/estimateFee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/jsonRPC",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
   ]
 }

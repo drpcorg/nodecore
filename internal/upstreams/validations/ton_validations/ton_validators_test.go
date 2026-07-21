@@ -65,10 +65,10 @@ func TestTonChainValidatorFatalOnTestnetZerostateBehindMainnetConfig(t *testing.
 	assert.Equal(t, validations.FatalSettingError, v.Validate())
 }
 
-func TestTonChainValidatorSkipsUnmappedChain(t *testing.T) {
+func TestTonChainValidatorFatalOnUnmappedChain(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("aptos-mainnet"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate())
 	conn.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 

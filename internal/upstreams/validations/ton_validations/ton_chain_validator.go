@@ -51,12 +51,13 @@ func NewTonChainValidator(
 func (t *TonChainValidator) Validate() validations.ValidationSettingResult {
 	expected, hasMapping := expectedZerostates[t.chain.Chain]
 	if !hasMapping {
-		log.Warn().Msgf(
-			"no expected zerostate for chain '%s', skipping chain validation of ton upstream '%s'",
+		// without a zerostate we can't tell what network the upstream is on
+		log.Error().Msgf(
+			"no expected zerostate for chain '%s', can't validate the chain of ton upstream '%s'",
 			t.chain.Chain.String(),
 			t.upstreamId,
 		)
-		return validations.Valid
+		return validations.FatalSettingError
 	}
 	info, err := fetchMasterchainInfo(t.connector, t.chain.Chain, t.internalTimeout)
 	if err != nil {
