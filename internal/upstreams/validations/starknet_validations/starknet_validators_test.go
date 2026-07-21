@@ -49,12 +49,12 @@ func TestStarknetChainValidatorRetriesOnFetchError(t *testing.T) {
 	assert.Equal(t, validations.SettingsError, v.Validate())
 }
 
-func TestStarknetChainValidatorRetriesOnEmptyResult(t *testing.T) {
+func TestStarknetChainValidatorFatalOnEmptyChainId(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isChainId)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`""`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetChainValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate())
 }
 
 func TestStarknetHealthAvailableOnFalse(t *testing.T) {
