@@ -2,7 +2,6 @@ package flow
 
 import (
 	"sync"
-	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
 
@@ -91,8 +90,6 @@ func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string,
 
 var _ UpstreamStrategy = (*RatingStrategy)(nil)
 
-var index = atomic.Uint64{}
-
 type BaseStrategy struct {
 	selectedUpstreams  mapset.Set[string]
 	chainSupervisor    upstreams.ChainSupervisor
@@ -136,7 +133,7 @@ func (b *BaseStrategy) SelectUpstream(request protocol.RequestHolder) (string, e
 		return "", protocol.NoAvailableUpstreamsError()
 	}
 
-	pos := index.Add(1) % uint64(len(upstreamIds))
+	pos := b.chainSupervisor.NextIndex() % uint64(len(upstreamIds))
 	upstreamIds = append(upstreamIds[pos:], upstreamIds[:pos]...)
 
 	selectedUpstream, currentReason, trace := filterUpstreams(&b.mu, request, upstreamIds, b.chainSupervisor, b.selectedUpstreams, b.additionalMatchers, b.order)

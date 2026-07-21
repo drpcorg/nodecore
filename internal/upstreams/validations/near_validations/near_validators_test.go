@@ -45,6 +45,14 @@ func TestNearChainValidatorFatalOnMismatch(t *testing.T) {
 	assert.Equal(t, validations.FatalSettingError, v.Validate())
 }
 
+func TestNearChainValidatorFatalOnEmptyChainId(t *testing.T) {
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("", freshBlockTime(), false), protocol.JsonRpc))
+	v := near_validations.NewNearChainValidator("id", conn, chains.GetChain("near"), time.Second)
+	assert.Equal(t, validations.FatalSettingError, v.Validate())
+}
+
 func TestNearChainValidatorRetriesOnFetchError(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
@@ -53,65 +61,69 @@ func TestNearChainValidatorRetriesOnFetchError(t *testing.T) {
 	assert.Equal(t, validations.SettingsError, v.Validate())
 }
 
-func TestNearHealthAvailable(t *testing.T) {
+func TestNearSyncingValidatorAvailable(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("mainnet", freshBlockTime(), false), protocol.JsonRpc))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, false)
+	v := near_validations.NewNearSyncingValidator("id", conn, chains.GetChain("near"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
-func TestNearHealthSyncingOnSyncFlag(t *testing.T) {
+func TestNearSyncingValidatorSyncingOnSyncFlag(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("mainnet", freshBlockTime(), true), protocol.JsonRpc))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, false)
+	v := near_validations.NewNearSyncingValidator("id", conn, chains.GetChain("near"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
-func TestNearHealthSyncingOnStaleHead(t *testing.T) {
+func TestNearSyncingValidatorSyncingOnStaleHead(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	// near's stale-head threshold is 1s * 40; the head is 5 minutes old
 	staleTime := time.Now().Add(-5 * time.Minute).Format(time.RFC3339Nano)
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("mainnet", staleTime, false), protocol.JsonRpc))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, false)
+	v := near_validations.NewNearSyncingValidator("id", conn, chains.GetChain("near"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
-func TestNearHealthUnavailableOnZeroPeers(t *testing.T) {
+func TestNearSyncingValidatorUnavailableOnError(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("mainnet", freshBlockTime(), false), protocol.JsonRpc))
-	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isNetworkInfo)).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"num_active_peers":0,"peer_max_count":40}`), protocol.JsonRpc))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, true)
+		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
+	v := near_validations.NewNearSyncingValidator("id", conn, chains.GetChain("near"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
-func TestNearHealthAvailableWithPeers(t *testing.T) {
+func TestNearSyncingValidatorDoesNotCallNetworkInfo(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("mainnet", freshBlockTime(), false), protocol.JsonRpc))
-	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isNetworkInfo)).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"num_active_peers":36,"peer_max_count":40}`), protocol.JsonRpc))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, true)
-	assert.Equal(t, protocol.Available, v.Validate())
-}
-
-func TestNearHealthIgnoresPeersWhenDisabled(t *testing.T) {
-	conn := mocks.NewConnectorMock()
-	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", statusBody("mainnet", freshBlockTime(), false), protocol.JsonRpc))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, false)
+	v := near_validations.NewNearSyncingValidator("id", conn, chains.GetChain("near"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 	conn.AssertNotCalled(t, "SendRequest", mock.Anything, mock.MatchedBy(isNetworkInfo))
 }
 
-func TestNearHealthUnavailableOnError(t *testing.T) {
+func TestNearPeersValidatorUnavailableOnZeroPeers(t *testing.T) {
 	conn := mocks.NewConnectorMock()
-	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isStatus)).
+	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isNetworkInfo)).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"num_active_peers":0,"peer_max_count":40}`), protocol.JsonRpc))
+	v := near_validations.NewNearPeersValidator("id", conn, chains.GetChain("near"), time.Second)
+	assert.Equal(t, protocol.Unavailable, v.Validate())
+}
+
+func TestNearPeersValidatorAvailableWithPeers(t *testing.T) {
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isNetworkInfo)).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"num_active_peers":36,"peer_max_count":40}`), protocol.JsonRpc))
+	v := near_validations.NewNearPeersValidator("id", conn, chains.GetChain("near"), time.Second)
+	assert.Equal(t, protocol.Available, v.Validate())
+}
+
+func TestNearPeersValidatorUnavailableOnError(t *testing.T) {
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isNetworkInfo)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
-	v := near_validations.NewNearHealthValidator("id", conn, chains.GetChain("near"), time.Second, false)
+	v := near_validations.NewNearPeersValidator("id", conn, chains.GetChain("near"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
