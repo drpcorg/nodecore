@@ -278,6 +278,68 @@ func TestBaseStrategyGetUpstreams(t *testing.T) {
 	assert.Equal(t, protocol.NoAvailableUpstreamsError(), err)
 }
 
+// selectFreshBaseStrategy mimics production, where a brand-new BaseStrategy is
+// built per request. The round-robin cursor therefore has to live on the
+// (persistent) chain supervisor, not on the transient strategy instance.
+func selectFreshBaseStrategy(t *testing.T, chSup upstreams.ChainSupervisor) string {
+	t.Helper()
+	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
+	upId, err := flow.NewBaseStrategy(chSup).SelectUpstream(request)
+	assert.NoError(t, err)
+	return upId
+}
+
+// TestBaseStrategyRoundRobinAcrossInstances proves the cursor advances across
+// separate strategy instances (i.e. across requests) rather than resetting.
+func TestBaseStrategyRoundRobinAcrossInstances(t *testing.T) {
+	chSup := test_utils.CreateChainSupervisor()
+	test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
+	test_utils.PublishEvent(chSup, "id2", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
+	test_utils.PublishEvent(chSup, "id3", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
+
+	picks := make([]string, 0, 6)
+	for i := 0; i < 6; i++ {
+		picks = append(picks, selectFreshBaseStrategy(t, chSup))
+	}
+
+	// First full cycle hits every upstream exactly once...
+	assert.ElementsMatch(t, []string{"id1", "id2", "id3"}, picks[:3])
+	// ...and the pattern repeats with period == number of upstreams.
+	assert.Equal(t, picks[:3], picks[3:])
+}
+
+// TestBaseStrategyRoundRobinPerChainIsolation proves each chain supervisor owns
+// an independent cursor: activity on one chain must not perturb another's
+// rotation (the bug the global counter caused).
+func TestBaseStrategyRoundRobinPerChainIsolation(t *testing.T) {
+	newChSupWith3 := func() upstreams.ChainSupervisor {
+		chSup := test_utils.CreateChainSupervisor()
+		test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
+		test_utils.PublishEvent(chSup, "id2", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
+		test_utils.PublishEvent(chSup, "id3", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
+		return chSup
+	}
+
+	control := newChSupWith3() // never interfered with
+	observed := newChSupWith3()
+	other := newChSupWith3() // stands in for a different chain
+
+	// Warm up `other` by an arbitrary amount to desync its cursor.
+	for i := 0; i < 7; i++ {
+		selectFreshBaseStrategy(t, other)
+	}
+
+	// Interleave `other` selections with `observed`; each iteration also advances
+	// `control` once. If cursors are per-chain, observed == control despite the
+	// interleaved traffic on `other`.
+	for i := 0; i < 6; i++ {
+		selectFreshBaseStrategy(t, other)
+		expected := selectFreshBaseStrategy(t, control)
+		got := selectFreshBaseStrategy(t, observed)
+		assert.Equal(t, expected, got)
+	}
+}
+
 func TestBaseStrategyRoutesByLabelSelector(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	publishStateWithLabel(chSup, "id1", "region", "eu")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -49,6 +50,8 @@ type BaseChainSupervisor struct {
 	syncingLag  int64
 	getUpstream func(string) Upstream
 	lastOver    map[string]bool
+
+	roundRobinIndex atomic.Uint64
 
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 }
@@ -165,6 +168,10 @@ func (b *BaseChainSupervisor) GetUpstreamIds() []string {
 	})
 	slices.Sort(ids)
 	return ids
+}
+
+func (b *BaseChainSupervisor) NextIndex() uint64 {
+	return b.roundRobinIndex.Add(1)
 }
 
 func (b *BaseChainSupervisor) processEvents() {
