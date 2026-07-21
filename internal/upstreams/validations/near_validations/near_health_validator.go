@@ -12,13 +12,38 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// NearSyncingValidator checks the node's own sync state via `status`:
-// the explicit syncing flag plus a stale-head guard.
-type NearSyncingValidator struct {
-	upstreamId      string
+// nearStatusClient holds what a `status` call needs; validators embed it and
+// call fetchNearStatus without passing params around.
+type nearStatusClient struct {
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
+}
+
+func (n *nearStatusClient) fetchNearStatus() (*NearStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), n.internalTimeout)
+	defer cancel()
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []any{}, n.chain.Chain)
+	if err != nil {
+		return nil, err
+	}
+	response := n.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return nil, response.GetError()
+	}
+	var status NearStatus
+	if err := sonic.Unmarshal(response.ResponseResult(), &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
+
+// NearSyncingValidator checks the node's own sync state via `status`:
+// the explicit syncing flag plus a stale-head guard.
+type NearSyncingValidator struct {
+	nearStatusClient
+	upstreamId string
 }
 
 func NewNearSyncingValidator(
@@ -28,15 +53,13 @@ func NewNearSyncingValidator(
 	internalTimeout time.Duration,
 ) *NearSyncingValidator {
 	return &NearSyncingValidator{
-		upstreamId:      upstreamId,
-		connector:       connector,
-		chain:           chain,
-		internalTimeout: internalTimeout,
+		nearStatusClient: nearStatusClient{connector: connector, chain: chain, internalTimeout: internalTimeout},
+		upstreamId:       upstreamId,
 	}
 }
 
 func (n *NearSyncingValidator) Validate() protocol.AvailabilityStatus {
-	status, err := fetchNearStatus(n.connector, n.chain.Chain, n.internalTimeout)
+	status, err := n.fetchNearStatus()
 	if err != nil {
 		log.Error().Err(err).Msgf("near upstream '%s' syncing validation failed", n.upstreamId)
 		return protocol.Unavailable
@@ -61,25 +84,6 @@ func (n *NearSyncingValidator) Validate() protocol.AvailabilityStatus {
 		}
 	}
 	return protocol.Available
-}
-
-func fetchNearStatus(connector connectors.ApiConnector, chain chains.Chain, timeout time.Duration) (*NearStatus, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []any{}, chain)
-	if err != nil {
-		return nil, err
-	}
-	response := connector.SendRequest(ctx, request)
-	if response.HasError() {
-		return nil, response.GetError()
-	}
-	var status NearStatus
-	if err := sonic.Unmarshal(response.ResponseResult(), &status); err != nil {
-		return nil, err
-	}
-	return &status, nil
 }
 
 type NearStatus struct {

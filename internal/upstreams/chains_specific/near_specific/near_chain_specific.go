@@ -108,10 +108,11 @@ func (n *NearChainSpecificObject) HealthValidators() []validations.Validator[pro
 	if n.options != nil && *n.options.DisableHealthValidation {
 		return []validations.Validator[protocol.AvailabilityStatus]{}
 	}
-	validators := []validations.Validator[protocol.AvailabilityStatus]{
-		near_validations.NewNearSyncingValidator(
+	validators := make([]validations.Validator[protocol.AvailabilityStatus], 0)
+	if n.options != nil && n.options.ValidateSyncing != nil && *n.options.ValidateSyncing {
+		validators = append(validators, near_validations.NewNearSyncingValidator(
 			n.upstreamId, n.connector, n.configuredChain, n.internalTimeout,
-		),
+		))
 	}
 	if n.options != nil && n.options.ValidatePeers != nil && *n.options.ValidatePeers {
 		validators = append(validators, near_validations.NewNearPeersValidator(
