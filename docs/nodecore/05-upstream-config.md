@@ -146,6 +146,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
 | `disable-labels-detection` | `true` (off) | `false` (on) |
 | `validate-syncing` | `false` (off) | `true` (on) |
+| `validate-lag` | `false` (off) | `true` (on) |
 | `validate-peers` | `false` (off) | `true` (on) |
 | `validate-call-limit` | `false` (off) | `true` (on) |
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
@@ -348,6 +349,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `enable-new-heads` / `enable-logs` / `enable-new-pending-transactions` - Per-topic overrides that win over `enable` (e.g. `enable: false` with `enable-logs: true` keeps only `logs` local)
   * Note: the synthetic `drpc_pendingTransactions` method has no node-backed equivalent and is **always** served locally — it is never affected by these flags
   * See [Subscriptions](13-subscriptions.md) for how local synthesis and aggregation work
+* `<chain>.validate-lag` - When enabled, derives each upstream's availability from how far its head trails the chain head. An `Available` upstream that lags behind the best observed head by more than the chain's `settings.lags.syncing` threshold (a chain-metadata value from the embedded `chains.yaml`, overridable via [`NODECORE_EXTRA_CHAINS_PATH`](#extending-the-chain-registry-at-startup)) is marked `Syncing`, which deprioritizes it during routing until it catches up; when the lag drops back within the threshold the upstream's probe-reported status is restored. If a chain has no positive `settings.lags.syncing` threshold (i.e. `0` or unset), the check is disabled for that chain and no upstream is ever downgraded by lag. Unlike `validate-syncing`, which asks each node about its own sync state, this compares heads *across* upstreams of the chain, so it catches nodes that report healthy but silently fall behind. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 

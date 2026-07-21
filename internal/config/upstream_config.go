@@ -139,6 +139,23 @@ type ChainDefaults struct {
 	LabelBalancing     *LabelBalancingConfig     `yaml:"label-balancing"`
 	Dispatch           *DispatchOptions          `yaml:"dispatch"`
 	LocalSubscriptions *LocalSubscriptionsConfig `yaml:"local-subscriptions"`
+	ValidateLag        *bool                     `yaml:"validate-lag"`
+}
+
+// ValidateLagFor resolves whether the chain supervisor should derive upstream
+// status from cross-upstream head lag (marking laggards SYNCING). A per-chain
+// chain-defaults override wins; otherwise it defaults to enabled only in strict
+// mode.
+func (u *UpstreamConfig) ValidateLagFor(chainName string) bool {
+	if u == nil {
+		return false
+	}
+	if u.ChainDefaults != nil {
+		if defaults, ok := u.ChainDefaults[chainName]; ok && defaults != nil && defaults.ValidateLag != nil {
+			return *defaults.ValidateLag
+		}
+	}
+	return u.Mode == StrictMode
 }
 
 // LocalSubscriptionsConfig controls per-chain local subscription synthesis

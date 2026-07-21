@@ -69,6 +69,7 @@ type Upstream interface {
 	PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64
 
 	UpdateHead(height, slot uint64)
+	UpdateHeadLag(lag int64)
 	UpdateBlock(block protocol.Block, blockType protocol.BlockType)
 	UpdateLowerBound(data protocol.LowerBoundData)
 	BanMethod(method string)

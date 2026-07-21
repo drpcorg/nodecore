@@ -45,10 +45,22 @@ type BaseChainSupervisor struct {
 	tracker         dimensions.DimensionTracker
 	subChainMethods mapset.Set[string]
 
+	validateLag bool
+	syncingLag  int64
+	getUpstream func(string) Upstream
+	lastOver    map[string]bool
+
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 }
 
-func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.ForkChoice, tracker dimensions.DimensionTracker) *BaseChainSupervisor {
+func NewBaseChainSupervisor(
+	ctx context.Context,
+	chain chains.Chain,
+	fc choice.ForkChoice,
+	tracker dimensions.DimensionTracker,
+	validateLag bool,
+	getUpstream func(string) Upstream,
+) *BaseChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
 	state.Store(
 		ChainSupervisorState{
@@ -72,6 +84,10 @@ func NewBaseChainSupervisor(ctx context.Context, chain chains.Chain, fc choice.F
 		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
 		state:           state,
 		subChainMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
+		validateLag:     validateLag,
+		syncingLag:      chains.GetChain(chain.String()).Settings.Lags.Syncing,
+		getUpstream:     getUpstream,
+		lastOver:        make(map[string]bool),
 		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
 	}
 }
@@ -163,6 +179,7 @@ func (b *BaseChainSupervisor) processEvents() {
 					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
 						upHead := upState.HeadData
 						b.upstreamStates.Delete(event.Id)
+						delete(b.lastOver, event.Id)
 
 						b.updateState()
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
@@ -270,9 +287,6 @@ func (b *BaseChainSupervisor) calculateFinalizationLags() {
 }
 
 func (b *BaseChainSupervisor) calculateHeadLags() {
-	if b.tracker == nil {
-		return
-	}
 	state := b.state.Load()
 
 	b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
@@ -280,7 +294,25 @@ func (b *BaseChainSupervisor) calculateHeadLags() {
 		if state.HeadData.Head.Height >= val.HeadData.Height {
 			headLag = state.HeadData.Head.Height - val.HeadData.Height
 		}
-		b.tracker.GetChainDimensions(b.chain, key).TrackHeadLag(headLag)
+		if b.tracker != nil {
+			b.tracker.GetChainDimensions(b.chain, key).TrackHeadLag(headLag)
+		}
+
+		if b.validateLag && b.getUpstream != nil {
+			// Push a lag update only when the upstream crosses the syncing
+			// threshold (over -> under or under -> over), not on every per-block
+			// lag change. The derived status only flips at that boundary, so this
+			// bounds emissions to ~2 per syncing episode and keeps the upstream
+			// emitter off the per-block hot path.
+			lag := int64(headLag)
+			over := protocol.LagExceeds(lag, b.syncingLag)
+			if b.lastOver[key] != over {
+				if up := b.getUpstream(key); up != nil {
+					b.lastOver[key] = over
+					up.UpdateHeadLag(lag)
+				}
+			}
+		}
 		return true
 	})
 }
