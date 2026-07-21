@@ -1,0 +1,199 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Starknet JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "starknet-json-rpc",
+    "api-connectors": ["json-rpc"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "starknet_getBlockWithTxHashes",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_getBlockWithTxs",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_getBlockTransactionCount",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_getTransactionByHash",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_getTransactionByBlockIdAndIndex",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_getTransactionReceipt",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_getTransactionStatus",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_call",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getEvents",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getStateUpdate",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getStorageAt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getClass",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getClassHashAt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getClassAt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_chainId",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_syncing",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_specVersion",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_blockNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_blockHashAndNumber",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_estimateFee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_estimateMessageFee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_getNonce",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "starknet_addInvokeTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_addDeclareTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    },
+    {
+      "name": "starknet_addDeployAccountTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "not-null"
+      }
+    }
+  ]
+}
