@@ -29,7 +29,8 @@ const (
 type evmCapabilitiesSupport int
 
 const (
-	evmCapabilitiesSupported evmCapabilitiesSupport = iota
+	evmCapabilitiesUnknown evmCapabilitiesSupport = iota
+	evmCapabilitiesSupported
 	evmCapabilitiesUnsupported
 )
 
