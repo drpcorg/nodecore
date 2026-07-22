@@ -51,7 +51,6 @@ func TestStellarLowerBoundDetector_SupportedTypesAndPeriod(t *testing.T) {
 		[]protocol.LowerBoundType{
 			protocol.BlockBound,
 			protocol.TxBound,
-			protocol.UnknownBound,
 		},
 		detector.SupportedTypes(),
 	)
@@ -62,7 +61,7 @@ func TestStellarLowerBoundDetector_OldestLedgerReturnsBlockAndTxBounds(t *testin
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
-		Return(stellarHealthResponse(63404755))
+		Return(stellarHealthResponse(63404754))
 
 	detector := stellar_bounds.NewStellarLowerBoundDetector("id", chains.STELLAR, time.Second, connector)
 
@@ -70,35 +69,30 @@ func TestStellarLowerBoundDetector_OldestLedgerReturnsBlockAndTxBounds(t *testin
 	require.NoError(t, err)
 	require.Len(t, result, 2)
 	got := boundsByType(t, result)
-	assert.Equal(t, int64(63404755), got[protocol.BlockBound])
-	assert.Equal(t, int64(63404755), got[protocol.TxBound])
+	assert.Equal(t, int64(63404754), got[protocol.BlockBound])
+	assert.Equal(t, int64(63404754), got[protocol.TxBound])
 }
 
-func TestStellarLowerBoundDetector_ErrorWithCacheRetainsCachedBound(t *testing.T) {
+func TestStellarLowerBoundDetector_RetriesTransientErrorThenSucceeds(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
-		Return(stellarHealthResponse(63404755)).
+		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).
 		Once()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
-		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError()))
+		Return(stellarHealthResponse(63404754))
 
 	detector := stellar_bounds.NewStellarLowerBoundDetector("id", chains.STELLAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.Len(t, result, 2)
-
-	result, err = detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 2)
 	got := boundsByType(t, result)
-	assert.Equal(t, int64(63404755), got[protocol.BlockBound])
-	assert.Equal(t, int64(63404755), got[protocol.TxBound])
+	assert.Equal(t, int64(63404754), got[protocol.BlockBound])
 }
 
-func TestStellarLowerBoundDetector_ErrorWithoutCacheEmitsUnknownBound(t *testing.T) {
+func TestStellarLowerBoundDetector_ErrorReturnsError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
@@ -107,13 +101,11 @@ func TestStellarLowerBoundDetector_ErrorWithoutCacheEmitsUnknownBound(t *testing
 	detector := stellar_bounds.NewStellarLowerBoundDetector("id", chains.STELLAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.UnknownBound, result[0].Type)
-	assert.Equal(t, int64(0), result[0].Bound)
+	require.Error(t, err)
+	assert.Nil(t, result)
 }
 
-func TestStellarLowerBoundDetector_ZeroOldestLedgerFallsBack(t *testing.T) {
+func TestStellarLowerBoundDetector_ZeroOldestLedgerReturnsError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
@@ -122,13 +114,11 @@ func TestStellarLowerBoundDetector_ZeroOldestLedgerFallsBack(t *testing.T) {
 	detector := stellar_bounds.NewStellarLowerBoundDetector("id", chains.STELLAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.UnknownBound, result[0].Type)
-	assert.Equal(t, int64(0), result[0].Bound)
+	require.ErrorContains(t, err, "no oldestLedger")
+	assert.Nil(t, result)
 }
 
-func TestStellarLowerBoundDetector_AbsentOldestLedgerFallsBack(t *testing.T) {
+func TestStellarLowerBoundDetector_AbsentOldestLedgerReturnsError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
@@ -137,32 +127,6 @@ func TestStellarLowerBoundDetector_AbsentOldestLedgerFallsBack(t *testing.T) {
 	detector := stellar_bounds.NewStellarLowerBoundDetector("id", chains.STELLAR, time.Second, connector)
 
 	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.UnknownBound, result[0].Type)
-	assert.Equal(t, int64(0), result[0].Bound)
-}
-
-func TestStellarLowerBoundDetector_ZeroOldestLedgerRetainsCachedBound(t *testing.T) {
-	connector := mocks.NewConnectorMock()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
-		Return(stellarHealthResponse(63404755)).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchStellarHealthRequest())).
-		Return(stellarHealthResponse(0))
-
-	detector := stellar_bounds.NewStellarLowerBoundDetector("id", chains.STELLAR, time.Second, connector)
-
-	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 2)
-
-	result, err = detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	require.Len(t, result, 2)
-	got := boundsByType(t, result)
-	assert.Equal(t, int64(63404755), got[protocol.BlockBound])
-	assert.Equal(t, int64(63404755), got[protocol.TxBound])
+	require.ErrorContains(t, err, "no oldestLedger")
+	assert.Nil(t, result)
 }

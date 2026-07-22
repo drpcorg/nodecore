@@ -41,8 +41,9 @@ func (s *StellarHorizonChainValidator) Validate() validations.ValidationSettingR
 		return validations.SettingsError
 	}
 	if root.NetworkPassphrase == "" {
+		// no passphrase means we can't tell what network the node is on - unusable as configured
 		log.Error().Err(errStellarHorizonEmptyPassphrase).Msgf("failed to validate the chain of horizon upstream '%s'", s.upstreamId)
-		return validations.SettingsError
+		return validations.FatalSettingError
 	}
 	// for stellar chains.yaml holds network-passphrase chain-ids; the registry loader
 	// lowercases every chain-id, so the compare is case-insensitive by necessity

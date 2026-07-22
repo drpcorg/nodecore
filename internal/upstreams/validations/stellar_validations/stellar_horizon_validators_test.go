@@ -53,12 +53,12 @@ func TestStellarHorizonChainValidatorFatalOnTestnetPassphraseBehindMainnetConfig
 	assert.Equal(t, validations.FatalSettingError, v.Validate())
 }
 
-func TestStellarHorizonChainValidatorRetriesOnEmptyPassphrase(t *testing.T) {
+func TestStellarHorizonChainValidatorFatalOnEmptyPassphrase(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonRoot)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"horizon_version":"27.0.0"}`), 200, protocol.Rest))
 	v := stellar_validations.NewStellarHorizonChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate())
 }
 
 func TestStellarHorizonChainValidatorRetriesOnUnparseableBody(t *testing.T) {
@@ -81,7 +81,7 @@ func TestStellarHorizonHealthAvailableOnAllTrue(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, true), 200, protocol.Rest))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -89,7 +89,7 @@ func TestStellarHorizonHealthSyncingOnCoreNotSynced(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, false), 200, protocol.Rest))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
@@ -101,7 +101,7 @@ func TestStellarHorizonHealthSyncingOnCoreNotSyncedWith503(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, false), 503, protocol.Rest))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
@@ -109,7 +109,7 @@ func TestStellarHorizonHealthUnavailableOnDatabaseDisconnected(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(false, true, true), 200, protocol.Rest))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
@@ -117,7 +117,7 @@ func TestStellarHorizonHealthUnavailableOnCoreDown(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, false, false), 200, protocol.Rest))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
@@ -125,7 +125,7 @@ func TestStellarHorizonHealthUnavailableOnUnparseableBody(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"database_connected":`), 200, protocol.Rest))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
@@ -133,6 +133,6 @@ func TestStellarHorizonHealthUnavailableOnFetchError(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHorizonHealth)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
-	v := stellar_validations.NewStellarHorizonHealthValidator("id", conn, chains.GetChain("stellar"), time.Second)
+	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }

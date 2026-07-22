@@ -6,7 +6,9 @@
   },
   "spec": {
     "name": "stellar-json-rpc",
-    "api-connectors": ["json-rpc"],
+    "api-connectors": [
+      "json-rpc"
+    ],
     "type": "plain"
   },
   "methods": [

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -12,7 +11,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/rs/zerolog/log"
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
 )
 
 // stellar-rpc keeps a sliding ledgerRetentionWindow (~7 days at ~5s/ledger),
@@ -20,22 +20,25 @@ import (
 // keep the bound close to the real retention boundary.
 const stellarPeriod = 2 * time.Minute
 
+const (
+	stellarRetryAttempts = 3
+	stellarRetryDelay    = 500 * time.Millisecond
+)
+
 var errStellarNoOldestLedger = errors.New("stellar node reported no oldestLedger")
 
+// StellarLowerBoundDetector reads oldestLedger from getHealth - stellar-rpc
+// publishes its retention boundary directly, one RPC per refresh. On any
+// error the detector returns (nil, err): the processor logs it, skips the
+// tick, and the previously cached bound stays in place.
+//
 // No StateBound: getLedgerEntries serves live state only, there is no
 // historical state on stellar-rpc at all.
-var stellarEmittedBoundTypes = []protocol.LowerBoundType{
-	protocol.BlockBound,
-	protocol.TxBound,
-}
-
 type StellarLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           chains.Chain
 	internalTimeout time.Duration
-
-	lastBound atomic.Uint64
 }
 
 func NewStellarLowerBoundDetector(
@@ -53,57 +56,37 @@ func NewStellarLowerBoundDetector(
 }
 
 func (s *StellarLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
-	health, err := s.fetchHealth(ctx)
+	retryPolicy := retrypolicy.NewBuilder[*stellarHealth]().
+		WithMaxAttempts(stellarRetryAttempts).
+		WithDelay(stellarRetryDelay).
+		ReturnLastFailure().
+		Build()
+	health, err := failsafe.With(retryPolicy).WithContext(ctx).Get(func() (*stellarHealth, error) {
+		return s.fetchHealth(ctx)
+	})
 	if err != nil {
-		return s.fallback(fmt.Errorf("cannot fetch node health: %w", err)), nil
+		return nil, fmt.Errorf("cannot fetch stellar health for upstream '%s': %w", s.upstreamId, err)
 	}
 
 	bound := health.OldestLedger
 	if bound == 0 {
 		// Zero or absent means the node did not report its retention
 		// boundary, not that the full history is available.
-		return s.fallback(errStellarNoOldestLedger), nil
+		return nil, errStellarNoOldestLedger
 	}
-	s.lastBound.Store(bound)
 
-	return stellarBounds(bound), nil
+	return []protocol.LowerBoundData{
+		protocol.NewLowerBoundDataNow(int64(bound), protocol.BlockBound), //nolint:gosec // ledger sequences are far below int64 max
+		protocol.NewLowerBoundDataNow(int64(bound), protocol.TxBound),    //nolint:gosec // ledger sequences are far below int64 max
+	}, nil
 }
 
 func (s *StellarLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
-	return append(append([]protocol.LowerBoundType{}, stellarEmittedBoundTypes...), protocol.UnknownBound)
+	return []protocol.LowerBoundType{protocol.BlockBound, protocol.TxBound}
 }
 
 func (s *StellarLowerBoundDetector) Period() time.Duration {
 	return stellarPeriod
-}
-
-// fallback decides what to publish when the calculation cannot complete.
-// If a previous tick produced a bound, re-emit it so the router keeps using
-// the last known good value. Otherwise emit UnknownBound=0 so consumers get
-// an explicit "we don't know" signal instead of silence.
-func (s *StellarLowerBoundDetector) fallback(reason error) []protocol.LowerBoundData {
-	if cached := s.lastBound.Load(); cached > 0 {
-		log.Warn().Err(reason).Msgf(
-			"stellar upstream '%s' lower-bound calculation failed; retaining cached bound=%d",
-			s.upstreamId, cached,
-		)
-		return stellarBounds(cached)
-	}
-	log.Warn().Err(reason).Msgf(
-		"stellar upstream '%s' lower-bound calculation failed and no cache available; emitting UnknownBound",
-		s.upstreamId,
-	)
-	return []protocol.LowerBoundData{
-		protocol.NewLowerBoundDataNow(0, protocol.UnknownBound),
-	}
-}
-
-func stellarBounds(bound uint64) []protocol.LowerBoundData {
-	bounds := make([]protocol.LowerBoundData, 0, len(stellarEmittedBoundTypes))
-	for _, bt := range stellarEmittedBoundTypes {
-		bounds = append(bounds, protocol.NewLowerBoundDataNow(int64(bound), bt)) //nolint:gosec // ledger sequences are far below int64 max
-	}
-	return bounds
 }
 
 func (s *StellarLowerBoundDetector) fetchHealth(ctx context.Context) (*stellarHealth, error) {

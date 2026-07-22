@@ -19,20 +19,20 @@ const stellarHealthyStatus = "healthy"
 // while its data stores are still bootstrapping
 const stellarNotInitializedMarker = "not initialized"
 
-type StellarHealthValidator struct {
+type StellarSyncingValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
 }
 
-func NewStellarHealthValidator(
+func NewStellarSyncingValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	internalTimeout time.Duration,
-) *StellarHealthValidator {
-	return &StellarHealthValidator{
+) *StellarSyncingValidator {
+	return &StellarSyncingValidator{
 		upstreamId:      upstreamId,
 		connector:       connector,
 		chain:           chain,
@@ -40,7 +40,7 @@ func NewStellarHealthValidator(
 	}
 }
 
-func (s *StellarHealthValidator) Validate() protocol.AvailabilityStatus {
+func (s *StellarSyncingValidator) Validate() protocol.AvailabilityStatus {
 	health, err := FetchStellarHealth(s.connector, s.chain.Chain, s.internalTimeout)
 	if err != nil {
 		if strings.Contains(err.Error(), stellarNotInitializedMarker) {
@@ -48,7 +48,7 @@ func (s *StellarHealthValidator) Validate() protocol.AvailabilityStatus {
 			return protocol.Syncing
 		}
 		// incl. the node's own staleness rejection ("latency ... too high") and transport errors
-		log.Error().Err(err).Msgf("stellar upstream '%s' health validation failed", s.upstreamId)
+		log.Error().Err(err).Msgf("stellar upstream '%s' syncing validation failed", s.upstreamId)
 		return protocol.Unavailable
 	}
 	if health.Status != stellarHealthyStatus {
@@ -86,4 +86,4 @@ type StellarHealth struct {
 	LedgerRetentionWindow uint64 `json:"ledgerRetentionWindow"`
 }
 
-var _ validations.HealthValidator = (*StellarHealthValidator)(nil)
+var _ validations.HealthValidator = (*StellarSyncingValidator)(nil)

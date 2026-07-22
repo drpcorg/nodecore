@@ -10,20 +10,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type StellarHorizonHealthValidator struct {
+type StellarHorizonSyncingValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
 }
 
-func NewStellarHorizonHealthValidator(
+func NewStellarHorizonSyncingValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	internalTimeout time.Duration,
-) *StellarHorizonHealthValidator {
-	return &StellarHorizonHealthValidator{
+) *StellarHorizonSyncingValidator {
+	return &StellarHorizonSyncingValidator{
 		upstreamId:      upstreamId,
 		connector:       connector,
 		chain:           chain,
@@ -31,10 +31,10 @@ func NewStellarHorizonHealthValidator(
 	}
 }
 
-func (s *StellarHorizonHealthValidator) Validate() protocol.AvailabilityStatus {
+func (s *StellarHorizonSyncingValidator) Validate() protocol.AvailabilityStatus {
 	health, err := FetchStellarHorizonHealth(s.connector, s.chain.Chain, s.internalTimeout)
 	if err != nil {
-		log.Error().Err(err).Msgf("horizon upstream '%s' health validation failed", s.upstreamId)
+		log.Error().Err(err).Msgf("horizon upstream '%s' syncing validation failed", s.upstreamId)
 		return protocol.Unavailable
 	}
 	if health.DatabaseConnected && health.CoreUp && health.CoreSynced {
@@ -52,4 +52,4 @@ func (s *StellarHorizonHealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Unavailable
 }
 
-var _ validations.HealthValidator = (*StellarHorizonHealthValidator)(nil)
+var _ validations.HealthValidator = (*StellarHorizonSyncingValidator)(nil)
