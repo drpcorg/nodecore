@@ -173,6 +173,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `tron` | `tron-json-rpc`, `tron-rest`, `tron-rest-solidity` |
 | `near` | `near-json-rpc` |
 | `starknet` | `starknet-json-rpc` |
+| `stellar` | `stellar-json-rpc`, `stellar-horizon` |
 
 ### Plain specs
 
@@ -181,9 +182,9 @@ Grouped by the transports they declare:
 | `api-connectors` | Specs |
 | --- | --- |
 | `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
-| `json-rpc` | `algorand`, `aztec`, `near-json-rpc`, `starknet-json-rpc`, `tron-json-rpc` |
+| `json-rpc` | `algorand`, `aztec`, `near-json-rpc`, `starknet-json-rpc`, `stellar-json-rpc`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
-| `rest` | `aptos`, `eth-beacon-chain`, `tron-rest` |
+| `rest` | `aptos`, `eth-beacon-chain`, `stellar-horizon`, `tron-rest` |
 | `rest-additional` | `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
 ## Adding a new method
