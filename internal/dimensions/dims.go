@@ -132,7 +132,9 @@ func newUpstreamDimensionKey(chain chains.Chain, upstreamId, method string) upst
 	return upstreamDimensionKey{
 		chain:      chain,
 		upstreamId: upstreamId,
-		method:     method,
+		// method feeds Prometheus labels (see dims.go metric calls); sanitize so
+		// an invalid-UTF-8 method can never panic client_golang.
+		method: utils.SanitizeMetricLabel(method),
 	}
 }
 

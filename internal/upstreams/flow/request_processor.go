@@ -143,7 +143,7 @@ func executeUnaryRequest(
 
 	if hedged.Load() {
 		// it's important to track the very first upstream that caused the hedge logic
-		hedgeMetric.WithLabelValues(chain.String(), request.Method(), firstUpstream.Load()).Inc()
+		hedgeMetric.WithLabelValues(chain.String(), utils.SanitizeMetricLabel(request.Method()), firstUpstream.Load()).Inc()
 	}
 
 	return result, err
