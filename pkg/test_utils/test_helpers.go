@@ -19,7 +19,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
@@ -239,6 +241,26 @@ func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnecto
 		DisableHealthValidation: new(false),
 	}
 	return aztec_specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
+}
+
+func NewNearChainSpecific(ctx context.Context, connector connectors.ApiConnector) *near_specific.NearChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return near_specific.NewNearChainSpecificObject(ctx, chains.GetChain("near"), "id", connector, time.Second, options)
+}
+
+func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConnector) *starknet_specific.StarknetChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return starknet_specific.NewStarknetChainSpecificObject(ctx, chains.GetChain("starknet"), "id", connector, time.Second, options)
 }
 
 func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *algorand_specific.AlgorandChainSpecificObject {

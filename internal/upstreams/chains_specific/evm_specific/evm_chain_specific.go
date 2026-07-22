@@ -36,7 +36,7 @@ type EvmChainSpecificObject struct {
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewEthLikeBlockProcessor(
+	return blocks.NewBaseBlockProcessor(
 		e.ctx,
 		e.upstreamId,
 		e.pollInterval,

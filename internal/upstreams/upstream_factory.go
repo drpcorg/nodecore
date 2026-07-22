@@ -12,7 +12,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/pkg/methods"
 
@@ -252,12 +254,30 @@ func getChainSpecific(
 			upstreamConnectorsInfo.internalRequestConnector,
 			conf.Options,
 		), nil
+	case chains.Near:
+		return near_specific.NewNearChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
+			conf.Options,
+		), nil
 	case chains.Solana:
 		return solana_specific.NewSolanaChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
+	case chains.Starknet:
+		return starknet_specific.NewStarknetChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	default:
