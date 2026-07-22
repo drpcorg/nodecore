@@ -1,0 +1,205 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TON indexer v3 methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "ton-index-v3",
+    "api-connectors": [
+      "rest-indexer"
+    ],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "GET#/api/v3/accountStates",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/addressBook",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/walletStates",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/actions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/events",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/addressInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/api/v3/estimateFee",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/api/v3/message",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/api/v3/runGetMethod",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/walletInformation",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/adjacentTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/blocks",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/masterchainBlockShardState",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/masterchainBlockShards",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/masterchainInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/messages",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/transactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/transactionsByMasterchainBlock",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/transactionsByMessage",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/jetton/burns",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/jetton/masters",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/jetton/transfers",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/jetton/wallets",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/nft/collections",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/nft/items",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/nft/transfers",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/topAccountsByBalance",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

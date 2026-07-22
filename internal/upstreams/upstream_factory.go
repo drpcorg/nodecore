@@ -16,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/stellar_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/pkg/methods"
 
@@ -145,6 +146,8 @@ func createConnector(
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.RestConnector:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
+	case specs.RestIndexer:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
 	case specs.RestAdditional:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
 	default:
@@ -279,6 +282,16 @@ func getChainSpecific(
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			upstreamConnectorsInfo.allConnectors,
+			conf.Options,
+		), nil
+	case chains.Ton:
+		return ton_specific.NewTonChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			upstreamConnectorsInfo.allConnectors,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	case chains.Starknet:

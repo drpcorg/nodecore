@@ -230,6 +230,7 @@ const (
 	UnknownType ApiConnectorType = iota
 	JsonRpcConnector
 	RestConnector
+	RestIndexer // a self-contained indexer REST API next to the node API (e.g. the TON v3 indexer); a plain type - may be an upstream's only connector
 	GrpcConnector
 	WebsocketConnector
 	RestAdditional // is used for connectors that provide extra REST methods, but they can't be used for chain-specific
@@ -247,6 +248,8 @@ func (a ApiConnectorType) String() string {
 		return "websocket"
 	case UnknownType:
 		return "unknown"
+	case RestIndexer:
+		return "rest-indexer"
 	case RestAdditional:
 		return "rest-additional"
 	}
@@ -258,6 +261,7 @@ var apiConnectors = map[string]ApiConnectorType{
 	"rest":            RestConnector,
 	"grpc":            GrpcConnector,
 	"websocket":       WebsocketConnector,
+	"rest-indexer":    RestIndexer,
 	"rest-additional": RestAdditional,
 }
 var plainApiConnectorTypes = []ApiConnectorType{
@@ -265,6 +269,7 @@ var plainApiConnectorTypes = []ApiConnectorType{
 	RestConnector,
 	GrpcConnector,
 	WebsocketConnector,
+	RestIndexer,
 }
 
 var additionalApiConnectors = mapset.NewThreadUnsafeSet[ApiConnectorType](RestAdditional)

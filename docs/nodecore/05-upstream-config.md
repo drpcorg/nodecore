@@ -337,8 +337,8 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-health-validation` - Disables only the health validators (per chain family). **_Default_**: `false`
   * `disable-lower-bounds-detection` - Disables the earliest-available-block detector. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-labels-detection` - Disables the EVM label detectors (client/version, archive, gas, flashblock, etc.). Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
-  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. For beacon-chain upstreams it probes `GET /eth/v1/node/syncing` instead (marking the upstream `Syncing`, or `Unavailable` when its execution layer is offline). Bitcoin-family upstreams probe `getblockchaininfo` (`initialblockdownload`, plus a headers-vs-blocks lag threshold). For NEAR upstreams the `status` probe's `sync_info.syncing` and a stale-head guard on `latest_block_time` drive the same signal (always on as part of health validation). Starknet upstreams probe `starknet_syncing` (a plain `false` or a sync object, judged with a lag threshold). Stellar upstream health uses `getHealth` (stellar-rpc, which polices its own 30s staleness threshold) and the `GET /health` booleans (Horizon). Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
-  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. For beacon-chain upstreams it probes `GET /eth/v1/node/peer_count`. Bitcoin-family upstreams call `getconnectioncount`. NEAR upstreams probe `network_info` `num_active_peers`. Starknet has no peer probe (nodes sync from the feeder gateway, not p2p), so `validate-peers` has no effect there; likewise for Stellar upstreams. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. For beacon-chain upstreams it probes `GET /eth/v1/node/syncing` instead (marking the upstream `Syncing`, or `Unavailable` when its execution layer is offline). Bitcoin-family upstreams probe `getblockchaininfo` (`initialblockdownload`, plus a headers-vs-blocks lag threshold). For NEAR upstreams the `status` probe's `sync_info.syncing` and a stale-head guard on `latest_block_time` drive the same signal (always on as part of health validation). Starknet upstreams probe `starknet_syncing` (a plain `false` or a sync object, judged with a lag threshold). TON upstream health uses `getMasterchainInfo` liveness (v2) and `masterchainInfo` `gen_utime` freshness (v3). Stellar upstream health uses `getHealth` (stellar-rpc, which polices its own 30s staleness threshold) and the `GET /health` booleans (Horizon). Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. For beacon-chain upstreams it probes `GET /eth/v1/node/peer_count`. Bitcoin-family upstreams call `getconnectioncount`. NEAR upstreams probe `network_info` `num_active_peers`. Starknet has no peer probe (nodes sync from the feeder gateway, not p2p), so `validate-peers` has no effect there; likewise for TON and Stellar upstreams. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `min-peers` - Minimum acceptable peer count when `validate-peers` is on. **_Default_**: `1`
   * `validate-call-limit` - For EVM chains, periodically probes the upstream's `eth_call` return-data limit and marks the upstream unhealthy when its observed limit is below `call-limit-size`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
@@ -593,7 +593,8 @@ Supported connector types:
 - `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
 - `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON, Aptos, and the Ethereum/Gnosis Beacon Chain). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`. Aptos upstreams use `rest` exclusively, serving the fullnode `/v1/*` API
 - `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
-- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: an upstream cannot consist of only `rest-additional` connectors - at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket`) must also be configured
+- `rest-indexer` - a **self-contained indexer REST API** running next to the node API (e.g. the TON v3 indexer). This is a plain type: it may be an upstream's only connector (a standalone indexer upstream with its own head/health/bounds) or sit alongside the node-API connector on one upstream; see [TON deployment modes](#ton-deployment-modes)
+- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: it cannot work standalone at all - an upstream cannot consist of only `rest-additional` connectors, at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket` / `rest-indexer`) must also be configured
 
 By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each incoming request.
 
@@ -606,14 +607,39 @@ Every upstream must also track its head (latest block / finalization state). The
 
 `rest-additional` connectors are never chosen as the head connector.
 
-### Stellar deployment modes
+### TON deployment modes
 
-Stellar exposes two self-contained APIs: **stellar-rpc** (JSON-RPC 2.0, connector type `json-rpc`) and **Horizon** (REST, connector type `rest` — deprecated by SDF in favor of RPC, but with no shutdown date and a query surface much of which has no RPC equivalent). Their data windows are independent (RPC retention window vs Horizon's `history_elder_ledger`, which the retention reaper moves up and a `db reingest range` backfill can move *down*), as are their failure modes.
+TON exposes two self-contained APIs: the **v2 HTTP API** (toncenter `ton-http-api`, connector type `rest`, base URL must include the `/api/v2` prefix) and the **v3 indexer** (toncenter `ton-indexer`, connector type `rest-indexer`, no path prefix). They have independent data windows — the v2 window is the backing liteserver's block retention, the v3 window is whatever range the indexer has been backfilled with — and independent failure modes (a stalled indexer does not affect the liteserver, and vice versa). Any combination is possible in practice: a non-archival node with a genesis-deep index, or the reverse.
 
-- **Split (recommended)** - a stellar-rpc upstream (single `json-rpc` connector) and a Horizon upstream (single `rest` connector, a plain type). Each gets full independent accounting: Horizon's comes entirely from Horizon itself (head via `GET /ledgers?order=desc&limit=1`, health via `GET /health`, chain validation via the root `network_passphrase`, labels from `horizon_version`, lower bounds from `history_elder_ledger` with decrease support).
-- **Combined** - one upstream with both connectors; accounting follows the primary connector (`json-rpc` in `mode: default`), the other serves methods only, a warning is logged.
+Two deployment modes are supported:
 
-Horizon's SSE streaming (`Accept: text/event-stream`) is not supported: without that header every Horizon endpoint serves plain JSON and works normally; an SSE request through nodecore will hang until the connector timeout.
+- **Split (recommended)** - two upstreams of the same chain: a v2 upstream (single `rest` connector) and a v3 upstream (single `rest-indexer` connector — a plain type, fully legal on its own). Each upstream gets full independent accounting: its own head, health (v3: `masterchainInfo` freshness), chain validation (v2: zerostate hashes, v3: `global_id`), client labels, and lower bounds (v2: archival probe; v3: `first.seqno`, which may legally *decrease* when the index is backfilled deeper). Method routing between the two happens automatically: each upstream only advertises the methods its connector type carries.
+- **Combined** - one upstream with both connectors. This works, but **all validations and calculations (head, health, chain validation, labels, lower bounds) are computed from the primary connector's API only** (the head/internal connector — `rest`, i.e. v2, in `mode: default`); the other connector serves its methods and takes no part in any accounting. nodecore logs a warning at upstream creation to make this explicit. Use this mode only when the v3 index's data window and health can be assumed to track the v2 node's (e.g. an indexer colocated with, and fed from, that same node).
+
+```yaml
+# Split mode (recommended)
+upstreams:
+  - id: ton-node
+    chain: ton
+    connectors:
+      - type: rest
+        url: http://ton-node:8081/api/v2
+  - id: ton-index-v3
+    chain: ton
+    connectors:
+      - type: rest-indexer
+        url: http://ton-index:8082
+
+# Combined mode (non-primary connector = methods only; logs a warning)
+upstreams:
+  - id: ton-combined
+    chain: ton
+    connectors:
+      - type: rest
+        url: http://ton-node:8081/api/v2
+      - type: rest-indexer
+        url: http://ton-index:8082
+```
 
 ### Tor .onion upstreams
 
@@ -687,7 +713,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | NEAR chain validator | NEAR | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing the `status` probe's `chain_id` against the configured chain |
 | Starknet chain validator | Starknet | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing the `starknet_chainId` hex-felt against the configured chain |
 | Stellar chain validator | Stellar | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | rpc: compares the `getNetwork` passphrase; Horizon: compares `network_passphrase` from the root endpoint. In combined mode the primary connector's validator runs |
-| Stellar chain validator | Stellar | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | rpc: compares the `getNetwork` passphrase; Horizon: compares `network_passphrase` from the root endpoint. In combined mode the primary connector's validator runs |
+| TON chain validator | TON | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | v2: checks the network zerostate hashes from `getMasterchainInfo` `result.init`; v3: checks `masterchainInfo` `last.global_id`. In combined mode the primary connector's validator runs |
 | `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers` |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
@@ -703,12 +729,13 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Health validator (NEAR) | NEAR | `disable-health-validation` | Calls the NEAR `status` RPC; marks the upstream `Syncing` when `sync_info.syncing` is true or `latest_block_time` is stale (stale-head guard). With `validate-peers` on, also probes `network_info` and marks the upstream `Unavailable` at zero `num_active_peers` |
 | Health validator (Starknet) | Starknet | `disable-health-validation` | Calls `starknet_syncing`: a plain `false` is healthy, a sync object marks the upstream `Syncing` when the current-to-highest block lag exceeds the threshold. `validate-peers` has no effect (no p2p peer count — nodes sync from the feeder gateway) |
 | Health validator (Stellar) | Stellar | `disable-health-validation` | rpc: calls `getHealth` (the node polices its own 30s staleness threshold); a `-32603` "not initialized" error maps to `Syncing`. Horizon: reads the `GET /health` booleans (the 503 body is parsed too); `core_synced=false` maps to `Syncing`. In combined mode the primary connector's validator runs; `validate-peers` has no effect |
-| Health validator (Stellar) | Stellar | `disable-health-validation` | rpc: calls `getHealth` (the node polices its own 30s staleness threshold); a `-32603` "not initialized" error maps to `Syncing`. Horizon: reads the `GET /health` booleans (the 503 body is parsed too); `core_synced=false` maps to `Syncing`. In combined mode the primary connector's validator runs; `validate-peers` has no effect |
+| Health validator (TON) | TON | `disable-health-validation` | v2: `getMasterchainInfo` liveness; v3: `masterchainInfo` `gen_utime` freshness (a stale masterchain head marks the upstream `Syncing`). In combined mode the primary connector's validator runs; `validate-peers` has no effect |
 | Lower-bound detector | Solana, Algorand, Aztec, Aptos | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
 | Lower-bound detector (Beacon) | Beacon Chain | `disable-lower-bounds-detection` | Binary-searches the earliest retained block, state, epoch (attestation rewards), and blob-sidecar slots so requests against pruned ranges are routed away |
 | Lower-bound detector (Bitcoin) | Bitcoin | `disable-lower-bounds-detection` | Publishes `pruneheight` as the block/transaction lower bound when `getblockchaininfo.pruned` is true, and `1` (archive) otherwise |
 | Lower-bound detector (NEAR) | NEAR | `disable-lower-bounds-detection` | Reads `sync_info.earliest_block_height` from `status` and publishes it as the state and block lower bounds (a sliding GC window on non-archival nodes) |
 | Lower-bound detector (Starknet) | Starknet | `disable-lower-bounds-detection` | Verified probe of block 1: success publishes `1` as the lower bound, failure emits an explicit `UnknownBound` |
+| Lower-bound detector (Stellar) | Stellar | `disable-lower-bounds-detection` | rpc: publishes `getHealth` `oldestLedger` as the block and transaction lower bounds (a sliding retention window); Horizon: publishes `history_elder_ledger` from the root endpoint, which may move *down* when a `db reingest range` backfill deepens history |
 | Lower-bound detector (Stellar) | Stellar | `disable-lower-bounds-detection` | rpc: publishes `getHealth` `oldestLedger` as the block and transaction lower bounds (a sliding retention window); Horizon: publishes `history_elder_ledger` from the root endpoint, which may move *down* when a `db reingest range` backfill deepens history |
 | Lower-bound detector (Stellar) | Stellar | `disable-lower-bounds-detection` | rpc: publishes `getHealth` `oldestLedger` as the block and transaction lower bounds (a sliding retention window); Horizon: publishes `history_elder_ledger` from the root endpoint, which may move *down* when a `db reingest range` backfill deepens history |
 | Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
@@ -718,6 +745,6 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Client label detector (NEAR) | NEAR | `disable-labels-detection` | Reads `version.version` from `status` and publishes the client (`neard`) and version labels |
 | Client label detector (Starknet) | Starknet | `disable-labels-detection` | Two-step probe: `pathfinder_version` first, then `juno_version`; the one that answers sets the client and version labels |
 | Client label detector (Stellar) | Stellar | `disable-labels-detection` | rpc: reads `getVersionInfo` and publishes `stellar-rpc` with its version; Horizon: reads `horizon_version` from the root endpoint |
-| Client label detector (Stellar) | Stellar | `disable-labels-detection` | rpc: reads `getVersionInfo` and publishes `stellar-rpc` with its version; Horizon: reads `horizon_version` from the root endpoint |
+| Client label detector (TON) | TON | `disable-labels-detection` | v2: reads title/version from `GET /openapi.json`; v3: reads `GET /doc.json` and publishes `ton-index-go` with its version |
 
 `disable-validation` is the master switch and overrides every per-validator flag.
