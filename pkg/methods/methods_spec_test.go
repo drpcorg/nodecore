@@ -287,6 +287,9 @@ func TestRippleSpecLoads(t *testing.T) {
 	assert.True(t, spec.IsBroadcastDispatch())
 
 	spec = specs.GetSpecMethod("ripple", "subscribe")
+	assert.Nil(t, spec)
+}
+
 func TestStarknetSpecLoads(t *testing.T) {
 	err := specs.NewMethodSpecLoader().Load()
 	assert.NoError(t, err)
