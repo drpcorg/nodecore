@@ -287,6 +287,20 @@ func TestRippleSpecLoads(t *testing.T) {
 	assert.True(t, spec.IsBroadcastDispatch())
 
 	spec = specs.GetSpecMethod("ripple", "subscribe")
+func TestStarknetSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("starknet", "starknet_getBlockWithTxHashes")
+	assert.NotNil(t, spec)
+	assert.True(t, spec.IsNotNullDispatch())
+
+	spec = specs.GetSpecMethod("starknet", "starknet_addInvokeTransaction")
+	assert.NotNil(t, spec)
+	assert.False(t, spec.IsBroadcastDispatch())
+	assert.True(t, spec.IsNotNullDispatch())
+
+	spec = specs.GetSpecMethod("starknet", "starknet_subscribeNewHeads")
 	assert.Nil(t, spec)
 }
 
