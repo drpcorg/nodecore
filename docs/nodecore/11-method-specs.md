@@ -174,6 +174,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `bitcoin` | `bitcoin-json-rpc`, `bitcoin-esplora` |
 | `near` | `near-json-rpc` |
 | `starknet` | `starknet-json-rpc` |
+| `ton` | `ton-http-v2`, `ton-index-v3` |
 
 ### Plain specs
 
@@ -184,7 +185,8 @@ Grouped by the transports they declare:
 | `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
 | `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `near-json-rpc`, `starknet-json-rpc`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
-| `rest` | `aptos`, `eth-beacon-chain`, `tron-rest` |
+| `rest` | `aptos`, `eth-beacon-chain`, `ton-http-v2`, `tron-rest` |
+| `rest-indexer` | `ton-index-v3` |
 | `rest-additional` | `bitcoin-esplora`, `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
 ## Adding a new method
