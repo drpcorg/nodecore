@@ -1,0 +1,7 @@
+upstream-config:
+  upstreams:
+    - id: ton-index-v3
+      chain: ton
+      connectors:
+        - type: rest-indexer
+          url: https://test.com
