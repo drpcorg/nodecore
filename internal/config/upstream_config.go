@@ -25,7 +25,41 @@ type UpstreamConfig struct {
 	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
 	IntegrityConfig   *IntegrityConfig          `yaml:"integrity"`
 	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing"`
+	BalancingStrategy BalancingStrategy         `yaml:"balancing-strategy"`
 	Mode              UpstreamMode              `yaml:"mode"`
+}
+
+// BalancingStrategy selects how the generic (non-special-cased) request is
+// routed to an upstream: rating-ordered selection or plain round-robin.
+type BalancingStrategy string
+
+const (
+	RatingBalancingStrategy BalancingStrategy = "rating"
+	BaseBalancingStrategy   BalancingStrategy = "base"
+)
+
+// validate accepts an empty value as "inherit/default" (resolved to rating by
+// BalancingStrategyFor at read time), so it is only an error to specify an
+// unknown non-empty value.
+func (s BalancingStrategy) validate() error {
+	switch s {
+	case "", RatingBalancingStrategy, BaseBalancingStrategy:
+		return nil
+	default:
+		return fmt.Errorf("invalid balancing strategy - '%s'", s)
+	}
+}
+
+// BalancingStrategyFor resolves the effective balancing strategy for a chain:
+// a per-chain chain-defaults override wins over the global default; if neither
+// is set it defaults to rating.
+func (u *UpstreamConfig) BalancingStrategyFor(chainName string) BalancingStrategy {
+	if u.ChainDefaults != nil {
+		if d, ok := u.ChainDefaults[chainName]; ok && d != nil && d.BalancingStrategy != "" {
+			return d.BalancingStrategy
+		}
+	}
+	return u.BalancingStrategy
 }
 
 // LabelBalancingFor resolves the effective label-balancing config for a chain:
@@ -139,6 +173,24 @@ type ChainDefaults struct {
 	LabelBalancing     *LabelBalancingConfig     `yaml:"label-balancing"`
 	Dispatch           *DispatchOptions          `yaml:"dispatch"`
 	LocalSubscriptions *LocalSubscriptionsConfig `yaml:"local-subscriptions"`
+	ValidateLag        *bool                     `yaml:"validate-lag"`
+	BalancingStrategy  BalancingStrategy         `yaml:"balancing-strategy"`
+}
+
+// ValidateLagFor resolves whether the chain supervisor should derive upstream
+// status from cross-upstream head lag (marking laggards SYNCING). A per-chain
+// chain-defaults override wins; otherwise it defaults to enabled only in strict
+// mode.
+func (u *UpstreamConfig) ValidateLagFor(chainName string) bool {
+	if u == nil {
+		return false
+	}
+	if u.ChainDefaults != nil {
+		if defaults, ok := u.ChainDefaults[chainName]; ok && defaults != nil && defaults.ValidateLag != nil {
+			return *defaults.ValidateLag
+		}
+	}
+	return u.Mode == StrictMode
 }
 
 // LocalSubscriptionsConfig controls per-chain local subscription synthesis
@@ -347,6 +399,10 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 		if err := u.LabelBalancing.validate(); err != nil {
 			return fmt.Errorf("error during label-balancing config validation, cause: %s", err.Error())
 		}
+	}
+
+	if err := u.BalancingStrategy.validate(); err != nil {
+		return err
 	}
 
 	for chain, chainDefault := range u.ChainDefaults {
@@ -559,6 +615,9 @@ func (c *ChainDefaults) validate() error {
 		if err := c.LabelBalancing.validate(); err != nil {
 			return err
 		}
+	}
+	if err := c.BalancingStrategy.validate(); err != nil {
+		return err
 	}
 	return nil
 }

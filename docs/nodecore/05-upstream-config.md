@@ -5,6 +5,7 @@ This `upstream-config` section defines how nodecore discovers, evaluates, and in
 ```yaml
 upstream-config:
   mode: default
+  balancing-strategy: rating
   integrity:
     enabled: true
   failsafe-config:
@@ -48,6 +49,12 @@ upstream-config:
     calculation-interval: 5s
     calculation-function-name: "defaultLatencyErrorRatePolicyFunc"
     #calculation-function-file-path: "path/to/func"
+  label-balancing:
+    order:
+      - full
+      - archive
+    pass-on-error: false
+    include-default: true
   upstreams:
     - id: my-super-upstream
       chain: ethereum
@@ -104,7 +111,9 @@ It brings together:
 3. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter), hedging (duplicate a slow request after a delay, with a cap on parallel hedges), and a per-request `timeout` budget.
 4. Chain defaults (`chain-defaults`) - Per-chain operational defaults: poll interval, validation toggles, and detector toggles. See [Validators and labels](#validators-and-labels) below.
 5. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
-6. Upstreams (`upstreams`) - The actual provider entries.
+6. Balancing strategy (`balancing-strategy`) - Selects how a normal request picks an upstream: `rating` (score-ordered, the default) or `base` (round-robin). See [balancing-strategy](#balancing-strategy) below.
+7. Label balancing (`label-balancing`) - Optional priority-group routing layered on top of rating: tag upstreams with `group-labels` and serve requests from the highest-priority group first. See [label-balancing](#label-balancing) below.
+8. Upstreams (`upstreams`) - The actual provider entries.
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, (4) apply rate limiting to control request throughput, and (5) toggle the validators and label detectors that observe each upstream's health.
 
@@ -146,6 +155,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
 | `disable-labels-detection` | `true` (off) | `false` (on) |
 | `validate-syncing` | `false` (off) | `true` (on) |
+| `validate-lag` | `false` (off) | `true` (on) |
 | `validate-peers` | `false` (off) | `true` (on) |
 | `validate-call-limit` | `false` (off) | `true` (on) |
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
@@ -311,6 +321,7 @@ chain-defaults:
       enable-new-pending-transactions: true
   polygon:
     poll-interval: 30s
+    balancing-strategy: base
 ```
 
 The `chain-defaults` section defines per-chain baseline settings. `<chain>.options` apply to upstreams of that chain unless explicitly overridden in the upstream configuration; `<chain>.dispatch` controls routing policies for the whole chain and is not a per-upstream setting.
@@ -326,8 +337,8 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-health-validation` - Disables only the health validators (per chain family). **_Default_**: `false`
   * `disable-lower-bounds-detection` - Disables the earliest-available-block detector. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-labels-detection` - Disables the EVM label detectors (client/version, archive, gas, flashblock, etc.). Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
-  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. For beacon-chain upstreams it probes `GET /eth/v1/node/syncing` instead (marking the upstream `Syncing`, or `Unavailable` when its execution layer is offline). Bitcoin-family upstreams probe `getblockchaininfo` (`initialblockdownload`, plus a headers-vs-blocks lag threshold). Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
-  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. For beacon-chain upstreams it probes `GET /eth/v1/node/peer_count`. Bitcoin-family upstreams call `getconnectioncount`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. For beacon-chain upstreams it probes `GET /eth/v1/node/syncing` instead (marking the upstream `Syncing`, or `Unavailable` when its execution layer is offline). Bitcoin-family upstreams probe `getblockchaininfo` (`initialblockdownload`, plus a headers-vs-blocks lag threshold). For NEAR upstreams the `status` probe's `sync_info.syncing` and a stale-head guard on `latest_block_time` drive the same signal (always on as part of health validation). Starknet upstreams probe `starknet_syncing` (a plain `false` or a sync object, judged with a lag threshold). Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. For beacon-chain upstreams it probes `GET /eth/v1/node/peer_count`. Bitcoin-family upstreams call `getconnectioncount`. NEAR upstreams probe `network_info` `num_active_peers`. Starknet has no peer probe (nodes sync from the feeder gateway, not p2p), so `validate-peers` has no effect there. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `min-peers` - Minimum acceptable peer count when `validate-peers` is on. **_Default_**: `1`
   * `validate-call-limit` - For EVM chains, periodically probes the upstream's `eth_call` return-data limit and marks the upstream unhealthy when its observed limit is below `call-limit-size`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
@@ -348,6 +359,8 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `enable-new-heads` / `enable-logs` / `enable-new-pending-transactions` - Per-topic overrides that win over `enable` (e.g. `enable: false` with `enable-logs: true` keeps only `logs` local)
   * Note: the synthetic `drpc_pendingTransactions` method has no node-backed equivalent and is **always** served locally — it is never affected by these flags
   * See [Subscriptions](13-subscriptions.md) for how local synthesis and aggregation work
+* `<chain>.balancing-strategy` - Per-chain override of the global [`balancing-strategy`](#balancing-strategy). Selects how a normal request (one not already handled by a more specific path such as sticky-send, quorum, dispatch, or [label-balancing](#label-balancing)) picks an upstream: `rating` orders candidates by their [score-policy](#score-policy-config) rating, `base` uses plain round-robin. When unset, the chain inherits the global value
+* `<chain>.validate-lag` - When enabled, derives each upstream's availability from how far its head trails the chain head. An `Available` upstream that lags behind the best observed head by more than the chain's `settings.lags.syncing` threshold (a chain-metadata value from the embedded `chains.yaml`, overridable via [`NODECORE_EXTRA_CHAINS_PATH`](#extending-the-chain-registry-at-startup)) is marked `Syncing`, which deprioritizes it during routing until it catches up; when the lag drops back within the threshold the upstream's probe-reported status is restored. If a chain has no positive `settings.lags.syncing` threshold (i.e. `0` or unset), the check is disabled for that chain and no upstream is ever downgraded by lag. Unlike `validate-syncing`, which asks each node about its own sync state, this compares heads *across* upstreams of the chain, so it catches nodes that report healthy but silently fall behind. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
@@ -507,6 +520,30 @@ How groups are traversed:
 The per-upstream `group-labels` field (see [Fields](#fields)) assigns an upstream to one or
 more groups. Labels not present in `order` route the upstream to the default group.
 
+## balancing-strategy
+
+```yaml
+upstream-config:
+  # global default — applies to every chain unless overridden under chain-defaults
+  balancing-strategy: base
+  chain-defaults:
+    ethereum:
+      # per-chain override
+      balancing-strategy: rating
+```
+
+`balancing-strategy` selects how a **normal** request picks an upstream — that is, a request
+not already handled by a more specific routing path (sticky-send, quorum, dispatch, or
+[label-balancing](#label-balancing), all of which keep priority over this setting):
+
+- `rating` (**_default_**) - orders candidates by their [score-policy](#score-policy-config)
+  rating and prefers the best-scored available upstream.
+- `base` - plain round-robin across the chain's available upstreams, ignoring rating.
+
+It is configured as a **global default** under `upstream-config.balancing-strategy` (applies to
+every chain) and can be **overridden per chain** under `chain-defaults.<chain>.balancing-strategy`.
+Resolution order is per-chain override → global default → `rating`.
+
 ## upstreams
 
 ```yaml
@@ -638,6 +675,8 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Aztec chain validator | Aztec | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the Aztec node's chain-id endpoint |
 | Aptos chain validator | Aptos | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the `chain_id` from the Aptos ledger-info endpoint (`GET /v1`) |
 | Bitcoin chain validator | Bitcoin | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing `getblockhash 0` against the expected genesis hash per chain (`getblockchaininfo.chain` is a secondary signal - it cannot distinguish bitcoin from dogecoin) |
+| NEAR chain validator | NEAR | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing the `status` probe's `chain_id` against the configured chain |
+| Starknet chain validator | Starknet | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing the `starknet_chainId` hex-felt against the configured chain |
 | `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers` |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
@@ -650,12 +689,18 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Syncing validator (Beacon) | Beacon Chain | `validate-syncing` (set to `false`) | Probes `GET /eth/v1/node/syncing`; marks the upstream `Syncing` when `is_syncing` is true and `Unavailable` when `el_offline` is true |
 | Peers validator (Beacon) | Beacon Chain | `validate-peers` / `min-peers` | Probes `GET /eth/v1/node/peer_count` and marks the upstream immature while connected peers are below `min-peers` |
 | Health validator (Bitcoin) | Bitcoin | `disable-health-validation` | Reads `getblockchaininfo`: `initialblockdownload` or a `headers - blocks` gap beyond the chain's lag threshold marks the upstream `Syncing`. With `validate-peers` on, `getconnectioncount` of zero marks it `Unavailable` |
+| Health validator (NEAR) | NEAR | `disable-health-validation` | Calls the NEAR `status` RPC; marks the upstream `Syncing` when `sync_info.syncing` is true or `latest_block_time` is stale (stale-head guard). With `validate-peers` on, also probes `network_info` and marks the upstream `Unavailable` at zero `num_active_peers` |
+| Health validator (Starknet) | Starknet | `disable-health-validation` | Calls `starknet_syncing`: a plain `false` is healthy, a sync object marks the upstream `Syncing` when the current-to-highest block lag exceeds the threshold. `validate-peers` has no effect (no p2p peer count — nodes sync from the feeder gateway) |
 | Lower-bound detector | Solana, Algorand, Aztec, Aptos | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
 | Lower-bound detector (Beacon) | Beacon Chain | `disable-lower-bounds-detection` | Binary-searches the earliest retained block, state, epoch (attestation rewards), and blob-sidecar slots so requests against pruned ranges are routed away |
 | Lower-bound detector (Bitcoin) | Bitcoin | `disable-lower-bounds-detection` | Publishes `pruneheight` as the block/transaction lower bound when `getblockchaininfo.pruned` is true, and `1` (archive) otherwise |
+| Lower-bound detector (NEAR) | NEAR | `disable-lower-bounds-detection` | Reads `sync_info.earliest_block_height` from `status` and publishes it as the state and block lower bounds (a sliding GC window on non-archival nodes) |
+| Lower-bound detector (Starknet) | Starknet | `disable-lower-bounds-detection` | Verified probe of block 1: success publishes `1` as the lower bound, failure emits an explicit `UnknownBound` |
 | Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
 | Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
 | Client label detector (Bitcoin) | Bitcoin | `disable-labels-detection` | Parses `getnetworkinfo.subversion` (`/Satoshi:26.1.0/`) into client type and version labels |
+| Client label detector (NEAR) | NEAR | `disable-labels-detection` | Reads `version.version` from `status` and publishes the client (`neard`) and version labels |
+| Client label detector (Starknet) | Starknet | `disable-labels-detection` | Two-step probe: `pathfinder_version` first, then `juno_version`; the one that answers sets the client and version labels |
 
 `disable-validation` is the master switch and overrides every per-validator flag.

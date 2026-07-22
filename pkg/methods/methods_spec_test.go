@@ -260,6 +260,38 @@ func TestBitcoinSpecLoads(t *testing.T) {
 	assert.Equal(t, []string{"bc1qxyz"}, params)
 }
 
+func TestNearSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("near", "block")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("near", "send_tx")
+	assert.NotNil(t, spec)
+	assert.True(t, spec.IsBroadcastDispatch())
+
+	spec = specs.GetSpecMethod("near", "broadcast_tx_async")
+	assert.Nil(t, spec)
+}
+
+func TestStarknetSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("starknet", "starknet_getBlockWithTxHashes")
+	assert.NotNil(t, spec)
+	assert.True(t, spec.IsNotNullDispatch())
+
+	spec = specs.GetSpecMethod("starknet", "starknet_addInvokeTransaction")
+	assert.NotNil(t, spec)
+	assert.False(t, spec.IsBroadcastDispatch())
+	assert.True(t, spec.IsNotNullDispatch())
+
+	spec = specs.GetSpecMethod("starknet", "starknet_subscribeNewHeads")
+	assert.Nil(t, spec)
+}
+
 func TestAptosSpecMatchesNestedAccountAndTableRoutes(t *testing.T) {
 	loader := specs.NewMethodSpecLoader()
 	err := loader.Load()
