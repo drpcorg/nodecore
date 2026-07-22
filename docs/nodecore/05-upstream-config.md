@@ -37,6 +37,7 @@ upstream-config:
         call-limit-size: 131072
         validate-client-version: false
         disable-log-index-validation: true
+        disable-liveness-subscription-validation: false
         archive: false
       dispatch:
         broadcast: false
@@ -346,6 +347,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
   * `disable-finalized-block-detection` - Disables periodic finalized-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("finalized", …)` calls, does not cache with `finalization-type: finalized`, and skips finalization-lag tracking. Set to `true` for chains like Viction (PoSV) that lack Ethereum's finalized-block concept. **_Default_**: `false`
+  * `disable-liveness-subscription-validation` - Controls whether an EVM upstream whose head is driven by a WebSocket must prove its head is *live* before it advertises the WebSocket subscription capability (`WsCap`) and can back client subscriptions. When left enabled (the default), such an upstream gains `WsCap` only once its head has advanced **consecutively** - 10 blocks in a row, or 1 minute of consecutive tracking, whichever comes first - and loses it on a missed block / reorg or a WebSocket disconnect, pulling the upstream out of subscription serving until it recovers (regular RPC routing is unaffected). Set to `true` to skip the check and keep the historical "connected WebSocket ⇒ `WsCap`" behavior. Only affects EVM upstreams with a WebSocket head connector; poll-head upstreams and non-EVM chains are never gated. **_Default_**: `false`
   * `archive` - Manual EVM archive capability override. Set `archive: false` to publish `archive=false` without running archive auto-detection. Set `archive: true` or leave it unset to use the runtime archive detector and publish its detected result
 * `<chain>.dispatch` - Per-chain dispatch policy toggles. These options affect routing for the whole chain, not individual upstreams:
   * `broadcast` - Enables fan-out broadcast for method specs with `dispatch: broadcast` (for example transaction propagation). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.

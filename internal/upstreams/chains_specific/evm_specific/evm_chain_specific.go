@@ -141,8 +141,25 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 }
 
 func (e *EvmChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	wsCapName := fmt.Sprintf("%s_ws_cap", e.upstreamId)
+	var wsCapDetector caps.CapDetector
+	gateOnLiveness := input.HeadConnector != nil &&
+		input.HeadConnector.GetType() == specs.WebsocketConnector &&
+		input.Head != nil &&
+		!e.options.LivenessSubscriptionValidationDisabled()
+	if gateOnLiveness {
+		// The head is ws-driven and liveness validation is enabled, so gate WsCap on
+		// head liveness: a flapping head pulls the upstream out of subscription serving
+		// (it still serves regular RPC).
+		wsCapDetector = caps.NewWsHeadLivenessCapDetector(e.upstreamId, wsCapName, protocol.WsCap, input.WsConnector, input.Head)
+	} else {
+		// Poll-driven head, or liveness validation disabled: WsCap stays ungated (plain
+		// ws presence).
+		wsCapDetector = caps.NewWsPresenceCapDetector(wsCapName, protocol.WsCap, input.WsConnector)
+	}
+
 	detectors := []caps.CapDetector{
-		caps.NewWsPresenceCapDetector(fmt.Sprintf("%s_ws_cap", e.upstreamId), protocol.WsCap, input.WsConnector),
+		wsCapDetector,
 		evm_caps.NewEvmHeadSubCapDetector(fmt.Sprintf("%s_head_sub_cap", e.upstreamId), input.HeadConnector, input.Methods),
 	}
 

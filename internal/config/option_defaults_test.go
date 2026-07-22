@@ -240,6 +240,7 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	assert.False(t, *options.ValidateSyncing)
 	assert.False(t, *options.ValidatePeers)
 	assert.False(t, *options.ValidateCallLimit)
+	assert.False(t, *options.DisableLivenessSubscriptionValidation)
 	assert.Equal(t, int64(1), options.MinPeers)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
