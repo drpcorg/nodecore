@@ -97,6 +97,15 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 
 	httpGroup := httpServer.Group("/queries/:chain")
 
+	// X-Forwarded-For is only trusted from configured reverse proxies; parsed once
+	// here (the config was already validated at load). On error, fall back to no
+	// trusted proxies, i.e. use the direct peer as the client IP.
+	trustedProxies, err := utils.ParseTrustedProxies(trustedProxiesFromConfig(appCtx))
+	if err != nil {
+		log.Error().Err(err).Msg("invalid trusted-proxies, ignoring X-Forwarded-For")
+		trustedProxies = nil
+	}
+
 	requestHandler := func(c echo.Context) error {
 		if c.Request().Method == http.MethodOptions {
 			return handleCorsOptions(c)
@@ -105,7 +114,7 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		c.Request().SetPathValue("key", c.Param("key"))
 		chain := c.Param("chain")
 		restPath := c.Param("*") // for rest requests
-		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
+		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request(), trustedProxies)
 		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
 		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
@@ -140,6 +149,15 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 	httpGroup.Any("", requestHandler)
 
 	return httpServer
+}
+
+// trustedProxiesFromConfig safely extracts the configured trusted-proxy list,
+// tolerating a nil app/server config.
+func trustedProxiesFromConfig(appCtx *server_ctx.ApplicationServerContext) []string {
+	if appCtx == nil || appCtx.AppConfig == nil || appCtx.AppConfig.ServerConfig == nil {
+		return nil
+	}
+	return appCtx.AppConfig.ServerConfig.TrustedProxies
 }
 
 var corsHeaders = []lo.Tuple2[string, string]{
