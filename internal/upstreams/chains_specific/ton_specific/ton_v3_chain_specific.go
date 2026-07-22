@@ -3,9 +3,11 @@ package ton_specific
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -25,11 +27,16 @@ func NewTonV3ChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	pollInterval time.Duration,
 	options *chains.Options,
 ) *TonV3ChainSpecificObject {
 	return &TonV3ChainSpecificObject{
-		tonBaseChainSpecificObject: newTonBaseChainSpecificObject(ctx, configuredChain, upstreamId, connector, options),
+		tonBaseChainSpecificObject: newTonBaseChainSpecificObject(ctx, configuredChain, upstreamId, connector, pollInterval, options),
 	}
+}
+
+func (t *TonV3ChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
+	return t.newTonBlockProcessor(t)
 }
 
 func (t *TonV3ChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -49,7 +56,7 @@ func (t *TonV3ChainSpecificObject) HealthValidators() []validations.Validator[pr
 		return []validations.Validator[protocol.AvailabilityStatus]{}
 	}
 	return []validations.Validator[protocol.AvailabilityStatus]{
-		ton_validations.NewTonV3HealthValidator(
+		ton_validations.NewTonV3SyncingValidator(
 			t.upstreamId, t.connector, t.configuredChain, t.internalTimeout,
 		),
 	}

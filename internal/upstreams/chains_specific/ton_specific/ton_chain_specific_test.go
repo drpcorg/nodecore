@@ -29,17 +29,17 @@ func tonTestOptions() *chains.Options {
 }
 
 func newV2(connector connectors.ApiConnector) *ton_specific.TonV2ChainSpecificObject {
-	return ton_specific.NewTonV2ChainSpecificObject(context.Background(), chains.GetChain("ton"), "id", connector, tonTestOptions())
+	return ton_specific.NewTonV2ChainSpecificObject(context.Background(), chains.GetChain("ton"), "id", connector, time.Second, tonTestOptions())
 }
 
 func newV3(connector connectors.ApiConnector) *ton_specific.TonV3ChainSpecificObject {
-	return ton_specific.NewTonV3ChainSpecificObject(context.Background(), chains.GetChain("ton"), "id", connector, tonTestOptions())
+	return ton_specific.NewTonV3ChainSpecificObject(context.Background(), chains.GetChain("ton"), "id", connector, time.Second, tonTestOptions())
 }
 
 func TestTonFactoryReturnsV3ForRestIndexer(t *testing.T) {
 	connector := mocks.NewConnectorMockWithType(specs.RestIndexer)
 	obj := ton_specific.NewTonChainSpecificObject(
-		context.Background(), chains.GetChain("ton"), "id", connector, []connectors.ApiConnector{connector}, tonTestOptions(),
+		context.Background(), chains.GetChain("ton"), "id", connector, []connectors.ApiConnector{connector}, time.Second, tonTestOptions(),
 	)
 	assert.IsType(t, &ton_specific.TonV3ChainSpecificObject{}, obj)
 }
@@ -47,7 +47,7 @@ func TestTonFactoryReturnsV3ForRestIndexer(t *testing.T) {
 func TestTonFactoryReturnsV2ForRest(t *testing.T) {
 	connector := mocks.NewConnectorMockWithType(specs.RestConnector)
 	obj := ton_specific.NewTonChainSpecificObject(
-		context.Background(), chains.GetChain("ton"), "id", connector, []connectors.ApiConnector{connector}, tonTestOptions(),
+		context.Background(), chains.GetChain("ton"), "id", connector, []connectors.ApiConnector{connector}, time.Second, tonTestOptions(),
 	)
 	assert.IsType(t, &ton_specific.TonV2ChainSpecificObject{}, obj)
 }
@@ -69,11 +69,14 @@ func TestTonCapDetectorsAreNil(t *testing.T) {
 	assert.Nil(t, newV3(nil).CapDetectors(caps.DetectorInput{}))
 }
 
-func TestTonBlockAndLowerBoundProcessorsAreNil(t *testing.T) {
-	assert.Nil(t, newV2(nil).BlockProcessor())
+func TestTonLowerBoundProcessorsAreNil(t *testing.T) {
 	assert.Nil(t, newV2(nil).LowerBoundProcessor())
-	assert.Nil(t, newV3(nil).BlockProcessor())
 	assert.Nil(t, newV3(nil).LowerBoundProcessor())
+}
+
+func TestTonBlockProcessorsAreCreated(t *testing.T) {
+	assert.NotNil(t, newV2(mocks.NewConnectorMockWithType(specs.RestConnector)).BlockProcessor())
+	assert.NotNil(t, newV3(mocks.NewConnectorMockWithType(specs.RestIndexer)).BlockProcessor())
 }
 
 func TestTonV2ParseBlock(t *testing.T) {

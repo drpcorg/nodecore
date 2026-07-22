@@ -35,6 +35,7 @@ func NewTonChainSpecificObject(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	allConnectors []connectors.ApiConnector,
+	pollInterval time.Duration,
 	options *chains.Options,
 ) chains_specific.ChainSpecific {
 	isV3 := connector != nil && connector.GetType() == specs.RestIndexer
@@ -52,9 +53,9 @@ func NewTonChainSpecificObject(
 		)
 	}
 	if isV3 {
-		return NewTonV3ChainSpecificObject(ctx, configuredChain, upstreamId, connector, options)
+		return NewTonV3ChainSpecificObject(ctx, configuredChain, upstreamId, connector, pollInterval, options)
 	}
-	return NewTonV2ChainSpecificObject(ctx, configuredChain, upstreamId, connector, options)
+	return NewTonV2ChainSpecificObject(ctx, configuredChain, upstreamId, connector, pollInterval, options)
 }
 
 // tonBaseChainSpecificObject holds the state and behavior shared by the v2
@@ -65,6 +66,7 @@ type tonBaseChainSpecificObject struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	options         *chains.Options
+	pollInterval    time.Duration
 	internalTimeout time.Duration
 	labelsDelay     time.Duration
 	configuredChain *chains.ConfiguredChain
@@ -75,6 +77,7 @@ func newTonBaseChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	pollInterval time.Duration,
 	options *chains.Options,
 ) tonBaseChainSpecificObject {
 	return tonBaseChainSpecificObject{
@@ -82,16 +85,27 @@ func newTonBaseChainSpecificObject(
 		upstreamId:      upstreamId,
 		connector:       connector,
 		options:         options,
+		pollInterval:    pollInterval,
 		internalTimeout: options.InternalTimeout,
 		labelsDelay:     options.ValidationInterval * 5,
 		configuredChain: configuredChain,
 	}
 }
 
-// BlockProcessor is nil: the masterchain head is BFT-final the moment it is
-// published, so there is no separate finalized head to poll.
-func (t *tonBaseChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return nil
+// newTonBlockProcessor polls the finalized head with the generic block
+// processor; the masterchain is BFT-final, so it tracks the same head the
+// head processor sees, and there is no "safe" block concept.
+func (t *tonBaseChainSpecificObject) newTonBlockProcessor(chainSpecific blocks.BlockChainSpecific) blocks.BlockProcessor {
+	return blocks.NewBaseBlockProcessor(
+		t.ctx,
+		t.upstreamId,
+		t.pollInterval,
+		t.internalTimeout,
+		t.options.FinalizedBlockDetectionDisabled(),
+		true,
+		t.connector,
+		chainSpecific,
+	)
 }
 
 func (t *tonBaseChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {

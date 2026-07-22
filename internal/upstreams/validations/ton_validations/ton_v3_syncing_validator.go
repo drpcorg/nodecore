@@ -20,20 +20,20 @@ const tonV3MinFreshness = time.Minute
 
 var errTonV3NoSeqno = errors.New("ton v3 indexer returned zero masterchain seqno")
 
-type TonV3HealthValidator struct {
+type TonV3SyncingValidator struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
 }
 
-func NewTonV3HealthValidator(
+func NewTonV3SyncingValidator(
 	upstreamId string,
 	connector connectors.ApiConnector,
 	chain *chains.ConfiguredChain,
 	internalTimeout time.Duration,
-) *TonV3HealthValidator {
-	return &TonV3HealthValidator{
+) *TonV3SyncingValidator {
+	return &TonV3SyncingValidator{
 		upstreamId:      upstreamId,
 		connector:       connector,
 		chain:           chain,
@@ -41,10 +41,10 @@ func NewTonV3HealthValidator(
 	}
 }
 
-func (t *TonV3HealthValidator) Validate() protocol.AvailabilityStatus {
+func (t *TonV3SyncingValidator) Validate() protocol.AvailabilityStatus {
 	info, err := FetchV3MasterchainInfo(t.connector, t.chain.Chain, t.internalTimeout)
 	if err != nil {
-		log.Error().Err(err).Msgf("ton v3 upstream '%s' health validation failed", t.upstreamId)
+		log.Error().Err(err).Msgf("ton v3 upstream '%s' syncing validation failed", t.upstreamId)
 		return protocol.Unavailable
 	}
 	if info.Last.Seqno == 0 {
@@ -78,4 +78,4 @@ func (t *TonV3HealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-var _ validations.HealthValidator = (*TonV3HealthValidator)(nil)
+var _ validations.HealthValidator = (*TonV3SyncingValidator)(nil)

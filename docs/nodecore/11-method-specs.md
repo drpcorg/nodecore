@@ -175,7 +175,6 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `near` | `near-json-rpc` |
 | `starknet` | `starknet-json-rpc` |
 | `ton` | `ton-http-v2`, `ton-index-v3` |
-| `ton` | `ton-http-v2`, `ton-index-v3` |
 
 ### Plain specs
 

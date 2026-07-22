@@ -89,7 +89,7 @@ func TestTonV3HealthAvailableOnFreshHead(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", v3MasterchainInfoBody(80354724, freshGenUtime(), -239, 66051993), 200, protocol.Rest))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -98,7 +98,7 @@ func TestTonV3HealthSyncingOnStaleGenUtime(t *testing.T) {
 	stale := fmt.Sprintf("%d", time.Now().Add(-time.Hour).Unix())
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", v3MasterchainInfoBody(80354724, stale, -239, 66051993), 200, protocol.Rest))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Syncing, v.Validate())
 }
 
@@ -109,7 +109,7 @@ func TestTonV3HealthAvailableJustUnderTheFreshnessFloor(t *testing.T) {
 	almostStale := fmt.Sprintf("%d", time.Now().Add(-50*time.Second).Unix())
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", v3MasterchainInfoBody(80354724, almostStale, -239, 66051993), 200, protocol.Rest))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -117,7 +117,7 @@ func TestTonV3HealthAvailableOnUnparseableGenUtime(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", v3MasterchainInfoBody(80354724, "not-a-number", -239, 66051993), 200, protocol.Rest))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Available, v.Validate())
 }
 
@@ -125,7 +125,7 @@ func TestTonV3HealthUnavailableOnZeroSeqno(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", v3MasterchainInfoBody(0, freshGenUtime(), -239, 66051993), 200, protocol.Rest))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
@@ -133,7 +133,7 @@ func TestTonV3HealthUnavailableOnUnparseableBody(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"last":`), 200, protocol.Rest))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }
 
@@ -141,6 +141,6 @@ func TestTonV3HealthUnavailableOnFetchError(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isV3MasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
-	v := ton_validations.NewTonV3HealthValidator("id", conn, chains.GetChain("ton"), time.Second)
+	v := ton_validations.NewTonV3SyncingValidator("id", conn, chains.GetChain("ton"), time.Second)
 	assert.Equal(t, protocol.Unavailable, v.Validate())
 }

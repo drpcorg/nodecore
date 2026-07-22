@@ -3,9 +3,11 @@ package ton_specific
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
@@ -26,11 +28,16 @@ func NewTonV2ChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	pollInterval time.Duration,
 	options *chains.Options,
 ) *TonV2ChainSpecificObject {
 	return &TonV2ChainSpecificObject{
-		tonBaseChainSpecificObject: newTonBaseChainSpecificObject(ctx, configuredChain, upstreamId, connector, options),
+		tonBaseChainSpecificObject: newTonBaseChainSpecificObject(ctx, configuredChain, upstreamId, connector, pollInterval, options),
 	}
+}
+
+func (t *TonV2ChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
+	return t.newTonBlockProcessor(t)
 }
 
 func (t *TonV2ChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {

@@ -281,6 +281,7 @@ func getChainSpecific(
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			upstreamConnectorsInfo.allConnectors,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	case chains.Starknet:
