@@ -225,28 +225,51 @@ func TestEvmCapabilitiesMalformedResponseFallsBackToSearchWithoutRetry(t *testin
 	}
 }
 
-func TestEvmCapabilitiesTransientErrorIsNotCachedAsUnsupported(t *testing.T) {
+// A single hiccup is retried within the same refresh: the cycle stays on the
+// capabilities path and no search probes are issued.
+func TestEvmCapabilitiesTransientErrorRetriedWithinRefresh(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom"))).Once()
+	expectCapabilities(connector, evmOK(evmCapabilitiesFixture)).Once()
+
+	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
+	capabilities.SetRetryPolicy(3, time.Millisecond)
+	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities)
+
+	result, err := detector.DetectLowerBound(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, result, 2)
+	assert.Equal(t, int64(1), result[0].Bound)
+	assert.Len(t, connector.Calls, 2, "retry must be the only extra upstream request")
+	connector.AssertExpectations(t)
+}
+
+func TestEvmCapabilitiesTransientErrorIsNotCachedAsUnsupported(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectCapabilities(connector, protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom"))).Times(3)
 	expectCapabilities(connector, evmOK(evmCapabilitiesFixture)).Once()
 	expectLatest(connector, "0x5")
 	expectBlocksAbove(connector, 3, `{"number":"0x3","transactions":[]}`)
 
 	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
 	capabilities.SetProbeWindows(0, time.Hour)
+	capabilities.SetRetryPolicy(3, time.Millisecond)
 	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities)
 
+	// all attempts fail: this cycle falls back to the search
 	first, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.NotEmpty(t, first)
 	assert.Equal(t, int64(3), first[0].Bound)
 
+	// next window succeeds: the failure was not cached as unsupported
 	second, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
 	require.Len(t, second, 2)
 	assert.Equal(t, int64(1), second[0].Bound)
 
-	assert.Equal(t, 2, countRequests(connector, "eth_capabilities"))
+	assert.Equal(t, 4, countRequests(connector, "eth_capabilities"))
 }
 
 func TestEvmCapabilitiesReprobeUnsupportedAfterInterval(t *testing.T) {

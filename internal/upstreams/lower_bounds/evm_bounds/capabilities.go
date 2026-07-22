@@ -24,6 +24,13 @@ const (
 
 	// An upstream without the method is re-probed occasionally: nodes get upgraded.
 	evmCapabilitiesReprobeInterval = time.Hour
+
+	// A transient failure is retried within the refresh: a nil report sends every
+	// detector of the cycle to the search path, and the block search re-publishes
+	// LogsBound as 1, briefly overriding a windowed log index. Unsupported and
+	// malformed verdicts are never retried.
+	evmCapabilitiesRetryAttempts = 3
+	evmCapabilitiesRetryDelay    = time.Second
 )
 
 type evmCapabilitiesSupport int
@@ -47,6 +54,8 @@ type EvmCapabilities struct {
 
 	resultTtl       time.Duration
 	reprobeInterval time.Duration
+	retryAttempts   int
+	retryDelay      time.Duration
 
 	mu            sync.Mutex
 	support       evmCapabilitiesSupport
@@ -67,6 +76,8 @@ func NewEvmCapabilities(
 		connector:       connector,
 		resultTtl:       evmCapabilitiesResultTtl,
 		reprobeInterval: evmCapabilitiesReprobeInterval,
+		retryAttempts:   evmCapabilitiesRetryAttempts,
+		retryDelay:      evmCapabilitiesRetryDelay,
 	}
 }
 
@@ -77,6 +88,18 @@ func (c *EvmCapabilities) SetProbeWindows(resultTtl, reprobeInterval time.Durati
 	defer c.mu.Unlock()
 	c.resultTtl = resultTtl
 	c.reprobeInterval = reprobeInterval
+}
+
+// SetRetryPolicy overrides how many attempts a refresh makes on transient failures
+// and the pause between them. Production relies on the defaults; tests shrink them.
+func (c *EvmCapabilities) SetRetryPolicy(attempts int, delay time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if attempts < 1 {
+		attempts = 1
+	}
+	c.retryAttempts = attempts
+	c.retryDelay = delay
 }
 
 // snapshot returns the current capabilities report or nil when the upstream has no usable
@@ -99,33 +122,51 @@ func (c *EvmCapabilities) snapshot(ctx context.Context) *evmCapabilitiesSnapshot
 	return c.cached
 }
 
+// refresh fetches a new report, retrying transient failures so a single hiccup
+// doesn't push the whole detection cycle to the search path.
 func (c *EvmCapabilities) refresh(ctx context.Context) *evmCapabilitiesSnapshot {
+	for attempt := 1; ; attempt++ {
+		snapshot, retryable := c.fetch(ctx)
+		if snapshot != nil || !retryable || attempt >= c.retryAttempts {
+			return snapshot
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(c.retryDelay):
+		}
+	}
+}
+
+// fetch does one eth_capabilities round trip. retryable reports whether a nil
+// snapshot came from a transient failure rather than a cached verdict.
+func (c *EvmCapabilities) fetch(ctx context.Context) (*evmCapabilitiesSnapshot, bool) {
 	response, err := c.send(ctx)
 	if err != nil {
 		log.Debug().Err(err).Msgf("couldn't request %s from upstream '%s'", evmCapabilitiesMethod, c.upstreamId)
-		return nil
+		return nil, true
 	}
 	if response.HasError() {
 		respErr := response.GetError()
 		if isEvmMethodNotFoundError(respErr) {
 			c.markUnsupported(respErr.Message)
-			return nil
+			return nil, false
 		}
 		// a transient upstream failure doesn't change the support verdict
 		log.Debug().Err(respErr).Msgf("couldn't fetch %s from upstream '%s'", evmCapabilitiesMethod, c.upstreamId)
-		return nil
+		return nil, true
 	}
 
 	snapshot := parseEvmCapabilities(response.ResponseResult())
 	if snapshot == nil {
 		c.markUnsupported("malformed response")
-		return nil
+		return nil, false
 	}
 	if c.support != evmCapabilitiesSupported {
 		log.Info().Msgf("upstream '%s' supports %s, using it for lower bound detection", c.upstreamId, evmCapabilitiesMethod)
 	}
 	c.support = evmCapabilitiesSupported
-	return snapshot
+	return snapshot, false
 }
 
 func (c *EvmCapabilities) send(ctx context.Context) (protocol.ResponseHolder, error) {
