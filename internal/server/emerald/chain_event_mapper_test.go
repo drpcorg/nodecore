@@ -125,3 +125,39 @@ func TestHeadToApi(t *testing.T) {
 	assert.Equal(t, head.Hash.ToHex(), headEvent.BlockId)
 	assert.Equal(t, head.ParentHash.ToHex(), headEvent.ParentBlockId)
 }
+
+func TestHeadToApiSelfParentIsDropped(t *testing.T) {
+	// a self-referencing parent (e.g. two distinct base58 hashes that used to
+	// collapse into the same id) must never reach consumers - they walk the
+	// parent chain and would loop forever
+	head := protocol.NewBlock(
+		100,
+		0,
+		blockchain.NewHashIdFromString("0xabc"),
+		blockchain.NewHashIdFromString("0xabc"),
+	)
+
+	event := emerald.HeadToApi(head)
+
+	headEvent := event.GetHead()
+	require.NotNil(t, headEvent)
+	assert.Equal(t, head.Hash.ToHex(), headEvent.BlockId)
+	assert.Empty(t, headEvent.ParentBlockId)
+}
+
+func TestHeadToApiNearBase58HashesStayDistinct(t *testing.T) {
+	head := protocol.NewBlock(
+		207365026,
+		0,
+		blockchain.NewHashIdFromString("9nEcHpjcsfjMwHzHYzDLZeLBEbeqbNRew7oXCSFvi2Wa"),
+		blockchain.NewHashIdFromString("5qJoxdRBSDaZmGuLzjWfDGnWqCvHdRPuJqkyZv7QwXvJ"),
+	)
+
+	event := emerald.HeadToApi(head)
+
+	headEvent := event.GetHead()
+	require.NotNil(t, headEvent)
+	assert.NotEmpty(t, headEvent.BlockId)
+	assert.NotEmpty(t, headEvent.ParentBlockId)
+	assert.NotEqual(t, headEvent.BlockId, headEvent.ParentBlockId)
+}

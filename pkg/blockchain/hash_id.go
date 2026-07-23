@@ -32,7 +32,11 @@ func NewHashIdFromString(value string) HashId {
 
 	bytes, err := hex.DecodeString(clean)
 	if err != nil {
-		return bytes
+		// non-hex block ids (near's base58, ton's base64) are kept verbatim:
+		// hex-decoding them used to collapse every such id into the same
+		// truncated prefix, making distinct blocks (and a block and its
+		// parent) indistinguishable
+		return []byte(value)
 	}
 
 	return bytes
