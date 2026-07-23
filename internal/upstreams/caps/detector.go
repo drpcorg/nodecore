@@ -33,6 +33,9 @@ type DetectorInput struct {
 	// NewHeads it must be a websocket connector.
 	HeadConnector connectors.ApiConnector
 	Methods       methods.Methods
+	// Head is the shared head processor, used to gate WsCap on head liveness for
+	// ws-driven heads. Nil when the upstream has no head processor.
+	Head HeadSource
 }
 
 // subscribeStates returns the connector's state stream, or nil when the connector is

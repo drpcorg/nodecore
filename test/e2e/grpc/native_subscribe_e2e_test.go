@@ -116,6 +116,7 @@ upstream-config:
           url: %q
       options:
         internal-timeout: 5s
+        disable-liveness-subscription-validation: true
         validation-interval: 30s
         disable-lower-bounds-detection: true
         disable-labels-detection: true
