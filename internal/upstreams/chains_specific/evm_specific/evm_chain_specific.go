@@ -151,7 +151,7 @@ func (e *EvmChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.C
 		// The head is ws-driven and liveness validation is enabled, so gate WsCap on
 		// head liveness: a flapping head pulls the upstream out of subscription serving
 		// (it still serves regular RPC).
-		wsCapDetector = caps.NewWsHeadLivenessCapDetector(e.upstreamId, wsCapName, protocol.WsCap, input.WsConnector, input.Head)
+		wsCapDetector = caps.NewWsHeadLivenessCapDetector(e.upstreamId, wsCapName, protocol.WsCap, input.WsConnector, input.Head, e.chain.Settings.ExpectedBlockTime)
 	} else {
 		// Poll-driven head, or liveness validation disabled: WsCap stays ungated (plain
 		// ws presence).

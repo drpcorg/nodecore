@@ -160,7 +160,7 @@ func setOptionsDefaults(
 		upstreamOptions.DisableLivenessSubscriptionValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
-			false,
+			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
 	if upstreamOptions.ValidateSyncing == nil {

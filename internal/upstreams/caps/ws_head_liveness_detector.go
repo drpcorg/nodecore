@@ -14,14 +14,20 @@ import (
 )
 
 const (
-	// checkedBlocksUntilLive is how many blocks in a row must be observed before a head
-	// is considered live. N blocks == N-1 consecutive height increments.
-	checkedBlocksUntilLive = 10
-	// maxWarmup caps how long the consecutive run must last before going live, so slow
-	// chains don't wait for the full block count. A head goes live once it has produced
-	// checkedBlocksUntilLive consecutive blocks OR maxWarmup has elapsed since the run
-	// started, whichever comes first.
-	maxWarmup = time.Minute
+	// checkedBlocksUntilLive is how many blocks in a row must be observed before a head is
+	// considered live. N blocks == N-1 consecutive height increments.
+	checkedBlocksUntilLive = 3
+	// cooldown is how long after a non-consecutive (forward gap) event the head stays not-live,
+	// even once consecutive blocks resume and the block-count threshold is met again.
+	cooldown = 5 * time.Minute
+	// timeoutMultiplier scales measuredBlockTime for the stall-timeout window and is also the
+	// backoff factor applied to measuredBlockTime whenever a timeout fires.
+	timeoutMultiplier = 2
+	// maxBlockTime caps how large measuredBlockTime can grow via timeout backoff.
+	maxBlockTime = 10 * time.Minute
+	// defaultBlockTime seeds measuredBlockTime when the chain has no configured expected block
+	// time, so the stall timeout still has a sane window.
+	defaultBlockTime = 12 * time.Second
 )
 
 // HeadSource is the subset of blocks.HeadProcessor the detector consumes: a stream of new
@@ -30,49 +36,67 @@ type HeadSource interface {
 	Subscribe(name string) *utils.Subscription[blocks.HeadEvent]
 }
 
-// headLivenessTracker reduces a stream of head heights into a "live" verdict: the head is
-// live once its current consecutive run reaches either checkedBlocksUntilLive blocks or
-// maxWarmup of elapsed time, whichever comes first. A gap or a backward/reorg resets the
-// run. Duplicate heights are neutral. There is no stall/recency timeout - a head that
-// stops producing simply freezes the last verdict.
+// headLivenessTracker reduces a stream of head heights into a "live" verdict The head goes live once it has produced
+// checkedBlocksUntilLive blocks in a row AND is not in the post-gap cooldown. A forward gap
+// (diff >= 2) resets the run and starts the cooldown; duplicate heights and backward reorgs
+// (diff <= 1) are treated as consecutive. A stall - no head progress within timeout() - is
+// reported via onTimeout, which retracts liveness and backs off measuredBlockTime.
 type headLivenessTracker struct {
 	upstreamId string
 	lastHeight uint64
 	haveLast   bool
 	count      int
 	live       bool
-	// lastNonConsecutiveTime is the timestamp of the last non-consecutive event, or the
-	// first observation if none has happened yet (i.e. the start of the current run).
+
+	// measuredBlockTime is the current estimate of the inter-block interval. It starts at the
+	// chain's expected block time, grows to the largest observed interval, and is doubled
+	// (capped at maxBlockTime) each time a stall timeout fires. It drives the timeout window.
+	measuredBlockTime time.Duration
+	lastBlockTime     time.Time
+	haveLastBlockTime bool
+
+	// lastNonConsecutiveTime is when the last non-consecutive (forward gap) event happened. Its
+	// zero value (before any gap) makes now.Sub(it) saturate well past cooldown, so the first
+	// run is never held back - no separate "have we seen a gap" flag is needed.
 	lastNonConsecutiveTime time.Time
-	now                    func() time.Time
+
+	now func() time.Time
 }
 
 func (h *headLivenessTracker) observe(height uint64) bool {
 	now := h.now()
+
+	// Measure the actual inter-block interval and let measuredBlockTime grow to the largest one
+	// seen (never shrink), so the stall timeout adapts to slow chains without false positives.
+	if h.haveLastBlockTime {
+		if interval := now.Sub(h.lastBlockTime); interval > h.measuredBlockTime {
+			log.Info().Msgf("updated measured block time to %d ms of upstream '%s'", interval.Milliseconds(), h.upstreamId)
+			h.measuredBlockTime = interval
+		}
+	}
+	h.lastBlockTime = now
+	h.haveLastBlockTime = true
+
 	if !h.haveLast {
 		h.haveLast = true
 		h.lastHeight = height
-		h.lastNonConsecutiveTime = now // baseline; don't leave zero-valued
 		return h.live
 	}
+
 	diff := int64(height) - int64(h.lastHeight)
-	switch diff {
-	case 0:
-		// duplicate height (e.g. the initial getLatestBlock vs the first sub event) -
-		// neutral: neither progress nor a gap.
-	case 1:
+	if diff <= 1 {
 		h.count++
-		if h.count >= checkedBlocksUntilLive-1 || now.Sub(h.lastNonConsecutiveTime) >= maxWarmup {
+		if h.count >= checkedBlocksUntilLive-1 && now.Sub(h.lastNonConsecutiveTime) >= cooldown {
 			h.live = true
 		}
-	default:
-		// a gap (diff >= 2) or a backward/reorg (diff < 0): the head is not advancing
-		// consecutively - reset the run.
+	} else {
+		// a forward gap (diff >= 2): the head skipped blocks - reset the run and start the
+		// cooldown before it may be considered live again.
 		if h.live {
 			log.
 				Warn().
 				Msgf(
-					"non consecutive blocks in subscription head of upstream '%s', last height - %d, current height - %d, diff - %d",
+					"non consecutive blocks in head of upstream '%s', last height - %d, current height - %d, diff - %d",
 					h.upstreamId,
 					h.lastHeight,
 					height,
@@ -87,29 +111,49 @@ func (h *headLivenessTracker) observe(height uint64) bool {
 	return h.live
 }
 
-// WsHeadLivenessCapDetector asserts a single cap while the given websocket connector is
-// connected AND its head is advancing consecutively, and retracts it otherwise. It is
-// used to gate WsCap on ws-driven EVM heads: a flapping head (missed blocks / reorgs)
-// pulls the upstream out of subscription serving without affecting regular RPC routing.
-// If the connector isn't a websocket (SubscribeStates returns nil) or there is no head
-// source, the cap is never asserted.
-type WsHeadLivenessCapDetector struct {
-	upstreamId string
-	name       string
-	cap        protocol.Cap
-	wsConn     connectors.ApiConnector
-	head       HeadSource
-	now        func() time.Time
+// onTimeout records a stall: no head advanced within the timeout window. It retracts liveness
+// and backs off measuredBlockTime (capped at maxBlockTime) so the next window is longer, then
+// returns the (now false) verdict.
+func (h *headLivenessTracker) onTimeout() bool {
+	log.Warn().Msgf("head liveness check failed with timeout %d ms of upstream '%s'", h.measuredBlockTime.Milliseconds(), h.upstreamId)
+	h.live = false
+	h.measuredBlockTime = min(h.measuredBlockTime*timeoutMultiplier, maxBlockTime)
+	return h.live
 }
 
-func NewWsHeadLivenessCapDetector(upstreamId, name string, cap protocol.Cap, wsConn connectors.ApiConnector, head HeadSource) *WsHeadLivenessCapDetector {
+// timeout is the stall window: how long the detector waits for head progress before calling onTimeout.
+func (h *headLivenessTracker) timeout() time.Duration {
+	return h.measuredBlockTime * checkedBlocksUntilLive * timeoutMultiplier
+}
+
+// WsHeadLivenessCapDetector asserts a single cap while the given websocket connector is
+// connected AND its head is advancing, and retracts it otherwise. It is used to gate WsCap on
+// ws-driven EVM heads: a flapping or stalled head (missed blocks / no progress) pulls the
+// upstream out of subscription serving without affecting regular RPC routing. If the connector
+// isn't a websocket (SubscribeStates returns nil) or there is no head source, the cap is never
+// asserted.
+type WsHeadLivenessCapDetector struct {
+	upstreamId        string
+	name              string
+	cap               protocol.Cap
+	wsConn            connectors.ApiConnector
+	head              HeadSource
+	expectedBlockTime time.Duration
+	now               func() time.Time
+}
+
+func NewWsHeadLivenessCapDetector(upstreamId, name string, cap protocol.Cap, wsConn connectors.ApiConnector, head HeadSource, expectedBlockTime time.Duration) *WsHeadLivenessCapDetector {
+	if expectedBlockTime <= 0 {
+		expectedBlockTime = defaultBlockTime
+	}
 	return &WsHeadLivenessCapDetector{
-		upstreamId: upstreamId,
-		name:       name,
-		cap:        cap,
-		wsConn:     wsConn,
-		head:       head,
-		now:        time.Now,
+		upstreamId:        upstreamId,
+		name:              name,
+		cap:               cap,
+		wsConn:            wsConn,
+		head:              head,
+		expectedBlockTime: expectedBlockTime,
+		now:               time.Now,
 	}
 }
 
@@ -133,7 +177,11 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 		defer stateSub.Unsubscribe()
 		defer headSub.Unsubscribe()
 
-		tracker := &headLivenessTracker{now: d.now, upstreamId: d.upstreamId}
+		tracker := &headLivenessTracker{
+			now:               d.now,
+			upstreamId:        d.upstreamId,
+			measuredBlockTime: d.expectedBlockTime,
+		}
 		var wsConnected, headLive bool
 
 		emit := func() bool {
@@ -149,6 +197,12 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 			}
 		}
 
+		// The timer fires when the head produces no progress within tracker.timeout(); it is
+		// re-armed with the current window at the bottom of every iteration.
+		timer := time.NewTimer(tracker.timeout())
+		defer timer.Stop()
+
+		i := 0
 		for {
 			select {
 			case <-ctx.Done():
@@ -165,11 +219,22 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 				if !ok {
 					return
 				}
+				i++
+				fmt.Println(event.HeadData.Height, i)
+				if i > 5 && i < 20 {
+					continue
+				}
 				headLive = tracker.observe(event.HeadData.Height)
 				if !emit() {
 					return
 				}
+			case <-timer.C:
+				headLive = tracker.onTimeout()
+				if !emit() {
+					return
+				}
 			}
+			timer.Reset(tracker.timeout())
 		}
 	}()
 
