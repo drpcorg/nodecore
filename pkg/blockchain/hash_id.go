@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"strings"
 )
@@ -31,15 +32,25 @@ func NewHashIdFromString(value string) HashId {
 	}
 
 	bytes, err := hex.DecodeString(clean)
-	if err != nil {
-		// non-hex block ids (near's base58, ton's base64) are kept verbatim:
-		// hex-decoding them used to collapse every such id into the same
-		// truncated prefix, making distinct blocks (and a block and its
-		// parent) indistinguishable
-		return []byte(value)
+	if err == nil {
+		return bytes
 	}
 
-	return bytes
+	// Non-hex block ids (ton's base64, near's base58) are decoded as base64,
+	// matching dshackle's BlockId.fromBase64 so both emit the same id for the
+	// same block. Hex-decoding them used to collapse every such id into the
+	// same truncated prefix, making distinct blocks (and a block and its
+	// parent) indistinguishable.
+	if decoded, b64Err := base64.StdEncoding.DecodeString(value); b64Err == nil {
+		return decoded
+	}
+	if decoded, b64Err := base64.RawStdEncoding.DecodeString(value); b64Err == nil {
+		return decoded
+	}
+
+	// last resort for ids in any other encoding: keep them verbatim so
+	// distinct ids stay distinct
+	return []byte(value)
 }
 
 func (h HashId) ToHex() string {

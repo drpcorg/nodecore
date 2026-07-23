@@ -24,17 +24,19 @@ func TestNewHashIdFromBytes(t *testing.T) {
 	assert.Equal(t, "00000000182737d2000000000000000000000000000000000000000000000000", hashId.ToHex())
 }
 
-func TestNewHashIdFromStringNonHexKeptVerbatim(t *testing.T) {
+func TestNewHashIdFromStringNonHexDecodedAsBase64(t *testing.T) {
 	// near ids are base58, ton root hashes are base64 - hex-decoding them
-	// used to truncate everything into the same (near-)empty id
+	// used to truncate everything into the same (near-)empty id. Non-hex ids
+	// are decoded as base64, matching dshackle's BlockId.fromBase64.
 	base58 := blockchain.NewHashIdFromString("9nEcHpjcsfjMwHzHYzDLZeLBEbeqbNRew7oXCSFvi2Wa")
 	base58Other := blockchain.NewHashIdFromString("5qJoxdRBSDaZmGuLzjWfDGnWqCvHdRPuJqkyZv7QwXvJ")
-	base64Id := blockchain.NewHashIdFromString("m2QMxn/1H2Iqm+2wjB3edxNa/rvL9V7bU6MMSPmSfW0=")
+	tonBase64 := blockchain.NewHashIdFromString("m2QMxn/1H2Iqm+2wjB3edxNa/rvL9V7bU6MMSPmSfW0=")
 
-	assert.NotEmpty(t, base58)
-	assert.NotEmpty(t, base64Id)
+	// dshackle parity: hex of the base64-decoded bytes
+	assert.Equal(t, "9b640cc67ff51f622a9bedb08c1dde77135afebbcbf55edb53a30c48f9927d6d", tonBase64.ToHex())
+	assert.Equal(t, "f6711c1e98dcb1f8ccc07cc76330cb65e2c111b7aa6cd45ec3ba1709216f8b659a", base58.ToHex())
 	assert.False(t, base58.Equals(base58Other))
-	assert.False(t, base58.Equals(base64Id))
+	assert.False(t, base58.Equals(tonBase64))
 }
 
 func TestNewHashIdFromStringHexUnchanged(t *testing.T) {
