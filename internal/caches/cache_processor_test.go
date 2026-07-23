@@ -17,6 +17,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+func cacheableMethod(name string) *specs.Method {
+	return specs.MethodWithSettings(name, nil, &specs.MethodSettings{Cacheable: new(true)}, nil)
+}
+
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {
 	cacheConfig := memoryCacheConfig(nil, nil)
 	storageRegistry, _ := storages.NewStorageRegistry([]config.AppStorageConfig{})
@@ -37,7 +41,7 @@ func TestCacheProcessorStore(t *testing.T) {
 	connector1 := mocks.NewCacheConnectorMock()
 	connector1.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	policy1 := NewCachePolicy(upSupervisor, connector1, test_utils.PolicyConfig("polygon", "eth_*|getLastBlock|synscing", "conn-id", "10KB", "5s", true))
-	specMethod := specs.DefaultMethod("eth_superTest")
+	specMethod := cacheableMethod("eth_superTest")
 
 	cacheProcessor := createCacheProcessor([]*CachePolicy{policy1}, 1*time.Minute)
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_superTest", nil, specMethod)
@@ -51,7 +55,7 @@ func TestCacheProcessorStore(t *testing.T) {
 
 func TestCacheProcessorReceiveFromMatchedConditions(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := specs.DefaultMethod("getLastBlock")
+	specMethod := cacheableMethod("getLastBlock")
 
 	result := []byte(`result`)
 
@@ -82,7 +86,7 @@ func TestCacheProcessorReceiveFromMatchedConditions(t *testing.T) {
 
 func TestCacheProcessorNoResponseWithTimeoutThenReceiveNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := specs.DefaultMethod("getLastBlock")
+	specMethod := cacheableMethod("getLastBlock")
 
 	result := []byte(`result`)
 
@@ -112,7 +116,7 @@ func TestCacheProcessorNoResponseWithTimeoutThenReceiveNothing(t *testing.T) {
 
 func TestCacheProcessorReturnFirstResponseAndIgnoreOthers(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := specs.DefaultMethod("eth_call")
+	specMethod := cacheableMethod("eth_call")
 	result := []byte(`result`)
 
 	connector1 := mocks.NewDelayedConnector(30 * time.Millisecond)
@@ -146,7 +150,7 @@ func TestCacheProcessorReturnFirstResponseAndIgnoreOthers(t *testing.T) {
 
 func TestCacheProcessorNoResponseFromConnectorsThenNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := specs.DefaultMethod("eth_call")
+	specMethod := cacheableMethod("eth_call")
 	connector1 := mocks.NewDelayedConnector(0)
 	connector1.On("Receive", mock.Anything, mock.Anything).Return([]byte{}, ErrCacheNotFound)
 	connector1.On("Id").Return("id")
