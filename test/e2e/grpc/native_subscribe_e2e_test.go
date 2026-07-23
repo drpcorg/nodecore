@@ -115,8 +115,8 @@ upstream-config:
         - type: websocket
           url: %q
       options:
-		disable-liveness-subscription-validation: true
         internal-timeout: 5s
+        disable-liveness-subscription-validation: true
         validation-interval: 30s
         disable-lower-bounds-detection: true
         disable-labels-detection: true
