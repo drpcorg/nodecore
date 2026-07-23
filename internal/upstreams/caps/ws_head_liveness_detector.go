@@ -202,7 +202,6 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 		timer := time.NewTimer(tracker.timeout())
 		defer timer.Stop()
 
-		i := 0
 		for {
 			select {
 			case <-ctx.Done():
@@ -218,11 +217,6 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 			case event, ok := <-headSub.Events:
 				if !ok {
 					return
-				}
-				i++
-				fmt.Println(event.HeadData.Height, i)
-				if i > 5 && i < 20 {
-					continue
 				}
 				headLive = tracker.observe(event.HeadData.Height)
 				if !emit() {
