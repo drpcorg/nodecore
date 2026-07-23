@@ -107,15 +107,16 @@ func NewBaseUpstream(
 	if err != nil {
 		return nil, err
 	}
+	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific)
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
 			CreateBlockEventProcessor(ctx, conf, chainSpecific, configuredChain),
-			CreateHeadEventProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific, configuredChain.Chain),
+			CreateHeadEventProcessor(ctx, conf, configuredChain.Chain, headProcessor),
 			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
 			CreateHealthEventProcessor(ctx, conf, chainSpecific),
 			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
 			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
-			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods),
+			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)

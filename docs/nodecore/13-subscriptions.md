@@ -86,6 +86,20 @@ There are four local source types:
 `drpc_pendingTransactions` is the exception: it is a synthetic method with no node-backed
 equivalent, so it is always served locally (subject only to an upstream having `PendingTxCap`).
 
+### Head-liveness gate on `WsCap`
+
+Before an upstream can be a subscription target at all (local *or* node-backed), it must advertise
+the base WebSocket capability `WsCap`. For an EVM upstream whose head is driven by a WebSocket,
+`WsCap` is additionally gated on **head liveness**: the upstream advertises it only once its head has
+advanced consecutively — 3 blocks in a row (2 consecutive height increments) — and drops it on a
+forward gap of skipped blocks, a stall (no head progress within an adaptive timeout), or a WebSocket
+disconnect; after a gap it stays out for a short cooldown before recovering (duplicate heights and
+backward reorgs are tolerated). A flapping head therefore removes that upstream from subscription
+serving until it recovers, while leaving its regular RPC routing untouched. Poll-head EVM upstreams
+and non-EVM chains keep the plain "connected WebSocket ⇒ `WsCap`" behavior. The gate can be turned
+off per chain/upstream with [`disable-liveness-subscription-validation`](05-upstream-config.md)
+(default: mode-dependent — on in `strict` mode, off in `default` mode).
+
 ## Per-type behavior
 
 ### newHeads
