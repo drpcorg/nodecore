@@ -23,10 +23,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func cacheableMethod(name string) *specs.Method {
-	return specs.MethodWithSettings(name, nil, &specs.MethodSettings{Cacheable: new(true)}, nil)
-}
-
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
@@ -193,7 +189,7 @@ func TestCachePolicyNotMatchedChainThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("not-supported", "*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	specMethod := cacheableMethod("method")
+	specMethod := test_utils.CacheableMethod("method")
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
@@ -214,7 +210,7 @@ func TestCachePolicyNotSupportedMethodThenReceiveAndStoreNothing(t *testing.T) {
 
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	specMethod := cacheableMethod("method")
+	specMethod := test_utils.CacheableMethod("method")
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
 
 	result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
@@ -235,7 +231,7 @@ func TestCachePolicyIfConnectorErrorThenReceiveNothing(t *testing.T) {
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Receive", mock.Anything, mock.Anything).Return([]byte{}, caches.ErrCacheNotFound)
 	connectorMock.On("Id").Return("id")
-	specMethod := cacheableMethod("test_method")
+	specMethod := test_utils.CacheableMethod("test_method")
 
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
@@ -254,7 +250,7 @@ func TestCachePolicyTooBigResponseSizeThenStoreNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "1KB", "5s", true)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	specMethod := cacheableMethod("test_method")
+	specMethod := test_utils.CacheableMethod("test_method")
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	bigResponse, _ := os.ReadFile("responses/big_response.json")
@@ -270,7 +266,7 @@ func TestCachePolicyNotEmptyResponsesThenStoreNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	policyCfg := test_utils.PolicyConfig("polygon", "test_method|eth_*", "conn-id", "10KB", "5s", false)
 	policy := caches.NewCachePolicy(upSupervisor, mocks.NewCacheConnectorMock(), policyCfg)
-	specMethod := cacheableMethod("test_method")
+	specMethod := test_utils.CacheableMethod("test_method")
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("test_method", nil, specMethod)
 
 	for _, emptyResponse := range caches.EmptyResponses {
@@ -286,7 +282,7 @@ func TestCachePolicyNotEmptyResponsesThenStoreNothing(t *testing.T) {
 
 func TestCachePolicyStoreErrorThenFalse(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := cacheableMethod("test_method")
+	specMethod := test_utils.CacheableMethod("test_method")
 	err := errors.New("store error")
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(err)
@@ -306,7 +302,7 @@ func TestCachePolicyStoreErrorThenFalse(t *testing.T) {
 
 func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := cacheableMethod("test_method")
+	specMethod := test_utils.CacheableMethod("test_method")
 	result1 := []byte(`result1`)
 	result2 := []byte(`result2`)
 
@@ -420,7 +416,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 func TestCachePolicyAllChainThenReceiveResult(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	result1 := []byte(`result1`)
-	specMethod := cacheableMethod("method")
+	specMethod := test_utils.CacheableMethod("method")
 
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Receive", mock.Anything, mock.Anything).Return(result1, nil)
@@ -449,7 +445,7 @@ func TestCachePolicyAllChainThenReceiveResult(t *testing.T) {
 func TestCachePolicyMatchedBlockchainTypeThenReceiveAndStoreResult(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
 	result1 := []byte(`result1`)
-	specMethod := cacheableMethod("method")
+	specMethod := test_utils.CacheableMethod("method")
 
 	connectorMock := mocks.NewCacheConnectorMock()
 	connectorMock.On("Receive", mock.Anything, mock.Anything).Return(result1, nil)
@@ -474,7 +470,7 @@ func TestCachePolicyMatchedBlockchainTypeThenReceiveAndStoreResult(t *testing.T)
 
 func TestCachePolicyNotMatchedBlockchainTypeThenReceiveAndStoreNothing(t *testing.T) {
 	methodsMock, upSupervisor := test_utils.GetMethodMockAndUpSupervisor()
-	specMethod := cacheableMethod("method")
+	specMethod := test_utils.CacheableMethod("method")
 
 	// polygon is not part of the "solana" family, so the policy must not apply
 	policyCfg := test_utils.PolicyConfigBlockchainType("solana", "*", "conn-id", "10KB", "5s", true)
@@ -542,7 +538,7 @@ func TestCachePolicySupportedMethodsThenReceiveResultAndStoreOrNothing(t *testin
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			specMethod := cacheableMethod(test.method)
+			specMethod := test_utils.CacheableMethod(test.method)
 			request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod(test.method, nil, specMethod)
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
