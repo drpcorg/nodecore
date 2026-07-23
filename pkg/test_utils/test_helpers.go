@@ -28,6 +28,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
@@ -92,6 +93,13 @@ func GetResultAsBytes(json []byte) []byte {
 		panic(err)
 	}
 	return parsed["result"]
+}
+
+// CacheableMethod builds a spec method that is eligible for caching, for use as
+// a request fixture in cache tests. The fallback constructors (specs.DefaultMethod)
+// produce non-cacheable methods, so cache tests must construct a cacheable one.
+func CacheableMethod(name string) *specs.Method {
+	return specs.MethodWithSettings(name, nil, &specs.MethodSettings{Cacheable: new(true)}, nil)
 }
 
 func PolicyConfig(chain, method, connector, maxSize, ttl string, cacheEmpty bool) *config.CachePolicyConfig {
