@@ -15,14 +15,21 @@ import (
 	"github.com/samber/lo"
 )
 
-func CreateHeadEventProcessor(
+func CreateHeadProcessor(
 	ctx context.Context,
 	conf *config.Upstream,
 	headConnector connectors.ApiConnector,
 	chainSpecific chains_specific.ChainSpecific,
+) blocks.HeadProcessor {
+	return blocks.NewBaseHeadProcessor(ctx, conf, headConnector, chainSpecific)
+}
+
+func CreateHeadEventProcessor(
+	ctx context.Context,
+	conf *config.Upstream,
 	chain chains.Chain,
+	headProcessor blocks.HeadProcessor,
 ) event_processors.UpstreamStateEventProcessor {
-	headProcessor := blocks.NewBaseHeadProcessor(ctx, conf, headConnector, chainSpecific)
 	eventProcessor := event_processors.NewHeadEventProcessor(ctx, conf.Id, chain, headProcessor)
 	if eventProcessor == nil {
 		return nil
@@ -101,6 +108,7 @@ func CreateCapEventProcessor(
 	chainSpecific chains_specific.ChainSpecific,
 	connectorsInfo *connectorsInfo,
 	upstreamMethods methods.Methods,
+	headProcessor blocks.HeadProcessor,
 ) event_processors.UpstreamStateEventProcessor {
 	wsConnector, _ := lo.Find(connectorsInfo.allConnectors, func(c connectors.ApiConnector) bool {
 		return c.GetType() == specs.WebsocketConnector
@@ -109,6 +117,7 @@ func CreateCapEventProcessor(
 		WsConnector:   wsConnector,
 		HeadConnector: connectorsInfo.headConnector,
 		Methods:       upstreamMethods,
+		Head:          headProcessor,
 	}
 
 	capProcessor := caps.NewBaseCapProcessor(ctx, conf.Id, chainSpecific.CapDetectors(input))

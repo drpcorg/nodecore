@@ -23,11 +23,6 @@ func NewWsPresenceCapDetector(name string, cap protocol.Cap, wsConn connectors.A
 	return &WsPresenceCapDetector{name: name, cap: cap, wsConn: wsConn}
 }
 
-// DefaultCapDetectors returns the cap detectors for chains whose only ws-derived
-// capability is WsCap - every non-EVM chain. PendingTxCap is intentionally not set
-// here: it is an EVM-only capability (eth_subscribe("newPendingTransactions")) that
-// these chains cannot serve. EVM chains compose their own list, which adds the
-// pending-tx and head-subscription detectors.
 func DefaultCapDetectors(upstreamId string, wsConn connectors.ApiConnector) []CapDetector {
 	return []CapDetector{
 		NewWsPresenceCapDetector(upstreamId+"_ws_cap", protocol.WsCap, wsConn),
