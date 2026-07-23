@@ -55,6 +55,24 @@ func (mp *CMap[K, V]) LoadOrStore(key K, val V) (V, bool) {
 	return loadedval.(V), loaded
 }
 
+// LoadOrStoreLazy returns the existing value for the key if present. Otherwise
+// it calls valueFn to build a value, stores it, and returns it. valueFn is only
+// invoked on a miss, so callers on the common (already-present) path never pay
+// the construction cost. The returned bool reports whether the value was loaded
+// (true) rather than built and stored by this call (false).
+//
+// Note: under a first-time race on the same key, valueFn may be evaluated by
+// more than one goroutine; only one built value is kept and all callers observe
+// it. This is inherent to sync.Map's lack of a lazy primitive and is acceptable
+// because it is bounded and one-time - the steady-state hit never calls valueFn.
+func (mp *CMap[K, V]) LoadOrStoreLazy(key K, valueFn func() V) (V, bool) {
+	if v, ok := mp.mp.Load(key); ok {
+		return v.(V), true
+	}
+	loadedval, loaded := mp.mp.LoadOrStore(key, valueFn())
+	return loadedval.(V), loaded
+}
+
 func (mp *CMap[K, V]) LoadAndDelete(key K) (V, bool) {
 	var zero V
 	v, loaded := mp.mp.LoadAndDelete(key)
