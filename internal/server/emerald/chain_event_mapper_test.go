@@ -161,3 +161,23 @@ func TestHeadToApiNearBase58HashesStayDistinct(t *testing.T) {
 	assert.NotEmpty(t, headEvent.ParentBlockId)
 	assert.NotEqual(t, headEvent.BlockId, headEvent.ParentBlockId)
 }
+
+func TestHeadToApiTonBase64HashProducesNonEmptyDistinctIds(t *testing.T) {
+	// ton masterchain root hashes are base64 and the parent hash is empty;
+	// with the old hex-decoding both collapsed into "" == "" - a
+	// self-referencing head
+	head := protocol.NewBlock(
+		48477822,
+		0,
+		blockchain.NewHashIdFromString("m2QMxn/1H2Iqm+2wjB3edxNa/rvL9V7bU6MMSPmSfW0="),
+		blockchain.EmptyHash,
+	)
+
+	event := emerald.HeadToApi(head)
+
+	headEvent := event.GetHead()
+	require.NotNil(t, headEvent)
+	assert.NotEmpty(t, headEvent.BlockId)
+	assert.Empty(t, headEvent.ParentBlockId)
+	assert.NotEqual(t, headEvent.BlockId, headEvent.ParentBlockId)
+}
