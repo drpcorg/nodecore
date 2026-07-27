@@ -31,6 +31,7 @@ func (s *stubChainSupervisor) GetSortedUpstreamIds(upstreams.FilterUpstream, ups
 	return nil
 }
 func (s *stubChainSupervisor) GetUpstreamIds() []string                    { return nil }
+func (s *stubChainSupervisor) NextIndex() uint64                           { return 0 }
 func (s *stubChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return nil

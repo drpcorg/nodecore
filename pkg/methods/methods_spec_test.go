@@ -217,3 +217,136 @@ func TestNetworkSpecsDisableUnsupportedGetProof(t *testing.T) {
 	restAdditionalMethods := specs.GetSpecMethodsByConnectors("hyperliquid", []specs.ApiConnectorType{specs.RestAdditional})
 	assert.NotContains(t, restAdditionalMethods[specs.DefaultMethodGroup], "eth_getProof")
 }
+
+func TestAptosSpecLoadsAndMatchesRestRoutes(t *testing.T) {
+	loader := specs.NewMethodSpecLoader()
+	err := loader.Load()
+	assert.NoError(t, err)
+
+	template, params, ok := specs.MatchRestMethod("aptos", "GET#/v1/blocks/by_height/12345")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/v1/blocks/by_height/*", template)
+	assert.Equal(t, []string{"12345"}, params)
+}
+
+func TestBitcoinSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("bitcoin", "getblock")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("bitcoin", "sendrawtransaction")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("bitcoin", "listunspent")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("bitcoin", "eth_call")
+	assert.Nil(t, spec)
+
+	// listunspent is served via esplora, so it resolves only for upstreams with
+	// the rest-additional connector
+	jsonRpcMethods := specs.GetSpecMethodsByConnectors("bitcoin", []specs.ApiConnectorType{specs.JsonRpcConnector})
+	assert.NotContains(t, jsonRpcMethods[specs.DefaultMethodGroup], "listunspent")
+	assert.Contains(t, jsonRpcMethods[specs.DefaultMethodGroup], "getblocknumber")
+
+	restAdditionalMethods := specs.GetSpecMethodsByConnectors("bitcoin", []specs.ApiConnectorType{specs.RestAdditional})
+	assert.Contains(t, restAdditionalMethods[specs.DefaultMethodGroup], "listunspent")
+
+	template, params, ok := specs.MatchRestMethod("bitcoin", "GET#/address/bc1qxyz/utxo")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/address/*/utxo", template)
+	assert.Equal(t, []string{"bc1qxyz"}, params)
+}
+
+func TestTonSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("ton", "GET#/getMasterchainInfo")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("ton", "POST#/jsonRPC")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("ton", "GET#/api/v3/masterchainInfo")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("ton", "eth_call")
+	assert.Nil(t, spec)
+
+	// v3 indexer methods are served via the rest-indexer connector (a plain
+	// type - a standalone v3 upstream is legal), so they resolve only for
+	// upstreams that have it
+	restMethods := specs.GetSpecMethodsByConnectors("ton", []specs.ApiConnectorType{specs.RestConnector})
+	assert.NotContains(t, restMethods[specs.DefaultMethodGroup], "GET#/api/v3/masterchainInfo")
+	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "GET#/getMasterchainInfo")
+	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "POST#/jsonRPC")
+
+	restIndexerMethods := specs.GetSpecMethodsByConnectors("ton", []specs.ApiConnectorType{specs.RestIndexer})
+	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/api/v3/masterchainInfo")
+	assert.NotContains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/getMasterchainInfo")
+
+	template, params, ok := specs.MatchRestMethod("ton", "GET#/getAddressBalance")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/getAddressBalance", template)
+	assert.Empty(t, params)
+}
+
+func TestNearSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("near", "block")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("near", "send_tx")
+	assert.NotNil(t, spec)
+	assert.True(t, spec.IsBroadcastDispatch())
+
+	spec = specs.GetSpecMethod("near", "broadcast_tx_async")
+	assert.Nil(t, spec)
+}
+
+func TestStarknetSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("starknet", "starknet_getBlockWithTxHashes")
+	assert.NotNil(t, spec)
+	assert.True(t, spec.IsNotNullDispatch())
+
+	spec = specs.GetSpecMethod("starknet", "starknet_addInvokeTransaction")
+	assert.NotNil(t, spec)
+	assert.False(t, spec.IsBroadcastDispatch())
+	assert.True(t, spec.IsNotNullDispatch())
+
+	spec = specs.GetSpecMethod("starknet", "starknet_subscribeNewHeads")
+	assert.Nil(t, spec)
+}
+
+func TestAptosSpecMatchesNestedAccountAndTableRoutes(t *testing.T) {
+	loader := specs.NewMethodSpecLoader()
+	err := loader.Load()
+	assert.NoError(t, err)
+
+	// wildcards span exactly one path segment, so every nested fullnode route
+	// needs its own template
+	for method, want := range map[string]string{
+		"GET#/v1/info":                                     "GET#/v1/info",
+		"GET#/v1/accounts/0xabc/transactions":              "GET#/v1/accounts/*/transactions",
+		"GET#/v1/accounts/0xabc/transaction_summaries":     "GET#/v1/accounts/*/transaction_summaries",
+		"GET#/v1/transactions/auxiliary_info":              "GET#/v1/transactions/auxiliary_info",
+		"GET#/v1/accounts/0xabc/events/2":                  "GET#/v1/accounts/*/events/*",
+		"GET#/v1/accounts/0xabc/events/0x1::m::Events/key": "GET#/v1/accounts/*/events/*/*",
+		"GET#/v1/accounts/0xabc/balance/0x1::coin::Coin":   "GET#/v1/accounts/*/balance/*",
+		"GET#/v1/transactions/wait_by_hash/0xhash":         "GET#/v1/transactions/wait_by_hash/*",
+		"POST#/v1/transactions/encode_submission":          "POST#/v1/transactions/encode_submission",
+		"POST#/v1/tables/0xhandle/raw_item":                "POST#/v1/tables/*/raw_item",
+	} {
+		template, _, ok := specs.MatchRestMethod("aptos", method)
+		assert.True(t, ok, method)
+		assert.Equal(t, want, template, method)
+	}
+}

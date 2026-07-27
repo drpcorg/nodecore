@@ -29,7 +29,12 @@ func parseJsonRpcBody(id string, body []byte, responseCode int) *BaseUpstreamRes
 			result = []byte(rawResult)
 		}
 	}
-	if errorNode, err := searcher.GetByPath("error"); err == nil {
+	// A JSON `null` error is how bitcoind (and other JSON-RPC 1.0-style
+	// servers) spell "no error" - it always sends the "error" key, even on
+	// success. Treat it the same as an absent key rather than as an error,
+	// otherwise every successful bitcoind response would be misparsed as a
+	// failure.
+	if errorNode, err := searcher.GetByPath("error"); err == nil && errorNode.TypeSafe() != ast.V_NULL {
 		if errorRaw, err := errorNode.Raw(); err == nil {
 			bodyBytes := []byte(errorRaw)
 			if errorNode.TypeSafe() == ast.V_STRING {
@@ -176,8 +181,33 @@ type jsonRpcWsParams struct {
 	Subscription json.RawMessage `json:"subscription"`
 }
 
+// flexibleId decodes a JSON-RPC id that may arrive as a string or a number.
+// Some upstreams (ethermint/evmos-lineage nodes: zeta-chain, mezo, ...) reply
+// to eth_subscribe with a numeric id even when the request id was a string; a
+// strict string field failed the whole message unmarshal, the frame was
+// classified Unknown and the ws connection was torn down on every subscribe.
+// Numbers normalize to their decimal string form, which is exactly what the
+// request registry keys on ("1" -> 1 -> "1").
+type flexibleId string
+
+func (f *flexibleId) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 || string(data) == "null" {
+		return nil
+	}
+	if data[0] == '"' {
+		var s string
+		if err := sonic.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*f = flexibleId(s)
+		return nil
+	}
+	*f = flexibleId(data)
+	return nil
+}
+
 type jsonRpcWsMessage struct {
-	Id     string           `json:"id"`
+	Id     flexibleId       `json:"id"`
 	Result json.RawMessage  `json:"result"`
 	Params *jsonRpcWsParams `json:"params"`
 	Error  json.RawMessage  `json:"error"`
@@ -193,7 +223,7 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 	wsMessage := jsonRpcWsMessage{}
 	err := sonic.Unmarshal(body, &wsMessage)
 	if err == nil {
-		id = wsMessage.Id
+		id = string(wsMessage.Id)
 
 		if wsMessage.Params != nil {
 			responseType = Ws

@@ -1,10 +1,14 @@
 package connectors_test
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -62,7 +66,7 @@ func TestReceiveJsonRpcResponseWithResult(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -124,7 +128,7 @@ func TestReceiveJsonRpcResponseWithError(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+			connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 			req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 			r := connector.SendRequest(context.Background(), req)
@@ -150,7 +154,7 @@ func TestIncorrectJsonRpcResponseBodyThenError(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, chains.ETHEREUM)
 
 	r := connector.SendRequest(context.Background(), req)
@@ -183,7 +187,7 @@ func TestHttpConnectorType(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector, err := connectors.NewHttpConnector(cfg, test.connType, "")
+			connector, err := connectors.NewHttpConnector(cfg, test.connType, "", "test-upstream")
 			assert.NoError(te, err)
 
 			assert.Equal(te, test.connType, connector.GetType())
@@ -202,7 +206,7 @@ func TestJsonRpcRequest200CodeThenNoStream(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
 
@@ -225,7 +229,7 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
 	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
 
@@ -236,11 +240,41 @@ func TestJsonRpcRequestWithNot200CodeThenNoStream(t *testing.T) {
 	assert.Equal(t, &protocol.ResponseError{Message: "0x11", Code: -32000}, r.GetError())
 }
 
+// TestUpstreamUrlAndHostNotLeakedOnConnectionFailure guards against leaking
+// upstream infrastructure to the caller when the upstream connection fails.
+// http.Client.Do returns a *url.Error whose Error() embeds the full URL
+// (including any API key in its path/query and the host itself). The
+// client-facing error must reference the upstream by its configured id only;
+// neither the URL/key nor the host may appear in it.
+func TestUpstreamUrlAndHostNotLeakedOnConnectionFailure(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	httpmock.RegisterResponder("POST", "", func(request *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
+
+	cfg := &config.ApiConnectorConfig{
+		Url: "https://eth-mainnet.example.com/v2/SUPER_SECRET_KEY",
+	}
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "my-upstream-id")
+	jsonBody := protocol.JsonRpcRequestBody{Id: json.RawMessage(`"real"`), Method: "eth_test", Params: nil}
+	req := protocol.NewStreamUpstreamJsonRpcRequest("id", jsonBody, "")
+
+	r := connector.SendRequest(context.Background(), req)
+
+	require.True(t, r.HasError())
+	msg := r.GetError().Message
+	assert.NotContains(t, msg, "SUPER_SECRET_KEY", "upstream API key must not reach the client")
+	assert.NotContains(t, msg, "eth-mainnet.example.com", "upstream host (infra) must not reach the client")
+	assert.Contains(t, msg, "my-upstream-id", "client error should reference the upstream by its id")
+}
+
 func TestHttpConnectorSubscribeStates(t *testing.T) {
 	cfg := &config.ApiConnectorConfig{
 		Url: "http://localhost:8080",
 	}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 
 	sub := connector.SubscribeStates("name")
 
@@ -259,7 +293,7 @@ func TestHttpConnectorSubscribeStates(t *testing.T) {
 
 func newRestConnector(t *testing.T, cfg *config.ApiConnectorConfig) *connectors.HttpConnector {
 	t.Helper()
-	return connectors.NewHttpConnectorWithDefaultClient(cfg, specs.RestConnector, "")
+	return connectors.NewHttpConnectorWithDefaultClient(cfg, specs.RestConnector, "", "test-upstream")
 }
 
 func TestRestRequest_LiteralTemplateExpandsToVerbAndPath(t *testing.T) {
@@ -495,6 +529,101 @@ func TestRestRequest_ConfigHeadersWinAcrossCasing(t *testing.T) {
 				tc.configKey, tc.clientKey)
 		})
 	}
+}
+
+// Hop-by-hop headers (RFC 7230 §6.1) and Accept-Encoding must not be
+// forwarded from the client to the upstream. Forwarding Accept-Encoding is
+// how double-gzip happens (issue #268): an explicit Accept-Encoding on the
+// outgoing request disables Go's transparent decompression, the compressed
+// body then loses its Content-Encoding in the response deny list, and the
+// server-side gzip middleware compresses it a second time.
+func TestRestRequest_HopByHopClientHeadersNotForwarded(t *testing.T) {
+	httpmock.Activate(t)
+	defer httpmock.Deactivate()
+
+	var gotHeaders http.Header
+	httpmock.RegisterResponder("POST", "=~^http://localhost:8080/.*",
+		func(req *http.Request) (*http.Response, error) {
+			gotHeaders = req.Header.Clone()
+			return httpmock.NewBytesResponse(200, []byte(`{}`)), nil
+		})
+
+	connector := newRestConnector(t, &config.ApiConnectorConfig{Url: "http://localhost:8080"})
+	req := protocol.NewUpstreamRestRequest(
+		"1",
+		"POST#/exchange",
+		&protocol.RequestParams{
+			Headers: map[string][]string{
+				"Accept-Encoding":     {"gzip"},
+				"Connection":          {"keep-alive"},
+				"Keep-Alive":          {"timeout=5"},
+				"Proxy-Authorization": {"Basic abc"},
+				"Te":                  {"trailers"},
+				"Trailer":             {"X-Checksum"},
+				"Transfer-Encoding":   {"chunked"},
+				"Upgrade":             {"websocket"},
+				"Host":                {"evil.example.com"},
+				"Content-Length":      {"999"},
+				"X-Custom":            {"hello"},
+			},
+		},
+		nil, "",
+	)
+
+	r := connector.SendRequest(context.Background(), req)
+
+	require.False(t, r.HasError())
+	for _, denied := range []string{
+		"Accept-Encoding", "Connection", "Keep-Alive", "Proxy-Authorization",
+		"Te", "Trailer", "Transfer-Encoding", "Upgrade", "Host", "Content-Length",
+	} {
+		assert.Empty(t, gotHeaders.Values(denied),
+			"client %s must not be forwarded to the upstream", denied)
+	}
+	assert.Equal(t, []string{"hello"}, gotHeaders.Values("X-Custom"),
+		"non-denied client headers must still pass through")
+}
+
+// End-to-end regression test for issue #268: a client asking for gzip must
+// not leave the upstream's compressed bytes in the body. With the client's
+// Accept-Encoding stripped, Go's transport negotiates gzip itself and
+// transparently decompresses, so the framework sees plain JSON and the
+// server middleware compresses exactly once.
+func TestRestRequest_UpstreamGzipBodyReachesFrameworkDecompressed(t *testing.T) {
+	plain := []byte(`{"version":"fulu"}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			_, _ = gz.Write(plain)
+			_ = gz.Close()
+			return
+		}
+		_, _ = w.Write(plain)
+	}))
+	defer srv.Close()
+
+	connector, err := connectors.NewHttpConnector(
+		&config.ApiConnectorConfig{Url: srv.URL},
+		specs.RestConnector,
+		"",
+		"test-upstream",
+	)
+	require.NoError(t, err)
+	req := protocol.NewUpstreamRestRequest(
+		"1",
+		"GET#/eth/v1/node/syncing",
+		&protocol.RequestParams{
+			Headers: map[string][]string{"Accept-Encoding": {"gzip"}},
+		},
+		nil, "",
+	)
+
+	r := connector.SendRequest(context.Background(), req)
+
+	require.False(t, r.HasError())
+	assert.Equal(t, plain, r.ResponseResult(),
+		"body must be plain JSON, not the upstream's gzip bytes")
 }
 
 // REST treats anything in 2xx as success - 200, 201, 204 etc. Earlier
@@ -735,7 +864,7 @@ func TestJsonRpc_ResponseHeaderDenyListApplies(t *testing.T) {
 		})
 
 	cfg := &config.ApiConnectorConfig{Url: "http://localhost:8080"}
-	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "")
+	connector := connectors.NewHttpConnectorWithDefaultClient(cfg, specs.JsonRpcConnector, "", "test-upstream")
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 
 	r := connector.SendRequest(context.Background(), req)

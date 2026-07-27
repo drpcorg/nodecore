@@ -7,10 +7,15 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats/hook"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/pkg/methods"
 
@@ -120,7 +125,7 @@ func createConnector(
 ) (connectors.ApiConnector, error) {
 	switch connectorConfig.GetApiConnectorType() {
 	case specs.JsonRpcConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
 	case specs.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
@@ -139,9 +144,11 @@ func createConnector(
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.RestConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
+	case specs.RestIndexer:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
 	case specs.RestAdditional:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}
@@ -225,8 +232,33 @@ func getChainSpecific(
 			upstreamConnectorsInfo.internalRequestConnector,
 			conf.Options,
 		), nil
+	case chains.Bitcoin:
+		return bitcoin_specific.NewBitcoinChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
 	case chains.EthereumBeaconChain:
 		return beacon_specific.NewBeaconChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
+			conf.Options,
+		), nil
+	case chains.Aptos:
+		return aptos_specific.NewAptosChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
+	case chains.Near:
+		return near_specific.NewNearChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,
@@ -240,6 +272,25 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
+	case chains.Ton:
+		return ton_specific.NewTonChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			upstreamConnectorsInfo.allConnectors,
+			conf.PollInterval,
+			conf.Options,
+		), nil
+	case chains.Starknet:
+		return starknet_specific.NewStarknetChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	default:

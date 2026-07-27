@@ -232,6 +232,9 @@ func (u *UpstreamConfig) setDefaults() {
 	if u.Mode == "" {
 		u.Mode = DefaultMode
 	}
+	if u.BalancingStrategy == "" {
+		u.BalancingStrategy = RatingBalancingStrategy
+	}
 	if u.FailsafeConfig == nil {
 		u.FailsafeConfig = &FailsafeConfig{}
 	}

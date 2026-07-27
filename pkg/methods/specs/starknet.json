@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Starknet methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "starknet",
+    "type": "bundle"
+  },
+  "spec-imports": ["starknet-json-rpc"]
+}

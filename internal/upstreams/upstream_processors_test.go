@@ -25,7 +25,10 @@ func TestCreateHeadEventProcessor_ReturnsHeadProcessor(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(conf.ChainName), conf.PollInterval, conf.Options)
 
-	processor := upstreams.CreateHeadEventProcessor(context.Background(), conf, connector, chainSpecific, chains.POLYGON)
+	headProcessor := upstreams.CreateHeadProcessor(context.Background(), conf, connector, chainSpecific)
+	assert.NotNil(t, headProcessor)
+
+	processor := upstreams.CreateHeadEventProcessor(context.Background(), conf, chains.POLYGON, headProcessor)
 
 	assert.NotNil(t, processor)
 	assert.IsType(t, &event_processors.HeadEventProcessor{}, processor)

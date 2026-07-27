@@ -15,7 +15,7 @@ type ctxKey string
 const RequestKey ctxKey = "request"
 
 func CreateFlowExecutor(policies ...failsafe.Policy[*protocol.ResponseHolderWrapper]) failsafe.Executor[*protocol.ResponseHolderWrapper] {
-	return failsafe.NewExecutor[*protocol.ResponseHolderWrapper](policies...)
+	return failsafe.With[*protocol.ResponseHolderWrapper](policies...)
 }
 
 func CreateFlowRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[*protocol.ResponseHolderWrapper] {
@@ -79,11 +79,11 @@ func CreateFlowParallelHedgePolicy(hedgeConfig *config.HedgeConfig) failsafe.Pol
 }
 
 func CreateUpstreamExecutor(policies ...failsafe.Policy[protocol.ResponseHolder]) failsafe.Executor[protocol.ResponseHolder] {
-	return failsafe.NewExecutor[protocol.ResponseHolder](policies...)
+	return failsafe.With[protocol.ResponseHolder](policies...)
 }
 
 func CreateUpstreamRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[protocol.ResponseHolder] {
-	retry := retrypolicy.Builder[protocol.ResponseHolder]()
+	retry := retrypolicy.NewBuilder[protocol.ResponseHolder]()
 
 	if retryConfig.Attempts > 0 {
 		retry.WithMaxAttempts(retryConfig.Attempts)

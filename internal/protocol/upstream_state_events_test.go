@@ -46,14 +46,11 @@ func TestStatusUpstreamStateEvent(t *testing.T) {
 	state := newUpstreamState()
 	event := &protocol.StatusUpstreamStateEvent{Status: protocol.Syncing}
 
+	// Same is always false and ProcessEvent is a no-op: the setStatus/setLag
+	// derivation lives in the upstream event loop (see upstream_test.go), which
+	// owns the base availability and the per-chain syncing threshold.
 	assert.False(t, event.Same(state))
-
-	nextState := event.ProcessEvent(state)
-
-	assert.Equal(t, protocol.Available, state.Status)
-	assert.Equal(t, protocol.Syncing, nextState.Status)
-	assert.NotEqual(t, state.Status, nextState.Status)
-	assert.True(t, event.Same(nextState))
+	assert.Equal(t, state, event.ProcessEvent(state))
 }
 
 func TestFatalErrorUpstreamStateEvent(t *testing.T) {

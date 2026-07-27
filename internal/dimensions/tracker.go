@@ -103,8 +103,12 @@ func (d *BaseDimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, 
 	upstreamKey := newUpstreamDimensionKey(chain, upstreamId, method)
 	chainKey := newChainDimensionKey(chain, upstreamId)
 
-	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStore(upstreamKey, newUpstreamDimensions(upstreamKey))
-	chainDims, _ := d.chainDimensionsMap.LoadOrStore(chainKey, newChainDimensions(chainKey))
+	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStoreLazy(upstreamKey, func() *UpstreamDimensions {
+		return newUpstreamDimensions(upstreamKey)
+	})
+	chainDims, _ := d.chainDimensionsMap.LoadOrStoreLazy(chainKey, func() *ChainDimensions {
+		return newChainDimensions(chainKey)
+	})
 	return &FullDimensions{
 		UpstreamDimensions: upstreamDimensions,
 		ChainDimensions:    chainDims,
@@ -113,14 +117,18 @@ func (d *BaseDimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, 
 
 func (d *BaseDimensionTracker) GetUpstreamDimensions(chain chains.Chain, upstreamId, method string) *UpstreamDimensions {
 	upstreamKey := newUpstreamDimensionKey(chain, upstreamId, method)
-	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStore(upstreamKey, newUpstreamDimensions(upstreamKey))
+	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStoreLazy(upstreamKey, func() *UpstreamDimensions {
+		return newUpstreamDimensions(upstreamKey)
+	})
 	return upstreamDimensions
 }
 
 func (d *BaseDimensionTracker) GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions {
 	chainKey := newChainDimensionKey(chain, upstreamId)
 
-	chainDimensions, _ := d.chainDimensionsMap.LoadOrStore(chainKey, newChainDimensions(chainKey))
+	chainDimensions, _ := d.chainDimensionsMap.LoadOrStoreLazy(chainKey, func() *ChainDimensions {
+		return newChainDimensions(chainKey)
+	})
 	return chainDimensions
 }
 

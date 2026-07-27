@@ -105,6 +105,7 @@ func (h *healthChainSupervisorStub) GetSortedUpstreamIds(filterFunc upstreams.Fi
 	return nil
 }
 func (h *healthChainSupervisorStub) GetUpstreamIds() []string                          { return nil }
+func (h *healthChainSupervisorStub) NextIndex() uint64                                 { return 0 }
 func (h *healthChainSupervisorStub) PublishUpstreamEvent(event protocol.UpstreamEvent) {}
 func (h *healthChainSupervisorStub) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return nil
