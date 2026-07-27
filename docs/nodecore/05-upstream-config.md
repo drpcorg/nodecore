@@ -592,7 +592,7 @@ Each upstream can expose multiple interfaces for communication. A blockchain net
 Supported connector types:
 
 - `json-rpc` - HTTP-based JSON-RPC. Available on every chain family
-- `tendermint` - the Tendermint/CometBFT consensus RPC (port `26657` by convention) used by every Cosmos SDK chain. This is the one connector that speaks **two wire shapes at once**: CometBFT serves the same method set as JSON-RPC on `POST /` and as URI calls on `GET /<method>?<args>`, so a client may reach `status` either as `{"method":"status"}` or as `GET /status` and nodecore forwards the request in whichever shape it arrived. See [Cosmos deployment](#cosmos-deployment)
+- `tendermint` - the Tendermint/CometBFT consensus RPC (port `26657` by convention) used by every Cosmos SDK chain. This is the one connector that speaks **two wire shapes at once**: CometBFT serves the same method set as JSON-RPC on `POST /` and as URI calls on `GET /<method>?<args>`, so a client may reach `status` either as `{"method":"status"}` or as `GET /status` and nodecore forwards the request in whichever shape it arrived.
 - `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
 - `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON, Aptos, Cosmos SDK chains, and the Ethereum/Gnosis Beacon Chain). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`. Aptos upstreams use `rest` exclusively, serving the fullnode `/v1/*` API. On Cosmos SDK chains `rest` is the LCD / gRPC-gateway API (port `1317` by convention, `/cosmos/*`, `/cosmwasm/*`, `/ibc/*`)
 - `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
@@ -643,46 +643,6 @@ upstreams:
       - type: rest-indexer
         url: http://ton-index:8082
 ```
-
-### Cosmos deployment
-
-A Cosmos SDK node serves two APIs out of one process: the **Tendermint/CometBFT consensus RPC** (`26657`, connector type `tendermint`) and the **LCD** (`1317`, connector type `rest`). Unlike TON's two APIs, these are not independent systems — they read the same store, so they share a head and a retention window. Configuring both connectors on one upstream is therefore the normal deployment, not a degraded one, and nodecore emits no warning for it.
-
-When both are present, the `tendermint` connector drives head tracking, health, chain validation, labels and lower bounds, because a single `status` call answers all of them:
-
-| Signal | `tendermint` | `rest` (LCD) |
-| --- | --- | --- |
-| Head / finalized block | `block` | `GET /cosmos/base/tendermint/v1beta1/blocks/latest` |
-| Sync state | `status` → `sync_info.catching_up` | `GET /cosmos/base/tendermint/v1beta1/syncing` |
-| Peers | `net_info` → `n_peers` (only when `validate-peers` is on; often firewalled off on hosted endpoints) | not exposed |
-| Chain validation | `status` → `node_info.network` | `node_info` → `default_node_info.network` |
-| `client_version` label | CometBFT version | SDK app version (e.g. gaia's) |
-| Lower bound | `status` → `sync_info.earliest_block_height`, one call | binary search over `blocks/{height}` |
-
-A committed CometBFT block is final, so the finalized block always equals the head, and there is no "safe" block concept — safe-block detection is disabled for cosmos upstreams. Head tracking is poll-only: CometBFT's `/websocket` subscriptions are not used.
-
-Block ids agree across the two connectors even though the encodings differ (CometBFT renders hashes as uppercase hex, the LCD as base64) — nodecore decodes both to the same bytes, so a `tendermint`-driven and a `rest`-driven upstream of the same chain report the same head hash.
-
-```yaml
-# Normal deployment: both APIs of one node on one upstream
-upstreams:
-  - id: cosmos-hub-node
-    chain: cosmos-hub
-    connectors:
-      - type: tendermint
-        url: http://cosmos-node:26657
-      - type: rest
-        url: http://cosmos-node:1317
-
-# LCD-only upstream (e.g. a provider that exposes 1317 but not 26657)
-  - id: cosmos-hub-lcd
-    chain: cosmos-hub
-    connectors:
-      - type: rest
-        url: https://cosmos-rest.example.com
-```
-
-Each upstream only advertises the methods its connector types carry, so a `tendermint` method sent to an LCD-only upstream (or vice versa) is rejected with `-32601` rather than being misrouted.
 
 ### Tor .onion upstreams
 
@@ -799,4 +759,3 @@ Cosmos upstreams have no standalone liveness probe: the syncing and peers
 validators *are* the health validators, so `disable-health-validation` turns
 both off regardless of `validate-syncing` / `validate-peers`. Which pair runs
 depends on the connector driving the upstream — see
-[Cosmos deployment](#cosmos-deployment) for how that connector is chosen.
