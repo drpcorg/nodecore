@@ -754,8 +754,3 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Client label detector (Cosmos LCD) | Cosmos (`rest`) | `disable-labels-detection` | Publishes `client_type=cosmos` and the **SDK application** version from `node_info` → `application_version.version` (e.g. gaia's `v21.0.0`), falling back to the CometBFT version when a trimmed LCD omits it. The two connectors therefore report different `client_version` values for the same node — app version vs. consensus-engine version |
 
 `disable-validation` is the master switch and overrides every per-validator flag.
-
-Cosmos upstreams have no standalone liveness probe: the syncing and peers
-validators *are* the health validators, so `disable-health-validation` turns
-both off regardless of `validate-syncing` / `validate-peers`. Which pair runs
-depends on the connector driving the upstream — see
