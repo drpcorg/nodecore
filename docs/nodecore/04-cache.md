@@ -34,6 +34,7 @@ nodecore performs two core cache operations: **Receive** and **Store**.
 1. **Receive** – executed on every incoming request before it is forwarded upstream. A request key is computed as a hash of the method name and request parameters (if no parameters are present, only the method name is used). The **Receive** operation is executed in parallel across all cache policies, and if any policy returns a cached result, it is immediately returned to the client while the other lookups are canceled. A request will only hit the cache if it passes the following rules:
    - Requests with streamed responses are not cached. For example, `eth_getLogs` and Solana’s `getProgramAccounts` are streamed by default and are excluded. **In the future, all responses will be streamed by default, and streaming + caching will work together**
    - If the method spec explicitly sets `"cacheable": false`, the request is not cached. Example: `eth_sendRawTransaction` is never cached
+   - If the requested method is not present in the chain's spec, it is treated as non-cacheable. Only methods declared in a spec (where `cacheable` defaults to `true`) are eligible for caching
    - Requests with block tags in the body (`latest`, `earliest`, etc.) are not cached because their responses are non-deterministic
    - If a policy has `finalization-type: finalized`, nodecore checks whether the requested block number is less than or equal to the chain’s finalized block. If the request targets a block beyond the finalized height, it will not be cached. When finalized-block detection is disabled (`disable-finalized-block-detection: true`), the finalized height is never known and **nothing is cached** under this policy
    - If no policy matches the requested chain, the request is not cached
@@ -144,7 +145,7 @@ The `policies` section defines the rules for which requests should be cached, ho
 - `blockchain-type` - Target blockchain type family this policy applies to. Mutually exclusive with `chain` — set exactly one of the two. Useful to cache a method across a whole family without listing every chain. Possible values:
   - `*` matches all blockchain types
   - Multiple types can be specified with `|` (e.g., `eth|solana`)
-  - Supported types: `eth`, `eth-beacon-chain`, `solana`, `avm`, `aztec`, `cosmos`, `ton`, `bitcoin`, `near`, `polkadot`, `starknet`
+  - Supported types: `eth`, `eth-beacon-chain`, `solana`, `avm`, `aztec`, `aptos`, `cosmos`, `ton`, `bitcoin`, `near`, `polkadot`, `starknet`
 - `method` - RPC method or method pattern to which the policy applies. **_Required_**. Possible values:
   - exact names (`eth_getBlockByNumber`)
   - wildcards (`debug*` to cover all debug methods or `*` matches all methods)

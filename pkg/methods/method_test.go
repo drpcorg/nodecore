@@ -15,7 +15,7 @@ func TestDefaultMethod(t *testing.T) {
 
 	assert.Equal(t, "methodName", method.Name)
 	assert.True(t, method.Enabled())
-	assert.True(t, method.IsCacheable())
+	assert.False(t, method.IsCacheable())
 	assert.Nil(t, method.Parse(context.Background(), ""))
 }
 

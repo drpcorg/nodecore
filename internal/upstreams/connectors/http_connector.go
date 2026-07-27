@@ -26,6 +26,7 @@ import (
 
 type HttpConnector struct {
 	endpoint              string
+	upstreamId            string
 	httpClient            *http.Client
 	additionalHeaders     map[string]string
 	connectorType         specs.ApiConnectorType
@@ -53,6 +54,28 @@ var defaultResponseHeaderDeny = []string{
 	"Server",
 }
 
+// defaultRequestHeaderDeny is the request-side mirror of the response deny
+// list: RFC 7230 §6.1 hop-by-hop headers plus Host and Content-Length (both
+// owned by the transport for the *outgoing* request) and Accept-Encoding.
+// Accept-Encoding must stay with the transport: forwarding the client's value
+// disables Go's transparent decompression, so a gzip upstream body would ride
+// through unmarked (Content-Encoding is stripped from responses) and get
+// compressed a second time by the server gzip middleware (issue #268).
+var defaultRequestHeaderDeny = mapset.NewThreadUnsafeSet(
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",
+	"Trailer",
+	"Trailers",
+	"Transfer-Encoding",
+	"Upgrade",
+	"Host",
+	"Content-Length",
+	"Accept-Encoding",
+)
+
 func (h *HttpConnector) Unsubscribe(_ string) {
 }
 
@@ -60,13 +83,19 @@ func (h *HttpConnector) GetUrl() string {
 	return h.endpoint
 }
 
+// The upstreamId constructor parameter tags the connector with the id of the
+// upstream it serves so that client-facing failure messages can reference the
+// upstream without exposing its URL/host (which carries credentials and
+// reveals infrastructure).
 func NewHttpConnectorWithDefaultClient(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
+	upstreamId string,
 ) *HttpConnector {
 	return &HttpConnector{
 		endpoint:              connectorConfig.Url,
+		upstreamId:            upstreamId,
 		httpClient:            http.DefaultClient,
 		connectorType:         connectorType,
 		additionalHeaders:     canonicalizeHeaders(connectorConfig.Headers),
@@ -79,6 +108,7 @@ func NewHttpConnector(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
+	upstreamId string,
 ) (*HttpConnector, error) {
 	endpoint, err := url.Parse(connectorConfig.Url)
 	if err != nil {
@@ -117,6 +147,7 @@ func NewHttpConnector(
 
 	return &HttpConnector{
 		endpoint:              connectorConfig.Url,
+		upstreamId:            upstreamId,
 		httpClient:            client,
 		connectorType:         connectorType,
 		additionalHeaders:     canonicalizeHeaders(connectorConfig.Headers),
@@ -163,7 +194,8 @@ func (h *HttpConnector) sendJsonRpc(ctx context.Context, request protocol.Reques
 	if quorumRequested {
 		endpoint, err = appendQuery(endpoint, quorumParams.EncodeQuery())
 		if err != nil {
-			return clientFailure(request, fmt.Errorf("invalid upstream url %q: %w", h.endpoint, err))
+			zerolog.Ctx(ctx).Error().Err(err).Str("upstream", h.upstreamId).Str("url", h.endpoint).Msg("invalid upstream url")
+			return clientFailure(request, fmt.Errorf("invalid url for upstream %s", h.upstreamId))
 		}
 	}
 
@@ -204,14 +236,16 @@ func (h *HttpConnector) sendRest(ctx context.Context, request protocol.RequestHo
 	if rp != nil && len(rp.QueryParams) > 0 {
 		target, err = appendQuery(target, encodeMultiValuedQuery(rp.QueryParams))
 		if err != nil {
-			return clientFailure(request, fmt.Errorf("invalid upstream url %q: %w", target, err))
+			zerolog.Ctx(ctx).Error().Err(err).Str("upstream", h.upstreamId).Str("url", target).Msg("invalid upstream url")
+			return clientFailure(request, fmt.Errorf("invalid url for upstream %s", h.upstreamId))
 		}
 	}
 	quorumParams, quorumRequested := quorum.FromContext(ctx)
 	if quorumRequested {
 		target, err = appendQuery(target, quorumParams.EncodeQuery())
 		if err != nil {
-			return clientFailure(request, fmt.Errorf("invalid upstream url %q: %w", target, err))
+			zerolog.Ctx(ctx).Error().Err(err).Str("upstream", h.upstreamId).Str("url", target).Msg("invalid upstream url")
+			return clientFailure(request, fmt.Errorf("invalid url for upstream %s", h.upstreamId))
 		}
 	}
 
@@ -245,14 +279,20 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 
 // applyClientHeaders forwards per-request client headers onto the upstream
 // request, except keys the connector config already owns - those are
-// typically auth tokens that a curious client must not be able to override.
-// HTTP headers are case-insensitive, so the conflict check canonicalises
-// both sides via http.CanonicalHeaderKey; without this, a config
+// typically auth tokens that a curious client must not be able to override -
+// and keys in defaultRequestHeaderDeny, which belong to the nodecore<->upstream
+// hop rather than to the client.
+// HTTP headers are case-insensitive, so both checks canonicalise
+// via http.CanonicalHeaderKey; without this, a config
 // "Authorization" + a client "authorization" would slip past as distinct
 // strings and both end up on the wire after req.Header.Add canonicalises.
 func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string) {
 	for k, vs := range headers {
-		if _, taken := h.additionalHeaders[http.CanonicalHeaderKey(k)]; taken {
+		canonical := http.CanonicalHeaderKey(k)
+		if defaultRequestHeaderDeny.Contains(canonical) {
+			continue
+		}
+		if _, taken := h.additionalHeaders[canonical]; taken {
 			continue
 		}
 		for _, v := range vs {
@@ -354,11 +394,14 @@ func (h *HttpConnector) dispatch(
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return protocol.NewTotalFailure(request, protocol.CtxError(err))
+			return protocol.NewTotalFailure(request, protocol.CtxError(fmt.Errorf("upstream %s: %v", h.upstreamId, ctx.Err())))
 		}
+		// Log the full error (incl. the upstream URL) for operators; surface
+		// only the upstream id to the caller so the URL/host never leaks.
+		zerolog.Ctx(ctx).Warn().Err(err).Str("upstream", h.upstreamId).Msg("upstream http request failed")
 		return protocol.NewPartialFailure(
 			request,
-			protocol.ServerErrorWithCause(fmt.Errorf("unable to get an http response: %v", err)),
+			protocol.ServerErrorWithCause(fmt.Errorf("upstream %s request failed", h.upstreamId)),
 		)
 	}
 
@@ -388,11 +431,12 @@ func (h *HttpConnector) receiveWholeResponse(
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		if ctx.Err() != nil {
-			return protocol.NewTotalFailure(request, protocol.CtxError(err))
+			return protocol.NewTotalFailure(request, protocol.CtxError(fmt.Errorf("upstream %s: %v", h.upstreamId, ctx.Err())))
 		}
+		zerolog.Ctx(ctx).Warn().Err(err).Str("upstream", h.upstreamId).Msg("unable to read upstream http response")
 		return protocol.NewPartialFailure(
 			request,
-			protocol.ServerErrorWithCause(fmt.Errorf("unable to read an http response: %v", err)),
+			protocol.ServerErrorWithCause(fmt.Errorf("unable to read response from upstream %s", h.upstreamId)),
 		)
 	}
 	return protocol.NewHttpUpstreamResponse(request.Id(), body, status, request.RequestType()).

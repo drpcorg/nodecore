@@ -125,6 +125,10 @@ func (s *fakeChainSupervisor) GetUpstreamIds() []string {
 	return nil
 }
 
+func (s *fakeChainSupervisor) NextIndex() uint64 {
+	return 0
+}
+
 func (s *fakeChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 
 func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {

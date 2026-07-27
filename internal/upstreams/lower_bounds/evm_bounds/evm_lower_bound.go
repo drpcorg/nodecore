@@ -23,15 +23,25 @@ const (
 // EvmLowerBoundDetector detects the lower bound of a single data type (block,
 // state, tx, receipts or proof) for an EVM upstream. The concrete per-type probe
 // logic lives in the sibling *_bound.go files; this file holds the shared wiring:
-// construction, the probe dispatcher, and the JSON-RPC call helper.
+// construction, the probe dispatcher, and the JSON-RPC call helper. When the
+// upstream reports its bounds via eth_capabilities, that answer is used directly
+// instead of probing (see capabilities.go).
 type EvmLowerBoundDetector struct {
 	*lower_bounds.LowerBoundSearchCalculator
 
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
+	capabilities    *EvmCapabilities
 
 	stateOverrideSupport atomic.Int32
+}
+
+// WithCapabilities attaches the upstream-shared eth_capabilities cache. Detectors
+// without one (nil) keep the pure gold-bound/search behavior.
+func (e *EvmLowerBoundDetector) WithCapabilities(capabilities *EvmCapabilities) *EvmLowerBoundDetector {
+	e.capabilities = capabilities
+	return e
 }
 
 func newEvmLowerBoundDetector(
@@ -63,6 +73,9 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 }
 
 func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	if results, ok := e.detectFromCapabilities(ctx); ok {
+		return results, nil
+	}
 	if results, ok := e.detectFromGoldBound(ctx); ok {
 		return results, nil
 	}

@@ -366,7 +366,7 @@ func TestEthGetBlockByNumberIntegrityHandlerNumberTag(t *testing.T) {
 }
 
 func createChainSupervisor() (upstreams.ChainSupervisor, methods.Methods) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 

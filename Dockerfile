@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -23,23 +23,17 @@ ARG GIT_SHA=
 # platform. This avoids slow QEMU-emulated Go builds for multi-arch images.
 RUN go run cmd/chains/init_chains.go && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)} \
-    go build -ldflags "-X github.com/drpcorg/nodecore/internal/buildinfo.Version=${VERSION} -X github.com/drpcorg/nodecore/internal/buildinfo.GitSHA=${GIT_SHA}" \
+    go build -trimpath -ldflags "-s -w -X github.com/drpcorg/nodecore/internal/buildinfo.Version=${VERSION} -X github.com/drpcorg/nodecore/internal/buildinfo.GitSHA=${GIT_SHA}" \
     -o /app/nodecore cmd/nodecore/main.go
 
 # Final stage
-FROM alpine:3.24
-RUN apk --no-cache add ca-certificates tzdata
+# distroless/static ships CA certificates, tzdata and a built-in nonroot user (uid 65532)
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:f5b485ea962d9bd1186b2f6b3a061191539b905b82ec395de78cbfae51f20e35
 WORKDIR /app
 
 # Copy binary from builder stage
 COPY --from=builder /app/nodecore .
 COPY nodecore-default.yml nodecore.yml
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodecore && \
-    adduser -S nodecore -u 1001 -G nodecore
-
-USER nodecore
-
 EXPOSE 8080
-CMD ["./nodecore"]
+CMD ["/app/nodecore"]
