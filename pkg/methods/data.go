@@ -226,9 +226,14 @@ func GetSpecType(name string) SpecType {
 
 type ApiConnectorType int
 
+// The declaration order is significant: GetBestConnector picks the lowest
+// value in default mode ("simplest") and the highest in strict mode ("most
+// capable"), and that choice becomes both the head connector and the
+// internal-request connector.
 const (
 	UnknownType ApiConnectorType = iota
 	JsonRpcConnector
+	TendermintConnector // Tendermint/CometBFT RPC - the same methods over JSON-RPC (POST /) and URI calls (GET /<method>)
 	RestConnector
 	RestIndexer // a self-contained indexer REST API next to the node API (e.g. the TON v3 indexer); a plain type - may be an upstream's only connector
 	GrpcConnector
@@ -252,12 +257,15 @@ func (a ApiConnectorType) String() string {
 		return "rest-indexer"
 	case RestAdditional:
 		return "rest-additional"
+	case TendermintConnector:
+		return "tendermint"
 	}
 	return ""
 }
 
 var apiConnectors = map[string]ApiConnectorType{
 	"json-rpc":        JsonRpcConnector,
+	"tendermint":      TendermintConnector,
 	"rest":            RestConnector,
 	"grpc":            GrpcConnector,
 	"websocket":       WebsocketConnector,
@@ -266,6 +274,7 @@ var apiConnectors = map[string]ApiConnectorType{
 }
 var plainApiConnectorTypes = []ApiConnectorType{
 	JsonRpcConnector,
+	TendermintConnector,
 	RestConnector,
 	GrpcConnector,
 	WebsocketConnector,
