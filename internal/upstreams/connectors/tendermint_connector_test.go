@@ -51,7 +51,7 @@ func newTendermintConnector(t *testing.T, handler http.HandlerFunc) (*connectors
 // and the shared JSON-RPC response path unwraps CometBFT's result envelope.
 func TestTendermintConnectorSendsJsonRpcShape(t *testing.T) {
 	connector, captured := newTendermintConnector(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"1","result":{"sync_info":{"latest_block_height":"25000000"}}}`))
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"sync_info":{"latest_block_height":"25000000"}}}`))
 	})
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", map[string]any{}, chains.COSMOS_HUB)
@@ -65,7 +65,7 @@ func TestTendermintConnectorSendsJsonRpcShape(t *testing.T) {
 	assert.Equal(t, http.MethodPost, captured.method)
 	assert.Equal(t, "/", captured.path)
 	assert.Empty(t, captured.query)
-	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"status","params":{}}`, captured.body)
+	assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"status","params":{}}`, captured.body)
 }
 
 // The same connector serves a URI-style request as GET /<method>?<args>, which
