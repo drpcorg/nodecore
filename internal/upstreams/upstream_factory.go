@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/cosmos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
@@ -143,6 +144,8 @@ func createConnector(
 			return nil, err
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
+	case specs.TendermintConnector:
+		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, torProxyUrl, upId)
 	case specs.RestConnector:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
 	case specs.RestIndexer:
@@ -284,6 +287,15 @@ func getChainSpecific(
 			conf.PollInterval,
 			conf.Options,
 		), nil
+	case chains.Cosmos:
+		return cosmos_specific.NewCosmosSpecific(
+			ctx,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			configuredChain,
+			conf.PollInterval,
+			conf.Options,
+		)
 	case chains.Starknet:
 		return starknet_specific.NewStarknetChainSpecificObject(
 			ctx,

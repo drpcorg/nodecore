@@ -175,10 +175,17 @@ func (h *HttpConnector) SubscribeStates(_ string) *utils.Subscription[protocol.S
 // and applying its own URL/header semantics; the shared dispatch helper
 // only handles network execution and response framing.
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	if h.GetType() == specs.JsonRpcConnector {
+	switch h.GetType() {
+	case specs.JsonRpcConnector:
 		return h.sendJsonRpc(ctx, request)
+	case specs.TendermintConnector:
+		if request.RequestType() == protocol.JsonRpc {
+			return h.sendJsonRpc(ctx, request)
+		}
+		return h.sendRest(ctx, request)
+	default:
+		return h.sendRest(ctx, request)
 	}
-	return h.sendRest(ctx, request)
 }
 
 // sendJsonRpc forwards a JSON-RPC call. Always POST to the configured
