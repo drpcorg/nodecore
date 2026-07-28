@@ -116,6 +116,18 @@ func TestEthClientLabelsDetectorClientVersionAndType(t *testing.T) {
 			expectedClientType: "nethermind",
 		},
 		{
+			name:               "detects classic hyperliquid node as hl",
+			raw:                "hyperliquid evm Mainnet",
+			expectedVersion:    eth_labels.UnknownClientVersion,
+			expectedClientType: eth_labels.HlClientType,
+		},
+		{
+			name:               "detects classic hyperliquid testnet node as hl",
+			raw:                "Hyperliquid evm Testnet",
+			expectedVersion:    eth_labels.UnknownClientVersion,
+			expectedClientType: eth_labels.HlClientType,
+		},
+		{
 			name:               "falls back to raw dotted version",
 			raw:                "client.build.2024",
 			expectedVersion:    "client.build.2024",
