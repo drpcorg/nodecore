@@ -54,7 +54,7 @@ func NewInternalUpstreamJsonRpcRequest(method string, params any, chain chains.C
 	return &UpstreamJsonRpcRequest{
 		id:              "1",
 		method:          method,
-		realId:          []byte(`"1"`),
+		realId:          []byte(`1`),
 		requestParams:   requestParams,
 		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
@@ -70,7 +70,7 @@ func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chain
 	return &UpstreamJsonRpcRequest{
 		id:              "1",
 		method:          method,
-		realId:          []byte(`"1"`),
+		realId:          []byte(`1`),
 		requestParams:   requestParams,
 		isSub:           true,
 		specMethod:      specMethod,
