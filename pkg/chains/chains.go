@@ -363,6 +363,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "starknet"
 	case Ton:
 		return "ton"
+	case Cosmos:
+		return "cosmos"
 	}
 
 	return ""
