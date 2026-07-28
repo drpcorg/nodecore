@@ -27,12 +27,18 @@ func TestJsonRpcWsProtocolRequestFrameForEthSubscription(t *testing.T) {
 	frame, err := wsProtocol.RequestFrame(request)
 	require.NoError(t, err)
 
-	assert.Equal(t, "1", frame.RequestId)
+	// Allocated ids start above the reserved low range so they can never collide
+	// with the id 1 that internally-built frames (e.g. unsubscribe) go out with.
+	assert.Equal(t, "101", frame.RequestId)
 	assert.Equal(t, "newHeads", frame.SubType)
+
+	// The id is a JSON number on the wire but a decimal string in the registry
+	// maps - asserting both here pins the invariant the id routing relies on.
+	assert.Contains(t, string(frame.Body), `"id":101`)
 
 	body := decodeBody(t, frame.Body)
 	assert.Equal(t, "eth_subscribe", body["method"])
-	assert.Equal(t, "1", body["id"])
+	assert.Equal(t, float64(101), body["id"])
 	assert.Equal(t, []any{"newHeads"}, body["params"])
 }
 
@@ -45,7 +51,7 @@ func TestJsonRpcWsProtocolRequestFrameForNonEthSubscription(t *testing.T) {
 	frame, err := wsProtocol.RequestFrame(request)
 	require.NoError(t, err)
 
-	assert.Equal(t, "1", frame.RequestId)
+	assert.Equal(t, "101", frame.RequestId)
 	assert.Equal(t, "logsSubscribe", frame.SubType)
 }
 
@@ -64,8 +70,8 @@ func TestJsonRpcWsProtocolRequestFrameForUnaryRequest(t *testing.T) {
 	secondFrame, err := wsProtocol.RequestFrame(secondRequest)
 	require.NoError(t, err)
 
-	assert.Equal(t, "1", firstFrame.RequestId)
-	assert.Equal(t, "2", secondFrame.RequestId)
+	assert.Equal(t, "101", firstFrame.RequestId)
+	assert.Equal(t, "102", secondFrame.RequestId)
 	assert.Empty(t, firstFrame.SubType)
 	assert.Empty(t, secondFrame.SubType)
 }
@@ -98,9 +104,16 @@ func TestJsonRpcWsProtocolDoOnCloseFuncSendsUnsubscribeRequest(t *testing.T) {
 	require.True(t, called)
 	assert.WithinDuration(t, time.Now().Add(5*time.Second), deadline, time.Second)
 
+	// The unsubscribe body is written straight to the socket without going
+	// through RequestFrame, so its numeric id comes from the internal request
+	// constructor - chains that reject string ids would reject this frame too.
+	// It stays 1, in the range the allocator reserves, so its reply can never be
+	// mistaken for the response to an allocated request.
+	assert.Contains(t, string(receivedBody), `"id":1`)
+
 	body := decodeBody(t, receivedBody)
 	assert.Equal(t, "eth_unsubscribe", body["method"])
-	assert.Equal(t, "1", body["id"])
+	assert.Equal(t, float64(1), body["id"])
 	assert.Equal(t, []any{"0xsub"}, body["params"])
 }
 

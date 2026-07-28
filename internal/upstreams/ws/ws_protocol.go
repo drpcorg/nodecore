@@ -22,6 +22,8 @@ type WsProtocol interface {
 	DoOnCloseFunc(writeRequestFunc WriteRequest) DoOnClose
 }
 
+const initialInternalId = 100
+
 type JsonRpcWsProtocol struct {
 	upstreamId string
 	methodSpec string
@@ -42,7 +44,7 @@ func (j *JsonRpcWsProtocol) RequestFrame(request protocol.RequestHolder) (*Reque
 	nextId := j.internalId.Add(1)
 
 	requestId := fmt.Sprintf("%d", nextId)
-	if _, err = jsonBody.SetAny("id", requestId); err != nil {
+	if _, err = jsonBody.SetAny("id", nextId); err != nil {
 		return nil, fmt.Errorf("couldn't replace an id, cause - %s", err.Error())
 	}
 
@@ -93,12 +95,15 @@ func (j *JsonRpcWsProtocol) ParseWsMessage(payload []byte) (*protocol.WsResponse
 }
 
 func NewJsonRpcWsProtocol(upstreamId, methodSpec string, chain chains.Chain) *JsonRpcWsProtocol {
-	return &JsonRpcWsProtocol{
+	wsProtocol := &JsonRpcWsProtocol{
 		upstreamId: upstreamId,
 		methodSpec: methodSpec,
 		internalId: atomic.Int64{},
 		chain:      chain,
 	}
+	wsProtocol.internalId.Store(initialInternalId)
+
+	return wsProtocol
 }
 
 func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string {
