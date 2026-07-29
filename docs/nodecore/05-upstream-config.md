@@ -5,6 +5,7 @@ This `upstream-config` section defines how nodecore discovers, evaluates, and in
 ```yaml
 upstream-config:
   mode: default
+  balancing-strategy: rating
   integrity:
     enabled: true
   failsafe-config:
@@ -36,6 +37,7 @@ upstream-config:
         call-limit-size: 131072
         validate-client-version: false
         disable-log-index-validation: true
+        disable-liveness-subscription-validation: false
         archive: false
       dispatch:
         broadcast: false
@@ -48,6 +50,12 @@ upstream-config:
     calculation-interval: 5s
     calculation-function-name: "defaultLatencyErrorRatePolicyFunc"
     #calculation-function-file-path: "path/to/func"
+  label-balancing:
+    order:
+      - full
+      - archive
+    pass-on-error: false
+    include-default: true
   upstreams:
     - id: my-super-upstream
       chain: ethereum
@@ -104,7 +112,9 @@ It brings together:
 3. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter), hedging (duplicate a slow request after a delay, with a cap on parallel hedges), and a per-request `timeout` budget.
 4. Chain defaults (`chain-defaults`) - Per-chain operational defaults: poll interval, validation toggles, and detector toggles. See [Validators and labels](#validators-and-labels) below.
 5. Scoring policy (`score-policy-config`) - Controls how upstream health/quality is calculated: a calculation interval and a scoring function. The score blends metrics like latency and error rate and is used by the router to pick the best upstream.
-6. Upstreams (`upstreams`) - The actual provider entries.
+6. Balancing strategy (`balancing-strategy`) - Selects how a normal request picks an upstream: `rating` (score-ordered, the default) or `base` (round-robin). See [balancing-strategy](#balancing-strategy) below.
+7. Label balancing (`label-balancing`) - Optional priority-group routing layered on top of rating: tag upstreams with `group-labels` and serve requests from the highest-priority group first. See [label-balancing](#label-balancing) below.
+8. Upstreams (`upstreams`) - The actual provider entries.
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, (4) apply rate limiting to control request throughput, and (5) toggle the validators and label detectors that observe each upstream's health.
 
@@ -146,6 +156,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
 | `disable-labels-detection` | `true` (off) | `false` (on) |
 | `validate-syncing` | `false` (off) | `true` (on) |
+| `validate-lag` | `false` (off) | `true` (on) |
 | `validate-peers` | `false` (off) | `true` (on) |
 | `validate-call-limit` | `false` (off) | `true` (on) |
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
@@ -311,6 +322,7 @@ chain-defaults:
       enable-new-pending-transactions: true
   polygon:
     poll-interval: 30s
+    balancing-strategy: base
 ```
 
 The `chain-defaults` section defines per-chain baseline settings. `<chain>.options` apply to upstreams of that chain unless explicitly overridden in the upstream configuration; `<chain>.dispatch` controls routing policies for the whole chain and is not a per-upstream setting.
@@ -326,8 +338,8 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-health-validation` - Disables only the health validators (per chain family). **_Default_**: `false`
   * `disable-lower-bounds-detection` - Disables the earliest-available-block detector. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-labels-detection` - Disables the EVM label detectors (client/version, archive, gas, flashblock, etc.). Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
-  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
-  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. For beacon-chain upstreams it probes `GET /eth/v1/node/syncing` instead (marking the upstream `Syncing`, or `Unavailable` when its execution layer is offline). Bitcoin-family upstreams probe `getblockchaininfo` (`initialblockdownload`, plus a headers-vs-blocks lag threshold). For NEAR upstreams the `status` probe's `sync_info.syncing` and a stale-head guard on `latest_block_time` drive the same signal (always on as part of health validation). Starknet upstreams probe `starknet_syncing` (a plain `false` or a sync object, judged with a lag threshold). TON upstream health uses `getMasterchainInfo` liveness (v2) and `masterchainInfo` `gen_utime` freshness (v3). Cosmos upstreams read the node's own flag — `status` → `sync_info.catching_up` over the `tendermint` connector, `GET /cosmos/base/tendermint/v1beta1/syncing` over the LCD. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+  * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. For beacon-chain upstreams it probes `GET /eth/v1/node/peer_count`. Bitcoin-family upstreams call `getconnectioncount`. NEAR upstreams probe `network_info` `num_active_peers`. Starknet has no peer probe (nodes sync from the feeder gateway, not p2p), so `validate-peers` has no effect there; likewise for TON upstreams. Cosmos upstreams probe `net_info` → `n_peers` over the `tendermint` connector only — the LCD exposes no peer count, so a `rest`-driven cosmos upstream ignores this flag too. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `min-peers` - Minimum acceptable peer count when `validate-peers` is on. **_Default_**: `1`
   * `validate-call-limit` - For EVM chains, periodically probes the upstream's `eth_call` return-data limit and marks the upstream unhealthy when its observed limit is below `call-limit-size`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
@@ -335,6 +347,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
   * `disable-finalized-block-detection` - Disables periodic finalized-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("finalized", …)` calls, does not cache with `finalization-type: finalized`, and skips finalization-lag tracking. Set to `true` for chains like Viction (PoSV) that lack Ethereum's finalized-block concept. **_Default_**: `false`
+  * `disable-liveness-subscription-validation` - Controls whether an EVM upstream whose head is driven by a WebSocket must prove its head is *live* before it advertises the WebSocket subscription capability (`WsCap`) and can back client subscriptions. When the validation is enabled, such an upstream gains `WsCap` only once its head has advanced **consecutively** — 3 blocks in a row (2 consecutive height increments) — and loses it on a forward gap of skipped blocks, a stall (no head progress within an adaptive timeout derived from the chain's expected block time), or a WebSocket disconnect, pulling the upstream out of subscription serving until it recovers; after a gap it stays out for a short cooldown before it can go live again (duplicate heights and backward reorgs are tolerated, and regular RPC routing is unaffected throughout). Set to `true` to skip the check and keep the historical "connected WebSocket ⇒ `WsCap`" behavior. Only affects EVM upstreams with a WebSocket head connector; poll-head upstreams and non-EVM chains are never gated. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
   * `archive` - Manual EVM archive capability override. Set `archive: false` to publish `archive=false` without running archive auto-detection. Set `archive: true` or leave it unset to use the runtime archive detector and publish its detected result
 * `<chain>.dispatch` - Per-chain dispatch policy toggles. These options affect routing for the whole chain, not individual upstreams:
   * `broadcast` - Enables fan-out broadcast for method specs with `dispatch: broadcast` (for example transaction propagation). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.
@@ -348,6 +361,8 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `enable-new-heads` / `enable-logs` / `enable-new-pending-transactions` - Per-topic overrides that win over `enable` (e.g. `enable: false` with `enable-logs: true` keeps only `logs` local)
   * Note: the synthetic `drpc_pendingTransactions` method has no node-backed equivalent and is **always** served locally — it is never affected by these flags
   * See [Subscriptions](13-subscriptions.md) for how local synthesis and aggregation work
+* `<chain>.balancing-strategy` - Per-chain override of the global [`balancing-strategy`](#balancing-strategy). Selects how a normal request (one not already handled by a more specific path such as sticky-send, quorum, dispatch, or [label-balancing](#label-balancing)) picks an upstream: `rating` orders candidates by their [score-policy](#score-policy-config) rating, `base` uses plain round-robin. When unset, the chain inherits the global value
+* `<chain>.validate-lag` - When enabled, derives each upstream's availability from how far its head trails the chain head. An `Available` upstream that lags behind the best observed head by more than the chain's `settings.lags.syncing` threshold (a chain-metadata value from the embedded `chains.yaml`, overridable via [`NODECORE_EXTRA_CHAINS_PATH`](#extending-the-chain-registry-at-startup)) is marked `Syncing`, which deprioritizes it during routing until it catches up; when the lag drops back within the threshold the upstream's probe-reported status is restored. If a chain has no positive `settings.lags.syncing` threshold (i.e. `0` or unset), the check is disabled for that chain and no upstream is ever downgraded by lag. Unlike `validate-syncing`, which asks each node about its own sync state, this compares heads *across* upstreams of the chain, so it catches nodes that report healthy but silently fall behind. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
 
 > **⚠️ Note**: Chain names in this section must match the identifiers defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml)
 
@@ -507,6 +522,30 @@ How groups are traversed:
 The per-upstream `group-labels` field (see [Fields](#fields)) assigns an upstream to one or
 more groups. Labels not present in `order` route the upstream to the default group.
 
+## balancing-strategy
+
+```yaml
+upstream-config:
+  # global default — applies to every chain unless overridden under chain-defaults
+  balancing-strategy: base
+  chain-defaults:
+    ethereum:
+      # per-chain override
+      balancing-strategy: rating
+```
+
+`balancing-strategy` selects how a **normal** request picks an upstream — that is, a request
+not already handled by a more specific routing path (sticky-send, quorum, dispatch, or
+[label-balancing](#label-balancing), all of which keep priority over this setting):
+
+- `rating` (**_default_**) - orders candidates by their [score-policy](#score-policy-config)
+  rating and prefers the best-scored available upstream.
+- `base` - plain round-robin across the chain's available upstreams, ignoring rating.
+
+It is configured as a **global default** under `upstream-config.balancing-strategy` (applies to
+every chain) and can be **overridden per chain** under `chain-defaults.<chain>.balancing-strategy`.
+Resolution order is per-chain override → global default → `rating`.
+
 ## upstreams
 
 ```yaml
@@ -553,10 +592,12 @@ Each upstream can expose multiple interfaces for communication. A blockchain net
 Supported connector types:
 
 - `json-rpc` - HTTP-based JSON-RPC. Available on every chain family
+- `tendermint` - the Tendermint/CometBFT consensus RPC (port `26657` by convention) used by every Cosmos SDK chain. This is the one connector that speaks **two wire shapes at once**: CometBFT serves the same method set as JSON-RPC on `POST /` and as URI calls on `GET /<method>?<args>`, so a client may reach `status` either as `{"method":"status"}` or as `GET /status` and nodecore forwards the request in whichever shape it arrived.
 - `websocket` - WebSocket-based JSON-RPC. Required for subscriptions and certain streaming requests (e.g. `eth_subscribe`)
-- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`
+- `rest` - REST endpoints. Used by chains whose canonical API is REST-shaped (e.g. Algorand, TRON, Aptos, Cosmos SDK chains, and the Ethereum/Gnosis Beacon Chain). TRON additionally exposes an Ethereum-compatible `json-rpc` surface; you can configure either or both connectors on a TRON upstream — `rest` reaches `/wallet/*` (full node) and `/walletsolidity/*` (confirmed mirror), `json-rpc` reaches `/jsonrpc`. Aptos upstreams use `rest` exclusively, serving the fullnode `/v1/*` API. On Cosmos SDK chains `rest` is the LCD / gRPC-gateway API (port `1317` by convention, `/cosmos/*`, `/cosmwasm/*`, `/ibc/*`)
 - `grpc` - gRPC endpoints (declared by spec on a per-chain basis)
-- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: an upstream cannot consist of only `rest-additional` connectors - at least one plain connector (`json-rpc` / `rest` / `grpc` / `websocket`) must also be configured
+- `rest-indexer` - a **self-contained indexer REST API** running next to the node API (e.g. the TON v3 indexer). This is a plain type: it may be an upstream's only connector (a standalone indexer upstream with its own head/health/bounds) or sit alongside the node-API connector on one upstream; see [TON deployment modes](#ton-deployment-modes)
+- `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: it cannot work standalone at all - an upstream cannot consist of only `rest-additional` connectors, at least one plain connector (`json-rpc` / `tendermint` / `rest` / `grpc` / `websocket` / `rest-indexer`) must also be configured
 
 By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each incoming request.
 
@@ -564,10 +605,44 @@ Every upstream must also track its head (latest block / finalization state). The
 
 - If `head-connector` is set explicitly, that type is used
 - Otherwise nodecore picks the best connector available on the upstream, where "best" depends on [`mode`](#mode):
-  - `mode: default` - prefers the simplest type, in order `json-rpc` → `rest` → `grpc` → `websocket`
-  - `mode: strict` - prefers the most capable type, in reverse order `websocket` → `grpc` → `rest` → `json-rpc`
+  - `mode: default` - prefers the simplest type, in order `json-rpc` → `tendermint` → `rest` → `grpc` → `websocket`
+  - `mode: strict` - prefers the most capable type, in reverse order `websocket` → `grpc` → `rest` → `tendermint` → `json-rpc`
 
 `rest-additional` connectors are never chosen as the head connector.
+
+### TON deployment modes
+
+TON exposes two self-contained APIs: the **v2 HTTP API** (toncenter `ton-http-api`, connector type `rest`, base URL must include the `/api/v2` prefix) and the **v3 indexer** (toncenter `ton-indexer`, connector type `rest-indexer`, no path prefix). They have independent data windows — the v2 window is the backing liteserver's block retention, the v3 window is whatever range the indexer has been backfilled with — and independent failure modes (a stalled indexer does not affect the liteserver, and vice versa). Any combination is possible in practice: a non-archival node with a genesis-deep index, or the reverse.
+
+Two deployment modes are supported:
+
+- **Split (recommended)** - two upstreams of the same chain: a v2 upstream (single `rest` connector) and a v3 upstream (single `rest-indexer` connector — a plain type, fully legal on its own). Each upstream gets full independent accounting: its own head, health (v3: `masterchainInfo` freshness), chain validation (v2: zerostate hashes, v3: `global_id`), client labels, and lower bounds (v2: archival probe; v3: `first.seqno`, which may legally *decrease* when the index is backfilled deeper). Method routing between the two happens automatically: each upstream only advertises the methods its connector type carries.
+- **Combined** - one upstream with both connectors. This works, but **all validations and calculations (head, health, chain validation, labels, lower bounds) are computed from the primary connector's API only** (the head/internal connector — `rest`, i.e. v2, in `mode: default`); the other connector serves its methods and takes no part in any accounting. nodecore logs a warning at upstream creation to make this explicit. Use this mode only when the v3 index's data window and health can be assumed to track the v2 node's (e.g. an indexer colocated with, and fed from, that same node).
+
+```yaml
+# Split mode (recommended)
+upstreams:
+  - id: ton-node
+    chain: ton
+    connectors:
+      - type: rest
+        url: http://ton-node:8081/api/v2
+  - id: ton-index-v3
+    chain: ton
+    connectors:
+      - type: rest-indexer
+        url: http://ton-index:8082
+
+# Combined mode (non-primary connector = methods only; logs a warning)
+upstreams:
+  - id: ton-combined
+    chain: ton
+    connectors:
+      - type: rest
+        url: http://ton-node:8081/api/v2
+      - type: rest-indexer
+        url: http://ton-index:8082
+```
 
 ### Tor .onion upstreams
 
@@ -602,9 +677,9 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 `upstreams` fields:
 
 - `id` - Unique identifier of the upstream. **_Required_**, **_Unique_**
-- `chain` - The chain this upstream serves (e.g. `ethereum`, `polygon`, `solana`, `algorand`, `aztec-mainnet`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
+- `chain` - The chain this upstream serves (e.g. `ethereum`, `polygon`, `solana`, `algorand`, `aztec-mainnet`, `aptos-mainnet`). Must match values from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). **_Required_**
 - `connectors` - The access endpoints for this upstream. **_Required_**, **_at least one_**. There can be only one connector of each type per upstream, and at least one connector must be a plain type (not `rest-additional`). Each connector has:
-  - `type` - one of `json-rpc`, `websocket`, `rest`, `grpc`, `rest-additional`. **_Required_**
+  - `type` - one of `json-rpc`, `tendermint`, `websocket`, `rest`, `grpc`, `rest-indexer`, `rest-additional`. **_Required_**
   - `url` - full endpoint URL. **_Required_**
   - `headers` - optional key/value map of extra headers to send with requests
   - `ca` - Path to a Certificate Authority (CA) certificate file to validate client certificates (for example, if you use self-signed certificates)
@@ -636,6 +711,13 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 |---|---|---|---|
 | Chain id / `net_version` | EVM | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Confirms the upstream is actually serving the configured chain. Fails at startup remove the upstream from the pool; runtime drift triggers re-removal |
 | Aztec chain validator | Aztec | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the Aztec node's chain-id endpoint |
+| Aptos chain validator | Aptos | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, using the `chain_id` from the Aptos ledger-info endpoint (`GET /v1`) |
+| Bitcoin chain validator | Bitcoin | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing `getblockhash 0` against the expected genesis hash per chain (`getblockchaininfo.chain` is a secondary signal - it cannot distinguish bitcoin from dogecoin) |
+| NEAR chain validator | NEAR | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing the `status` probe's `chain_id` against the configured chain |
+| Starknet chain validator | Starknet | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing the `starknet_chainId` hex-felt against the configured chain |
+| TON chain validator | TON | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | v2: checks the network zerostate hashes from `getMasterchainInfo` `result.init`; v3: checks `masterchainInfo` `last.global_id`. In combined mode the primary connector's validator runs |
+| Tendermint chain validator | Cosmos (`tendermint`) | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | Equivalent of chain-id check, comparing `status` → `node_info.network` against the configured chain-id (`cosmoshub-4`, `osmosis-1`, …) case-insensitively. Cosmos chain-ids are opaque strings, not numbers. Strict: **any** non-match is fatal, including an empty `network` — an upstream that answers but cannot say which chain it serves is refused at startup |
+| Cosmos chain validator | Cosmos (`rest`) | `disable-chain-validation`, `disable-settings-validation`, `disable-validation` | The same check over the LCD: `GET /cosmos/base/tendermint/v1beta1/node_info` → `default_node_info.network` |
 | `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers` |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
@@ -643,7 +725,32 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Health validator (Solana) | Solana | `disable-health-validation` | Calls the Solana `getHealth` RPC and propagates the result |
 | Health validator (Aztec) | Aztec | `disable-health-validation` | Probes Aztec node health |
 | Health validator (Algorand) | Algorand | `disable-health-validation` | Probes Algorand node health |
-| Lower-bound detector | Solana, Algorand, Aztec | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
+| Health validator (Aptos) | Aptos | `disable-health-validation` | Calls the Aptos `GET /v1/-/healthy` endpoint and propagates the result |
+| Health validator (Beacon) | Beacon Chain | `disable-health-validation` | Calls `GET /eth/v1/node/health` and marks the upstream available only on a 2xx response |
+| Syncing validator (Beacon) | Beacon Chain | `validate-syncing` (set to `false`) | Probes `GET /eth/v1/node/syncing`; marks the upstream `Syncing` when `is_syncing` is true and `Unavailable` when `el_offline` is true |
+| Peers validator (Beacon) | Beacon Chain | `validate-peers` / `min-peers` | Probes `GET /eth/v1/node/peer_count` and marks the upstream immature while connected peers are below `min-peers` |
+| Health validator (Bitcoin) | Bitcoin | `disable-health-validation` | Reads `getblockchaininfo`: `initialblockdownload` or a `headers - blocks` gap beyond the chain's lag threshold marks the upstream `Syncing`. With `validate-peers` on, `getconnectioncount` of zero marks it `Unavailable` |
+| Health validator (NEAR) | NEAR | `disable-health-validation` | Calls the NEAR `status` RPC; marks the upstream `Syncing` when `sync_info.syncing` is true or `latest_block_time` is stale (stale-head guard). With `validate-peers` on, also probes `network_info` and marks the upstream `Unavailable` at zero `num_active_peers` |
+| Health validator (Starknet) | Starknet | `disable-health-validation` | Calls `starknet_syncing`: a plain `false` is healthy, a sync object marks the upstream `Syncing` when the current-to-highest block lag exceeds the threshold. `validate-peers` has no effect (no p2p peer count — nodes sync from the feeder gateway) |
+| Health validator (TON) | TON | `disable-health-validation` | v2: `getMasterchainInfo` liveness; v3: `masterchainInfo` `gen_utime` freshness (a stale masterchain head marks the upstream `Syncing`). In combined mode the primary connector's validator runs; `validate-peers` has no effect |
+| Syncing validator (Tendermint) | Cosmos (`tendermint`) | `validate-syncing` (set to `false`) or `disable-health-validation` | Reads the node's own opinion — `status` → `sync_info.catching_up` — and marks the upstream `Syncing` while it is fast-syncing or state-syncing. No block-time arithmetic involved |
+| Peers validator (Tendermint) | Cosmos (`tendermint`) | `validate-peers` / `min-peers` or `disable-health-validation` | Reads `net_info` → `n_peers` (rendered as a decimal *string* by CometBFT) and marks the upstream immature below `min-peers`. `net_info` is frequently firewalled off on hosted endpoints, which is why this stays off unless you enable it |
+| Syncing validator (Cosmos LCD) | Cosmos (`rest`) | `validate-syncing` (set to `false`) or `disable-health-validation` | Probes `GET /cosmos/base/tendermint/v1beta1/syncing` — the same signal as `catching_up`, exposed by the LCD as its own endpoint. The LCD publishes no peer count, so `validate-peers` has no effect on a `rest`-driven cosmos upstream |
+| Lower-bound detector | Solana, Algorand, Aztec, Aptos | `disable-lower-bounds-detection` | Determines the earliest available block / slot on the upstream so that queries against pruned ranges can be routed away |
+| Lower-bound detector (Beacon) | Beacon Chain | `disable-lower-bounds-detection` | Binary-searches the earliest retained block, state, epoch (attestation rewards), and blob-sidecar slots so requests against pruned ranges are routed away |
+| Lower-bound detector (Bitcoin) | Bitcoin | `disable-lower-bounds-detection` | Publishes `pruneheight` as the block/transaction lower bound when `getblockchaininfo.pruned` is true, and `1` (archive) otherwise |
+| Lower-bound detector (NEAR) | NEAR | `disable-lower-bounds-detection` | Reads `sync_info.earliest_block_height` from `status` and publishes it as the state and block lower bounds (a sliding GC window on non-archival nodes) |
+| Lower-bound detector (Starknet) | Starknet | `disable-lower-bounds-detection` | Verified probe of block 1: success publishes `1` as the lower bound, failure emits an explicit `UnknownBound` |
+| Lower-bound detector (Tendermint) | Cosmos (`tendermint`) | `disable-lower-bounds-detection` | Reads `status` → `sync_info.earliest_block_height` and publishes it as the state lower bound. One call, no search — CometBFT tells you the oldest height it still holds. Reported verbatim, `0` included |
+| Lower-bound detector (Cosmos LCD) | Cosmos (`rest`) | `disable-lower-bounds-detection` | The LCD has no `earliest_block_height` equivalent, so the bound is binary-searched over `GET /cosmos/base/tendermint/v1beta1/blocks/{height}` (a pruned height answers 4xx). Steady state costs a single probe per cycle, because the previously found bound is re-confirmed before any search |
 | Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
+| Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
+| Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
+| Client label detector (Bitcoin) | Bitcoin | `disable-labels-detection` | Parses `getnetworkinfo.subversion` (`/Satoshi:26.1.0/`) into client type and version labels |
+| Client label detector (NEAR) | NEAR | `disable-labels-detection` | Reads `version.version` from `status` and publishes the client (`neard`) and version labels |
+| Client label detector (Starknet) | Starknet | `disable-labels-detection` | Two-step probe: `pathfinder_version` first, then `juno_version`; the one that answers sets the client and version labels |
+| Client label detector (TON) | TON | `disable-labels-detection` | v2: reads title/version from `GET /openapi.json`; v3: reads `GET /doc.json` and publishes `ton-index-go` with its version |
+| Client label detector (Tendermint) | Cosmos (`tendermint`) | `disable-labels-detection` | Publishes `client_type=cosmos` and the **CometBFT** version from `status` → `node_info.version` |
+| Client label detector (Cosmos LCD) | Cosmos (`rest`) | `disable-labels-detection` | Publishes `client_type=cosmos` and the **SDK application** version from `node_info` → `application_version.version` (e.g. gaia's `v21.0.0`), falling back to the CometBFT version when a trimmed LCD omits it. The two connectors therefore report different `client_version` values for the same node — app version vs. consensus-engine version |
 
 `disable-validation` is the master switch and overrides every per-validator flag.

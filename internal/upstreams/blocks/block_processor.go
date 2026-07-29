@@ -40,31 +40,31 @@ type BlockEvent struct {
 	BlockType protocol.BlockType
 }
 
-type EthLikeBlockProcessor struct {
-	upstreamId                       string
-	connector                        connectors.ApiConnector
-	chainSpecific                    BlockChainSpecific
-	subManager                       *utils.SubscriptionManager[BlockEvent]
-	disableDetection                 atomic.Uint32
-	disableSafeBlockDetection        bool
-	disableFinalizedBlockDetection   bool
-	manualBlockChan                  chan *BlockEvent
-	blocks                           map[protocol.BlockType]protocol.Block
-	lifecycle                        *utils.BaseLifecycle
-	internalTimeout                  time.Duration
-	pollInterval                     time.Duration
+type BaseBlockProcessor struct {
+	upstreamId                     string
+	connector                      connectors.ApiConnector
+	chainSpecific                  BlockChainSpecific
+	subManager                     *utils.SubscriptionManager[BlockEvent]
+	disableDetection               atomic.Uint32
+	disableSafeBlockDetection      bool
+	disableFinalizedBlockDetection bool
+	manualBlockChan                chan *BlockEvent
+	blocks                         map[protocol.BlockType]protocol.Block
+	lifecycle                      *utils.BaseLifecycle
+	internalTimeout                time.Duration
+	pollInterval                   time.Duration
 }
 
-func (b *EthLikeBlockProcessor) Running() bool {
+func (b *BaseBlockProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *EthLikeBlockProcessor) Stop() {
+func (b *BaseBlockProcessor) Stop() {
 	log.Info().Msgf("stopping block processor of upstream '%s'", b.upstreamId)
 	b.lifecycle.Stop()
 }
 
-func NewEthLikeBlockProcessor(
+func NewBaseBlockProcessor(
 	ctx context.Context,
 	upstreamId string,
 	pollInterval, internalTimeout time.Duration,
@@ -72,9 +72,9 @@ func NewEthLikeBlockProcessor(
 	disableSafeBlockDetection bool,
 	connector connectors.ApiConnector,
 	chainSpecific BlockChainSpecific,
-) *EthLikeBlockProcessor {
+) *BaseBlockProcessor {
 	name := fmt.Sprintf("%s_block_processor", upstreamId)
-	return &EthLikeBlockProcessor{
+	return &BaseBlockProcessor{
 		upstreamId:                     upstreamId,
 		connector:                      connector,
 		chainSpecific:                  chainSpecific,
@@ -89,15 +89,15 @@ func NewEthLikeBlockProcessor(
 	}
 }
 
-func (b *EthLikeBlockProcessor) UpdateBlock(blockData protocol.Block, blockType protocol.BlockType) {
+func (b *BaseBlockProcessor) UpdateBlock(blockData protocol.Block, blockType protocol.BlockType) {
 	b.manualBlockChan <- &BlockEvent{Block: blockData, BlockType: blockType}
 }
 
-func (b *EthLikeBlockProcessor) Subscribe(name string) *utils.Subscription[BlockEvent] {
+func (b *BaseBlockProcessor) Subscribe(name string) *utils.Subscription[BlockEvent] {
 	return b.subManager.Subscribe(name)
 }
 
-func (b *EthLikeBlockProcessor) Start() {
+func (b *BaseBlockProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		if !b.disableFinalizedBlockDetection {
 			go b.pollLoop(ctx, protocol.FinalizedBlock)
@@ -110,7 +110,7 @@ func (b *EthLikeBlockProcessor) Start() {
 	})
 }
 
-func (b *EthLikeBlockProcessor) pollLoop(ctx context.Context, blockType protocol.BlockType) {
+func (b *BaseBlockProcessor) pollLoop(ctx context.Context, blockType protocol.BlockType) {
 	b.poll(blockType)
 
 	ticker := time.NewTicker(b.pollInterval)
@@ -126,7 +126,7 @@ func (b *EthLikeBlockProcessor) pollLoop(ctx context.Context, blockType protocol
 	}
 }
 
-func (b *EthLikeBlockProcessor) blockEventLoop(ctx context.Context) {
+func (b *BaseBlockProcessor) blockEventLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -141,7 +141,7 @@ func (b *EthLikeBlockProcessor) blockEventLoop(ctx context.Context) {
 	}
 }
 
-func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
+func (b *BaseBlockProcessor) poll(blockType protocol.BlockType) {
 	if b.detectionDisabled(blockType) {
 		return
 	}
@@ -166,11 +166,11 @@ func (b *EthLikeBlockProcessor) poll(blockType protocol.BlockType) {
 	}
 }
 
-func (b *EthLikeBlockProcessor) detectionDisabled(blockType protocol.BlockType) bool {
+func (b *BaseBlockProcessor) detectionDisabled(blockType protocol.BlockType) bool {
 	return b.disableDetection.Load()&blockTypeMask(blockType) != 0
 }
 
-func (b *EthLikeBlockProcessor) disableBlockDetection(blockType protocol.BlockType) {
+func (b *BaseBlockProcessor) disableBlockDetection(blockType protocol.BlockType) {
 	b.disableDetection.Or(blockTypeMask(blockType))
 }
 
@@ -178,7 +178,7 @@ func blockTypeMask(blockType protocol.BlockType) uint32 {
 	return 1 << uint(blockType)
 }
 
-func (b *EthLikeBlockProcessor) detectBlock(ctx context.Context, blockType protocol.BlockType) (protocol.Block, error) {
+func (b *BaseBlockProcessor) detectBlock(ctx context.Context, blockType protocol.BlockType) (protocol.Block, error) {
 	switch blockType {
 	case protocol.FinalizedBlock:
 		return b.chainSpecific.GetFinalizedBlock(ctx)
@@ -194,4 +194,4 @@ func (b *EthLikeBlockProcessor) detectBlock(ctx context.Context, blockType proto
 	}
 }
 
-var _ BlockProcessor = (*EthLikeBlockProcessor)(nil)
+var _ BlockProcessor = (*BaseBlockProcessor)(nil)

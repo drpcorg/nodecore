@@ -1,0 +1,113 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "NEAR JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "near-json-rpc",
+    "api-connectors": ["json-rpc"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "block",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "chunk",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "tx",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "EXPERIMENTAL_tx_status",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "EXPERIMENTAL_receipt",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "query",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "EXPERIMENTAL_changes",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "EXPERIMENTAL_changes_in_block",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "EXPERIMENTAL_protocol_config",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "gas_price",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "validators",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "status",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "network_info",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "send_tx",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "dispatch": "broadcast"
+      }
+    }
+  ]
+}

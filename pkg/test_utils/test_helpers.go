@@ -14,15 +14,21 @@ import (
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
@@ -92,6 +98,13 @@ func GetResultAsBytes(json []byte) []byte {
 		panic(err)
 	}
 	return parsed["result"]
+}
+
+// CacheableMethod builds a spec method that is eligible for caching, for use as
+// a request fixture in cache tests. The fallback constructors (specs.DefaultMethod)
+// produce non-cacheable methods, so cache tests must construct a cacheable one.
+func CacheableMethod(name string) *specs.Method {
+	return specs.MethodWithSettings(name, nil, &specs.MethodSettings{Cacheable: new(true)}, nil)
 }
 
 func PolicyConfig(chain, method, connector, maxSize, ttl string, cacheEmpty bool) *config.CachePolicyConfig {
@@ -171,7 +184,7 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -243,6 +256,26 @@ func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnecto
 	return aztec_specific.NewAztecChainSpecificObject(ctx, chains.GetChain("aztec-mainnet"), "id", options, connector)
 }
 
+func NewNearChainSpecific(ctx context.Context, connector connectors.ApiConnector) *near_specific.NearChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return near_specific.NewNearChainSpecificObject(ctx, chains.GetChain("near"), "id", connector, time.Second, options)
+}
+
+func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConnector) *starknet_specific.StarknetChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return starknet_specific.NewStarknetChainSpecificObject(ctx, chains.GetChain("starknet"), "id", connector, time.Second, options)
+}
+
 func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *algorand_specific.AlgorandChainSpecificObject {
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
@@ -251,6 +284,30 @@ func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConne
 		DisableHealthValidation: new(false),
 	}
 	return algorand_specific.NewAlgorandChainSpecificObject(ctx, chains.GetChain("algorand-mainnet"), "id", connector, options)
+}
+
+func NewBeaconChainSpecific(ctx context.Context, connector connectors.ApiConnector) *beacon_specific.BeaconChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return beacon_specific.NewBeaconChainSpecificObject(ctx, chains.GetChain("eth-beacon-chain"), "id", connector, time.Hour, options)
+}
+
+func NewAptosChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aptos_specific.AptosChainSpecificObject {
+	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, newTestChainOptions())
+}
+
+func NewBitcoinChainSpecific(ctx context.Context, connector connectors.ApiConnector) *bitcoin_specific.BitcoinChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return bitcoin_specific.NewBitcoinChainSpecificObject(ctx, chains.GetChain("bitcoin-mainnet"), "id", connector, options)
 }
 
 func newTestChainOptions() *chains.Options {
@@ -269,7 +326,7 @@ func newTestChainOptions() *chains.Options {
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil)
+	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 
 	go chainSupervisor.Start()
 

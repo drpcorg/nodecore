@@ -88,7 +88,9 @@ func (v *EthClientVersionValidator) Validate() validations.ValidationSettingResu
 	}
 	rawVersion = strings.Trim(rawVersion, "\"")
 
-	detector := eth_labels.NewEthClientLabelsDetector(v.upstreamId, v.chain.Chain, eth_labels.EthMappingFunc)
+	detector := eth_labels.NewEthClientLabelsDetector(v.upstreamId, v.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+		return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, v.chain.Chain)
+	})
 	clientVersion, clientType, err := detector.ClientVersionAndType(response.ResponseResult())
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to detect client type/version for upstream '%s'", v.upstreamId)

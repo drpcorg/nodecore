@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/buildinfo"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -17,9 +18,25 @@ import (
 
 var errNilUpstreamSupervisor = errors.New("upstream supervisor cannot be nil")
 
+// The chain-status protocol is delta-based, and deltas travel over lossy hops
+// (buffered-channel fan-outs on both ends drop events under pressure). A lost
+// delta used to leave the subscriber permanently stale until it rebuilt the
+// connection. The periodic resync bounds that staleness by one interval.
+const defaultChainStateResyncInterval = time.Minute
+
 func SubscribeChainStatus(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	stream dshackle.Blockchain_SubscribeChainStatusServer,
+) error {
+	return SubscribeChainStatusWithResync(upstreamSupervisor, stream, defaultChainStateResyncInterval)
+}
+
+// SubscribeChainStatusWithResync is SubscribeChainStatus with a caller-chosen
+// state-resync interval; tests use it to shrink the wait.
+func SubscribeChainStatusWithResync(
+	upstreamSupervisor upstreams.UpstreamSupervisor,
+	stream dshackle.Blockchain_SubscribeChainStatusServer,
+	resyncInterval time.Duration,
 ) error {
 	if upstreamSupervisor == nil {
 		return errNilUpstreamSupervisor
@@ -38,7 +55,7 @@ func SubscribeChainStatus(
 	}()
 
 	for _, chainSupervisor := range upstreamSupervisor.GetChainSupervisors() {
-		subscribeChainSupervisorStates(ctx, chainSupervisor, chainSubs, responses)
+		subscribeChainSupervisorStates(ctx, chainSupervisor, chainSubs, responses, resyncInterval)
 	}
 
 	for {
@@ -49,7 +66,7 @@ func SubscribeChainStatus(
 			if ok {
 				switch c := chainSupervisorEvent.(type) {
 				case *upstreams.AddChainSupervisorEvent:
-					subscribeChainSupervisorStates(ctx, c.ChainSupervisor, chainSubs, responses)
+					subscribeChainSupervisorStates(ctx, c.ChainSupervisor, chainSubs, responses, resyncInterval)
 				}
 			}
 		case response, ok := <-responses:
@@ -68,6 +85,7 @@ func subscribeChainSupervisorStates(
 	chainSupervisor upstreams.ChainSupervisor,
 	chainSubs map[chains.Chain]*utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent],
 	responses chan *dshackle.SubscribeChainStatusResponse,
+	resyncInterval time.Duration,
 ) {
 	if chainSupervisor == nil {
 		return
@@ -95,10 +113,24 @@ func subscribeChainSupervisorStates(
 			fullSent = true
 		}
 
+		resyncTicker := time.NewTicker(resyncInterval)
+		defer resyncTicker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-resyncTicker.C:
+				// Nothing to resync until the initial full response went out:
+				// the consumer creates its per-chain object only from a full
+				// response and silently skips state updates before that.
+				if !fullSent {
+					continue
+				}
+				state = chainSupervisor.GetChainState()
+				if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, snapshotStateWrappers(state))) {
+					return
+				}
 			case event, ok := <-chainSupervisorStatesSub.Events:
 				if ok {
 					if len(event.Wrappers) == 0 {
@@ -135,6 +167,22 @@ func sendResponse(
 		return false
 	case responses <- resp:
 		return true
+	}
+}
+
+// snapshotStateWrappers rebuilds the full current state as a wrapper list,
+// deliberately WITHOUT the head. Head freshness is already guaranteed by the
+// per-block head events; more importantly, consumers reduce any response that
+// carries a head to a head-only update for an existing upstream, so a
+// snapshot with a head would lose exactly the state it is meant to repair.
+func snapshotStateWrappers(state upstreams.ChainSupervisorState) []upstreams.ChainSupervisorStateWrapper {
+	return []upstreams.ChainSupervisorStateWrapper{
+		upstreams.NewStatusWrapper(state.Status),
+		upstreams.NewMethodsWrapper(state.Methods.GetSupportedMethods().ToSlice()),
+		upstreams.NewLowerBoundsWrapper(lo.Values(state.LowerBounds)),
+		upstreams.NewBlocksWrapper(state.Blocks),
+		upstreams.NewSubMethodsWrapper(state.SubMethods.ToSlice()),
+		upstreams.NewLabelsWrapper(state.ChainLabels),
 	}
 }
 

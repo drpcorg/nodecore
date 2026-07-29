@@ -14,26 +14,26 @@ import (
 const (
 	UnknownClientVersion = "unknown"
 	DefaultClient        = "default client"
+	HlClientType         = "hl"
 )
 
 var semverLikeRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+`)
 
-type EthClientLabelMapping func(data []byte) (string, error)
-
-var EthMappingFunc EthClientLabelMapping = func(data []byte) (string, error) {
+var EthMappingFunc labels.EthClientLabelMapping = func(data []byte) (string, error) {
 	var raw string
 	err := sonic.Unmarshal(data, &raw)
 	return raw, err
 }
 
 type EthClientLabelsDetector struct {
-	upstreamId  string
-	chain       chains.Chain
-	mappingFunc EthClientLabelMapping
+	upstreamId    string
+	chain         chains.Chain
+	mappingFunc   labels.EthClientLabelMapping
+	nodeTypeReqFn func() (protocol.RequestHolder, error)
 }
 
 func (e *EthClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
-	return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain)
+	return e.nodeTypeReqFn()
 }
 
 func (e *EthClientLabelsDetector) ClientVersionAndType(data []byte) (string, string, error) {
@@ -47,15 +47,26 @@ func (e *EthClientLabelsDetector) ClientVersionAndType(data []byte) (string, str
 	return clientVersion, clientType, nil
 }
 
-func NewEthClientLabelsDetector(upstreamId string, chain chains.Chain, mappingFunc EthClientLabelMapping) *EthClientLabelsDetector {
+func NewEthClientLabelsDetector(
+	upstreamId string,
+	chain chains.Chain,
+	mappingFunc labels.EthClientLabelMapping,
+	nodeTypeReqFn func() (protocol.RequestHolder, error),
+) *EthClientLabelsDetector {
 	return &EthClientLabelsDetector{
-		upstreamId:  upstreamId,
-		chain:       chain,
-		mappingFunc: mappingFunc,
+		upstreamId:    upstreamId,
+		chain:         chain,
+		mappingFunc:   mappingFunc,
+		nodeTypeReqFn: nodeTypeReqFn,
 	}
 }
 
 func (e *EthClientLabelsDetector) clientVersion(client string) string {
+	// The classic HyperLiquid node reports no version at all ("hyperliquid evm Mainnet")
+	if isHlNode(client) {
+		return UnknownClientVersion
+	}
+
 	if i := strings.IndexByte(client, '/'); i != -1 {
 		client = client[i+1:]
 
@@ -93,6 +104,11 @@ func (e *EthClientLabelsDetector) clientType(client string) string {
 		return DefaultClient
 	}
 
+	// The classic HyperLiquid node reports e.g. "hyperliquid evm Mainnet"
+	if isHlNode(client) {
+		return HlClientType
+	}
+
 	// Has a slash — type is everything before it
 	if i := strings.IndexByte(client, '/'); i != -1 {
 		clientPart := client[:i]
@@ -118,6 +134,12 @@ func (e *EthClientLabelsDetector) clientType(client string) string {
 
 func isSemverLike(version string) bool {
 	return semverLikeRe.MatchString(version)
+}
+
+// isHlNode reports whether web3_clientVersion belongs to the classic
+// HyperLiquid node, which answers e.g. "hyperliquid evm Mainnet"
+func isHlNode(client string) bool {
+	return strings.HasPrefix(strings.ToLower(client), "hyperliquid")
 }
 
 var _ labels.ClientLabelsDetector = (*EthClientLabelsDetector)(nil)

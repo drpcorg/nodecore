@@ -97,13 +97,21 @@ func BlocksToApi(blocks map[protocol.BlockType]protocol.Block) *dshackle.ChainEv
 }
 
 func HeadToApi(head protocol.Block) *dshackle.ChainEvent {
+	blockId := head.Hash.ToHex()
+	parentBlockId := head.ParentHash.ToHex()
+	// a block must never reference itself as its parent: consumers walk the
+	// parent chain (e.g. a quorum fork choice) and a self-referencing head
+	// sends them into an infinite loop
+	if parentBlockId == blockId {
+		parentBlockId = ""
+	}
 	return &dshackle.ChainEvent{
 		ChainEvent: &dshackle.ChainEvent_Head{
 			Head: &dshackle.HeadEvent{
 				Height:        head.Height,
-				BlockId:       head.Hash.ToHex(),
+				BlockId:       blockId,
 				Slot:          head.Slot,
-				ParentBlockId: head.ParentHash.ToHex(),
+				ParentBlockId: parentBlockId,
 			},
 		},
 	}

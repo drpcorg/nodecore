@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -16,8 +17,8 @@ func NewLowerBoundDetectorMock() *LowerBoundDetectorMock {
 	return &LowerBoundDetectorMock{}
 }
 
-func (m *LowerBoundDetectorMock) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	args := m.Called()
+func (m *LowerBoundDetectorMock) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	args := m.Called(ctx)
 	var bounds []protocol.LowerBoundData
 	if args.Get(0) != nil {
 		bounds = args.Get(0).([]protocol.LowerBoundData)

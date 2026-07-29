@@ -12,7 +12,9 @@ import (
 )
 
 func TestEthClientLabelsDetectorNodeTypeRequest(t *testing.T) {
-	detector := eth_labels.NewEthClientLabelsDetector("upstream-id", chains.ETHEREUM, eth_labels.EthMappingFunc)
+	detector := eth_labels.NewEthClientLabelsDetector("upstream-id", chains.ETHEREUM, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+		return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, chains.ETHEREUM)
+	})
 
 	request, err := detector.NodeTypeRequest()
 	require.NoError(t, err)
@@ -31,7 +33,7 @@ func TestEthClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	body, err := request.Body()
 	require.NoError(t, err)
 
-	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"web3_clientVersion","params":[]}`, string(body))
+	assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"web3_clientVersion","params":[]}`, string(body))
 }
 
 func TestEthMappingFunc(t *testing.T) {
@@ -114,6 +116,18 @@ func TestEthClientLabelsDetectorClientVersionAndType(t *testing.T) {
 			expectedClientType: "nethermind",
 		},
 		{
+			name:               "detects classic hyperliquid node as hl",
+			raw:                "hyperliquid evm Mainnet",
+			expectedVersion:    eth_labels.UnknownClientVersion,
+			expectedClientType: eth_labels.HlClientType,
+		},
+		{
+			name:               "detects classic hyperliquid testnet node as hl",
+			raw:                "Hyperliquid evm Testnet",
+			expectedVersion:    eth_labels.UnknownClientVersion,
+			expectedClientType: eth_labels.HlClientType,
+		},
+		{
 			name:               "falls back to raw dotted version",
 			raw:                "client.build.2024",
 			expectedVersion:    "client.build.2024",
@@ -136,6 +150,8 @@ func TestEthClientLabelsDetectorClientVersionAndType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			detector := eth_labels.NewEthClientLabelsDetector("upstream-id", chains.ETHEREUM, func([]byte) (string, error) {
 				return tt.raw, tt.mappingErr
+			}, func() (protocol.RequestHolder, error) {
+				return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, chains.ETHEREUM)
 			})
 
 			version, clientType, err := detector.ClientVersionAndType([]byte(`ignored`))

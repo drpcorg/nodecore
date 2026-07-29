@@ -44,9 +44,8 @@ type modifyJqParser struct {
 
 func DefaultMethod(name string) *Method {
 	return &Method{
-		Name:      name,
-		enabled:   true,
-		cacheable: true,
+		Name:    name,
+		enabled: true,
 	}
 }
 
@@ -54,7 +53,6 @@ func DefaultMethodWithConnectorTypes(name string, apiConnectorTypes []ApiConnect
 	return &Method{
 		Name:              name,
 		enabled:           true,
-		cacheable:         true,
 		apiConnectorTypes: apiConnectorTypes,
 	}
 }

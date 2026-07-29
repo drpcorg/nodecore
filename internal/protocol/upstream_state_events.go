@@ -42,15 +42,26 @@ func (l *LowerBoundUpstreamStateEvent) ProcessEvent(state UpstreamState) Upstrea
 }
 
 type StatusUpstreamStateEvent struct {
+	// Status is the base availability reported by a health probe (setStatus).
+	// It is ignored when Lag != nil.
 	Status AvailabilityStatus
+	// Lag is a discriminator, not the source of truth: non-nil marks a head-lag
+	// update (setLag) that only asks the event loop to re-derive availability from
+	// the upstream's current lag (stored on the upstream itself); nil
+	// marks a setStatus that updates the base availability. A pointer is used so
+	// this stays distinguishable from a setStatus even when the lag is 0.
+	Lag *int64
 }
 
-func (s *StatusUpstreamStateEvent) Same(state UpstreamState) bool {
-	return s.Status == state.Status
+func (s *StatusUpstreamStateEvent) Same(_ UpstreamState) bool {
+	return false
 }
 
+// ProcessEvent is a no-op: the setStatus/setLag mutation and the derived
+// effective availability are handled by processStateEvents, which owns both the
+// base-availability tracking and the per-chain syncing threshold. It exists only
+// to satisfy AbstractUpstreamStateEvent.
 func (s *StatusUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
-	state.Status = s.Status
 	return state
 }
 

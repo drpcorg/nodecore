@@ -49,8 +49,8 @@ func NewTronLowerBoundDetector(
 	}
 }
 
-func (t *TronLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	bounds, err := t.LowerBoundSearchCalculator.DetectLowerBound(t.fetchLatestHeight, t.probe)
+func (t *TronLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	bounds, err := t.LowerBoundSearchCalculator.DetectLowerBound(ctx, t.fetchLatestHeight, t.probe)
 	if err != nil {
 		return nil, err
 	}
@@ -69,8 +69,8 @@ func (t *TronLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, 
 	return expanded, nil
 }
 
-func (t *TronLowerBoundDetector) fetchLatestHeight() (int64, error) {
-	raw, err := t.callGetBlock(nil)
+func (t *TronLowerBoundDetector) fetchLatestHeight(ctx context.Context) (int64, error) {
+	raw, err := t.callGetBlock(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -84,9 +84,9 @@ func (t *TronLowerBoundDetector) fetchLatestHeight() (int64, error) {
 	return number, nil
 }
 
-func (t *TronLowerBoundDetector) probe(height int64) (bool, error) {
+func (t *TronLowerBoundDetector) probe(ctx context.Context, height int64) (bool, error) {
 	body := []byte(fmt.Sprintf(`{"id_or_num":"%d","detail":false}`, height))
-	raw, err := t.callGetBlock(body)
+	raw, err := t.callGetBlock(ctx, body)
 	if err != nil {
 		return false, err
 	}
@@ -102,8 +102,8 @@ func (t *TronLowerBoundDetector) probe(height int64) (bool, error) {
 	return parsed.BlockID != "", nil
 }
 
-func (t *TronLowerBoundDetector) callGetBlock(body []byte) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
+func (t *TronLowerBoundDetector) callGetBlock(ctx context.Context, body []byte) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, t.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequestWithBody("POST#/wallet/getblock", nil, body, t.chain)

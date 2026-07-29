@@ -318,6 +318,20 @@ func (a AvailabilityStatus) String() string {
 	panic(fmt.Sprintf("unknown status %d", a))
 }
 
+// LagExceeds reports whether a head lag is large enough to matter. A
+// non-positive threshold means "not configured" and disables the check, so an
+// upstream is never downgraded on a chain that has no syncing threshold.
+func LagExceeds(lag, syncingLag int64) bool {
+	return syncingLag > 0 && lag > syncingLag
+}
+
+func StatusByLag(lag int64, avail AvailabilityStatus, syncingLag int64) AvailabilityStatus {
+	if avail == Available && LagExceeds(lag, syncingLag) {
+		return Syncing
+	}
+	return avail
+}
+
 type UpstreamEvent struct {
 	Id        string
 	Chain     chains.Chain
@@ -346,7 +360,14 @@ type RemoveUpstreamEvent struct{}
 
 func (r RemoveUpstreamEvent) eventData() {}
 
-type ValidUpstreamEvent struct{}
+// ValidUpstreamEvent carries the upstream-state snapshot taken at the moment
+// the settings validators declared the upstream healthy again. The chain
+// supervisor uses it to re-register the upstream immediately; without the
+// snapshot the re-add would have to wait for a later StateUpstreamEvent,
+// which only fires when some sub-state actually changes.
+type ValidUpstreamEvent struct {
+	State *UpstreamState
+}
 
 func (r ValidUpstreamEvent) eventData() {}
 

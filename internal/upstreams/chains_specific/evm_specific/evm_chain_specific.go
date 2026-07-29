@@ -36,7 +36,7 @@ type EvmChainSpecificObject struct {
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewEthLikeBlockProcessor(
+	return blocks.NewBaseBlockProcessor(
 		e.ctx,
 		e.upstreamId,
 		e.pollInterval,
@@ -57,7 +57,9 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		labels.NewClientLabelDetectorHandler(
 			e.upstreamId,
 			e.connector,
-			eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc),
+			eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+				return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain.Chain)
+			}),
 			e.options.InternalTimeout,
 		),
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
@@ -78,14 +80,16 @@ func archiveLabelsDetector(e *EvmChainSpecificObject) labels.LabelsDetector {
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
+	// one eth_capabilities cache per upstream, shared by all its detectors
+	capabilities := evm_bounds.NewEvmCapabilities(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector)
 	detectors := []lower_bounds.LowerBoundDetector{
-		evm_bounds.NewEvmStateLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		evm_bounds.NewEvmBlockLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		evm_bounds.NewEvmTxLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
-		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		evm_bounds.NewEvmStateLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities),
+		evm_bounds.NewEvmBlockLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities),
+		evm_bounds.NewEvmTxLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities),
+		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities),
 	}
 	if e.hasMethod("eth_getProof") {
-		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector))
+		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities))
 	}
 	return lower_bounds.NewBaseLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }
@@ -137,8 +141,25 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 }
 
 func (e *EvmChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	wsCapName := fmt.Sprintf("%s_ws_cap", e.upstreamId)
+	var wsCapDetector caps.CapDetector
+	gateOnLiveness := input.HeadConnector != nil &&
+		input.HeadConnector.GetType() == specs.WebsocketConnector &&
+		input.Head != nil &&
+		!e.options.LivenessSubscriptionValidationDisabled()
+	if gateOnLiveness {
+		// The head is ws-driven and liveness validation is enabled, so gate WsCap on
+		// head liveness: a flapping head pulls the upstream out of subscription serving
+		// (it still serves regular RPC).
+		wsCapDetector = caps.NewWsHeadLivenessCapDetector(e.upstreamId, wsCapName, protocol.WsCap, input.WsConnector, input.Head, e.chain.Settings.ExpectedBlockTime)
+	} else {
+		// Poll-driven head, or liveness validation disabled: WsCap stays ungated (plain
+		// ws presence).
+		wsCapDetector = caps.NewWsPresenceCapDetector(wsCapName, protocol.WsCap, input.WsConnector)
+	}
+
 	detectors := []caps.CapDetector{
-		caps.NewWsPresenceCapDetector(fmt.Sprintf("%s_ws_cap", e.upstreamId), protocol.WsCap, input.WsConnector),
+		wsCapDetector,
 		evm_caps.NewEvmHeadSubCapDetector(fmt.Sprintf("%s_head_sub_cap", e.upstreamId), input.HeadConnector, input.Methods),
 	}
 

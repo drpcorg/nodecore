@@ -49,8 +49,8 @@ func NewAztecLowerBoundDetector(
 	}
 }
 
-func (a *AztecLowerBoundDetector) DetectLowerBound() ([]protocol.LowerBoundData, error) {
-	bound, err := a.fetchOldestHistoric()
+func (a *AztecLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	bound, err := a.fetchOldestHistoric(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -67,8 +67,8 @@ func (a *AztecLowerBoundDetector) Period() time.Duration {
 	return aztecPeriod
 }
 
-func (a *AztecLowerBoundDetector) fetchOldestHistoric() (int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AztecLowerBoundDetector) fetchOldestHistoric(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(

@@ -44,7 +44,7 @@ Each file declares one *named spec*. The spec name (`spec.name`) is what `chains
 - `type` (string, required) — either `plain` or `bundle`:
   - `plain` — a spec that contributes its own `methods` and declares its own `api-connectors`.
   - `bundle` — a spec that imports one or more other specs via `spec-imports` and exposes the union. A bundle must not declare `api-connectors` or `methods` of its own.
-- `api-connectors` (array of strings) — which transports this spec applies to. Allowed values: `json-rpc`, `rest`, `grpc`, `websocket`, `rest-additional`. **Required on plain specs**, **forbidden on bundle specs**.
+- `api-connectors` (array of strings) — which transports this spec applies to. Allowed values: `json-rpc`, `tendermint`, `rest`, `grpc`, `websocket`, `rest-indexer`, `rest-additional`. **Required on plain specs**, **forbidden on bundle specs**.
 
   > **⚠️ Order is significant.** nodecore iterates `api-connectors` in the order written and selects the connector for each method in that order. List the transports from preferred to least preferred for the methods in this spec — the first entry is what nodecore will try first when more than one of these connectors is configured on an upstream.
 
@@ -127,13 +127,61 @@ Example (Hyperliquid):
     "type": "plain"
   },
   "methods": [
-    { "name": "POST#/info",     "settings": { "cacheable": false } },
-    { "name": "POST#/exchange", "settings": { "cacheable": false } }
+    {
+      "name": "POST#/info",
+      "group": "additional",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/exchange",
+      "group": "additional",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
   ]
 }
 ```
 
 `rest-additional` is reserved for specs that augment an upstream whose primary transport is something else. An upstream cannot consist of only `rest-additional` connectors (see [Upstream config](05-upstream-config.md#connectors)).
+
+## Dual-shape methods: the `tendermint` connector
+
+The Tendermint/CometBFT RPC serves one method set over two wire shapes on the same port: JSON-RPC on `POST /` and URI calls on `GET /<method>?<args>`. The connector picks its shape from the incoming request, so **each tendermint method is declared twice in the spec** — once under its JSON-RPC name and once as a `GET#/...` route:
+
+```json
+{
+  "spec": {
+    "name": "cosmos-tendermint",
+    "api-connectors": ["tendermint"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "status",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/status",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}
+```
+
+Both entries resolve to the same `tendermint` connector: the plain name via exact JSON-RPC method lookup, the `GET#/...` name via the REST path matcher. Adding a tendermint method means adding both entries — otherwise it is reachable over only one of the two shapes.
+
+Every cosmos method is declared `cacheable: false`, for two independent reasons: the LCD selects historical state with the `x-cosmos-block-height` **header**, which is deliberately excluded from the REST cache key, and CometBFT's `height` argument is optional (an omitted height means *latest*), which no tag parser currently detects.
 
 ## Bundle example
 
@@ -171,6 +219,11 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `klaytn` | `klaytn-json-rpc`, `klaytn-websocket` |
 | `hyperliquid` | `hyperliquid-eth`, `hyperliquid-rest-additional` |
 | `tron` | `tron-json-rpc`, `tron-rest`, `tron-rest-solidity` |
+| `bitcoin` | `bitcoin-json-rpc`, `bitcoin-esplora` |
+| `near` | `near-json-rpc` |
+| `starknet` | `starknet-json-rpc` |
+| `ton` | `ton-http-v2`, `ton-index-v3` |
+| `cosmos` | `cosmos-tendermint`, `cosmos-rest` |
 
 ### Plain specs
 
@@ -179,10 +232,12 @@ Grouped by the transports they declare:
 | `api-connectors` | Specs |
 | --- | --- |
 | `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
-| `json-rpc` | `algorand`, `aztec`, `tron-json-rpc` |
+| `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `near-json-rpc`, `starknet-json-rpc`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
-| `rest` | `tron-rest` |
-| `rest-additional` | `hyperliquid-rest-additional`, `tron-rest-solidity` |
+| `tendermint` | `cosmos-tendermint` |
+| `rest` | `aptos`, `cosmos-rest`, `eth-beacon-chain`, `ton-http-v2`, `tron-rest` |
+| `rest-indexer` | `ton-index-v3` |
+| `rest-additional` | `bitcoin-esplora`, `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
 ## Adding a new method
 

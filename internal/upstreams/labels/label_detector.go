@@ -9,6 +9,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type EthClientLabelMapping func(data []byte) (string, error)
+
 type LabelsDetector interface {
 	DetectLabels() map[string]string
 }

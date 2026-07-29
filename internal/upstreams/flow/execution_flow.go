@@ -214,7 +214,12 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 			WithAdditionalMatchers(additionalMatchers).
 			WithOrder(order)
 	}
-	return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
+	switch e.appConfig.UpstreamConfig.BalancingStrategyFor(e.chain.String()) {
+	case config.BaseBalancingStrategy:
+		return NewBaseStrategyWithOptions(chainSupervisor, additionalMatchers, order)
+	default: // rating
+		return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
+	}
 }
 
 // filterQuorumCapableUpstreams keeps only DRPC upstreams that expose a

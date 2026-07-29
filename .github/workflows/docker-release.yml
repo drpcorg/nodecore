@@ -14,29 +14,29 @@ on:
 env:
   REGISTRY: docker.io
   IMAGE_NAME: drpcorg/nodecore
-  GO_VERSION: "1.26.0"
+  GO_VERSION: "1.26.5"
 
 jobs:
   test:
     uses: ./.github/workflows/test.yml
     with:
-      go-version: "1.26.0"
+      go-version: "1.26.5"
 
   lint:
     uses: ./.github/workflows/lint.yml
     with:
-      go-version: "1.26.0"
+      go-version: "1.26.5"
 
   e2e:
     uses: ./.github/workflows/e2e.yml
     with:
-      go-version: "1.26.0"
+      go-version: "1.26.5"
     secrets:
       NODECORE_E2E_DRPC_KEY: ${{ secrets.NODECORE_E2E_DRPC_KEY }}
   build:
     uses: ./.github/workflows/build.yml
     with:
-      go-version: "1.26.0"
+      go-version: "1.26.5"
 
   upload-release-assets:
     if: github.event_name == 'release'
@@ -50,15 +50,15 @@ jobs:
         run: echo "sha=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Download Ubuntu artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          name: nodecore-ubuntu-latest-1.26.0-${{ steps.short_sha.outputs.sha }}
+          name: nodecore-ubuntu-latest-1.26.5-${{ steps.short_sha.outputs.sha }}
           path: ./artifacts/ubuntu
 
       - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
-          name: nodecore-macos-latest-1.26.0-${{ steps.short_sha.outputs.sha }}
+          name: nodecore-macos-latest-1.26.5-${{ steps.short_sha.outputs.sha }}
           path: ./artifacts/macos
 
       - name: Prepare release assets
@@ -75,7 +75,7 @@ jobs:
           ls -la ./release-assets/
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
@@ -91,23 +91,23 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
@@ -126,7 +126,7 @@ jobs:
           echo "Labels: ${{ steps.meta.outputs.labels }}"
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile

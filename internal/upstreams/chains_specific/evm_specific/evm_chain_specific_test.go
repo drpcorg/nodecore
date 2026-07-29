@@ -62,7 +62,7 @@ func TestEvmSubscribeHeadRequest(t *testing.T) {
 	assert.Equal(t, "1", req.Id())
 	assert.Equal(t, "eth_subscribe", req.Method())
 	assert.False(t, req.IsStream())
-	require.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(body))
+	require.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(body))
 }
 
 func TestEvmParseSubBLock(t *testing.T) {
@@ -209,7 +209,7 @@ func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(request protocol.RequestHolder) bool {
 		reqBody, err := request.Body()
-		return err == nil && assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["safe",false]}`, string(reqBody))
+		return err == nil && assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["safe",false]}`, string(reqBody))
 	})).Return(response)
 
 	block, err := test_utils.NewEvmChainSpecific(connector).GetSafeBlock(ctx)

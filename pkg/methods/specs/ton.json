@@ -1,0 +1,12 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "TON methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "ton",
+    "type": "bundle"
+  },
+  "spec-imports": ["ton-http-v2", "ton-index-v3"]
+}
