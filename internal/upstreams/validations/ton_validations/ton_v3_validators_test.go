@@ -15,7 +15,7 @@ import (
 )
 
 func isV3MasterchainInfo(r protocol.RequestHolder) bool {
-	return r.Method() == "GET#/api/v3/masterchainInfo"
+	return r.Method().Name() == "GET#/api/v3/masterchainInfo"
 }
 
 func v3MasterchainInfoBody(lastSeqno uint64, genUtime string, globalId int64, firstSeqno uint64) []byte {

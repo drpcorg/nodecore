@@ -21,7 +21,7 @@ func TestEthClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	require.NotNil(t, request)
 
 	assert.Equal(t, "1", request.Id())
-	assert.Equal(t, "web3_clientVersion", request.Method())
+	assert.Equal(t, "web3_clientVersion", request.Method().Name())
 	assert.Nil(t, request.RequestParams())
 	assert.Equal(t, protocol.JsonRpc, request.RequestType())
 	assert.False(t, request.IsStream())

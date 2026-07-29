@@ -17,7 +17,7 @@ func TestTonV3ClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, request)
 
-	assert.Equal(t, "GET#/doc.json", request.Method())
+	assert.Equal(t, "GET#/doc.json", request.Method().Name())
 	assert.Equal(t, protocol.Rest, request.RequestType())
 }
 

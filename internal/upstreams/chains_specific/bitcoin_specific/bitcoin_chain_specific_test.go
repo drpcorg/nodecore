@@ -19,7 +19,7 @@ const (
 )
 
 func methodIs(method string) any {
-	return mock.MatchedBy(func(r protocol.RequestHolder) bool { return r.Method() == method })
+	return mock.MatchedBy(func(r protocol.RequestHolder) bool { return r.Method().Name() == method })
 }
 
 func headerFixture(hash, prev string) []byte {

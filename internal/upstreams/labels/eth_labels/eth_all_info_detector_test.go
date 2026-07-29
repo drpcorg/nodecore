@@ -13,7 +13,7 @@ import (
 )
 
 func matchAllMidsInfoRequest(request protocol.RequestHolder) bool {
-	if request == nil || request.Method() != "POST#/info" || request.RequestType() != protocol.Rest {
+	if request == nil || request.Method().Name() != "POST#/info" || request.RequestType() != protocol.Rest {
 		return false
 	}
 	body, err := request.Body()

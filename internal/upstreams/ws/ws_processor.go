@@ -141,23 +141,23 @@ func (b *BaseWsProcessor) SendRpcRequest(ctx context.Context, upstreamRequest pr
 	select {
 	case response, ok := <-respChan:
 		if !ok {
-			return nil, fmt.Errorf("no response on method %s via ws", upstreamRequest.Method())
+			return nil, fmt.Errorf("no response on method %s via ws", upstreamRequest.Method().Name())
 		}
 		return response, nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("no response on method %s via ws due to %s", upstreamRequest.Method(), ctx.Err().Error())
+		return nil, fmt.Errorf("no response on method %s via ws due to %s", upstreamRequest.Method().Name(), ctx.Err().Error())
 	case <-timeout.C:
-		return nil, fmt.Errorf("no response within %v on method %s via ws", rpcTimeout, upstreamRequest.Method())
+		return nil, fmt.Errorf("no response within %v on method %s via ws", rpcTimeout, upstreamRequest.Method().Name())
 	}
 }
 
 func (b *BaseWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
 	specMethod := upstreamRequest.SpecMethod()
 	if specMethod == nil {
-		return nil, "", fmt.Errorf("no spec method found for %s", upstreamRequest.Method())
+		return nil, "", fmt.Errorf("no spec method found for %s", upstreamRequest.Method().Name())
 	}
 	if !specMethod.IsSubscribe() {
-		return nil, "", fmt.Errorf("'%s' is not subscribe method and it can't be sent via SendWsRequest, use SendRpcRequest instead", upstreamRequest.Method())
+		return nil, "", fmt.Errorf("'%s' is not subscribe method and it can't be sent via SendWsRequest, use SendRpcRequest instead", upstreamRequest.Method().Name())
 	}
 
 	return b.sendWsRequest(ctx, upstreamRequest)

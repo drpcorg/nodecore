@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func isStatus(r protocol.RequestHolder) bool      { return r.Method() == "status" }
-func isNetworkInfo(r protocol.RequestHolder) bool { return r.Method() == "network_info" }
+func isStatus(r protocol.RequestHolder) bool      { return r.Method().Name() == "status" }
+func isNetworkInfo(r protocol.RequestHolder) bool { return r.Method().Name() == "network_info" }
 
 func statusBody(chainId string, latestBlockTime string, syncing bool) []byte {
 	return []byte(fmt.Sprintf(

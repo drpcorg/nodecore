@@ -81,7 +81,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 
 		subId, err := nextSubscriptionJson(isSolana(s.chain))
 		if err != nil {
-			log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
+			log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method().Name())
 			responses <- totalFailureWrapper(request, protocol.WsTotalFailureError())
 			return
 		}

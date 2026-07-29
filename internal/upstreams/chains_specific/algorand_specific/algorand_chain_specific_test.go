@@ -35,7 +35,7 @@ func hasHeaderOnly(r protocol.RequestHolder) bool {
 // given round captured on PathParams. Internal REST helpers now carry the round
 // as a wildcard capture, not baked into Method().
 func isBlockRound(r protocol.RequestHolder, round string) bool {
-	if r.Method() != "GET#/v2/blocks/*" {
+	if r.Method().Name() != "GET#/v2/blocks/*" {
 		return false
 	}
 	rp := r.RequestParams()
@@ -109,7 +109,7 @@ func TestAlgorandGetLatestBlockUsesBlockHeader(t *testing.T) {
 	blockResp := protocol.NewHttpUpstreamResponse("1", blockBody, 200, protocol.Rest)
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/status"
+		return r.Method().Name() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		return isBlockRound(r, "99999") && hasHeaderOnly(r)
@@ -141,7 +141,7 @@ func TestAlgorandGetLatestBlockFallsBackToRoundBytes(t *testing.T) {
 	blockResp := protocol.NewHttpUpstreamResponse("1", blockBody, 200, protocol.Rest)
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/status"
+		return r.Method().Name() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		return isBlockRound(r, "99999") && hasHeaderOnly(r)
@@ -166,7 +166,7 @@ func TestAlgorandGetLatestBlockStatusError(t *testing.T) {
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "block error", nil))
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/status"
+		return r.Method().Name() == "GET#/v2/status"
 	})).Return(response).Once()
 
 	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
@@ -190,7 +190,7 @@ func TestAlgorandGetLatestBlockBlockFetchError(t *testing.T) {
 	blockErr := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(2, "boom", nil))
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/status"
+		return r.Method().Name() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		return isBlockRound(r, "42") && hasHeaderOnly(r)
@@ -223,7 +223,7 @@ func TestAlgorandGetFinalizedBlockDelegatesToLatest(t *testing.T) {
 	blockResp := protocol.NewHttpUpstreamResponse("1", blockBody, 200, protocol.Rest)
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v2/status"
+		return r.Method().Name() == "GET#/v2/status"
 	})).Return(statusResp).Once()
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		return isBlockRound(r, "77777") && hasHeaderOnly(r)

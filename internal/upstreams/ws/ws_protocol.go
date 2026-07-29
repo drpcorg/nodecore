@@ -110,7 +110,7 @@ func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string 
 	if !request.IsSubscribe() {
 		return ""
 	}
-	if request.Method() == "eth_subscribe" {
+	if request.Method().Name() == "eth_subscribe" {
 		ethSubType := jsonBody.GetByPath("params", 0)
 		if ethSubType != nil {
 			sub, err := ethSubType.Raw()
@@ -119,7 +119,7 @@ func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string 
 			}
 		}
 	}
-	return request.Method()
+	return request.Method().Name()
 }
 
 var _ WsProtocol = (*JsonRpcWsProtocol)(nil)

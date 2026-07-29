@@ -18,8 +18,8 @@ const ledgerInfoBody = `{"chain_id":1,"epoch":"16331","ledger_version":"59654110
 	`"node_role":"full_node","oldest_block_height":"0","block_height":"860298804",` +
 	`"git_hash":"ce732f6fcb5ce034d927a8d3b9c0d0b28d207e63"}`
 
-func isHealthy(r protocol.RequestHolder) bool { return r.Method() == "GET#/v1/-/healthy" }
-func isLedger(r protocol.RequestHolder) bool  { return r.Method() == "GET#/v1" }
+func isHealthy(r protocol.RequestHolder) bool { return r.Method().Name() == "GET#/v1/-/healthy" }
+func isLedger(r protocol.RequestHolder) bool  { return r.Method().Name() == "GET#/v1" }
 
 func TestAptosHealthAvailable(t *testing.T) {
 	conn := mocks.NewConnectorMock()

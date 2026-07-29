@@ -11,7 +11,7 @@ type RequestResult interface {
 	withTimestamp(timestamp time.Time) RequestResult
 	withApiKey(apiKey string) RequestResult
 	withChain(chain chains.Chain) RequestResult
-	withMethod(method string) RequestResult
+	withMethod(method RequestMethod) RequestResult
 }
 
 type UnaryRequestResult struct {
@@ -21,7 +21,7 @@ type UnaryRequestResult struct {
 	duration           float64
 	apiKey             string
 	chain              chains.Chain
-	method             string
+	method             RequestMethod
 	timestamp          time.Time
 	hasSuccessfulRetry bool
 }
@@ -50,7 +50,7 @@ func (u *UnaryRequestResult) GetChain() chains.Chain {
 	return u.chain
 }
 
-func (u *UnaryRequestResult) GetMethod() string {
+func (u *UnaryRequestResult) GetMethod() RequestMethod {
 	return u.method
 }
 
@@ -96,7 +96,7 @@ func (u *UnaryRequestResult) withChain(chain chains.Chain) RequestResult {
 	return u
 }
 
-func (u *UnaryRequestResult) withMethod(method string) RequestResult {
+func (u *UnaryRequestResult) withMethod(method RequestMethod) RequestResult {
 	u.method = method
 	return u
 }

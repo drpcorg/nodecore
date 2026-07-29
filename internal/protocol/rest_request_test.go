@@ -14,7 +14,7 @@ import (
 func TestNewUpstreamRestRequestStoresTemplateVerbatim(t *testing.T) {
 	req := protocol.NewUpstreamRestRequest("test-id", "GET#/v2/status", nil, nil, "")
 
-	assert.Equal(t, "GET#/v2/status", req.Method())
+	assert.Equal(t, "GET#/v2/status", req.Method().Name())
 	assert.Equal(t, protocol.Rest, req.RequestType())
 	assert.NotEmpty(t, req.Id(), "id must be initialised so concurrent observers don't collide")
 	assert.NotNil(t, req.RequestObserver(), "observer must be non-nil so ObserverConnector doesn't panic")
@@ -41,7 +41,7 @@ func TestNewUpstreamRestRequestCarriesTemplateWithWildcard(t *testing.T) {
 	rp := &protocol.RequestParams{PathParams: []string{"X1Y2"}}
 	req := protocol.NewUpstreamRestRequest("test-id", "GET#/v2/accounts/*", rp, nil, "")
 
-	assert.Equal(t, "GET#/v2/accounts/*", req.Method(),
+	assert.Equal(t, "GET#/v2/accounts/*", req.Method().Name(),
 		"the template is the canonical method - it's what spec lookup, stats, and caching key on")
 	assert.Equal(t, []string{"X1Y2"}, req.RequestParams().PathParams,
 		"path captures live on RequestParams so the connector can rebuild the literal URL at send time")
@@ -61,7 +61,7 @@ func TestNewInternalUpstreamRestRequestStoresTemplateVerbatim(t *testing.T) {
 	// spec method.
 	req := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, chains.ALGORAND)
 
-	assert.Equal(t, "GET#/v2/status", req.Method())
+	assert.Equal(t, "GET#/v2/status", req.Method().Name())
 	assert.Equal(t, protocol.Rest, req.RequestType())
 	assert.Equal(t, "1", req.Id())
 	assert.NotNil(t, req.RequestObserver())
@@ -79,7 +79,7 @@ func TestNewInternalUpstreamRestRequestCarriesWildcardCaptures(t *testing.T) {
 	}
 	req := protocol.NewInternalUpstreamRestRequest("GET#/v2/blocks/*", rp, chains.ALGORAND)
 
-	assert.Equal(t, "GET#/v2/blocks/*", req.Method(),
+	assert.Equal(t, "GET#/v2/blocks/*", req.Method().Name(),
 		"the template is the canonical method - the block number must not leak into it")
 	assert.Equal(t, []string{"42"}, req.RequestParams().PathParams)
 	assert.Equal(t, []string{"true"}, req.RequestParams().QueryParams["header-only"])
@@ -89,7 +89,7 @@ func TestNewInternalUpstreamRestRequestWithBodyForwardsBody(t *testing.T) {
 	body := []byte(`{"num":42}`)
 	req := protocol.NewInternalUpstreamRestRequestWithBody("POST#/wallet/getblock", nil, body, chains.TRON)
 
-	assert.Equal(t, "POST#/wallet/getblock", req.Method())
+	assert.Equal(t, "POST#/wallet/getblock", req.Method().Name())
 	got, err := req.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, body, got)

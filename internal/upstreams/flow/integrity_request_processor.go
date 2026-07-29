@@ -48,7 +48,7 @@ func (i *IntegrityRequestProcessor) ProcessRequest(
 	}
 
 	var integrityHandler IntegrityHandler
-	switch request.Method() {
+	switch request.Method().Name() {
 	case specs.EthBlockNumber:
 		integrityHandler = NewEthBlockNumberIntegrityHandler()
 	case specs.EthGetBlockByNumber:

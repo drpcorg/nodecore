@@ -127,7 +127,7 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	assert.IsType(t, restNativeCallAdapter{}, adapters[requests[0].Id()])
 	// Method is the canonical name as sent by the gRPC client; query
 	// params live on RequestParams now, not baked into the path.
-	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method())
+	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method().Name())
 	restReq := requests[0].(*protocol.UpstreamRestRequest)
 	assert.Equal(t, []string{"true"}, restReq.RequestParams().QueryParams["verbose"])
 

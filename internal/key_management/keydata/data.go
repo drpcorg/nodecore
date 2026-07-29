@@ -35,7 +35,7 @@ func CheckMethod(allowedMethods, forbiddenMethods []string, method string) error
 
 func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 	if len(contracts) > 0 {
-		switch request.Method() {
+		switch request.Method().Name() {
 		case "eth_call":
 			body, err := request.Body()
 			if err != nil {

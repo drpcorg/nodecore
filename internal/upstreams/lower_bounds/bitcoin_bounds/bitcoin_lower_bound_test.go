@@ -30,7 +30,7 @@ func bitcoinUnprunedResponse() protocol.ResponseHolder {
 
 func matchBitcoinInfoRequest() func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		return req.Method() == "getblockchaininfo" && req.RequestType() == protocol.JsonRpc
+		return req.Method().Name() == "getblockchaininfo" && req.RequestType() == protocol.JsonRpc
 	}
 }
 

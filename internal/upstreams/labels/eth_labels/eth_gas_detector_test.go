@@ -21,7 +21,7 @@ func gasRequestMatcher(expected protocol.RequestHolder) func(protocol.RequestHol
 		}
 
 		if actual.Id() != expected.Id() ||
-			actual.Method() != expected.Method() ||
+			actual.Method().Name() != expected.Method().Name() ||
 			actual.RequestType() != expected.RequestType() ||
 			actual.IsStream() != expected.IsStream() ||
 			actual.IsSubscribe() != expected.IsSubscribe() {

@@ -22,7 +22,7 @@ func restOk(body string) protocol.ResponseHolder {
 
 func expectRestCall(connector *mocks.ConnectorMock, method string, resp protocol.ResponseHolder) {
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == method
+		return r.Method().Name() == method
 	})).Return(resp).Once()
 }
 

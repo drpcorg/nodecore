@@ -71,7 +71,7 @@ func TestStarknetParseBlockNoHash(t *testing.T) {
 
 func matchBlockRequestWithTag(tag string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		if req.Method() != "starknet_getBlockWithTxHashes" {
+		if req.Method().Name() != "starknet_getBlockWithTxHashes" {
 			return false
 		}
 		body, err := req.Body()

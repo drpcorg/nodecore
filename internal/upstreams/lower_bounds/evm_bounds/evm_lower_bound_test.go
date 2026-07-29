@@ -47,7 +47,7 @@ func matchEvmRequest(method string, contains ...string) func(protocol.RequestHol
 			return false
 		}
 		bodyStr := string(body)
-		if request.Method() != method || request.Id() != "1" || request.RequestType() != protocol.JsonRpc {
+		if request.Method().Name() != method || request.Id() != "1" || request.RequestType() != protocol.JsonRpc {
 			return false
 		}
 		if !strings.Contains(bodyStr, `"method":"`+method+`"`) {
@@ -64,7 +64,7 @@ func matchEvmRequest(method string, contains ...string) func(protocol.RequestHol
 
 // evmBlockHeight extracts the numeric block height from an eth_getBlockByNumber request.
 func evmBlockHeight(request protocol.RequestHolder) (int64, bool) {
-	if request.Method() != "eth_getBlockByNumber" {
+	if request.Method().Name() != "eth_getBlockByNumber" {
 		return 0, false
 	}
 	body, err := request.Body()

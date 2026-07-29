@@ -36,7 +36,7 @@ func TestGetBlockNumberTranslatesToGetBlockCount(t *testing.T) {
 	translated, err := translator.TranslateRequest(context.Background(), request)
 
 	require.NoError(t, err)
-	assert.Equal(t, "getblockcount", translated.Method())
+	assert.Equal(t, "getblockcount", translated.Method().Name())
 	assert.Equal(t, "223", translated.Id())
 	body, err := translated.Body()
 	require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestListUnspentTranslatesToEsploraUtxoRequest(t *testing.T) {
 			translated, err := translator.TranslateRequest(context.Background(), request)
 
 			require.NoError(t, err)
-			assert.Equal(t, "GET#/address/*/utxo", translated.Method())
+			assert.Equal(t, "GET#/address/*/utxo", translated.Method().Name())
 			assert.Equal(t, protocol.Rest, translated.RequestType())
 			assert.Equal(t, "223", translated.Id())
 			require.NotNil(t, translated.RequestParams())
@@ -170,7 +170,7 @@ func TestUnaryRequestProcessorTranslatesListUnspent(t *testing.T) {
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("SendRequest", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
-		return req.Method() == "GET#/address/*/utxo" &&
+		return req.Method().Name() == "GET#/address/*/utxo" &&
 			req.RequestType() == protocol.Rest &&
 			req.RequestParams() != nil &&
 			len(req.RequestParams().PathParams) == 1 &&
@@ -201,7 +201,7 @@ func TestUnaryRequestProcessorTranslatesGetBlockNumber(t *testing.T) {
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
 	apiConnector.On("SendRequest", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
 		body, err := req.Body()
-		return err == nil && req.Method() == "getblockcount" && string(body) == `{"id":5,"jsonrpc":"2.0","method":"getblockcount","params":[]}`
+		return err == nil && req.Method().Name() == "getblockcount" && string(body) == `{"id":5,"jsonrpc":"2.0","method":"getblockcount","params":[]}`
 	})).Return(protocol.NewSimpleHttpUpstreamResponse("223", []byte(`850000`), protocol.JsonRpc))
 
 	processor := NewUnaryRequestProcessor(chains.BITCOIN, upSupervisor)

@@ -135,7 +135,7 @@ func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, re
 		if !ok {
 			return nil, false
 		}
-		requestCache.WithLabelValues(chain.String(), request.Method()).Inc()
+		requestCache.WithLabelValues(chain.String(), request.Method().ValidUTF8Name()).Inc()
 		cancel()
 		return result, true
 	}

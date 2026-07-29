@@ -231,7 +231,7 @@ func (h *HttpConnector) sendRest(ctx context.Context, request protocol.RequestHo
 	if rp != nil {
 		pathParams = rp.PathParams
 	}
-	verb, path, err := utils.BuildRestURL(restReq.Method(), pathParams)
+	verb, path, err := utils.BuildRestURL(restReq.Method().Name(), pathParams)
 	if err != nil {
 		return clientFailure(request, err)
 	}
@@ -415,7 +415,7 @@ func (h *HttpConnector) dispatch(
 	if request.IsStream() && isSuccessStatus(resp.StatusCode) && !quorumRequested {
 		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
 		if decision := allowStream(bufReader); decision.stream {
-			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
+			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method().Name())
 			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType()).
 				WithStreamHint(decision.hint)
 			return streamResp.WithResponseHeaders(h.filterResponseHeaders(resp.Header))

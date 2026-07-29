@@ -42,7 +42,7 @@ func fastTron(d *tron_bounds.TronLowerBoundDetector) *tron_bounds.TronLowerBound
 // an exact body (use "" to match a nil/empty body for the "latest" fetch).
 func matchTronRequest(expectedBody string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		if req.Method() != "POST#/wallet/getblock" {
+		if req.Method().Name() != "POST#/wallet/getblock" {
 			return false
 		}
 		if req.RequestType() != protocol.Rest {
@@ -58,7 +58,7 @@ func matchTronRequest(expectedBody string) func(protocol.RequestHolder) bool {
 
 // tronProbeHeight extracts the requested block height from a /wallet/getblock probe body.
 func tronProbeHeight(req protocol.RequestHolder) (int64, bool) {
-	if req.Method() != "POST#/wallet/getblock" {
+	if req.Method().Name() != "POST#/wallet/getblock" {
 		return 0, false
 	}
 	body, err := req.Body()

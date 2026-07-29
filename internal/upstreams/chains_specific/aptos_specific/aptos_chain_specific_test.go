@@ -47,7 +47,7 @@ func TestAptosGetLatestBlockUsesConsistentSyntheticHashes(t *testing.T) {
 	ctx := context.Background()
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v1"
+		return r.Method().Name() == "GET#/v1"
 	})).Return(aptosLedgerResponse("100", "5000")).Once()
 
 	block, err := test_utils.NewAptosChainSpecific(ctx, conn).GetLatestBlock(ctx)

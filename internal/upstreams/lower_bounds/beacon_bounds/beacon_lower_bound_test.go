@@ -21,7 +21,7 @@ const (
 )
 
 func blockPathSlot(r protocol.RequestHolder) (int64, bool) {
-	if r.Method() != "GET#/eth/v2/beacon/blocks/*" {
+	if r.Method().Name() != "GET#/eth/v2/beacon/blocks/*" {
 		return 0, false
 	}
 	rp := r.RequestParams()
@@ -44,7 +44,7 @@ func TestBeaconBlockLowerBoundBinarySearch(t *testing.T) {
 	headBody := `{"data":{"root":"0xaa","header":{"message":{"slot":"` +
 		strconv.FormatInt(headSlot, 10) + `","parent_root":"0xbb"}}}}`
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/eth/v1/beacon/headers/head"
+		return r.Method().Name() == "GET#/eth/v1/beacon/headers/head"
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(headBody), 200, protocol.Rest))
 
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
@@ -73,7 +73,7 @@ func TestBeaconBlockLowerBoundBinarySearch(t *testing.T) {
 }
 
 func blobPathSlot(r protocol.RequestHolder) (int64, bool) {
-	if r.Method() != "GET#/eth/v1/beacon/blob_sidecars/*" {
+	if r.Method().Name() != "GET#/eth/v1/beacon/blob_sidecars/*" {
 		return 0, false
 	}
 	rp := r.RequestParams()
@@ -98,7 +98,7 @@ func TestBeaconBlobLowerBoundTreatsPreDenebAsMiss(t *testing.T) {
 	headBody := `{"data":{"root":"0xaa","header":{"message":{"slot":"` +
 		strconv.FormatInt(headSlot, 10) + `","parent_root":"0xbb"}}}}`
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/eth/v1/beacon/headers/head"
+		return r.Method().Name() == "GET#/eth/v1/beacon/headers/head"
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(headBody), 200, protocol.Rest))
 
 	// Post-Deneb, retained: 200 with a data array.

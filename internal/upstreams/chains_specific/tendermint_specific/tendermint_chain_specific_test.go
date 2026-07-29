@@ -26,7 +26,7 @@ import (
 // CometBFT's result envelope.
 func matchTendermintJsonRpc(method string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		return req.Method() == method && req.RequestType() == protocol.JsonRpc
+		return req.Method().Name() == method && req.RequestType() == protocol.JsonRpc
 	}
 }
 

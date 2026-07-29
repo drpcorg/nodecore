@@ -66,7 +66,7 @@ func TestEthClientVersionValidatorReturnsSettingsErrorOnConnectorError(t *testin
 func newClientVersionConnectorMock(response protocol.ResponseHolder) *mocks.ConnectorMock {
 	connector := mocks.NewConnectorMock()
 	call := connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(request protocol.RequestHolder) bool {
-		return request.Method() == "web3_clientVersion"
+		return request.Method().Name() == "web3_clientVersion"
 	})).Return(response)
 	if response.HasError() {
 		call.Times(validations.RetryMaxAttempts)

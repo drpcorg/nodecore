@@ -39,7 +39,7 @@ func (m *MethodBanHook) OnResponseReceived(_ context.Context, request protocol.R
 		return
 	}
 
-	go responseUpstream.BanMethod(request.Method())
+	go responseUpstream.BanMethod(request.Method().Name())
 }
 
 func NewMethodBanHook(upstreamSupervisor upstreams.UpstreamSupervisor) *MethodBanHook {

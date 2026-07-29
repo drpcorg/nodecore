@@ -17,7 +17,7 @@ func TestTronClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, request)
 
-	assert.Equal(t, "POST#/wallet/getnodeinfo", request.Method())
+	assert.Equal(t, "POST#/wallet/getnodeinfo", request.Method().Name())
 	assert.Equal(t, protocol.Rest, request.RequestType())
 	assert.False(t, request.IsStream())
 	assert.False(t, request.IsSubscribe())

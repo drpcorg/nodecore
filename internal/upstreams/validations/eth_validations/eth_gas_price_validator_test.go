@@ -56,7 +56,7 @@ func TestEthGasPriceValidatorReturnsSettingsErrorOnConnectorError(t *testing.T) 
 func newGasPriceConnectorMock(response protocol.ResponseHolder) *mocks.ConnectorMock {
 	connector := mocks.NewConnectorMock()
 	call := connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(request protocol.RequestHolder) bool {
-		return request.Method() == "eth_gasPrice"
+		return request.Method().Name() == "eth_gasPrice"
 	})).Return(response)
 	if response.HasError() {
 		call.Times(validations.RetryMaxAttempts)

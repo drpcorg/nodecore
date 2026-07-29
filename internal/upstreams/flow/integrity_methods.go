@@ -82,7 +82,7 @@ type EthBlockNumberIntegrityHandler struct {
 }
 
 func (e *EthBlockNumberIntegrityHandler) CanBeProcessed(_ context.Context, req protocol.RequestHolder) bool {
-	return req.Method() == specs.EthBlockNumber
+	return req.Method().Name() == specs.EthBlockNumber
 }
 
 func (e *EthBlockNumberIntegrityHandler) HandleResponse(
@@ -122,7 +122,7 @@ type EthGetBlockByNumberIntegrityHandler struct {
 }
 
 func (e *EthGetBlockByNumberIntegrityHandler) CanBeProcessed(_ context.Context, request protocol.RequestHolder) bool {
-	return request.Method() == specs.EthGetBlockByNumber
+	return request.Method().Name() == specs.EthGetBlockByNumber
 }
 
 func (e *EthGetBlockByNumberIntegrityHandler) HandleResponse(

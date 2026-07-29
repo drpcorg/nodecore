@@ -15,7 +15,7 @@ import (
 type UpstreamJsonRpcRequest struct {
 	id              string
 	realId          json.RawMessage
-	method          string
+	method          RequestMethod
 	parsedParam     specs.MethodParam
 	requestParams   json.RawMessage
 	requestKey      string
@@ -38,7 +38,7 @@ func NewUpstreamJsonRpcRequestWithSpecMethod(method string, params any, specMeth
 	}
 	return &UpstreamJsonRpcRequest{
 		id:            "1",
-		method:        method,
+		method:        NewRequestMethod(method),
 		realId:        []byte(`"1"`),
 		requestParams: requestParams,
 		specMethod:    specMethod,
@@ -51,13 +51,14 @@ func NewInternalUpstreamJsonRpcRequest(method string, params any, chain chains.C
 		return nil, err
 	}
 	specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChain(chain), method)
+	requestMethod := NewRequestMethod(method)
 	return &UpstreamJsonRpcRequest{
 		id:              "1",
-		method:          method,
+		method:          requestMethod,
 		realId:          []byte(`1`),
 		requestParams:   requestParams,
 		specMethod:      specMethod,
-		requestObserver: NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
+		requestObserver: NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(requestMethod),
 	}, nil
 }
 
@@ -67,14 +68,15 @@ func NewInternalSubUpstreamJsonRpcRequest(method string, params any, chain chain
 		return nil, err
 	}
 	specMethod := specs.GetSpecMethod(chains.GetMethodSpecNameByChain(chain), method)
+	requestMethod := NewRequestMethod(method)
 	return &UpstreamJsonRpcRequest{
 		id:              "1",
-		method:          method,
+		method:          requestMethod,
 		realId:          []byte(`1`),
 		requestParams:   requestParams,
 		isSub:           true,
 		specMethod:      specMethod,
-		requestObserver: NewRequestObserver(true).WithRequestKind(InternalSubscription).WithMethod(method),
+		requestObserver: NewRequestObserver(true).WithRequestKind(InternalSubscription).WithMethod(requestMethod),
 	}, nil
 }
 
@@ -87,14 +89,15 @@ func marshalJsonRPCParams(params any) ([]byte, error) {
 
 func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specName string, selectors ...RequestSelector) *UpstreamJsonRpcRequest {
 	specMethod := specs.GetSpecMethodWithFallback(specName, jsonRpcRequest.Method)
+	method := NewRequestMethod(jsonRpcRequest.Method)
 	return &UpstreamJsonRpcRequest{
 		id:              id,
-		method:          jsonRpcRequest.Method,
+		method:          method,
 		realId:          jsonRpcRequest.Id,
 		requestParams:   jsonRpcRequest.Params,
 		isSub:           isSub,
 		specMethod:      specMethod,
-		requestObserver: NewRequestObserver(isSub).WithMethod(jsonRpcRequest.Method),
+		requestObserver: NewRequestObserver(isSub).WithMethod(method),
 		selectors:       selectors,
 	}
 }
@@ -141,7 +144,7 @@ func (u *UpstreamJsonRpcRequest) RealId() string {
 	return string(raw)
 }
 
-func (u *UpstreamJsonRpcRequest) Method() string {
+func (u *UpstreamJsonRpcRequest) Method() RequestMethod {
 	return u.method
 }
 
@@ -150,7 +153,7 @@ func (u *UpstreamJsonRpcRequest) Headers() map[string]string {
 }
 
 func (u *UpstreamJsonRpcRequest) Body() ([]byte, error) {
-	body, err := jsonRpcRequestBytes(u.realId, u.method, u.requestParams)
+	body, err := jsonRpcRequestBytes(u.realId, u.method.Name(), u.requestParams)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +204,7 @@ func (u *UpstreamJsonRpcRequest) ModifyParams(ctx context.Context, newValue any)
 			zerolog.Ctx(ctx).
 				Warn().
 				Err(err).
-				Msgf("couldn't unmarshall a request, method - %s, body - %s", u.method, string(u.requestParams))
+				Msgf("couldn't unmarshall a request, method - %s, body - %s", u.method.Name(), string(u.requestParams))
 			return
 		}
 	}
@@ -234,7 +237,7 @@ func (u *UpstreamJsonRpcRequest) RequestHash() string {
 		u.mu.Lock()
 		params := u.requestParams
 		u.mu.Unlock()
-		u.requestKey = calculateJsonRpcHash(u.method, params, u.selectors)
+		u.requestKey = calculateJsonRpcHash(u.method.Name(), params, u.selectors)
 	})
 	return u.requestKey
 }

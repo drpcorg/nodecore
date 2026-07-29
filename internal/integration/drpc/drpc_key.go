@@ -46,7 +46,7 @@ func (d *DrpcKey) PreCheckSetting(ctx context.Context) ([]string, error) {
 }
 
 func (d *DrpcKey) PostCheckSetting(_ context.Context, request protocol.RequestHolder) error {
-	err := keydata.CheckMethod(d.MethodsWhitelist, d.MethodsBlacklist, request.Method())
+	err := keydata.CheckMethod(d.MethodsWhitelist, d.MethodsBlacklist, request.Method().Name())
 	if err != nil {
 		return err
 	}

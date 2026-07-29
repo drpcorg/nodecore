@@ -22,7 +22,7 @@ func TestSolanaSubscribeHeadRequest(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, "1", req.Id())
-	assert.Equal(t, "slotSubscribe", req.Method())
+	assert.Equal(t, "slotSubscribe", req.Method().Name())
 	assert.False(t, req.IsStream())
 	require.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"slotSubscribe","params":[]}`, string(body))
 }

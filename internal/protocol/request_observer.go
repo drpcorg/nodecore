@@ -71,7 +71,7 @@ func (r ResponseKind) String() string {
 
 type RequestObserver struct {
 	chain   chains.Chain
-	method  string
+	method  RequestMethod
 	reqKind RequestKind
 	apiKey  string
 	reqCtx  requestCtx
@@ -113,7 +113,7 @@ func (b *RequestObserver) WithChain(chain chains.Chain) *RequestObserver {
 	return b
 }
 
-func (b *RequestObserver) WithMethod(method string) *RequestObserver {
+func (b *RequestObserver) WithMethod(method RequestMethod) *RequestObserver {
 	b.method = method
 	return b
 }

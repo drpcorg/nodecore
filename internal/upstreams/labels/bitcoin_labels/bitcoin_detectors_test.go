@@ -17,7 +17,7 @@ func TestBitcoinClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, request)
 
-	assert.Equal(t, "getnetworkinfo", request.Method())
+	assert.Equal(t, "getnetworkinfo", request.Method().Name())
 	assert.Equal(t, protocol.JsonRpc, request.RequestType())
 
 	body, err := request.Body()

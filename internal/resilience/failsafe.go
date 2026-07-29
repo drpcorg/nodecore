@@ -49,7 +49,7 @@ func CreateFlowRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[*pro
 			zerolog.Ctx(ctx).
 				Debug().
 				Err(wrapper.Response.GetError()).
-				Msgf("attemting to retry a request %s, failed upstream is %s", request.Method(), wrapper.UpstreamId)
+				Msgf("attemting to retry a request %s, failed upstream is %s", request.Method().Name(), wrapper.UpstreamId)
 		}
 	})
 
@@ -66,7 +66,7 @@ func CreateFlowParallelHedgePolicy(hedgeConfig *config.HedgeConfig) failsafe.Pol
 			requestByKey := ctx.Value(RequestKey)
 			if requestByKey != nil {
 				if request, ok := requestByKey.(protocol.RequestHolder); ok {
-					zerolog.Ctx(ctx).Debug().Msgf("attemting to hedge a request %s", request.Method())
+					zerolog.Ctx(ctx).Debug().Msgf("attemting to hedge a request %s", request.Method().Name())
 				}
 			}
 		}).
@@ -108,7 +108,7 @@ func CreateUpstreamRetryPolicy(retryConfig *config.RetryConfig) failsafe.Policy[
 		request, ok := ctx.Value(RequestKey).(protocol.RequestHolder)
 		if ok && request != nil {
 			response := event.LastResult()
-			zerolog.Ctx(ctx).Debug().Err(response.GetError()).Msgf("attemting to retry a request %s", request.Method())
+			zerolog.Ctx(ctx).Debug().Err(response.GetError()).Msgf("attemting to retry a request %s", request.Method().Name())
 		}
 	})
 

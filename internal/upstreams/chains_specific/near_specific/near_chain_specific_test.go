@@ -68,7 +68,7 @@ func TestNearParseBlockNoHash(t *testing.T) {
 
 func matchBlockRequestWithFinality(finality string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		if req.Method() != "block" {
+		if req.Method().Name() != "block" {
 			return false
 		}
 		body, err := req.Body()

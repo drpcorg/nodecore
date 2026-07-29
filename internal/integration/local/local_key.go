@@ -53,7 +53,7 @@ func (l *LocalKey) PostCheckSetting(_ context.Context, request protocol.RequestH
 	}
 
 	methods := lo.Ternary(l.keySettingsCfg.Methods != nil, l.keySettingsCfg.Methods, &config.AuthMethods{})
-	err := keydata.CheckMethod(methods.Allowed, methods.Forbidden, request.Method())
+	err := keydata.CheckMethod(methods.Allowed, methods.Forbidden, request.Method().Name())
 	if err != nil {
 		return err
 	}

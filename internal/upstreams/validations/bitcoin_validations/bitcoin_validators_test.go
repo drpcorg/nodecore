@@ -19,9 +19,13 @@ const (
 	dogecoinGenesis = `"1a91e3dace36e2be3bf030a65679fe821aa1d6ef92e7c9902eb318182c355691"`
 )
 
-func isGetBlockHash(r protocol.RequestHolder) bool       { return r.Method() == "getblockhash" }
-func isGetBlockchainInfo(r protocol.RequestHolder) bool  { return r.Method() == "getblockchaininfo" }
-func isGetConnectionCount(r protocol.RequestHolder) bool { return r.Method() == "getconnectioncount" }
+func isGetBlockHash(r protocol.RequestHolder) bool { return r.Method().Name() == "getblockhash" }
+func isGetBlockchainInfo(r protocol.RequestHolder) bool {
+	return r.Method().Name() == "getblockchaininfo"
+}
+func isGetConnectionCount(r protocol.RequestHolder) bool {
+	return r.Method().Name() == "getconnectioncount"
+}
 
 func blockchainInfoBody(blocks, headers uint64, ibd bool) []byte {
 	return []byte(fmt.Sprintf(

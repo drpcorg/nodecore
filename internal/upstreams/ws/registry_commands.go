@@ -3,6 +3,7 @@ package ws
 import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type registryCommand interface {
@@ -76,7 +77,9 @@ func (c *rpcCommand) handle(registry *BaseRequestRegistry) {
 					ops:     make(map[string]RequestOperation),
 				}
 				state.subs[subID] = sub
-				jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, req.SubType()).Inc()
+				// The sub type is client-controlled - for eth_subscribe it is the
+				// raw params[0] - so it needs the valid-UTF-8 form as a label.
+				jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, utils.ToValidUTF8(req.SubType())).Inc()
 			}
 			sub.ops[req.Id()] = req
 		}
@@ -140,7 +143,7 @@ func (c *finishCommand) handle(registry *BaseRequestRegistry) {
 	}
 
 	delete(registry.registryState.subs, subID)
-	jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, sub.subType).Dec()
+	jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, utils.ToValidUTF8(sub.subType)).Dec()
 	c.result <- c.req.ShouldDoOnClose()
 }
 
@@ -161,7 +164,7 @@ func (c *cancelAllCommand) handle(registry *BaseRequestRegistry) {
 	}
 
 	for subID, sub := range state.subs {
-		jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, sub.subType).Dec()
+		jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, utils.ToValidUTF8(sub.subType)).Dec()
 		for _, req := range sub.ops {
 			ops = append(ops, req)
 		}

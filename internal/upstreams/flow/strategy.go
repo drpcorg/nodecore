@@ -159,9 +159,9 @@ func filterUpstreams(
 		upstreamIds = order(upstreamIds)
 	}
 	matchers := lo.Ternary(len(additionalMatchers) > 0, additionalMatchers, make([]Matcher, 0))
-	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
+	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method().Name()))
 	if request.IsSubscribe() {
-		matchers = append(matchers, NewWsCapMatcher(request.Method()))
+		matchers = append(matchers, NewWsCapMatcher(request.Method().Name()))
 	}
 
 	multiMatcher := NewMultiMatcher(matchers...)
@@ -206,7 +206,7 @@ func processMatchedResponse(
 	if !selectedUpstreams.ContainsOne(upstreamId) {
 		if matched.Type() == SuccessType {
 			if state.RateLimiterBudget != nil {
-				allow, err := state.RateLimiterBudget.Allow(request.Method())
+				allow, err := state.RateLimiterBudget.Allow(request.Method().Name())
 				if err != nil {
 					return false, RateLimiterResponse{}
 				}

@@ -249,7 +249,7 @@ func (r *receiptBlockRecorder) Snapshot() []string {
 }
 
 func matchAnyHLReceiptRequest(request protocol.RequestHolder) bool {
-	if request == nil || request.Method() != "eth_getBlockReceipts" || request.RequestType() != protocol.JsonRpc {
+	if request == nil || request.Method().Name() != "eth_getBlockReceipts" || request.RequestType() != protocol.JsonRpc {
 		return false
 	}
 

@@ -11,7 +11,7 @@ import (
 func TestAptosNodeTypeRequest(t *testing.T) {
 	req, err := aptos_labels.NewAptosClientLabelsDetector(chains.GetChain("aptos-mainnet").Chain).NodeTypeRequest()
 	assert.NoError(t, err)
-	assert.Equal(t, "GET#/v1", req.Method())
+	assert.Equal(t, "GET#/v1", req.Method().Name())
 }
 
 func TestAptosClientVersionAndType(t *testing.T) {

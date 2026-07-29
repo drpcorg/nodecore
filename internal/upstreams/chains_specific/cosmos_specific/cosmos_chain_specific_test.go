@@ -28,7 +28,7 @@ import (
 
 func matchCosmosRest(methodTemplate string, pathParams ...string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		if req.Method() != methodTemplate || req.RequestType() != protocol.Rest {
+		if req.Method().Name() != methodTemplate || req.RequestType() != protocol.Rest {
 			return false
 		}
 		restReq, ok := req.(*protocol.UpstreamRestRequest)
@@ -358,7 +358,7 @@ func base64Hash(seed string) string {
 // report, so a non-probe request simply doesn't match.
 func probedHeightMatches(predicate func(int64) bool) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		if req.Method() != specific_helpers.CosmosBlockByHeightRoute {
+		if req.Method().Name() != specific_helpers.CosmosBlockByHeightRoute {
 			return false
 		}
 		restReq, ok := req.(*protocol.UpstreamRestRequest)

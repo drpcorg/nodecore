@@ -20,7 +20,7 @@ func matchFirstAvailableBlockRequest(request protocol.RequestHolder) bool {
 		return false
 	}
 
-	return request.Method() == "getFirstAvailableBlock" &&
+	return request.Method().Name() == "getFirstAvailableBlock" &&
 		request.Id() == "1" &&
 		request.RequestType() == protocol.JsonRpc &&
 		strings.Contains(string(body), `"method":"getFirstAvailableBlock"`) &&
@@ -35,7 +35,7 @@ func matchGetBlockRequest(slot int64) func(protocol.RequestHolder) bool {
 		}
 
 		bodyStr := string(body)
-		return request.Method() == "getBlock" &&
+		return request.Method().Name() == "getBlock" &&
 			request.Id() == "1" &&
 			request.RequestType() == protocol.JsonRpc &&
 			strings.Contains(bodyStr, `"method":"getBlock"`) &&

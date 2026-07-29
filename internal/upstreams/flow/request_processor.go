@@ -80,8 +80,8 @@ func (u *UnaryRequestProcessor) ProcessRequest(
 	var response *protocol.ResponseHolderWrapper
 	var err error
 
-	if specs.IsSubscribeMethod(chains.GetMethodSpecNameByChain(u.chain), request.Method()) {
-		err = protocol.ClientError(fmt.Errorf("unable to process a subscription request %s", request.Method()))
+	if specs.IsSubscribeMethod(chains.GetMethodSpecNameByChain(u.chain), request.Method().Name()) {
+		err = protocol.ClientError(fmt.Errorf("unable to process a subscription request %s", request.Method().Name()))
 		response = &protocol.ResponseHolderWrapper{
 			UpstreamId: NoUpstream,
 			RequestId:  request.Id(),
@@ -143,7 +143,7 @@ func executeUnaryRequest(
 
 	if hedged.Load() {
 		// it's important to track the very first upstream that caused the hedge logic
-		hedgeMetric.WithLabelValues(chain.String(), request.Method(), firstUpstream.Load()).Inc()
+		hedgeMetric.WithLabelValues(chain.String(), request.Method().ValidUTF8Name(), firstUpstream.Load()).Inc()
 	}
 
 	return result, err
@@ -187,10 +187,10 @@ func sendUnaryRequest(
 	request protocol.RequestHolder,
 	parsedParam specs.MethodParam,
 ) (*protocol.ResponseHolderWrapper, error) {
-	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.GetId())
+	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method().Name(), upstream.GetId())
 
 	upstreamRequest := request
-	translator := getMethodTranslator(chains.GetMethodSpecNameByChain(upstream.GetChain()), request.Method())
+	translator := getMethodTranslator(chains.GetMethodSpecNameByChain(upstream.GetChain()), request.Method().Name())
 	if translator != nil {
 		translated, err := translator.TranslateRequest(ctx, request)
 		if err != nil {
@@ -205,7 +205,7 @@ func sendUnaryRequest(
 
 	apiConnector := getMethodConnector(upstream, upstreamRequest.SpecMethod())
 	if apiConnector == nil {
-		return nil, protocol.NoApiConnectorsError(request.Method())
+		return nil, protocol.NoApiConnectorsError(request.Method().Name())
 	}
 
 	response := apiConnector.SendRequest(ctx, upstreamRequest)
@@ -225,7 +225,7 @@ func sendUnaryRequest(
 	}
 
 	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTagMetadata(parsedParam))
-	if lowerBound, ok := liveLowerBoundFromPrunedError(request.Method(), parsedParam, response, upstream.GetCurrentHeadHeight()); ok {
+	if lowerBound, ok := liveLowerBoundFromPrunedError(request.Method().Name(), parsedParam, response, upstream.GetCurrentHeadHeight()); ok {
 		upstream.UpdateLowerBound(lowerBound)
 	}
 	return &protocol.ResponseHolderWrapper{

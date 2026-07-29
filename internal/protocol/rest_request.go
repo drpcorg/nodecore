@@ -13,7 +13,7 @@ import (
 
 type UpstreamRestRequest struct {
 	id            string
-	method        string
+	method        RequestMethod
 	requestKey    string
 	body          []byte
 	requestParams *RequestParams
@@ -38,24 +38,26 @@ func NewInternalUpstreamRestRequest(methodTemplate string, requestParams *Reques
 
 func NewInternalUpstreamRestRequestWithBody(methodTemplate string, requestParams *RequestParams, body []byte, chain chains.Chain) *UpstreamRestRequest {
 	specName := chains.GetMethodSpecNameByChain(chain)
+	method := NewRequestMethod(methodTemplate)
 	return &UpstreamRestRequest{
 		id:            "1",
-		method:        methodTemplate,
+		method:        method,
 		body:          body,
 		requestParams: requestParams,
-		observer:      NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(methodTemplate),
+		observer:      NewRequestObserver(false).WithRequestKind(InternalUnary).WithMethod(method),
 		specMethod:    specs.GetSpecMethodWithFallback(specName, methodTemplate),
 	}
 }
 
 func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string, selectors ...RequestSelector) *UpstreamRestRequest {
 	specMethod := specs.GetSpecMethodWithFallback(specName, methodTemplate)
+	method := NewRequestMethod(methodTemplate)
 	return &UpstreamRestRequest{
 		id:            id,
-		method:        methodTemplate,
+		method:        method,
 		body:          body,
 		requestParams: requestParams,
-		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(methodTemplate),
+		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(method),
 		specMethod:    specMethod,
 		selectors:     selectors,
 	}
@@ -81,7 +83,7 @@ func (u *UpstreamRestRequest) Id() string {
 	return u.id
 }
 
-func (u *UpstreamRestRequest) Method() string {
+func (u *UpstreamRestRequest) Method() RequestMethod {
 	return u.method
 }
 
@@ -107,7 +109,7 @@ func (u *UpstreamRestRequest) RequestType() RequestType {
 
 func (u *UpstreamRestRequest) RequestHash() string {
 	u.requestKeyOnce.Do(func() {
-		u.requestKey = calculateRestHash(u.method, u.requestParams, u.body, u.selectors)
+		u.requestKey = calculateRestHash(u.method.Name(), u.requestParams, u.body, u.selectors)
 	})
 	return u.requestKey
 }

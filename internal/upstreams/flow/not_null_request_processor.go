@@ -62,7 +62,7 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 			continue
 		}
 		if wrapper.Response.HasStream() {
-			zerolog.Ctx(ctx).Debug().Msgf("not-null dispatch selected streaming upstream %s for method %s", wrapper.UpstreamId, request.Method())
+			zerolog.Ctx(ctx).Debug().Msgf("not-null dispatch selected streaming upstream %s for method %s", wrapper.UpstreamId, request.Method().Name())
 			return &UnaryResponse{ResponseWrapper: wrapper}
 		}
 		if wrapper.Response.HasError() {
@@ -78,7 +78,7 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 			continue
 		}
 
-		zerolog.Ctx(ctx).Debug().Msgf("not-null dispatch selected upstream %s for method %s", wrapper.UpstreamId, request.Method())
+		zerolog.Ctx(ctx).Debug().Msgf("not-null dispatch selected upstream %s for method %s", wrapper.UpstreamId, request.Method().Name())
 		return &UnaryResponse{ResponseWrapper: wrapper}
 	}
 

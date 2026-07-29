@@ -19,7 +19,9 @@ func (d *DimensionHook) OnResponseReceived(
 		for _, result := range request.RequestObserver().GetResults() {
 			switch r := result.(type) {
 			case *protocol.UnaryRequestResult:
-				dims := d.tracker.GetUpstreamDimensions(r.GetChain(), r.GetUpstreamId(), request.Method())
+				// The valid-UTF-8 form: the dimension key's method ends up as a
+				// Prometheus label in dims.go, where an invalid one would panic.
+				dims := d.tracker.GetUpstreamDimensions(r.GetChain(), r.GetUpstreamId(), request.Method().ValidUTF8Name())
 
 				dims.TrackTotalRequests()
 				dims.TrackRequestDuration(r.GetDuration())

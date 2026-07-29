@@ -18,7 +18,7 @@ func TestAptosLowerBoundEmitsOldestStateAndBlock(t *testing.T) {
 	body := `{"chain_id":1,"block_height":"860298804","oldest_block_height":"700",` +
 		`"ledger_version":"5965411071","oldest_ledger_version":"4242"}`
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v1"
+		return r.Method().Name() == "GET#/v1"
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(body), 200, protocol.Rest))
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)
@@ -40,7 +40,7 @@ func TestAptosLowerBoundClampsArchiveZeroToOne(t *testing.T) {
 	body := `{"chain_id":1,"block_height":"860298804","oldest_block_height":"0",` +
 		`"ledger_version":"5965411071","oldest_ledger_version":"0"}`
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		return r.Method() == "GET#/v1"
+		return r.Method().Name() == "GET#/v1"
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(body), 200, protocol.Rest))
 
 	d := aptos_bounds.NewAptosLowerBoundDetector("id", chains.GetChain("aptos-mainnet").Chain, time.Second, conn)

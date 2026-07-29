@@ -26,7 +26,7 @@ import (
 // expected bytes (use "" for a nil/empty body).
 func matchTronRest(method, expectedBody string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		if req.Method() != method {
+		if req.Method().Name() != method {
 			return false
 		}
 		if req.RequestType() != protocol.Rest {

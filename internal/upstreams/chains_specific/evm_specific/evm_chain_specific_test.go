@@ -60,7 +60,7 @@ func TestEvmSubscribeHeadRequest(t *testing.T) {
 	assert.Nil(t, reqErr)
 
 	assert.Equal(t, "1", req.Id())
-	assert.Equal(t, "eth_subscribe", req.Method())
+	assert.Equal(t, "eth_subscribe", req.Method().Name())
 	assert.False(t, req.IsStream())
 	require.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(body))
 }

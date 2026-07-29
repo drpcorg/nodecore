@@ -28,7 +28,7 @@ const evmCapabilitiesFixture = `{
 func countRequests(connector *mocks.ConnectorMock, method string) int {
 	count := 0
 	for _, call := range connector.Calls {
-		if request, ok := call.Arguments.Get(1).(protocol.RequestHolder); ok && request.Method() == method {
+		if request, ok := call.Arguments.Get(1).(protocol.RequestHolder); ok && request.Method().Name() == method {
 			count++
 		}
 	}

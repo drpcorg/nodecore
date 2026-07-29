@@ -156,7 +156,7 @@ type RequestParams struct {
 
 type RequestHolder interface {
 	Id() string
-	Method() string
+	Method() RequestMethod
 	RequestParams() *RequestParams
 	Body() ([]byte, error)
 	ParseParams(ctx context.Context) specs.MethodParam

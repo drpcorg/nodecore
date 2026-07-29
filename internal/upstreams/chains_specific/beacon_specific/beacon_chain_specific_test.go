@@ -82,7 +82,7 @@ func TestBeaconGetLatestBlockPollsHeadHeader(t *testing.T) {
 	resp := protocol.NewHttpUpstreamResponse("1", []byte(headHeaderBody), 200, protocol.Rest)
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		rp := r.RequestParams()
-		return r.Method() == "GET#/eth/v1/beacon/headers/*" &&
+		return r.Method().Name() == "GET#/eth/v1/beacon/headers/*" &&
 			rp != nil && len(rp.PathParams) == 1 && rp.PathParams[0] == "head"
 	})).Return(resp).Once()
 
@@ -100,7 +100,7 @@ func TestBeaconGetFinalizedBlockUsesFinalizedId(t *testing.T) {
 	resp := protocol.NewHttpUpstreamResponse("1", []byte(headHeaderBody), 200, protocol.Rest)
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		rp := r.RequestParams()
-		return r.Method() == "GET#/eth/v1/beacon/headers/*" &&
+		return r.Method().Name() == "GET#/eth/v1/beacon/headers/*" &&
 			rp != nil && len(rp.PathParams) == 1 && rp.PathParams[0] == "finalized"
 	})).Return(resp).Once()
 

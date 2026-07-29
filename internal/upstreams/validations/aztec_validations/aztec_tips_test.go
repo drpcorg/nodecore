@@ -53,11 +53,11 @@ func newRecordingConnector(responses map[string]protocol.ResponseHolder) *record
 func (c *recordingConnector) SendRequest(_ context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.methods = append(c.methods, request.Method())
-	if resp, ok := c.responses[request.Method()]; ok {
+	c.methods = append(c.methods, request.Method().Name())
+	if resp, ok := c.responses[request.Method().Name()]; ok {
 		return resp
 	}
-	return methodNotFoundResponse(request.Method())
+	return methodNotFoundResponse(request.Method().Name())
 }
 
 func (c *recordingConnector) setResponses(responses map[string]protocol.ResponseHolder) {

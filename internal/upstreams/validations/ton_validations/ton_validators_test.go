@@ -22,7 +22,7 @@ const (
 )
 
 func isMasterchainInfo(r protocol.RequestHolder) bool {
-	return r.Method() == "GET#/getMasterchainInfo"
+	return r.Method().Name() == "GET#/getMasterchainInfo"
 }
 
 func masterchainInfoBody(seqno uint64, initRoot, initFile string) []byte {

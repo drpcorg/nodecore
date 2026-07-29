@@ -17,7 +17,7 @@ func TestNearClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, request)
 
-	assert.Equal(t, "status", request.Method())
+	assert.Equal(t, "status", request.Method().Name())
 	assert.Equal(t, protocol.JsonRpc, request.RequestType())
 
 	body, err := request.Body()

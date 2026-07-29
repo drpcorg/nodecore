@@ -39,7 +39,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 		return &UnaryResponse{ResponseWrapper: totalFailureWrapper(request, err)}
 	}
 
-	zerolog.Ctx(ctx).Debug().Msgf("fan-out selected %d upstreams for method %s", len(upstreamIDs), request.Method())
+	zerolog.Ctx(ctx).Debug().Msgf("fan-out selected %d upstreams for method %s", len(upstreamIDs), request.Method().Name())
 	parsedParam := request.ParseParams(ctx)
 
 	results := make(chan fanoutResult, len(upstreamIDs))
@@ -80,7 +80,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 					}
 				}
 				wrapper := aggregator.Final(request)
-				zerolog.Ctx(ctx).Debug().Msgf("fan-out selected final upstream %s for method %s", wrapper.UpstreamId, request.Method())
+				zerolog.Ctx(ctx).Debug().Msgf("fan-out selected final upstream %s for method %s", wrapper.UpstreamId, request.Method().Name())
 				return &UnaryResponse{ResponseWrapper: wrapper}
 			}
 			collectedResults[result.upstreamID] = result

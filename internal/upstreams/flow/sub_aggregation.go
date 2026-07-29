@@ -103,7 +103,7 @@ func hasEffectiveSelectors(selectors []protocol.RequestSelector) bool {
 // not eth_subscribe or has no string first param. Only EVM chains expose
 // eth_subscribe, so a non-empty topic also implies an EVM chain.
 func subscribeTopic(request protocol.RequestHolder) (string, bool) {
-	if request.Method() != "eth_subscribe" {
+	if request.Method().Name() != "eth_subscribe" {
 		return "", false
 	}
 	body, err := request.Body()
@@ -231,7 +231,7 @@ func newGenericSourceBuilder(
 		}
 		wsConn := getMethodConnector(upstream, request.SpecMethod())
 		if wsConn == nil {
-			return nil, protocol.NoApiConnectorsError(request.Method())
+			return nil, protocol.NoApiConnectorsError(request.Method().Name())
 		}
 
 		subResp, err := wsConn.Subscribe(srcCtx, request)
@@ -240,7 +240,7 @@ func newGenericSourceBuilder(
 		}
 
 		var stateChan chan protocol.SubscribeConnectorState
-		statesSub := wsConn.SubscribeStates(fmt.Sprintf("subengine_%s_%s_%s_%d", upstreamId, request.Method(), uuid.NewString(), time.Now().UnixNano()))
+		statesSub := wsConn.SubscribeStates(fmt.Sprintf("subengine_%s_%s_%s_%d", upstreamId, request.Method().Name(), uuid.NewString(), time.Now().UnixNano()))
 		if statesSub != nil {
 			stateChan = statesSub.Events
 		}

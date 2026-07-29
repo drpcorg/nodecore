@@ -136,7 +136,7 @@ func TestAztecGetLatestBlockFallsBackToChainTips(t *testing.T) {
 	ok := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
 
 	methodIs := func(method string) any {
-		return mock.MatchedBy(func(r protocol.RequestHolder) bool { return r.Method() == method })
+		return mock.MatchedBy(func(r protocol.RequestHolder) bool { return r.Method().Name() == method })
 	}
 	connector.On("SendRequest", ctx, methodIs("node_getL2Tips")).Return(notFound)
 	connector.On("SendRequest", ctx, methodIs("node_getChainTips")).Return(ok)

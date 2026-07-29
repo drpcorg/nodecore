@@ -88,7 +88,7 @@ func TestRestHandlerRequestDecodePopulatesMatchedTemplate(t *testing.T) {
 	require.Len(t, request.UpstreamRequests, 1)
 
 	up := request.UpstreamRequests[0]
-	assert.Equal(t, "POST"+protocol.MethodSeparator+"/exchange", up.Method(),
+	assert.Equal(t, "POST"+protocol.MethodSeparator+"/exchange", up.Method().Name(),
 		"matched template becomes the canonical method - here it's a literal template")
 	assert.Equal(t, protocol.Rest, up.RequestType())
 	body, err := up.Body()
@@ -110,7 +110,7 @@ func TestRestHandlerRequestDecodeForwardsBody(t *testing.T) {
 	require.Len(t, request.UpstreamRequests, 1)
 
 	up := request.UpstreamRequests[0]
-	assert.Equal(t, "POST"+protocol.MethodSeparator+"/exchange", up.Method())
+	assert.Equal(t, "POST"+protocol.MethodSeparator+"/exchange", up.Method().Name())
 	body, err := up.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, []byte(payload), body)

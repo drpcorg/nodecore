@@ -91,7 +91,7 @@ func (c *CachePolicy) Store(
 		}
 	}
 	if err := c.connector.Store(context.Background(), getCacheKey(chain, request.RequestHash()), string(response), c.ttl); err != nil {
-		log.Error().Err(err).Msgf("connector %s of policy %s couldn't cache request %s", c.connector.Id(), c.id, request.Method())
+		log.Error().Err(err).Msgf("connector %s of policy %s couldn't cache request %s", c.connector.Id(), c.id, request.Method().Name())
 		return false
 	}
 	return true
@@ -109,7 +109,7 @@ func (c *CachePolicy) Receive(ctx context.Context, chain chains.Chain, request p
 		localLog.
 			Debug().
 			Err(err).
-			Msgf("couldn't receive %s request from the cache connector %s with policy %s", request.Method(), c.connector.Id(), c.id)
+			Msgf("couldn't receive %s request from the cache connector %s with policy %s", request.Method().Name(), c.connector.Id(), c.id)
 		return nil, false
 	}
 	return object, len(object) > 0
@@ -213,14 +213,15 @@ func getCacheMethods(methodConfig string) mapset.Set[string] {
 }
 
 func (c *CachePolicy) methodMatched(request protocol.RequestHolder) bool {
+	requestMethod := request.Method().Name()
 	for _, method := range c.methods.ToSlice() {
 		if strings.Contains(method, "*") {
-			ok, _ := path.Match(method, request.Method())
+			ok, _ := path.Match(method, requestMethod)
 			if ok {
 				return true
 			}
 		} else {
-			if method == request.Method() {
+			if method == requestMethod {
 				return true
 			}
 		}

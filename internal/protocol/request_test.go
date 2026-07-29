@@ -18,7 +18,7 @@ func TestGenerateRequestHashWithoutParams(t *testing.T) {
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
 	request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "")
 
-	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte(request.Method())))
+	expected := fmt.Sprintf("%x", blake2b.Sum256([]byte(request.Method().Name())))
 	assert.Equal(t, expected, request.RequestHash())
 
 	request = protocol.NewStreamUpstreamJsonRpcRequest("1", body, "")
@@ -30,7 +30,7 @@ func TestGenerateRequestHashWithParams(t *testing.T) {
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: []byte(`"params"`)}
 	request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "")
 
-	expected := fmt.Sprintf("%x", blake2b.Sum256(append([]byte(`"params"`), []byte(request.Method())...)))
+	expected := fmt.Sprintf("%x", blake2b.Sum256(append([]byte(`"params"`), []byte(request.Method().Name())...)))
 	assert.Equal(t, expected, request.RequestHash())
 
 	body = protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: []byte(`"params"`)}

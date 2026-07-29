@@ -326,7 +326,10 @@ func (b *BaseStatsService) extractUnaryRequestKey(requestResult *protocol.UnaryR
 	for _, dim := range b.integrationClient.GetStatsSchema() {
 		switch dim {
 		case statsdata.Method:
-			key.Method = requestResult.GetMethod()
+			// The valid-UTF-8 form: this key is marshalled into proto3's
+			// "string method" field, where invalid bytes fail proto.Marshal
+			// and drop the whole stats batch.
+			key.Method = requestResult.GetMethod().ValidUTF8Name()
 		case statsdata.UpstreamId:
 			key.UpstreamId = requestResult.GetUpstreamId()
 		case statsdata.ReqKind:

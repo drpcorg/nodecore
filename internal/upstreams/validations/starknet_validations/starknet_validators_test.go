@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func isChainId(r protocol.RequestHolder) bool { return r.Method() == "starknet_chainId" }
-func isSyncing(r protocol.RequestHolder) bool { return r.Method() == "starknet_syncing" }
+func isChainId(r protocol.RequestHolder) bool { return r.Method().Name() == "starknet_chainId" }
+func isSyncing(r protocol.RequestHolder) bool { return r.Method().Name() == "starknet_syncing" }
 
 func TestStarknetChainValidatorValidOnMatch(t *testing.T) {
 	conn := mocks.NewConnectorMock()

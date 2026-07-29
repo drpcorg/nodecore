@@ -23,12 +23,12 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	request protocol.RequestHolder,
 ) ProcessedResponse {
 	if !request.SpecMethod().IsLocal() {
-		return &UnaryResponse{processedServerError(request, fmt.Errorf("method '%s' is not local", request.Method()))}
+		return &UnaryResponse{processedServerError(request, fmt.Errorf("method '%s' is not local", request.Method().Name()))}
 	}
 
 	chain := chains.GetChain(l.chain.String())
 	var localResult []byte
-	switch request.Method() {
+	switch request.Method().Name() {
 	case specs.EthChainId:
 		localResult = []byte(fmt.Sprintf(`"%s"`, chain.ChainId))
 	case specs.NetVersion:
@@ -65,7 +65,7 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	} else {
 		var response protocol.ResponseHolder = protocol.NewTotalFailureFromErr(
 			request.Id(),
-			fmt.Errorf("there is no local handler for method '%s'", request.Method()),
+			fmt.Errorf("there is no local handler for method '%s'", request.Method().Name()),
 			request.RequestType(),
 		)
 		return &UnaryResponse{

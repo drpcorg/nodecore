@@ -172,7 +172,7 @@ func newTronRestConnectorMock(t *testing.T, verb, path string, response protocol
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
 			r, ok := req.(*protocol.UpstreamRestRequest)
-			return ok && r.Method() == expectedMethod
+			return ok && r.Method().Name() == expectedMethod
 		})).
 		Return(response).
 		Once()

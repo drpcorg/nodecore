@@ -202,7 +202,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 	// Quorum requests may only be served by drpc upstreams via an HTTP-capable
 	// connector, since only they return QR signature headers we can verify.
 	if quorumRequested {
-		sorted := e.registry.GetSortedUpstreams(e.chain, request.Method())
+		sorted := e.registry.GetSortedUpstreams(e.chain, request.Method().Name())
 		drpcIds := filterQuorumCapableUpstreams(sorted, e.upstreamSupervisor, request.RequestType())
 		if len(drpcIds) == 0 {
 			return NewFailingStrategy(protocol.QuorumNotSupportedError("no DRPC upstream with an HTTP connector available for this chain"))
@@ -210,7 +210,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor).WithAdditionalMatchers(additionalMatchers).WithOrder(order)
 	}
 	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil {
-		return NewLabelGroupStrategy(e.chain, request.Method(), cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
+		return NewLabelGroupStrategy(e.chain, request.Method().Name(), cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
 			WithAdditionalMatchers(additionalMatchers).
 			WithOrder(order)
 	}
@@ -218,7 +218,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 	case config.BaseBalancingStrategy:
 		return NewBaseStrategyWithOptions(chainSupervisor, additionalMatchers, order)
 	default: // rating
-		return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
+		return NewRatingStrategy(e.chain, request.Method().Name(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
 	}
 }
 
@@ -259,10 +259,10 @@ func hasHttpConnector(up upstreams.Upstream, requestType protocol.RequestType) b
 func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
 		defer e.wg.Done()
-		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
+		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method().ValidUTF8Name()).Inc()
 
 		if request.SpecMethod() == nil {
-			response := protocol.NewTotalFailure(request, protocol.NotSupportedMethodError(request.Method()))
+			response := protocol.NewTotalFailure(request, protocol.NotSupportedMethodError(request.Method().Name()))
 			wrapper := &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				Response:   response,
@@ -296,7 +296,7 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 			e.verifyQuorumSignatures(ctx, request, resp.ResponseWrapper)
 
 			if protocol.IsRetryable(resp.ResponseWrapper.Response) {
-				requestErrorsMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
+				requestErrorsMetric.WithLabelValues(e.chain.String(), request.Method().ValidUTF8Name()).Inc()
 			}
 
 			reqObserver.AddResult(
@@ -417,7 +417,7 @@ func (e *BaseExecutionFlow) unsupportedBlockTagError(ctx context.Context, reques
 func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {
 	select {
 	case <-ctx.Done():
-		zerolog.Ctx(ctx).Trace().Msgf("request %s has been cancelled, dropping the response", request.Method())
+		zerolog.Ctx(ctx).Trace().Msgf("request %s has been cancelled, dropping the response", request.Method().Name())
 	case e.responseChan <- wrapper:
 	}
 }
@@ -482,20 +482,20 @@ func (e *BaseExecutionFlow) verifyQuorumSignatures(
 	}
 	if verifyErr == nil {
 		quorumVerificationsMetric.WithLabelValues(
-			e.chain.String(), request.Method(), "ok", "ok",
+			e.chain.String(), request.Method().ValidUTF8Name(), "ok", "ok",
 		).Inc()
 		return
 	}
 
 	reason := quorumVerifyReason(verifyErr)
 	quorumVerificationsMetric.WithLabelValues(
-		e.chain.String(), request.Method(), "fail", reason,
+		e.chain.String(), request.Method().ValidUTF8Name(), "fail", reason,
 	).Inc()
 
 	zerolog.Ctx(ctx).Warn().
 		Err(verifyErr).
 		Str("upstream", wrapper.UpstreamId).
-		Str("method", request.Method()).
+		Str("method", request.Method().Name()).
 		Str("reason", reason).
 		Msg("quorum signature verification failed")
 

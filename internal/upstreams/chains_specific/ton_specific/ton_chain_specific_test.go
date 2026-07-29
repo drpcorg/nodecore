@@ -116,7 +116,7 @@ func TestTonV3ParseBlockNoHash(t *testing.T) {
 
 func matchRestRequest(path string) func(protocol.RequestHolder) bool {
 	return func(req protocol.RequestHolder) bool {
-		return strings.Contains(req.Method(), path)
+		return strings.Contains(req.Method().Name(), path)
 	}
 }
 

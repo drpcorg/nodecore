@@ -75,7 +75,7 @@ func (b *BaseRequestRegistry) Register(
 	requestId, subType string,
 	doOnCLose DoOnClose,
 ) RequestOperation {
-	req := NewBaseRequestOp(ctx, requestId, request.Method(), subType, doOnCLose)
+	req := NewBaseRequestOp(ctx, requestId, request.Method().Name(), subType, doOnCLose)
 	select {
 	case <-b.ctx.Done():
 		req.Cancel()

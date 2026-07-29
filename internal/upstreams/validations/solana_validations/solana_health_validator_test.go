@@ -18,7 +18,7 @@ func matchSolanaGetHealthRequest(request protocol.RequestHolder) bool {
 		return false
 	}
 
-	return request.Method() == "getHealth" &&
+	return request.Method().Name() == "getHealth" &&
 		request.Id() == "1" &&
 		request.RequestType() == protocol.JsonRpc &&
 		strings.Contains(string(body), `"method":"getHealth"`) &&

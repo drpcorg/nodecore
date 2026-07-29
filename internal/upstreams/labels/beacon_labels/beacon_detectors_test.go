@@ -40,5 +40,5 @@ func TestBeaconNodeTypeRequestTemplate(t *testing.T) {
 	detector := beacon_labels.NewBeaconChainClientLabelsDetector(chains.GetChain("eth-beacon-chain").Chain)
 	req, err := detector.NodeTypeRequest()
 	require.NoError(t, err)
-	assert.Equal(t, "GET#/eth/v1/node/version", req.Method())
+	assert.Equal(t, "GET#/eth/v1/node/version", req.Method().Name())
 }
