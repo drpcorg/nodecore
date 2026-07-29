@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -24,8 +25,21 @@ type ServerConfig struct {
 	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies in front of
 	// nodecore. X-Forwarded-For is only honored when the direct peer matches one
 	// of these; otherwise the direct peer is used as the client IP. Empty (the
-	// default) means X-Forwarded-For is never trusted.
+	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
+	// as a client IP.
 	TrustedProxies []string `yaml:"trusted-proxies"`
+
+	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
+	trustedProxyPrefixes []netip.Prefix
+}
+
+// TrustedProxyPrefixes returns the trusted proxy list parsed at config load
+// time. It is empty when no trusted proxies are configured.
+func (s *ServerConfig) TrustedProxyPrefixes() []netip.Prefix {
+	if s == nil {
+		return nil
+	}
+	return s.trustedProxyPrefixes
 }
 
 type GrpcAuthConfig struct {
@@ -101,9 +115,11 @@ func (s *ServerConfig) validate() error {
 		return fmt.Errorf("health port %d is already in use", s.HealthPort)
 	}
 
-	if _, err := utils.ParseTrustedProxies(s.TrustedProxies); err != nil {
+	trustedProxyPrefixes, err := utils.ParseTrustedProxies(s.TrustedProxies)
+	if err != nil {
 		return fmt.Errorf("trusted-proxies validation error - %s", err.Error())
 	}
+	s.trustedProxyPrefixes = trustedProxyPrefixes
 
 	if err := s.TlsConfig.validate(); err != nil {
 		return fmt.Errorf("tls config validation error - %s", err.Error())

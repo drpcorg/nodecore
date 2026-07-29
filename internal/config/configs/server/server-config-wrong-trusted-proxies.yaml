@@ -1,0 +1,12 @@
+server:
+  port: 9095
+  trusted-proxies:
+    - not-an-ip
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
