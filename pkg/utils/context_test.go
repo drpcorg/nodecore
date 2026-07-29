@@ -66,6 +66,20 @@ func TestClientIP_RepeatedXFFHeadersAreOrdered(t *testing.T) {
 	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "6.6.6.6", "9.9.9.9, 10.0.0.2"))
 }
 
+func TestClientIP_MalformedHopIsSkipped(t *testing.T) {
+	// A hop that is not an IP carries no usable identity, so the walk continues
+	// left instead of returning the garbage token as the client.
+	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "9.9.9.9, garbage"))
+}
+
+func TestClientIP_MalformedHopWithPortIsSkipped(t *testing.T) {
+	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "9.9.9.9, 8.8.8.8:1234"))
+}
+
+func TestClientIP_AllHopsMalformedFallsBackToPeer(t *testing.T) {
+	assert.Equal(t, "10.0.0.1", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "garbage, unknown"))
+}
+
 func TestClientIP_AllHopsTrustedFallsBackToPeer(t *testing.T) {
 	assert.Equal(t, "10.0.0.1", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "10.0.0.2, 10.0.0.3"))
 }

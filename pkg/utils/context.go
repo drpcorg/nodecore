@@ -78,7 +78,8 @@ func ContextWithIps(ctx context.Context, request *http.Request, trustedProxies [
 
 func clientIP(request *http.Request, trustedProxies []netip.Prefix) string {
 	peer := remoteIP(request.RemoteAddr)
-	if !isTrustedProxy(peer, trustedProxies) {
+	peerAddr, err := netip.ParseAddr(peer)
+	if err != nil || !isTrustedProxy(peerAddr, trustedProxies) {
 		return peer
 	}
 	// The peer is a trusted proxy: take the right-most X-Forwarded-For entry that
@@ -86,12 +87,19 @@ func clientIP(request *http.Request, trustedProxies []netip.Prefix) string {
 	// right, so trusted hops are skipped from the right).
 	forwarded := forwardedForIPs(request)
 	for i := len(forwarded) - 1; i >= 0; i-- {
-		if !isTrustedProxy(forwarded[i], trustedProxies) {
+		addr, err := netip.ParseAddr(forwarded[i])
+		if err != nil {
+			// A malformed hop carries no usable identity, and treating it as the
+			// client would let anything upstream of a trusted proxy inject garbage.
+			// Skip it and keep walking left.
+			continue
+		}
+		if !isTrustedProxy(addr, trustedProxies) {
 			return forwarded[i]
 		}
 	}
-	// No untrusted forwarded entry (header absent or every hop trusted): the best
-	// available identity is the trusted peer itself.
+	// No untrusted forwarded entry (header absent, every hop trusted or malformed):
+	// the best available identity is the trusted peer itself.
 	return peer
 }
 
@@ -129,12 +137,8 @@ func remoteIP(remoteAddr string) string {
 	return localhostIP
 }
 
-func isTrustedProxy(ip string, trustedProxies []netip.Prefix) bool {
+func isTrustedProxy(addr netip.Addr, trustedProxies []netip.Prefix) bool {
 	if len(trustedProxies) == 0 {
-		return false
-	}
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
 		return false
 	}
 	addr = addr.Unmap()
