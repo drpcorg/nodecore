@@ -33,12 +33,6 @@ type RateLimitBudget struct {
 	Engine RateLimitEngine
 }
 
-// Allow takes the method name as the client sent it - rule matching and the
-// engine keys need it byte-exact. Only the metric labels take the valid-UTF-8
-// form, since prometheus panics on an invalid label value and would take the
-// process down with it. A tainted name cannot reach here today (callers gate on
-// MethodMatcher, which resolves against an explicit method set), so this is
-// defence in depth against that gate changing.
 func (b *RateLimitBudget) Allow(method string) (bool, error) {
 	methodLabel := utils.ToValidUTF8(method)
 	rateLimitRequestMetrics.WithLabelValues(b.Name, methodLabel).Inc()
