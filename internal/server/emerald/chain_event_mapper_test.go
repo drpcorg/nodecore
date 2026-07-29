@@ -77,7 +77,12 @@ func TestLowerBoundsToApi(t *testing.T) {
 		protocol.NewLowerBoundData(30, 300, protocol.StateBound),
 		protocol.NewLowerBoundData(40, 400, protocol.ReceiptsBound),
 		protocol.NewLowerBoundData(50, 500, protocol.BlockBound),
-		protocol.NewLowerBoundData(60, 600, protocol.UnknownBound),
+		protocol.NewLowerBoundData(60, 600, protocol.LogsBound),
+		protocol.NewLowerBoundData(70, 700, protocol.TraceBound),
+		protocol.NewLowerBoundData(80, 800, protocol.ProofBound),
+		protocol.NewLowerBoundData(90, 900, protocol.EpochBound),
+		protocol.NewLowerBoundData(100, 1000, protocol.BlobBound),
+		protocol.NewLowerBoundData(110, 1100, protocol.UnknownBound),
 	})
 
 	lowerBoundsEvent := event.GetLowerBoundsEvent()
@@ -88,7 +93,12 @@ func TestLowerBoundsToApi(t *testing.T) {
 		{LowerBoundTimestamp: 300, LowerBoundValue: 30, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_STATE},
 		{LowerBoundTimestamp: 400, LowerBoundValue: 40, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_RECEIPTS},
 		{LowerBoundTimestamp: 500, LowerBoundValue: 50, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_BLOCK},
-		{LowerBoundTimestamp: 600, LowerBoundValue: 60, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_UNSPECIFIED},
+		{LowerBoundTimestamp: 600, LowerBoundValue: 60, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_LOGS},
+		{LowerBoundTimestamp: 700, LowerBoundValue: 70, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_TRACE},
+		{LowerBoundTimestamp: 800, LowerBoundValue: 80, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_PROOF},
+		{LowerBoundTimestamp: 900, LowerBoundValue: 90, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_EPOCH},
+		{LowerBoundTimestamp: 1000, LowerBoundValue: 100, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_BLOB},
+		{LowerBoundTimestamp: 1100, LowerBoundValue: 110, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_UNSPECIFIED},
 	}, lowerBoundsEvent.LowerBounds)
 }
 

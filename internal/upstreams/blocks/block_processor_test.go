@@ -89,17 +89,23 @@ func TestBaseBlockProcessorDisableFinalizedBlock(t *testing.T) {
 	}`)
 	response := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
 
-	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
+	requested := make(chan struct{}, 10)
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response).Run(func(mock.Arguments) {
+		requested <- struct{}{}
+	})
 
 	processor := blocks.NewBaseBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
 
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		sub.Unsubscribe()
-	}()
+	select {
+	case <-requested:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the finalized block request")
+	}
+
+	sub.Unsubscribe()
 	_, ok := <-sub.Events
 
 	connector.AssertExpectations(t)

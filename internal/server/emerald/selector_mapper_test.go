@@ -91,3 +91,40 @@ func TestMapDshackleLowerHeightSelectorFailsClosedForNegativeValues(t *testing.T
 	negativeTimeOffset := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_LowerHeightSelector{LowerHeightSelector: &dshackle.LowerHeightSelector{Height: 100, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_STATE, TimeOffset: -30}}})
 	assert.Equal(t, protocol.RequestLowerHeightSelector{Height: 100, LowerBoundType: protocol.StateBound, TimeOffset: -30}, negativeTimeOffset)
 }
+
+func TestMapDshackleLowerBoundTypeRoundTrip(t *testing.T) {
+	tests := []struct {
+		name     string
+		apiType  dshackle.LowerBoundType
+		expected protocol.LowerBoundType
+	}{
+		{name: "slot", apiType: dshackle.LowerBoundType_LOWER_BOUND_SLOT, expected: protocol.SlotBound},
+		{name: "state", apiType: dshackle.LowerBoundType_LOWER_BOUND_STATE, expected: protocol.StateBound},
+		{name: "block", apiType: dshackle.LowerBoundType_LOWER_BOUND_BLOCK, expected: protocol.BlockBound},
+		{name: "tx", apiType: dshackle.LowerBoundType_LOWER_BOUND_TX, expected: protocol.TxBound},
+		{name: "receipts", apiType: dshackle.LowerBoundType_LOWER_BOUND_RECEIPTS, expected: protocol.ReceiptsBound},
+		{name: "logs", apiType: dshackle.LowerBoundType_LOWER_BOUND_LOGS, expected: protocol.LogsBound},
+		{name: "trace", apiType: dshackle.LowerBoundType_LOWER_BOUND_TRACE, expected: protocol.TraceBound},
+		{name: "proof", apiType: dshackle.LowerBoundType_LOWER_BOUND_PROOF, expected: protocol.ProofBound},
+		{name: "epoch", apiType: dshackle.LowerBoundType_LOWER_BOUND_EPOCH, expected: protocol.EpochBound},
+		{name: "blob", apiType: dshackle.LowerBoundType_LOWER_BOUND_BLOB, expected: protocol.BlobBound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			boundType, ok := mapDshackleLowerBoundType(tt.apiType)
+			require.True(t, ok)
+			assert.Equal(t, tt.expected, boundType)
+			assert.Equal(t, tt.apiType, lowerBoundTypeToApi(boundType))
+
+			selector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_LowerHeightSelector{LowerHeightSelector: &dshackle.LowerHeightSelector{Height: 42, LowerBoundType: tt.apiType}}})
+			assert.Equal(t, protocol.RequestLowerHeightSelector{Height: 42, LowerBoundType: tt.expected}, selector)
+		})
+	}
+}
+
+func TestMapDshackleLowerHeightSelectorFailsClosedForUnspecifiedBoundType(t *testing.T) {
+	selector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_LowerHeightSelector{LowerHeightSelector: &dshackle.LowerHeightSelector{Height: 42, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_UNSPECIFIED}}})
+	unsupported := selector.(protocol.RequestUnsupportedSelector)
+	assert.Contains(t, unsupported.Reason, "lower bound type LOWER_BOUND_UNSPECIFIED is not supported")
+}
