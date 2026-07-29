@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -32,8 +33,15 @@ type RateLimitBudget struct {
 	Engine RateLimitEngine
 }
 
+// Allow takes the method name as the client sent it - rule matching and the
+// engine keys need it byte-exact. Only the metric labels take the valid-UTF-8
+// form, since prometheus panics on an invalid label value and would take the
+// process down with it. A tainted name cannot reach here today (callers gate on
+// MethodMatcher, which resolves against an explicit method set), so this is
+// defence in depth against that gate changing.
 func (b *RateLimitBudget) Allow(method string) (bool, error) {
-	rateLimitRequestMetrics.WithLabelValues(b.Name, method).Inc()
+	methodLabel := utils.ToValidUTF8(method)
+	rateLimitRequestMetrics.WithLabelValues(b.Name, methodLabel).Inc()
 	items := make([]RateLimitCommand, 0)
 	for i, rule := range b.Rules {
 		if rule.Check.match(method) {
@@ -45,7 +53,7 @@ func (b *RateLimitBudget) Allow(method string) (bool, error) {
 	}
 	allowed, err := b.Engine.Execute(items)
 	if !allowed {
-		rateLimitExceededMetrics.WithLabelValues(b.Name, method).Inc()
+		rateLimitExceededMetrics.WithLabelValues(b.Name, methodLabel).Inc()
 	}
 	return allowed, err
 }

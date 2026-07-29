@@ -47,12 +47,21 @@ keys, upstream URLs).
 ### Non-goals
 
 - **Label cardinality.** `nodecore_request_requests_total{chain,method}` and
-  `errors_total{chain,method}` take the client's method before any validation,
-  so N distinct paths still mint N series. This change makes the label always
-  *valid*, not *bounded*. The bounded breakdown already exists downstream as
-  `nodecore_upstream_requests_total{chain,method,upstream}`, gated behind a
-  matched method. Deliberately excluded — it changes dashboards.
-- Rejecting invalid-UTF-8 method names at the HTTP boundary (see §8).
+  `errors_total{chain,method}` take the client's method before any validation, so
+  N distinct paths still mint N series. This change makes every label always
+  *valid*, not *bounded*. Note the upstream-side metrics are **not** a bounded
+  alternative: because the dimension hook also fires for no-upstream results
+  (§5), each distinct unknown name mints a
+  `nodecore_upstream_requests_total{…,upstream="NoUpstream"}` series plus a full
+  `nodecore_upstream_request_duration` histogram (~16 series) plus a
+  never-evicted `upstreamDimensionsMap` entry holding a quantile tracker — memory
+  as well as series count, for any unknown name, valid UTF-8 or not. All of that
+  is pre-existing and unchanged here; bounding it changes dashboards, so whoever
+  picks it up must have dimensions in scope and not just the two counters.
+- Rejecting invalid-UTF-8 method names at the HTTP boundary. RFC 3986 §2.5 leaves
+  percent-decoded octet encoding undefined, so it would ban something permitted,
+  and it would cover only the method name — query params and headers may
+  legitimately carry non-UTF-8 bytes and are forwarded as they are.
 - Changing anything under `internal/stats` or `internal/integration`.
 
 ## 3. Key decisions (settled → implemented)
@@ -63,7 +72,7 @@ keys, upstream URLs).
 | 2 | Accessor naming | `Name()` / `ValidUTF8Name()`. Named after the *guarantee*, not a consumer: the safe form has two unrelated consumers (Prometheus panic, proto3 marshal failure), so `LabelName()` would mis-scope the stats use. Also echoes `strings.ToValidUTF8`, the call that implements it |
 | 3 | `String()` method | **None, deliberately.** Every call site names the form it wants; nothing is implicitly sanitized |
 | 4 | Sanitizer | `strings.ToValidUTF8(s, "�")` via `utils.ToValidUTF8` — one definition of the replacement character. Returns valid input unchanged with no allocation, and collapses each invalid *run* to a single `�` |
-| 5 | Where to sanitize | Only the 11 sites where invalid bytes actually break something (§5). Logs and client-facing error text keep the raw form |
+| 5 | Where to sanitize | Only where invalid bytes actually break something — 12 conversions feeding 13 label arguments and one proto-bound field (§5). Logs and client-facing error text keep the raw form |
 | 6 | Observer and results | Carry the **whole `RequestMethod`** — `RequestObserver.method`, `RequestResult.withMethod`, `UnaryRequestResult.method` and `GetMethod()` are all the struct. The conversion happens where the value is consumed (the stats key builder), so it is obvious at the point of use which form is wanted instead of being hidden in a setter |
 | 7 | Comparability | Plain comparable struct, so it can still serve as a map key |
 | 8 | Type name | `RequestMethod`, not `Method` — `pkg/methods` already exports `Method`, and `RequestHolder` has `Method()` and `SpecMethod() *specs.Method` one line apart |
@@ -122,7 +131,9 @@ request's own field and the observer, so the two forms are derived exactly once
 per request and cannot diverge. `RequestHolder.Method()` returns it — only two
 implementations and no mocks, so the interface change is contained.
 
-**The valid form is used at exactly 11 sites:**
+**The valid form is used at 12 conversion sites** (8 `ValidUTF8Name()`, 4
+`utils.ToValidUTF8`), covering 13 Prometheus label arguments and the proto-bound
+stats key:
 
 | Site | Failure it prevents |
 |---|---|
@@ -131,13 +142,32 @@ implementations and no mocks, so the interface change is contained.
 | `caches/cache_processor.go` — `requestCache` | same |
 | `dimensions/dimension_hook.go` — the `GetUpstreamDimensions` call | same, but reached as `key.method` rather than `request.Method()` |
 | `ws/registry_commands.go` — the three `jsonRpcWsConnectionsMetric` label arguments | same, from a *different* taint source (see below) |
+| `ratelimiter/budget.go` — the `rate_limit_budget_requests` / `_exceeded` labels | same; unreachable today, kept as defence in depth (see below) |
 | `stats/base_stats_service.go` — the `StatsKey.Method` assignment | `proto.Marshal` failure dropping a whole `StatsBatch` |
 
 `internal/dimensions` itself needs no change: `GetUpstreamDimensions` has exactly
 one non-test caller and `upstreamDimensionKey.method` is only ever a Prometheus
-label, so sanitizing at the hook keeps the package's `string` API. Collapsing
-invalid names there is harmless — the hook only fires for methods that reached an
-upstream, which requires passing `MethodMatcher`.
+label, so sanitizing at the hook keeps the package's `string` API.
+
+**That sanitization is load-bearing, not a precaution.** `DimensionHook` *does* fire
+with a tainted method: `execution_flow.go` calls `reqObserver.AddResult` for every
+`*UnaryResponse` — including one carrying `UpstreamId == NoUpstream` — and
+`responseReceive` dispatches the hooks unconditionally. A JSON-RPC method with an
+invalid byte resolves a *fallback* spec method, so it passes the
+`SpecMethod() == nil` gate, then fails `MethodMatcher` and arrives here as a
+no-upstream result. Verified live: three tainted names each produced
+`nodecore_upstream_requests_total{chain="ethereum",method="eth_taintN�",upstream="NoUpstream"}`.
+This is also why §2's cardinality non-goal covers the upstream-side metrics, not
+just the two client-facing counters.
+
+`ratelimiter.Allow` is the same shape as the dimension hook: a function that is both
+a semantic consumer (rule matching, engine keys) and a label sink
+(`rate_limit_budget_requests`, `rate_limit_budget_exceeded`). Its two label
+arguments take the valid form; the rules and engine keys keep the raw name. Unlike
+the dimension hook this one really is unreachable today — callers gate on
+`matched.Type() == SuccessType`, hence `MethodMatcher` against an explicit method
+set — so it is defence in depth, one `MethodMatcher` regression away from
+resurrecting the crash class otherwise.
 
 The `proto.Marshal` path is fixed at its single sink. `RequestObserver` and
 `UnaryRequestResult` both hold the whole `RequestMethod` — nothing along the way
@@ -215,19 +245,3 @@ comes from the observer and is therefore already valid.
 - `make test` passes except the two Docker-backed `caches/*_e2e` packages, which
   fail identically on a clean `origin/main` worktree in this environment.
   `golangci-lint run ./...` → 0 issues.
-
-## 8. Open questions / future
-
-- **Cardinality** (§2) — pick between dropping `method` from the two
-  client-facing counters and collapsing names outside `ChainSupervisor.GetMethod`
-  (spec ∪ `methods.enable`) to a constant. Needs a dashboard decision.
-- **Rejecting invalid UTF-8 at the boundary** was considered and rejected: it is
-  the smallest fix, but RFC 3986 §2.5 leaves percent-decoded octet encoding
-  undefined, so it would ban something permitted and close the door on
-  passthrough of unmodelled REST routes (which `rest_parser.go` hints at
-  wanting). It would also only cover the method name — query params and headers
-  may legitimately carry non-UTF-8 bytes and are forwarded.
-- **No lint/AST backstop** was added: a syntactic rule cannot see through a
-  struct field or a helper (it would have missed the `dims.go` case), and the
-  type already puts the safe form within reach at every sink. Revisit only if a
-  regression actually occurs.

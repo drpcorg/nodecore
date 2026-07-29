@@ -277,3 +277,34 @@ func TestRateLimitBudget_Allow_EmptyRules(t *testing.T) {
 		assert.True(t, allowed)
 	}
 }
+
+// A method name with invalid UTF-8 must not reach the budget's prometheus labels:
+// client_golang panics on such a label value, and nothing recovers on the request
+// path. The rule still matches on the raw name.
+func TestRateLimitBudget_Allow_InvalidUTF8MethodDoesNotPanic(t *testing.T) {
+	cfg := &config.RateLimitBudget{
+		Name: "test-budget",
+		Config: &config.RateLimiterConfig{
+			Rules: []config.RateLimitRule{
+				{
+					Method:   "eth_" + string([]byte{0x80}),
+					Requests: 1,
+					Period:   time.Second,
+				},
+			},
+		},
+	}
+
+	budget := NewRateLimitBudget(cfg, NewRateLimitMemoryEngine())
+
+	assert.NotPanics(t, func() {
+		allowed, err := budget.Allow("eth_" + string([]byte{0x80}))
+		require.NoError(t, err)
+		assert.True(t, allowed)
+
+		// the rule matched the raw name, so the second call exhausts the budget
+		allowed, err = budget.Allow("eth_" + string([]byte{0x80}))
+		require.NoError(t, err)
+		assert.False(t, allowed)
+	})
+}

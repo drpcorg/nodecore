@@ -3,6 +3,7 @@ package utils
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 func WildcardToRegex(pattern string) string {
@@ -38,5 +39,5 @@ func MatchWildcards(pattern string, value string) bool {
 //
 // Valid input is returned as is, without allocating.
 func ToValidUTF8(s string) string {
-	return strings.ToValidUTF8(s, "�")
+	return strings.ToValidUTF8(s, string(utf8.RuneError))
 }
