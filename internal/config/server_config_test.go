@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 
@@ -28,6 +29,37 @@ func TestServerConfig(t *testing.T) {
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
+}
+
+func TestServerConfigTrustedProxiesParsedOnce(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-trusted-proxies.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"10.0.0.0/8", "192.168.1.1"}, appConfig.ServerConfig.TrustedProxies)
+	assert.Equal(
+		t,
+		[]netip.Prefix{
+			netip.MustParsePrefix("10.0.0.0/8"),
+			netip.MustParsePrefix("192.168.1.1/32"),
+		},
+		appConfig.ServerConfig.TrustedProxyPrefixes(),
+	)
+}
+
+func TestServerConfigNoTrustedProxiesThenNoPrefixes(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Empty(t, appConfig.ServerConfig.TrustedProxyPrefixes())
+}
+
+func TestServerConfigWrongTrustedProxyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-wrong-trusted-proxies.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, `trusted-proxies validation error - invalid trusted proxy IP "not-an-ip"`)
 }
 
 func TestServerConfigEqualMetricsPortThenError(t *testing.T) {

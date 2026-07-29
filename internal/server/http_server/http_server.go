@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
@@ -97,6 +98,10 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 
 	httpGroup := httpServer.Group("/queries/:chain")
 
+	// X-Forwarded-For is only trusted from configured reverse proxies. The list is
+	// parsed and validated once at config load time.
+	trustedProxies := trustedProxiesFromConfig(appCtx)
+
 	requestHandler := func(c echo.Context) error {
 		if c.Request().Method == http.MethodOptions {
 			return handleCorsOptions(c)
@@ -105,7 +110,7 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		c.Request().SetPathValue("key", c.Param("key"))
 		chain := c.Param("chain")
 		restPath := c.Param("*") // for rest requests
-		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
+		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request(), trustedProxies)
 		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
 		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
@@ -140,6 +145,15 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 	httpGroup.Any("", requestHandler)
 
 	return httpServer
+}
+
+// trustedProxiesFromConfig safely extracts the parsed trusted-proxy prefixes,
+// tolerating a nil app/server config.
+func trustedProxiesFromConfig(appCtx *server_ctx.ApplicationServerContext) []netip.Prefix {
+	if appCtx == nil || appCtx.AppConfig == nil {
+		return nil
+	}
+	return appCtx.AppConfig.ServerConfig.TrustedProxyPrefixes()
 }
 
 var corsHeaders = []lo.Tuple2[string, string]{

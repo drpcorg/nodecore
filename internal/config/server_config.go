@@ -3,11 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type ServerConfig struct {
@@ -20,6 +22,24 @@ type ServerConfig struct {
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
 	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
 	TorUrl          string           `yaml:"tor-url"`
+	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies in front of
+	// nodecore. X-Forwarded-For is only honored when the direct peer matches one
+	// of these; otherwise the direct peer is used as the client IP. Empty (the
+	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
+	// as a client IP.
+	TrustedProxies []string `yaml:"trusted-proxies"`
+
+	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
+	trustedProxyPrefixes []netip.Prefix
+}
+
+// TrustedProxyPrefixes returns the trusted proxy list parsed at config load
+// time. It is empty when no trusted proxies are configured.
+func (s *ServerConfig) TrustedProxyPrefixes() []netip.Prefix {
+	if s == nil {
+		return nil
+	}
+	return s.trustedProxyPrefixes
 }
 
 type GrpcAuthConfig struct {
@@ -94,6 +114,12 @@ func (s *ServerConfig) validate() error {
 	if ports.Contains(s.HealthPort) && s.HealthPort != 0 {
 		return fmt.Errorf("health port %d is already in use", s.HealthPort)
 	}
+
+	trustedProxyPrefixes, err := utils.ParseTrustedProxies(s.TrustedProxies)
+	if err != nil {
+		return fmt.Errorf("trusted-proxies validation error - %s", err.Error())
+	}
+	s.trustedProxyPrefixes = trustedProxyPrefixes
 
 	if err := s.TlsConfig.validate(); err != nil {
 		return fmt.Errorf("tls config validation error - %s", err.Error())

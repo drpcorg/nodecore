@@ -145,9 +145,9 @@ local:
 The `local` key type is the simplest form of key management. It allows you to define access keys directly in the configuration file, without relying on an external service. This is useful for quick setups and internal environments.
 
 * `key` - The actual access key value. Any string. Should be passed via the `"X-Nodecore-Key"` header OR via a path param in your URL (`https://your-site.com/queries/ethereum/api-key/bXkta2V5`). **_Required_**, **_Unique_**
-* `settings.allowed-ips` - Restricts key usage to the listed IP addresses. When validating requests, nodecore determines the client IPs in the following order:
-  * It first checks the `X-Forwarded-For` header (commonly set by proxies or load balancers). If present, all comma-separated values are collected as candidate IPs
-  * If the header is missing or empty, it falls back to the remote address of the TCP connection
+* `settings.allowed-ips` - Restricts key usage to the listed IP addresses. How nodecore determines the client IP depends on the `server.trusted-proxies` setting - see [Client IP resolution](02-server-config.md#client-ip-resolution) for the full rules:
+  * If `server.trusted-proxies` is configured, a single client IP is resolved: the remote address of the TCP connection, or - when that address is one of the trusted proxies - the right-most `X-Forwarded-For` entry that is not itself a trusted proxy. `X-Forwarded-For` sent by a directly connected client is ignored
+  * If `server.trusted-proxies` is empty (the default), the legacy behavior applies: all comma-separated `X-Forwarded-For` values are collected as candidate IPs, and the remote address is used only when the header is missing or empty. In this mode a directly connected client can satisfy `allowed-ips` by sending its own `X-Forwarded-For` header, so configure `server.trusted-proxies` if you rely on this restriction
   * If the remote address cannot be parsed, the request is assumed to come from `127.0.0.1`
 * `settings.methods.allowed` - A whitelist of RPC methods that can be called with this key
 * `settings.methods.forbidden` - A blacklist of RPC methods that cannot be called with this key
