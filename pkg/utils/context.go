@@ -87,20 +87,34 @@ func clientIP(request *http.Request, trustedProxies []netip.Prefix) string {
 	// right, so trusted hops are skipped from the right).
 	forwarded := forwardedForIPs(request)
 	for i := len(forwarded) - 1; i >= 0; i-- {
-		addr, err := netip.ParseAddr(forwarded[i])
-		if err != nil {
+		addr, ok := parseForwardedHop(forwarded[i])
+		if !ok {
 			// A malformed hop carries no usable identity, and treating it as the
 			// client would let anything upstream of a trusted proxy inject garbage.
 			// Skip it and keep walking left.
 			continue
 		}
 		if !isTrustedProxy(addr, trustedProxies) {
-			return forwarded[i]
+			return addr.String()
 		}
 	}
 	// No untrusted forwarded entry (header absent, every hop trusted or malformed):
 	// the best available identity is the trusted peer itself.
 	return peer
+}
+
+// parseForwardedHop parses a single X-Forwarded-For entry. The entry is normally
+// a bare IP, but some gateways (Azure Application Gateway among them) append the
+// client as ip:port, so that form is accepted too - dropping such a hop would
+// leave an attacker-prepended entry to the right of it as the resolved client.
+func parseForwardedHop(hop string) (netip.Addr, bool) {
+	if addr, err := netip.ParseAddr(hop); err == nil {
+		return addr, true
+	}
+	if addrPort, err := netip.ParseAddrPort(hop); err == nil {
+		return addrPort.Addr(), true
+	}
+	return netip.Addr{}, false
 }
 
 // forwardedForIPs returns the X-Forwarded-For entries in wire order, left to

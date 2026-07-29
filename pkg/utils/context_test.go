@@ -72,8 +72,26 @@ func TestClientIP_MalformedHopIsSkipped(t *testing.T) {
 	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "9.9.9.9, garbage"))
 }
 
-func TestClientIP_MalformedHopWithPortIsSkipped(t *testing.T) {
-	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "9.9.9.9, 8.8.8.8:1234"))
+func TestClientIP_HopWithPortIsParsed(t *testing.T) {
+	// Some gateways (Azure Application Gateway among them) append the client as
+	// ip:port, so the port is stripped rather than the hop discarded.
+	assert.Equal(t, "8.8.8.8", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "9.9.9.9, 8.8.8.8:1234"))
+}
+
+func TestClientIP_IPv6HopWithPortIsParsed(t *testing.T) {
+	assert.Equal(t, "2001:db8::99", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "[2001:db8::99]:41237"))
+}
+
+func TestClientIP_AttackerPrependedEntryIgnoredWhenProxyAppendsPort(t *testing.T) {
+	// Attacker sends "X-Forwarded-For: 6.6.6.6" and the gateway appends the real
+	// client as ip:port. Discarding that hop would hand the allowlist the spoofed
+	// 6.6.6.6, so it must be parsed and win as the right-most untrusted entry.
+	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "6.6.6.6, 9.9.9.9:41237"))
+}
+
+func TestClientIP_TrustedHopWithPortIsSkipped(t *testing.T) {
+	// A trusted hop stays trusted when it carries a port.
+	assert.Equal(t, "9.9.9.9", resolvedIP(t, "10.0.0.1:5555", []string{"10.0.0.0/8"}, "9.9.9.9, 10.0.0.2:1234"))
 }
 
 func TestClientIP_AllHopsMalformedFallsBackToPeer(t *testing.T) {

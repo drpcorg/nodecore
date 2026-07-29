@@ -70,6 +70,8 @@ The client IP is used for the `allowed-ips` check of [local](03-auth.md#local-ke
 2. If the direct peer **is** a trusted proxy, the `X-Forwarded-For` chain (all values of the header, in wire order) is walked from right to left and the first entry that is not itself a trusted proxy becomes the client IP. Because a proxy appends the IP it received the connection from, entries that an attacker prepended are ignored.
 3. If every forwarded entry is a trusted proxy, or the header is absent, the direct peer is used.
 
+Entries are accepted both as a bare IP and in the `ip:port` form that some gateways (for example Azure Application Gateway) append; the port is discarded. An entry that is neither is skipped, and the walk continues to its left.
+
 **`trusted-proxies` is empty (the default).** The legacy behavior is preserved for backwards compatibility: every `X-Forwarded-For` entry is treated as a candidate client IP, and the direct peer is used only when the header is absent.
 
 > [!WARNING]
