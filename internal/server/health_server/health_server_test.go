@@ -110,6 +110,15 @@ func (h *healthChainSupervisorStub) PublishUpstreamEvent(event protocol.Upstream
 func (h *healthChainSupervisorStub) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return nil
 }
+func (h *healthChainSupervisorStub) SubscribeNodeGroupStates(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
+	return nil
+}
+func (h *healthChainSupervisorStub) GetNodeGroupStates() map[string]upstreams.ChainSupervisorState {
+	return nil
+}
+func (h *healthChainSupervisorStub) GetNodeGroupState(string) (upstreams.ChainSupervisorState, bool) {
+	return upstreams.ChainSupervisorState{}, false
+}
 
 var _ upstreams.ChainSupervisor = (*healthChainSupervisorStub)(nil)
 var _ upstreams.UpstreamSupervisor = (*healthSupervisorStub)(nil)

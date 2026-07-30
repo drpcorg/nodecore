@@ -55,7 +55,7 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
 	}
 
-	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream)
+	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream, request.GetSeparation())
 }
 
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {

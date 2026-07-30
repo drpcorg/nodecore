@@ -12,8 +12,8 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const testResyncInterval = 50 * time.Millisecond
@@ -38,7 +38,7 @@ func TestSubscribeChainStatus_PeriodicResyncResendsStateWithoutHead(t *testing.T
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatusWithResync(upstreamSupervisor, stream, testResyncInterval)
+		done <- emerald.SubscribeChainStatusWithResync(upstreamSupervisor, stream, testResyncInterval, false)
 	}()
 
 	require.Eventually(t, func() bool {
@@ -102,7 +102,7 @@ func TestSubscribeChainStatus_NoResyncBeforeFirstFullResponse(t *testing.T) {
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatusWithResync(upstreamSupervisor, stream, testResyncInterval)
+		done <- emerald.SubscribeChainStatusWithResync(upstreamSupervisor, stream, testResyncInterval, false)
 	}()
 
 	assert.Never(t, func() bool {

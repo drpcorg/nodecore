@@ -42,6 +42,8 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+  **Separation mode** (`separation: true` on the request): in addition to the merged per-network view, the stream carries the same lifecycle per *node group* - the upstreams of a chain that share a `client_type` label and an identical supported call-method set (subscription methods don't affect grouping). Group updates are regular `ChainDescription` events tagged with `node_group_id` (an opaque `"<client_type>:<methods_hash8>"` string, e.g. `erigon:3fa9c21b`; empty = network level, and clients must not parse it). Semantics mirror the network level: a head-gated full response per group after the network full, then group-scoped deltas, with groups included in the periodic resync. Group membership is dynamic - label re-detection or a method ban moves an upstream between groups - and when a group's last member leaves, its `ChainStatus` goes unavailable and the group disappears. Per-group heads are observability only: lag validation keeps measuring upstreams against the network head. With the flag off (the default) no group-tagged events are sent and the stream behaves exactly as before.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.

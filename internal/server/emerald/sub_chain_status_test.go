@@ -32,10 +32,12 @@ type subscribeChainStatusStream struct {
 }
 
 type fakeChainSupervisor struct {
-	chain      chains.Chain
-	mu         sync.RWMutex
-	state      upstreams.ChainSupervisorState
-	subManager *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
+	chain           chains.Chain
+	mu              sync.RWMutex
+	state           upstreams.ChainSupervisorState
+	groupStates     map[string]upstreams.ChainSupervisorState
+	subManager      *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
+	groupSubManager *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
 }
 
 func newSubscribeChainStatusStream() *subscribeChainStatusStream {
@@ -86,9 +88,11 @@ func (s *subscribeChainStatusStream) Sent() <-chan struct{} {
 
 func newFakeChainSupervisor(chain chains.Chain, state upstreams.ChainSupervisorState) *fakeChainSupervisor {
 	return &fakeChainSupervisor{
-		chain:      chain,
-		state:      state,
-		subManager: utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake-chain-supervisor"),
+		chain:           chain,
+		state:           state,
+		groupStates:     make(map[string]upstreams.ChainSupervisorState),
+		subManager:      utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake-chain-supervisor"),
+		groupSubManager: utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake-chain-supervisor-groups"),
 	}
 }
 
@@ -135,6 +139,47 @@ func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*u
 	return s.subManager.Subscribe(name)
 }
 
+func (s *fakeChainSupervisor) SubscribeNodeGroupStates(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
+	return s.groupSubManager.Subscribe(name)
+}
+
+func (s *fakeChainSupervisor) GetNodeGroupStates() map[string]upstreams.ChainSupervisorState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	states := make(map[string]upstreams.ChainSupervisorState, len(s.groupStates))
+	for id, state := range s.groupStates {
+		states[id] = state
+	}
+	return states
+}
+
+func (s *fakeChainSupervisor) GetNodeGroupState(id string) (upstreams.ChainSupervisorState, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	state, ok := s.groupStates[id]
+	return state, ok
+}
+
+func (s *fakeChainSupervisor) SetGroupState(id string, state upstreams.ChainSupervisorState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.groupStates[id] = state
+}
+
+func (s *fakeChainSupervisor) DeleteGroupState(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.groupStates, id)
+}
+
+func (s *fakeChainSupervisor) PublishGroupStateEvent(nodeGroupId string, wrappers ...upstreams.ChainSupervisorStateWrapper) {
+	s.groupSubManager.Publish(&upstreams.ChainSupervisorStateWrapperEvent{Wrappers: wrappers, NodeGroupId: nodeGroupId})
+}
+
 func (s *fakeChainSupervisor) SetState(state upstreams.ChainSupervisorState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -177,7 +222,7 @@ func newChainState(chain chains.Chain, head protocol.Block, methods []string, ca
 }
 
 func TestSubscribeChainStatus_NilSupervisorReturnsError(t *testing.T) {
-	err := emerald.SubscribeChainStatus(nil, newSubscribeChainStatusStream())
+	err := emerald.SubscribeChainStatus(nil, newSubscribeChainStatusStream(), false)
 
 	require.Error(t, err)
 	assert.Equal(t, "upstream supervisor cannot be nil", err.Error())
@@ -195,7 +240,7 @@ func TestSubscribeChainStatus_SendsFullResponseForExistingSupervisor(t *testing.
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 
 	require.Eventually(t, func() bool {
@@ -226,7 +271,7 @@ func TestSubscribeChainStatus_WaitsForHeadBeforeFirstResponse(t *testing.T) {
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 
 	select {
@@ -264,7 +309,7 @@ func TestSubscribeChainStatus_SubscribesAddedChainSupervisor(t *testing.T) {
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 
 	head := protocol.NewBlockWithHeight(321)
@@ -300,7 +345,7 @@ func TestSubscribeChainStatus_SendsDetailedFullResponseEvents(t *testing.T) {
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 
 	require.Eventually(t, func() bool {
@@ -370,7 +415,7 @@ func TestSubscribeChainStatus_SendsIncrementalEventsForStateChanges(t *testing.T
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 
 	require.Eventually(t, func() bool {
@@ -459,7 +504,7 @@ func TestSubscribeChainStatus_IgnoresNilAddedChainSupervisor(t *testing.T) {
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 	time.Sleep(50 * time.Millisecond)
 
@@ -485,7 +530,7 @@ func TestSubscribeChainStatus_DoesNotSubscribeSameChainTwice(t *testing.T) {
 	stream := newSubscribeChainStatusStream()
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream)
+		done <- emerald.SubscribeChainStatus(upstreamSupervisor, stream, false)
 	}()
 
 	require.Eventually(t, func() bool {
