@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
@@ -96,6 +97,12 @@ func (r *RestHandler) GetRequestType() protocol.RequestType {
 
 var _ RequestHandler = (*RestHandler)(nil)
 
+// errNonUtf8Method rejects a method name that is not valid UTF-8. Such a name
+// reaches a Prometheus label value, and WithLabelValues panics on invalid
+// UTF-8; nothing in this process recovers, so it would crash nodecore (first
+// hit: execution_flow.go:262, inside a detached goroutine).
+var errNonUtf8Method = errors.New("method name is not a valid utf-8 string")
+
 type JsonRpcHandler struct {
 	preReq          *Request
 	idMap           map[string]lo.Tuple2[json.RawMessage, int]
@@ -131,6 +138,12 @@ func NewJsonRpcHandler(preReq *Request, requestBody io.Reader, isWsCtx bool) (*J
 		}
 	} else {
 		return nil, decoder.SyntaxError{}
+	}
+
+	for i := range jsonRpcRequests {
+		if !utf8.ValidString(jsonRpcRequests[i].Method) {
+			return nil, errNonUtf8Method
+		}
 	}
 
 	return &JsonRpcHandler{

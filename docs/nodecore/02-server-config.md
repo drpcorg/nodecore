@@ -79,6 +79,10 @@ Entries are accepted both as a bare IP and in the `ip:port` form that some gatew
 
 If the peer address cannot be parsed as an IP, `127.0.0.1` is used.
 
+## Request parsing
+
+A request whose method name is not valid UTF-8 is rejected during parsing.
+
 ## Health endpoints
 
 When `health-port` is configured, nodecore exposes lightweight Kubernetes-friendly health endpoints on that port:

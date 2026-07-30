@@ -180,6 +180,36 @@ func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
+// The chain param is used verbatim as a Prometheus label on the WebSocket path,
+// and WithLabelValues panics on invalid UTF-8. %FF leaves URL.RawPath empty, so
+// echo routes on the decoded path and the param carries the raw byte - reject it
+// before the upgrade rather than panicking on a hijacked connection. The lowercase
+// %ff form populates RawPath and arrives as three ASCII characters, so it is not a
+// repro and is not rejected.
+func TestHttpServerNonUtf8ChainThenErr(t *testing.T) {
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	client := http.DefaultClient
+	body := `{"jsonrpc" : "2.0","id" : 42,"method" : "eth_chainId"}`
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/%FFoptimism", bytes.NewReader([]byte(body)))
+	assert.NoError(t, err)
+
+	resp, err := client.Do(req)
+	assert.NoError(t, err)
+
+	respBody, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, `{"id":0,"jsonrpc":"2.0","error":{"message":"couldn't parse a request","code":400}}`, string(respBody))
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
 func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)

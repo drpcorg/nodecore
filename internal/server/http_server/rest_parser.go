@@ -2,6 +2,7 @@ package http_server
 
 import (
 	"net/http"
+	"unicode/utf8"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -31,8 +32,8 @@ var reservedQueryParams = mapset.NewThreadUnsafeSet[string](
 //     reservedQueryParams stripped so nodecore's own control plane never
 //     leaks downstream.
 //
-// Returns errRestPathNotFound when the spec has REST routes but the path
-// matches none of them. The HTTP layer maps that to a 404 / parse error.
+// Returns errNonUtf8Method when the resulting methodTemplate is not valid
+// UTF-8, which can only happen on the fallback branch above.
 func parseRestRequest(req *http.Request, restPath, specName string) (
 	methodTemplate string,
 	requestParams *protocol.RequestParams,
@@ -48,6 +49,15 @@ func parseRestRequest(req *http.Request, restPath, specName string) (
 		// Spec doesn't model REST routes (yet). Use the literal as the
 		// canonical name so stats/caching key off something deterministic.
 		methodTemplate = fullPath
+	}
+
+	// One check covers both switch branches. The matched-template branch passes
+	// trivially - templates come from the embedded spec JSON - so in practice this
+	// only ever rejects the "<VERB>#/<restPath>" fallback, where the client's bytes
+	// become the method name. Wildcard captures, headers, and query values are not
+	// checked: they never become a method name or a metric label.
+	if !utf8.ValidString(methodTemplate) {
+		return "", nil, errNonUtf8Method
 	}
 
 	requestParams = &protocol.RequestParams{

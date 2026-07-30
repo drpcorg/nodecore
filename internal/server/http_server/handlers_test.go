@@ -144,3 +144,37 @@ func TestRestHandlerPromotesQueryAndHeadersIntoRequestParams(t *testing.T) {
 	assert.Equal(t, []string{"one", "two"}, rp.Headers["X-Multi"],
 		"repeated header values must survive the round-trip")
 }
+
+// The two method-rejection cases live in handlers_utf8_test.go (internal test
+// package) so they can assert the sentinel with errors.Is. The accept-side cases
+// below assert no error, so they stay here.
+
+// Valid multi-byte UTF-8 is not invalid UTF-8. Only malformed byte sequences are
+// rejected, so a non-ASCII but well-formed name must pass.
+func TestJsonRpcHandlerAcceptsMultiByteUtf8Method(t *testing.T) {
+	body := `{"id":1,"jsonrpc":"2.0","method":"eth_日本語","params":[]}`
+
+	handler, err := http_server.NewJsonRpcHandler(
+		&http_server.Request{Chain: "ethereum"},
+		strings.NewReader(body),
+		false,
+	)
+
+	require.NoError(t, err, "well-formed multi-byte UTF-8 must not be rejected")
+	assert.NotNil(t, handler)
+}
+
+// The rule is method-only. Junk bytes in params never become a method name or a
+// metric label, so they must flow through untouched.
+func TestJsonRpcHandlerAcceptsNonUtf8Params(t *testing.T) {
+	body := "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[\"\xff\"]}"
+
+	handler, err := http_server.NewJsonRpcHandler(
+		&http_server.Request{Chain: "ethereum"},
+		strings.NewReader(body),
+		false,
+	)
+
+	require.NoError(t, err, "invalid bytes outside the method name must not reject the request")
+	assert.NotNil(t, handler)
+}
