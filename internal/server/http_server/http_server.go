@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/netip"
 	"time"
+	"unicode/utf8"
 
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/stats/hook"
@@ -118,6 +119,21 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		err := appCtx.AuthProcessor.Authenticate(c.Request().Context(), authPayload)
 		if err != nil {
 			resp := protocol.NewTotalFailureFromErr("0", protocol.AuthError(err), reqType)
+			return writeResponse(
+				c.Response(),
+				protocol.ToHttpCode(resp),
+				resp.EncodeResponse([]byte("0")),
+			)
+		}
+
+		// The chain param reaches a Prometheus label value verbatim on the WebSocket
+		// path (ws_server.go), and WithLabelValues panics on invalid UTF-8. Reject
+		// before the upgrade: once the connection is hijacked, net/http's recover
+		// skips its own cleanup, so the panic would leak the socket instead of
+		// closing it. An uppercase percent-escape is enough to get a raw byte here -
+		// %FF leaves URL.RawPath empty, so echo routes on the decoded URL.Path.
+		if !utf8.ValidString(chain) {
+			resp := protocol.NewTotalFailureFromErr("0", protocol.ParseError(), reqType)
 			return writeResponse(
 				c.Response(),
 				protocol.ToHttpCode(resp),

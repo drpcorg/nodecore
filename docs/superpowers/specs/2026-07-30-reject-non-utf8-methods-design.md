@@ -35,9 +35,16 @@ Two pre-existing defects live in the same expression that has to be touched
 
 ## Rule
 
-Reject a request if and only if its **method name** is not valid UTF-8. Nothing else is a
-reason to reject: invalid bytes in params, headers, query values, or REST wildcard captures
-pass through untouched, because they never become a method name or a metric label.
+Reject a request if and only if a value that becomes a metric label is not valid UTF-8. In
+practice that is the **method name** plus the **`chain` path parameter** (added in review — see
+section 4). Nothing else is a reason to reject: invalid bytes in params, headers, query values,
+or REST wildcard captures pass through untouched, because they never become a label value.
+
+On the REST branch this rejects a request that is legal at the HTTP level — RFC 3986
+percent-encoding may carry arbitrary octets, unlike RFC 8259 which requires JSON to be valid
+UTF-8. Rejecting anyway is a deliberate call: sanitizing with `strings.ToValidUTF8` would keep
+such a request forwardable, but it costs an allocation and a scan per request on a path an
+attacker controls, and it makes the canonical method name lossy for stats and cache keys.
 
 ## Design
 
@@ -114,6 +121,38 @@ characters `\ud800` and passes the check. That is correct — escaped text is va
 cannot make `WithLabelValues` panic and cannot crash the process. Only genuinely raw invalid
 bytes are rejected, which is exactly the set that matters.
 
+### 4. The `chain` path parameter — `internal/server/http_server/http_server.go`
+
+Added in review. `chain := c.Param("chain")` is used verbatim as the label of
+`wsConnectionsMetric` (`ws_server.go:58,61`) with no validation anywhere in between, so it is
+the one remaining client-controlled string that reaches `WithLabelValues`. Every other `chain`
+label comes from `chain.String()` on a resolved `chains.Chain` enum and is safe by construction.
+
+The check goes in `requestHandler` **before `upgrader.Upgrade`**, not inside `HandleWebsocket`.
+That placement matters: once the connection is hijacked, `net/http`'s `conn.serve` recover
+skips its own cleanup (`if !c.hijacked()`), and `closeConn()` at `ws_server.go:158` is a plain
+call rather than a deferred one — so a panic after the upgrade leaks the socket and its FD with
+no read deadline, invisible to the gauge. Rejecting before the upgrade means no hijack, an
+ordinary parse-error response, and nothing to clean up. It also covers the plain HTTP path,
+which changes an invalid-UTF-8 chain's response from "chain … is not supported" to a parse
+error.
+
+An earlier draft of this document claimed the panic produced a clean connection drop with no
+leak. That was wrong, for the hijack reason above.
+
+#### Reaching it requires an uppercase escape
+
+Only `%FF` is a repro, not `%ff`. Go's escaper emits uppercase hex, so `%FF` round-trips: the
+re-escaped path equals the original, `url.Parse` leaves `URL.RawPath` empty, echo routes on the
+decoded `URL.Path`, and the param carries the raw `0xFF` byte. With `%ff` the re-escaped form
+differs, so `RawPath` is populated, echo routes on the encoded form, and the param is the three
+literal ASCII characters `%ff` — valid UTF-8, no panic. Measured:
+
+| request | `chain` param |
+| --- | --- |
+| `/queries/%FFeth/foo/%FFbar` | `"\xffeth"` |
+| `/queries/%ffeth/foo/%ffbar` | `"%ffeth"` |
+
 ## Cost
 
 Measured with `unicode/utf8` on Go 1.26 (Apple Silicon, 14 cores):
@@ -173,10 +212,12 @@ path, so the check cannot be used as an amplifier. No length cap or fast-path gu
   `NativeSubscribe`'s params, however, arrive as a `bytes` field with no such validation, so
   that path depends entirely on the new `getSubscription` check. Recorded here so this doesn't
   later get "discovered" as a hole.
-- **`ws_server.go:58,61` chain label.** Uses the raw `:chain` path parameter as a metric label —
-  a client-reachable invalid-UTF-8 label value this change deliberately does not fix, since it
-  is not a method name and so is outside this change's rule. Unlike the method sites, it runs
-  on the net/http handler goroutine, whose `conn.serve` recover catches the panic: the
-  connection drops with an "http: panic serving" log, the process survives, and no gauge leaks
-  (the deferred `Dec` never registers). It also requires auth to pass first. This is a known
-  follow-up, not a defect of this change.
+- **Unbounded `method` label cardinality.** `execution_flow.go:262` labels with
+  `request.Method()` before the `SpecMethod() == nil` check, so every distinct *valid-UTF-8*
+  unknown method mints a permanent series — and `GetSpecMethodWithFallback`
+  (`pkg/methods/helpers.go:52-58`) never returns nil for client JSON-RPC traffic, so that nil
+  check would not gate it even if the metric came after it. Same entry point and auth level as
+  the crash, unbounded memory rather than a restart. Raised in review; a real follow-up, and
+  bounding it needs more than reordering that one line.
+- **No `recover()` in the detached goroutine** at `execution_flow.go:259`. This change removes
+  the known trigger, but any future panic there still kills the process.

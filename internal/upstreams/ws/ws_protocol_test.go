@@ -188,27 +188,8 @@ func TestJsonRpcWsProtocolParseWsMessageInvalidPayload(t *testing.T) {
 	require.EqualError(t, err, "invalid response type - unknown")
 }
 
-// The eth_subscribe subscription type becomes the "subscription" label of
-// nodecore_request_json_ws_connections. WithLabelValues panics on an invalid label
-// value, and nothing recovers, so it would crash nodecore - and a raw invalid byte
-// does reach here: it survives both sonic's decode and Body()'s marshal. Reject the
-// frame instead of labelling with it.
-func TestJsonRpcWsProtocolRequestFrameRejectsNonUtf8SubType(t *testing.T) {
-	loadMethodSpecs(t)
-	wsProtocol := ws.NewJsonRpcWsProtocol("upstream-1", "eth", chains.ETHEREUM)
-
-	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{
-		Id:      json.RawMessage(`1`),
-		Jsonrpc: "2.0",
-		Method:  "eth_subscribe",
-		Params:  json.RawMessage("[\"new\xffHeads\"]"),
-	}, true, "eth")
-
-	frame, err := wsProtocol.RequestFrame(request)
-
-	require.Error(t, err, "a non-UTF-8 subscription type must not reach a metric label")
-	assert.Nil(t, frame)
-}
+// The non-UTF-8 rejection case lives in ws_protocol_utf8_test.go (internal test
+// package) so it can assert the sentinel with errors.Is.
 
 // Regression: Raw() on a number node returns "1", so the old sub[1:len(sub)-1] was
 // sub[1:0] and panicked with "slice bounds out of range [1:0]". A non-string first

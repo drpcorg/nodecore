@@ -54,7 +54,7 @@ func (j *JsonRpcWsProtocol) RequestFrame(request protocol.RequestHolder) (*Reque
 
 	subType, err := getSubscription(&jsonBody, request)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't get a subscription type, cause - %s", err.Error())
+		return nil, fmt.Errorf("couldn't get a subscription type, cause - %w", err)
 	}
 
 	return NewRequestFrame(requestId, subType, []byte(rawBody)), nil

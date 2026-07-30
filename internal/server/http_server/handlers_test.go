@@ -145,37 +145,9 @@ func TestRestHandlerPromotesQueryAndHeadersIntoRequestParams(t *testing.T) {
 		"repeated header values must survive the round-trip")
 }
 
-// A raw invalid UTF-8 byte in "method" survives sonic's decode untouched, so it
-// would flow into a metric label and make WithLabelValues panic - and nothing
-// recovers, so it would crash nodecore. Reject it at parse time.
-func TestJsonRpcHandlerRejectsNonUtf8Method(t *testing.T) {
-	body := "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_\xffblockNumber\",\"params\":[]}"
-
-	handler, err := http_server.NewJsonRpcHandler(
-		&http_server.Request{Chain: "ethereum"},
-		strings.NewReader(body),
-		false,
-	)
-
-	require.EqualError(t, err, "method name is not a valid utf-8 string")
-	assert.Nil(t, handler)
-}
-
-// One bad entry rejects the whole batch: the constructor fails before any work is
-// scheduled, which is how every other parse failure already behaves.
-func TestJsonRpcHandlerRejectsNonUtf8MethodInBatch(t *testing.T) {
-	body := "[{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[]}," +
-		"{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_\xffcall\",\"params\":[]}]"
-
-	handler, err := http_server.NewJsonRpcHandler(
-		&http_server.Request{Chain: "ethereum"},
-		strings.NewReader(body),
-		false,
-	)
-
-	require.EqualError(t, err, "method name is not a valid utf-8 string")
-	assert.Nil(t, handler)
-}
+// The two method-rejection cases live in handlers_utf8_test.go (internal test
+// package) so they can assert the sentinel with errors.Is. The accept-side cases
+// below assert no error, so they stay here.
 
 // Valid multi-byte UTF-8 is not invalid UTF-8. Only malformed byte sequences are
 // rejected, so a non-ASCII but well-formed name must pass.

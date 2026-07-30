@@ -223,7 +223,7 @@ func TestFilteredQuery_IsolatesSourceMutation(t *testing.T) {
 // No fixture route matches, so the method name falls back to "<VERB>#/<path>" and
 // carries the client's raw bytes straight into metric labels. That is the one case
 // REST must reject.
-func TestParseRestRequestRejectsNonUtf8MethodTemplate(t *testing.T) {
+func TestParseRestRequest_RejectsNonUtf8MethodTemplate(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v2/unmatched/junk", nil)
 
 	template, rp, err := parseRestRequest(req, "v2/unmatched/\xffjunk", "rest-test")
@@ -236,7 +236,7 @@ func TestParseRestRequestRejectsNonUtf8MethodTemplate(t *testing.T) {
 // A matched spec template is spec-provided and therefore always valid UTF-8. The
 // junk lives only in PathParams, which never becomes a method name - so the
 // request must NOT be rejected.
-func TestParseRestRequestAcceptsNonUtf8WildcardCapture(t *testing.T) {
+func TestParseRestRequest_AcceptsNonUtf8WildcardCapture(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v2/accounts/X1Y2Z3", nil)
 
 	template, rp, err := parseRestRequest(req, "v2/accounts/\xffX1Y2Z3", "rest-test")
@@ -251,7 +251,7 @@ func TestParseRestRequestAcceptsNonUtf8WildcardCapture(t *testing.T) {
 // Same rule for the other client-controlled inputs the parser forwards. POST is
 // required here: the fixture registers /exchange under POST only, so a GET would
 // fall through to the fallback branch and stop testing the matched-template case.
-func TestParseRestRequestAcceptsNonUtf8QueryAndHeader(t *testing.T) {
+func TestParseRestRequest_AcceptsNonUtf8QueryAndHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/exchange", nil)
 	req.URL.RawQuery = "filter=%FFjunk"
 	req.Header.Set("X-Custom", "\xffjunk")

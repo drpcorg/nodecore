@@ -140,8 +140,8 @@ func NewJsonRpcHandler(preReq *Request, requestBody io.Reader, isWsCtx bool) (*J
 		return nil, decoder.SyntaxError{}
 	}
 
-	for _, jsonRpcReq := range jsonRpcRequests {
-		if !utf8.ValidString(jsonRpcReq.Method) {
+	for i := range jsonRpcRequests {
+		if !utf8.ValidString(jsonRpcRequests[i].Method) {
 			return nil, errNonUtf8Method
 		}
 	}
