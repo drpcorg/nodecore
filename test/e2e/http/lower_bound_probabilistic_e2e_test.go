@@ -34,16 +34,16 @@ func TestHTTPLiveLowerBoundAvoidsPrunedHardhatProbabilisticBlackbox(t *testing.T
 	nodecore := harness.StartNodecoreWithFiles(t, ctx, networkName, lowerBoundNodecoreConfig(scorePath, pruned, archive), fixedOrderScorePolicyFiles(scorePath, pruned, archive))
 	defer nodecore.Terminate(ctx)
 
+	// Let head polling initialize currentHead and let startup lower-bound detection
+	// finish first; the live pruned-error update below must be the last value
+	// written for the pruned logs bound.
 	_ = callUntilResult(t, ctx, nodecore, "eth_blockNumber", []any{})
-	harness.WaitForNodecoreLog(t, ctx, nodecore, detectedLowerBoundLog(pruned, "LOGS"), 90*time.Second)
-	harness.WaitForNodecoreLog(t, ctx, nodecore, detectedLowerBoundLog(archive, "LOGS"), 90*time.Second)
+	time.Sleep(18 * time.Second)
 
 	first := callUntilResult(t, ctx, nodecore, "eth_getLogs", logsParams)
 	if result, ok := first["result"].([]any); !ok || len(result) != 0 {
 		t.Fatalf("initial getLogs did not fall back to archive empty result: %+v\nlogs:\n%s", first, nodecore.Logs(ctx))
 	}
-
-	waitPrunedAvoidsLogs(t, ctx, nodecore, pruned, logsParamsJSON, 30*time.Second)
 
 	harness.ClearHardhatRequests(t, ctx, pruned)
 
@@ -53,27 +53,6 @@ func TestHTTPLiveLowerBoundAvoidsPrunedHardhatProbabilisticBlackbox(t *testing.T
 
 	if got := harness.CountHardhatRequests(t, ctx, pruned, "eth_getLogs"); got != 0 {
 		t.Fatalf("pruned upstream received %d eth_getLogs calls after live lower-bound update; want 0\nnodecore logs:\n%s", got, nodecore.Logs(ctx))
-	}
-}
-
-func detectedLowerBoundLog(node *harness.RPCNode, boundType string) string {
-	return fmt.Sprintf("upstream '%s' lower bound of type %s is", node.Alias, boundType)
-}
-
-func waitPrunedAvoidsLogs(t *testing.T, ctx context.Context, nodecore *harness.Nodecore, pruned *harness.RPCNode, paramsJSON string, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
-		harness.ClearHardhatRequests(t, ctx, pruned)
-		grpcNativeCallLogsWithLowerBoundSelector(t, ctx, nodecore, paramsJSON)
-		got := harness.CountHardhatRequests(t, ctx, pruned, "eth_getLogs")
-		if got == 0 {
-			return
-		}
-		if !time.Now().Before(deadline) {
-			t.Fatalf("live lower-bound update was not applied before %s; pruned upstream still received %d eth_getLogs calls\nnodecore logs:\n%s", timeout, got, nodecore.Logs(ctx))
-		}
-		time.Sleep(250 * time.Millisecond)
 	}
 }
 

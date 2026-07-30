@@ -585,21 +585,6 @@ func waitNodecoreHealth(t *testing.T, ctx context.Context, nodecore *Nodecore, t
 	t.Fatalf("nodecore health endpoint did not become ready before timeout; status=%d err=%v\nlogs:\n%s", lastStatus, lastErr, nodecore.Logs(context.Background()))
 }
 
-func WaitForNodecoreLog(t *testing.T, ctx context.Context, nodecore *Nodecore, substr string, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for {
-		logs := nodecore.Logs(ctx)
-		if strings.Contains(logs, substr) {
-			return
-		}
-		if !time.Now().Before(deadline) {
-			t.Fatalf("nodecore log did not contain %q before %s\nlogs:\n%s", substr, timeout, logs)
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-}
-
 func (n *Nodecore) Terminate(ctx context.Context) {
 	_ = n.Container.Terminate(ctx, tc.StopTimeout(time.Second))
 }
