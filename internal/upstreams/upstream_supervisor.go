@@ -112,12 +112,12 @@ func (b *BaseUpstreamSupervisor) StartUpstreams() {
 				log.Error().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
 			}
-			up.Start()
-
-			b.upstreams.Store(up.GetId(), up)
-
+			// to not lost the first events
 			upSub := up.Subscribe(fmt.Sprintf("upstream_supervisor_%s_updates", up.GetId()))
 			defer upSub.Unsubscribe()
+			b.upstreams.Store(up.GetId(), up)
+
+			up.Start()
 
 			for {
 				select {

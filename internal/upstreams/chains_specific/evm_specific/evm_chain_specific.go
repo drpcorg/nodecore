@@ -33,6 +33,7 @@ type EvmChainSpecificObject struct {
 	allConnectors []connectors.ApiConnector
 	chain         *chains.ConfiguredChain
 	options       *chains.Options
+	manualLabels  map[string]string
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
@@ -49,6 +50,10 @@ func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, e.labelsDetectors(), e.options.ValidationInterval*5)
+}
+
+func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 	restAdditional, _ := lo.Find(e.allConnectors, func(c connectors.ApiConnector) bool {
 		return c.GetType() == specs.RestAdditional
 	})
@@ -66,17 +71,24 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
 		eth_labels.NewEthAllInfoLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, restAdditional),
-		archiveLabelsDetector(e),
+	}
+	if !archiveDetectionSuppressed(e.manualLabels) {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
 	}
 
-	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, labelsDetectors, e.options.ValidationInterval*5)
+	return labelsDetectors
 }
 
-func archiveLabelsDetector(e *EvmChainSpecificObject) labels.LabelsDetector {
-	if e.options.ArchiveCapability != nil && !*e.options.ArchiveCapability {
-		return labels.NewStaticLabelsDetector(map[string]string{"archive": "false"})
-	}
-	return eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector)
+// archiveDetectionSuppressed reports whether the upstream's manual 'archive' label
+// pins the value to false. In that case the runtime archive probe must not run, so
+// the configured value - seeded into the upstream state at construction - stands for
+// the process lifetime. Any other value (including "true") lets the detector run and
+// publish what it finds.
+func archiveDetectionSuppressed(manualLabels map[string]string) bool {
+	return manualLabels["archive"] == "false"
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -231,6 +243,7 @@ func NewEvmChainSpecific(
 	chain *chains.ConfiguredChain,
 	pollInterval time.Duration,
 	options *chains.Options,
+	manualLabels map[string]string,
 ) *EvmChainSpecificObject {
 	return &EvmChainSpecificObject{
 		ctx:           ctx,
@@ -240,6 +253,7 @@ func NewEvmChainSpecific(
 		chain:         chain,
 		options:       options,
 		pollInterval:  pollInterval,
+		manualLabels:  manualLabels,
 	}
 }
 

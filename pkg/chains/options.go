@@ -18,7 +18,6 @@ type Options struct {
 	DisableLabelsDetection                *bool         `yaml:"disable-labels-detection"`
 	DisableLogIndexValidation             *bool         `yaml:"disable-log-index-validation"`
 	DisableLivenessSubscriptionValidation *bool         `yaml:"disable-liveness-subscription-validation"`
-	ArchiveCapability                     *bool         `yaml:"archive"`
 	ValidateSyncing                       *bool         `yaml:"validate-syncing"`
 	ValidatePeers                         *bool         `yaml:"validate-peers"`
 	MinPeers                              int64         `yaml:"min-peers"`

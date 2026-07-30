@@ -38,7 +38,6 @@ upstream-config:
         validate-client-version: false
         disable-log-index-validation: true
         disable-liveness-subscription-validation: false
-        archive: false
       dispatch:
         broadcast: false
         maximum-value: false
@@ -60,6 +59,8 @@ upstream-config:
     - id: my-super-upstream
       chain: ethereum
       rate-limit-budget: standard-budget
+      labels:
+        provider: hetzner
       connectors:
         - type: json-rpc
           url: https://path-to-eth-provider.com
@@ -348,7 +349,6 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
   * `disable-finalized-block-detection` - Disables periodic finalized-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("finalized", …)` calls, does not cache with `finalization-type: finalized`, and skips finalization-lag tracking. Set to `true` for chains like Viction (PoSV) that lack Ethereum's finalized-block concept. **_Default_**: `false`
   * `disable-liveness-subscription-validation` - Controls whether an EVM upstream whose head is driven by a WebSocket must prove its head is *live* before it advertises the WebSocket subscription capability (`WsCap`) and can back client subscriptions. When the validation is enabled, such an upstream gains `WsCap` only once its head has advanced **consecutively** — 3 blocks in a row (2 consecutive height increments) — and loses it on a forward gap of skipped blocks, a stall (no head progress within an adaptive timeout derived from the chain's expected block time), or a WebSocket disconnect, pulling the upstream out of subscription serving until it recovers; after a gap it stays out for a short cooldown before it can go live again (duplicate heights and backward reorgs are tolerated, and regular RPC routing is unaffected throughout). Set to `true` to skip the check and keep the historical "connected WebSocket ⇒ `WsCap`" behavior. Only affects EVM upstreams with a WebSocket head connector; poll-head upstreams and non-EVM chains are never gated. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
-  * `archive` - Manual EVM archive capability override. Set `archive: false` to publish `archive=false` without running archive auto-detection. Set `archive: true` or leave it unset to use the runtime archive detector and publish its detected result
 * `<chain>.dispatch` - Per-chain dispatch policy toggles. These options affect routing for the whole chain, not individual upstreams:
   * `broadcast` - Enables fan-out broadcast for method specs with `dispatch: broadcast` (for example transaction propagation). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.
   * `maximum-value` - Enables fan-out maximum-value aggregation for method specs with `dispatch: maximum-value` (for example nonce-like reads). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.
@@ -702,6 +702,8 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 - `rate-limit-auto-tune` - Automatically adjusts the upstream's outgoing rate limit based on observed error rate and utilization. See [Rate Limiting](06-rate-limiting.md#auto-tune-rate-limiting) for the field semantics
 - `failsafe-config` - Upstream-level failsafe configuration. Only the `retry` policy can be specified at this level (hedging and timeouts are configured globally on `upstream-config.failsafe-config`)
 - `group-labels` - List of priority-group labels this upstream belongs to, used by [label-balancing](#label-balancing). These are **config-defined** labels, independent of the runtime labels produced by label detectors. An upstream may belong to several groups but is still selected at most once per request
+- `labels` - Map of manual labels published for this upstream. Values are strings; unquoted YAML scalars are accepted and stored as their literal text (`archive: false` is the same as `archive: "false"`). Keys and values must both be non-empty. Manual labels are **seeds**: they are published to the upstream's state at startup - so they are visible to [gRPC](12-grpc-server.md) label selectors and label matchers even when `disable-labels-detection` is `true` - but a runtime label detector that owns the same key overwrites them on its first round. The one exception is `archive: false`, which skips the EVM archive detector entirely so the configured value stands - the match is an exact, case-sensitive comparison against the literal text `false`, so `archive: False` or `archive: "FALSE"` does **not** suppress the detector and silently leaves auto-detection running. This is distinct from `group-labels`, which is config-only input to [label-balancing](#label-balancing) and is never published to upstream state; manual labels take no part in label-balancing
+  > **Migration**: the old `options.archive` flag has been removed. Set `labels: {archive: false}` on the upstream instead. A leftover `options.archive` key is silently ignored (config parsing does not reject unknown keys), which means archive auto-detection starts running again for that upstream. Note that `options.archive` used to also be settable at `chain-defaults.<chain>.options.archive`, but `labels` has no chain-defaults equivalent - it is per-upstream only. A `chain-defaults.<chain>.labels` key is likewise silently ignored, so the migration must be repeated on every upstream of the chain individually
 
 ## Validators and labels
 
@@ -743,7 +745,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Lower-bound detector (Starknet) | Starknet | `disable-lower-bounds-detection` | Verified probe of block 1: success publishes `1` as the lower bound, failure emits an explicit `UnknownBound` |
 | Lower-bound detector (Tendermint) | Cosmos (`tendermint`) | `disable-lower-bounds-detection` | Reads `status` → `sync_info.earliest_block_height` and publishes it as the state lower bound. One call, no search — CometBFT tells you the oldest height it still holds. Reported verbatim, `0` included |
 | Lower-bound detector (Cosmos LCD) | Cosmos (`rest`) | `disable-lower-bounds-detection` | The LCD has no `earliest_block_height` equivalent, so the bound is binary-searched over `GET /cosmos/base/tendermint/v1beta1/blocks/{height}` (a pruned height answers 4xx). Steady state costs a single probe per cycle, because the previously found bound is re-confirmed before any search |
-| Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities |
+| Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities. The archive probe is skipped when the upstream sets the manual label `archive: false` (see [`labels`](#fields)), which leaves the configured value in place |
 | Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
 | Client label detector (Bitcoin) | Bitcoin | `disable-labels-detection` | Parses `getnetworkinfo.subversion` (`/Satoshi:26.1.0/`) into client type and version labels |

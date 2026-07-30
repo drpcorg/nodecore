@@ -16,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/samber/lo"
+	"gopkg.in/yaml.v3"
 )
 
 type UpstreamConfig struct {
@@ -127,6 +128,48 @@ type Upstream struct {
 	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 	GroupLabels       []string                 `yaml:"group-labels"`
+	Labels            UpstreamLabels           `yaml:"labels"`
+}
+
+// UpstreamLabels is a manual upstream label map. Label values are strings, but any
+// YAML scalar is accepted and stored as its literal text, so `archive: false` and
+// `archive: "false"` are equivalent - a plain map[string]string would reject the
+// unquoted form. It is named UpstreamLabels rather than Labels because consumers
+// import both this package and protocol, which has its own Labels type.
+type UpstreamLabels map[string]string
+
+func (u *UpstreamLabels) UnmarshalYAML(node *yaml.Node) error {
+	node = resolveYamlAlias(node)
+	if node.Kind != yaml.MappingNode {
+		return errors.New("labels must be a mapping of label names to scalar values")
+	}
+	labels := make(UpstreamLabels, len(node.Content)/2)
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if key.Value == "<<" {
+			return errors.New("labels does not support the YAML merge key '<<'; list each label explicitly, or alias the whole labels mapping instead (labels: *shared)")
+		}
+		value = resolveYamlAlias(value)
+		if value.Kind != yaml.ScalarNode {
+			return fmt.Errorf("label '%s' must have a scalar value", key.Value)
+		}
+		if _, exists := labels[key.Value]; exists {
+			return fmt.Errorf("duplicate label '%s'", key.Value)
+		}
+		labels[key.Value] = value.Value
+	}
+	*u = labels
+	return nil
+}
+
+// resolveYamlAlias follows a YAML alias node (e.g. `provider: *prov` or `labels: *shared`)
+// to the node it points to, so callers can apply their Kind checks to the aliased content
+// rather than to the alias node itself. Non-alias nodes are returned unchanged.
+func resolveYamlAlias(node *yaml.Node) *yaml.Node {
+	if node.Kind == yaml.AliasNode && node.Alias != nil {
+		return node.Alias
+	}
+	return node
 }
 
 func (u *Upstream) GetApiConnectorTypes() []specs.ApiConnectorType {
@@ -569,6 +612,15 @@ func (u *Upstream) validate(torProxyUrl string) error {
 	for _, label := range u.GroupLabels {
 		if label == "" {
 			return errors.New("group-labels must not contain an empty label")
+		}
+	}
+
+	for label, value := range u.Labels {
+		if label == "" {
+			return errors.New("labels must not contain an empty key")
+		}
+		if value == "" {
+			return fmt.Errorf("label '%s' must have a non-empty value", label)
 		}
 	}
 
