@@ -3,9 +3,11 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
@@ -50,7 +52,12 @@ func (j *JsonRpcWsProtocol) RequestFrame(request protocol.RequestHolder) (*Reque
 
 	rawBody, _ := jsonBody.Raw()
 
-	return NewRequestFrame(requestId, getSubscription(&jsonBody, request), []byte(rawBody)), nil
+	subType, err := getSubscription(&jsonBody, request)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get a subscription type, cause - %s", err.Error())
+	}
+
+	return NewRequestFrame(requestId, subType, []byte(rawBody)), nil
 }
 
 func (j *JsonRpcWsProtocol) DoOnCloseFunc(writeRequestFunc WriteRequest) DoOnClose {
@@ -106,20 +113,36 @@ func NewJsonRpcWsProtocol(upstreamId, methodSpec string, chain chains.Chain) *Js
 	return wsProtocol
 }
 
-func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) string {
+// errNonUtf8SubType rejects an eth_subscribe subscription type that is not valid
+// UTF-8. It becomes the "subscription" label of json_ws_connections, and
+// WithLabelValues panics on invalid UTF-8; nothing in this process recovers,
+// so it would crash nodecore (same class as execution_flow.go:262).
+var errNonUtf8SubType = errors.New("subscription type is not a valid utf-8 string")
+
+func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) (string, error) {
 	if !request.IsSubscribe() {
-		return ""
+		return "", nil
 	}
 	if request.Method() == "eth_subscribe" {
 		ethSubType := jsonBody.GetByPath("params", 0)
-		if ethSubType != nil {
-			sub, err := ethSubType.Raw()
-			if err == nil {
-				return sub[1 : len(sub)-1]
+		// The type guard keeps the slice below off non-string nodes: Raw() on the
+		// number 1 returns "1", and sub[1:len(sub)-1] would panic. The length check
+		// is a second guard so the slice never depends on that invariant holding
+		// elsewhere. A non-string first param is not a rejection reason - it falls
+		// through to the method name and the upstream decides.
+		if ethSubType != nil && ethSubType.TypeSafe() == ast.V_STRING {
+			if sub, err := ethSubType.Raw(); err == nil && len(sub) >= 2 {
+				subType := sub[1 : len(sub)-1]
+				// This value becomes a Prometheus label; WithLabelValues panics on an
+				// invalid one, and nothing recovers, so it would crash nodecore.
+				if !utf8.ValidString(subType) {
+					return "", errNonUtf8SubType
+				}
+				return subType, nil
 			}
 		}
 	}
-	return request.Method()
+	return request.Method(), nil
 }
 
 var _ WsProtocol = (*JsonRpcWsProtocol)(nil)
