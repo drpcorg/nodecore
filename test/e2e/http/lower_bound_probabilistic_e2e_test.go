@@ -61,7 +61,7 @@ func prunedLogsRule() string {
 }
 
 func archiveLogsRule() string {
-	return `[{"method":"eth_getLogs","result":[]}]`
+	return `[{"method":"eth_capabilities","result":{"blocks":{"oldestBlock":"0x0"},"logs":{"oldestBlock":"0x0"},"state":{"oldestBlock":"0x0"},"tx":{"oldestBlock":"0x0"},"receiptOldestBlock":"0x0"},"stateproofs":{"oldestBlock":"0x0"}}]`
 }
 
 func lowerBoundNodecoreConfig(scorePath string, pruned, archive *harness.RPCNode) string {
