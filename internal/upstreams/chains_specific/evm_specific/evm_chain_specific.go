@@ -88,7 +88,7 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 // the process lifetime. Any other value (including "true") lets the detector run and
 // publish what it finds.
 func archiveDetectionSuppressed(manualLabels map[string]string) bool {
-	return manualLabels["archive"] == "false"
+	return manualLabels[chains.ArchiveLabel] == "false"
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

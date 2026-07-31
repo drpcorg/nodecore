@@ -112,7 +112,11 @@ func (b *BaseUpstreamSupervisor) StartUpstreams() {
 				log.Error().Err(err).Msgf("couldn't create upstream %s", upConfig.Id)
 				return
 			}
-			// to not lost the first events
+			// Subscribe and register before Start() so no early event is lost: Start()
+			// publishes InitUpstreamStateEvent - which carries the upstream's initial state,
+			// including its config-defined labels - and Publish drops events that have no
+			// subscriber. Storing the upstream first also keeps an event emitted during
+			// Start() from reaching processEvents before GetUpstream can resolve it.
 			upSub := up.Subscribe(fmt.Sprintf("upstream_supervisor_%s_updates", up.GetId()))
 			defer upSub.Unsubscribe()
 			b.upstreams.Store(up.GetId(), up)

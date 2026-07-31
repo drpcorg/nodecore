@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -138,38 +140,34 @@ type Upstream struct {
 // import both this package and protocol, which has its own Labels type.
 type UpstreamLabels map[string]string
 
+// UnmarshalYAML decodes the mapping into yaml.Nodes and keeps each value's literal text.
+// Decoding rather than walking node.Content buys yaml.v3's own diagnostics - a duplicate
+// key is reported with both line numbers, which matters because errors raised here carry
+// no upstream id - and makes merge keys (`<<: *shared`) work for free.
+//
+// An alias node is resolved by the decoder before this method is called, so `labels: *shared`
+// arrives as a plain mapping. Alias *values* (`provider: *prov`) are not resolved, hence the
+// explicit step below.
 func (u *UpstreamLabels) UnmarshalYAML(node *yaml.Node) error {
-	node = resolveYamlAlias(node)
 	if node.Kind != yaml.MappingNode {
 		return errors.New("labels must be a mapping of label names to scalar values")
 	}
-	labels := make(UpstreamLabels, len(node.Content)/2)
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		key, value := node.Content[i], node.Content[i+1]
-		if key.Value == "<<" {
-			return errors.New("labels does not support the YAML merge key '<<'; list each label explicitly, or alias the whole labels mapping instead (labels: *shared)")
+	var raw map[string]yaml.Node
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	labels := make(UpstreamLabels, len(raw))
+	for key, value := range raw {
+		if value.Kind == yaml.AliasNode && value.Alias != nil {
+			value = *value.Alias
 		}
-		value = resolveYamlAlias(value)
 		if value.Kind != yaml.ScalarNode {
-			return fmt.Errorf("label '%s' must have a scalar value", key.Value)
+			return fmt.Errorf("label '%s' must have a scalar value", key)
 		}
-		if _, exists := labels[key.Value]; exists {
-			return fmt.Errorf("duplicate label '%s'", key.Value)
-		}
-		labels[key.Value] = value.Value
+		labels[key] = value.Value
 	}
 	*u = labels
 	return nil
-}
-
-// resolveYamlAlias follows a YAML alias node (e.g. `provider: *prov` or `labels: *shared`)
-// to the node it points to, so callers can apply their Kind checks to the aliased content
-// rather than to the alias node itself. Non-alias nodes are returned unchanged.
-func resolveYamlAlias(node *yaml.Node) *yaml.Node {
-	if node.Kind == yaml.AliasNode && node.Alias != nil {
-		return node.Alias
-	}
-	return node
 }
 
 func (u *Upstream) GetApiConnectorTypes() []specs.ApiConnectorType {
@@ -615,15 +613,24 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 	}
 
-	for label, value := range u.Labels {
+	if err := u.validateLabels(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLabels iterates the labels in sorted key order so that a config with several
+// invalid labels always reports the same one - map iteration order is random.
+func (u *Upstream) validateLabels() error {
+	for _, label := range slices.Sorted(maps.Keys(u.Labels)) {
 		if label == "" {
 			return errors.New("labels must not contain an empty key")
 		}
-		if value == "" {
+		if u.Labels[label] == "" {
 			return fmt.Errorf("label '%s' must have a non-empty value", label)
 		}
 	}
-
 	return nil
 }
 
