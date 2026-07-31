@@ -30,13 +30,13 @@ type EthArchiveLabelsDetector struct {
 
 func (e *EthArchiveLabelsDetector) DetectLabels() map[string]string {
 	if !e.hasArchiveState(e.readEarliestBlock()) {
-		return map[string]string{"archive": "false"}
+		return map[string]string{chains.ArchiveLabel: "false"}
 	}
 	recentBlock, ok := e.recentArchiveProbeBlock()
 	if ok && !e.hasArchiveState(recentBlock) {
-		return map[string]string{"archive": "false"}
+		return map[string]string{chains.ArchiveLabel: "false"}
 	}
-	return map[string]string{"archive": "true"}
+	return map[string]string{chains.ArchiveLabel: "true"}
 }
 
 func (e *EthArchiveLabelsDetector) hasArchiveState(block string) bool {

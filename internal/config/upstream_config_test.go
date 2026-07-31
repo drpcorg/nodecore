@@ -667,3 +667,15 @@ func TestUpstreamOptionsMergeWithChainsYaml(t *testing.T) {
 	assert.True(t, *reqUp.Options.ValidateCallLimit)
 	assert.Equal(t, int64(2500000), reqUp.Options.CallLimitSize)
 }
+
+func TestEmptyLabelKeyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/empty-label-key.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: labels must not contain an empty key")
+}
+
+func TestEmptyLabelValueThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/empty-label-value.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: label 'archive' must have a non-empty value")
+}

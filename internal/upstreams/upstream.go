@@ -73,15 +73,20 @@ func NewBaseUpstream(
 	upstreamIndexHex := fmt.Sprintf("%05x", upstreamIndex)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(
-		protocol.DefaultUpstreamState(
-			creationData.upstreamMethods,
-			mapset.NewThreadUnsafeSet[protocol.Cap](),
-			upstreamIndexHex,
-			creationData.rt,
-			creationData.autoTune,
-		),
+	initialState := protocol.DefaultUpstreamState(
+		creationData.upstreamMethods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		upstreamIndexHex,
+		creationData.rt,
+		creationData.autoTune,
 	)
+	// Config-defined labels are seeds: they are published before any detector runs and
+	// survive when label detection is disabled, but a detector that owns the same key
+	// overwrites them on its first round.
+	for label, value := range conf.Labels {
+		initialState.Labels.AddLabel(label, value)
+	}
+	upState.Store(initialState)
 	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 1000)
 	emitter := func(event protocol.AbstractUpstreamStateEvent) {
 		stateChan <- event

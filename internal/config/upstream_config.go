@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/samber/lo"
+	"gopkg.in/yaml.v3"
 )
 
 type UpstreamConfig struct {
@@ -127,6 +130,44 @@ type Upstream struct {
 	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 	GroupLabels       []string                 `yaml:"group-labels"`
+	Labels            UpstreamLabels           `yaml:"labels"`
+}
+
+// UpstreamLabels is a manual upstream label map. Label values are strings, but any
+// YAML scalar is accepted and stored as its literal text, so `archive: false` and
+// `archive: "false"` are equivalent - a plain map[string]string would reject the
+// unquoted form. It is named UpstreamLabels rather than Labels because consumers
+// import both this package and protocol, which has its own Labels type.
+type UpstreamLabels map[string]string
+
+// UnmarshalYAML decodes the mapping into yaml.Nodes and keeps each value's literal text.
+// Decoding rather than walking node.Content buys yaml.v3's own diagnostics - a duplicate
+// key is reported with both line numbers, which matters because errors raised here carry
+// no upstream id - and makes merge keys (`<<: *shared`) work for free.
+//
+// An alias node is resolved by the decoder before this method is called, so `labels: *shared`
+// arrives as a plain mapping. Alias *values* (`provider: *prov`) are not resolved, hence the
+// explicit step below.
+func (u *UpstreamLabels) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return errors.New("labels must be a mapping of label names to scalar values")
+	}
+	var raw map[string]yaml.Node
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	labels := make(UpstreamLabels, len(raw))
+	for key, value := range raw {
+		if value.Kind == yaml.AliasNode && value.Alias != nil {
+			value = *value.Alias
+		}
+		if value.Kind != yaml.ScalarNode {
+			return fmt.Errorf("label '%s' must have a scalar value", key)
+		}
+		labels[key] = value.Value
+	}
+	*u = labels
+	return nil
 }
 
 func (u *Upstream) GetApiConnectorTypes() []specs.ApiConnectorType {
@@ -572,6 +613,24 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 	}
 
+	if err := u.validateLabels(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLabels iterates the labels in sorted key order so that a config with several
+// invalid labels always reports the same one - map iteration order is random.
+func (u *Upstream) validateLabels() error {
+	for _, label := range slices.Sorted(maps.Keys(u.Labels)) {
+		if label == "" {
+			return errors.New("labels must not contain an empty key")
+		}
+		if u.Labels[label] == "" {
+			return fmt.Errorf("label '%s' must have a non-empty value", label)
+		}
+	}
 	return nil
 }
 

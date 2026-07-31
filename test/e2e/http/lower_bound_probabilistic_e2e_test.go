@@ -61,7 +61,7 @@ func prunedLogsRule() string {
 }
 
 func archiveLogsRule() string {
-	return `[{"method":"eth_getLogs","result":[]}]`
+	return `[{"method":"eth_capabilities","result":{"head":{"number":"0x18770d5","hash":"0x7572a93273d42d18f89736ed9ad66baa78350b142fc1dd6d2eb39a3b58f5008c"},"state":{"disabled":false,"oldestBlock":"0x0"},"tx":{"disabled":false,"oldestBlock":"0x0"},"logs":{"disabled":false,"oldestBlock":"0x0"},"receipts":{"disabled":false,"oldestBlock":"0x0"},"blocks":{"disabled":false,"oldestBlock":"0x0"},"stateproofs":{"disabled":false,"oldestBlock":"0x18770d5","deleteStrategy":{"type":"window","retentionBlocks":"0x0"}}}}]`
 }
 
 func lowerBoundNodecoreConfig(scorePath string, pruned, archive *harness.RPCNode) string {
