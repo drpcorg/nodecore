@@ -239,6 +239,7 @@ func NewEvmChainSpecific(connector connectors.ApiConnector) *evm_specific.EvmCha
 		chains.GetChain("polygon"),
 		1*time.Second,
 		newTestChainOptions(),
+		nil,
 	)
 }
 

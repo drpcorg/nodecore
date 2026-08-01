@@ -208,6 +208,7 @@ func getChainSpecific(
 				configuredChain,
 				conf.PollInterval,
 				conf.Options,
+				conf.Labels,
 			)
 		}
 		return evm_specific.NewEvmChainSpecific(
@@ -218,6 +219,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.PollInterval,
 			conf.Options,
+			conf.Labels,
 		), nil
 	case chains.Aztec:
 		return aztec_specific.NewAztecChainSpecificObject(

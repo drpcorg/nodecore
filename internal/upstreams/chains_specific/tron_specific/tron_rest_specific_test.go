@@ -77,6 +77,7 @@ func freshTron(t *testing.T, connector *mocks.ConnectorMock, opts *chains.Option
 		chain,
 		100*time.Millisecond,
 		opts,
+		nil,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, cs)
@@ -333,6 +334,7 @@ func TestNewTronSpecificDispatchesRest(t *testing.T) {
 		chains.GetChain("tron"),
 		time.Second,
 		tronOptions(false, false),
+		nil,
 	)
 	require.NoError(t, err)
 	_, ok := cs.(*tron_specific.TronRestSpecific)
@@ -348,6 +350,7 @@ func TestNewTronSpecificDispatchesJsonRpcToEvm(t *testing.T) {
 		chains.GetChain("tron"),
 		time.Second,
 		tronOptions(false, false),
+		nil,
 	)
 	require.NoError(t, err)
 	_, ok := cs.(*evm_specific.EvmChainSpecificObject)
@@ -363,6 +366,7 @@ func TestNewTronSpecificUnsupportedConnector(t *testing.T) {
 		chains.GetChain("tron"),
 		time.Second,
 		tronOptions(false, false),
+		nil,
 	)
 	assert.Nil(t, cs)
 	assert.ErrorContains(t, err, "tron specific supports only")
@@ -376,6 +380,7 @@ func TestNewTronSpecificNilConnector(t *testing.T) {
 		chains.GetChain("tron"),
 		time.Second,
 		tronOptions(false, false),
+		nil,
 	)
 	assert.Nil(t, cs)
 	assert.ErrorContains(t, err, "no connector")

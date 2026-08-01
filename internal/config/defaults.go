@@ -2,6 +2,7 @@ package config
 
 import (
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -339,6 +340,27 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		}
 		u.PollInterval = pollInterval
 	}
+	u.translateDeprecatedArchiveOption()
+}
+
+// translateDeprecatedArchiveOption turns the deprecated options.archive flag into the
+// 'archive' label, so an existing config keeps its override instead of silently losing it
+// to archive auto-detection. An explicit label always wins. It runs after
+// setOptionsDefaults. Only the upstream-level flag is translated: setOptionsDefaults has
+// never merged ArchiveCapability from chain-defaults, and the detector it replaced read the
+// upstream value only, so chain-defaults options.archive never took effect.
+func (u *Upstream) translateDeprecatedArchiveOption() {
+	if u.Options == nil || u.Options.ArchiveCapability == nil {
+		return
+	}
+	log.Warn().Msgf("upstream '%s': options.archive is deprecated, use the '%s' upstream label instead", u.Id, chains.ArchiveLabel)
+	if _, set := u.Labels[chains.ArchiveLabel]; set {
+		return
+	}
+	if u.Labels == nil {
+		u.Labels = UpstreamLabels{}
+	}
+	u.Labels[chains.ArchiveLabel] = strconv.FormatBool(*u.Options.ArchiveCapability)
 }
 
 func getDefaultPollInterval(chainName string, upstreamMode UpstreamMode) time.Duration {

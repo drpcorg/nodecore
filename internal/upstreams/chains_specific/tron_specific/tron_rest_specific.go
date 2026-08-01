@@ -201,6 +201,7 @@ func NewTronSpecific(
 	chain *chains.ConfiguredChain,
 	pollInterval time.Duration,
 	options *chains.Options,
+	manualLabels map[string]string,
 ) (chains_specific.ChainSpecific, error) {
 	if connector == nil {
 		return nil, fmt.Errorf("no connector specified")
@@ -209,7 +210,7 @@ func NewTronSpecific(
 	case specs.RestConnector:
 		return newTronRestSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.JsonRpcConnector:
-		return evm_specific.NewEvmChainSpecific(ctx, upstreamId, connector, []connectors.ApiConnector{connector}, chain, pollInterval, options), nil
+		return evm_specific.NewEvmChainSpecific(ctx, upstreamId, connector, []connectors.ApiConnector{connector}, chain, pollInterval, options, manualLabels), nil
 	default:
 		return nil, fmt.Errorf("tron specific supports only json-rpc or rest connector but not %s", connector.GetType())
 	}
