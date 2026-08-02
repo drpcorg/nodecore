@@ -38,6 +38,12 @@ type ChainSupervisor interface {
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
+
+	// node groups (Separation mode); group events travel on their own manager
+	// so SubscribeState consumers never see them
+	SubscribeNodeGroupStates(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
+	GetNodeGroupStates() map[string]ChainSupervisorState
+	GetNodeGroupState(id string) (ChainSupervisorState, bool)
 }
 
 type UpstreamSupervisor interface {

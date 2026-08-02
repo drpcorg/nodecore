@@ -54,6 +54,14 @@ type BaseChainSupervisor struct {
 	roundRobinIndex atomic.Uint64
 
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+
+	// node-group tracking (Separation mode). groups and upstreamGroup are
+	// mutated only from the processEvents goroutine (same ownership model as
+	// lastOver); the CMap and the per-group Atomic exist for cross-goroutine
+	// reads by the chain-status stream.
+	groups               *utils.CMap[string, *groupState] // keyed by GroupKey.Id()
+	upstreamGroup        map[string]groupMembership
+	subGroupStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 }
 
 func NewBaseChainSupervisor(
@@ -65,33 +73,38 @@ func NewBaseChainSupervisor(
 	getUpstream func(string) Upstream,
 ) *BaseChainSupervisor {
 	state := utils.NewAtomic[ChainSupervisorState]()
-	state.Store(
-		ChainSupervisorState{
-			Status:      protocol.Available,
-			Blocks:      make(map[protocol.BlockType]protocol.Block),
-			LowerBounds: make(map[protocol.LowerBoundType]protocol.LowerBoundData),
-			HeadData:    NewChainHeadData(protocol.ZeroBlock{}, ""),
-			Methods:     methods.NewChainMethods(nil),
-			ChainLabels: make([]AggregatedLabels, 0),
-			SubMethods:  mapset.NewThreadUnsafeSet[string](),
-			Caps:        mapset.NewThreadUnsafeSet[protocol.Cap](),
-		},
-	)
+	state.Store(initialChainSupervisorState())
 
 	return &BaseChainSupervisor{
-		ctx:             ctx,
-		tracker:         tracker,
-		chain:           chain,
-		fc:              fc,
-		eventsChan:      make(chan protocol.UpstreamEvent, 100),
-		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
-		state:           state,
-		subChainMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
-		validateLag:     validateLag,
-		syncingLag:      chains.GetChain(chain.String()).Settings.Lags.Syncing,
-		getUpstream:     getUpstream,
-		lastOver:        make(map[string]bool),
-		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
+		ctx:                  ctx,
+		tracker:              tracker,
+		chain:                chain,
+		fc:                   fc,
+		eventsChan:           make(chan protocol.UpstreamEvent, 100),
+		upstreamStates:       utils.NewCMap[string, *protocol.UpstreamState](),
+		state:                state,
+		subChainMethods:      specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
+		validateLag:          validateLag,
+		syncingLag:           chains.GetChain(chain.String()).Settings.Lags.Syncing,
+		getUpstream:          getUpstream,
+		lastOver:             make(map[string]bool),
+		subStateManager:      utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
+		groups:               utils.NewCMap[string, *groupState](),
+		upstreamGroup:        make(map[string]groupMembership),
+		subGroupStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_group_events"),
+	}
+}
+
+func initialChainSupervisorState() ChainSupervisorState {
+	return ChainSupervisorState{
+		Status:      protocol.Available,
+		Blocks:      make(map[protocol.BlockType]protocol.Block),
+		LowerBounds: make(map[protocol.LowerBoundType]protocol.LowerBoundData),
+		HeadData:    NewChainHeadData(protocol.ZeroBlock{}, ""),
+		Methods:     methods.NewChainMethods(nil),
+		ChainLabels: make([]AggregatedLabels, 0),
+		SubMethods:  mapset.NewThreadUnsafeSet[string](),
+		Caps:        mapset.NewThreadUnsafeSet[protocol.Cap](),
 	}
 }
 
@@ -190,6 +203,7 @@ func (b *BaseChainSupervisor) processEvents() {
 
 						b.updateState()
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
+						b.removeFromGroup(event.Id)
 					}
 				case *protocol.HeadUpstreamEvent:
 					// Keep the per-upstream snapshot's head fresh - head updates
@@ -203,10 +217,12 @@ func (b *BaseChainSupervisor) processEvents() {
 						b.upstreamStates.Store(event.Id, &newUpState)
 					}
 					b.updateHead(event.Id, eventType)
+					b.updateGroupHead(event.Id, eventType)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
 					b.upstreamStates.Store(event.Id, eventType.State)
 					b.updateState()
+					b.assignGroup(event.Id, eventType.State)
 				case *protocol.ValidUpstreamEvent:
 					// Symmetric to RemoveUpstreamEvent: a recovered upstream is
 					// re-registered right away from the event's state snapshot.
@@ -220,6 +236,7 @@ func (b *BaseChainSupervisor) processEvents() {
 						if !eventType.State.HeadData.IsEmptyByHeight() {
 							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})
 						}
+						b.assignGroup(event.Id, eventType.State)
 					}
 				}
 			}
@@ -236,7 +253,7 @@ func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.
 			newState.HeadData = NewChainHeadData(head, upstreamId)
 			if !newState.HeadData.IsEmpty() {
 				headWrapper = &ChainSupervisorStateWrapperEvent{
-					[]ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head, upstreamId)},
+					Wrappers: []ChainSupervisorStateWrapper{NewHeadWrapper(newState.HeadData.Head, upstreamId)},
 				}
 			}
 		}
@@ -253,22 +270,13 @@ func (b *BaseChainSupervisor) updateHead(upstreamId string, headEvent *protocol.
 
 func (b *BaseChainSupervisor) updateState() {
 	currentState := b.state.Load()
-	newState := b.state.Load()
-	// it's necessary to merge states only from available upstreams
-	availableUpstreams := b.availableUpstreams()
-
-	newState.Status = b.processUpstreamStatuses()
-	newState.Methods = processUpstreamMethods(availableUpstreams)
-	newState.Blocks = processUpstreamBlocks(availableUpstreams)
-	newState.LowerBounds = processLowerBounds(availableUpstreams)
-	newState.ChainLabels = processLabels(availableUpstreams)
-	newState.Caps = processCaps(availableUpstreams)
-	newState.SubMethods = b.processSubMethods(newState.Caps)
+	// recomputeState merges only available upstreams; the status is the min over all
+	newState := recomputeState(currentState, b.allUpstreamStates(), b.subChainMethods)
 
 	eventWrappers := currentState.Compare(newState)
 	b.state.Store(newState)
 	if len(eventWrappers) > 0 {
-		b.subStateManager.Publish(&ChainSupervisorStateWrapperEvent{eventWrappers})
+		b.subStateManager.Publish(&ChainSupervisorStateWrapperEvent{Wrappers: eventWrappers})
 	}
 	b.calculateFinalizationLags()
 }
@@ -324,55 +332,15 @@ func (b *BaseChainSupervisor) calculateHeadLags() {
 	})
 }
 
-func (b *BaseChainSupervisor) availableUpstreams() []*protocol.UpstreamState {
+func (b *BaseChainSupervisor) allUpstreamStates() []*protocol.UpstreamState {
 	states := make([]*protocol.UpstreamState, 0)
 
 	b.upstreamStates.Range(func(key string, val *protocol.UpstreamState) bool {
-		if val.Status == protocol.Available {
-			states = append(states, val)
-		}
+		states = append(states, val)
 		return true
 	})
 
 	return states
-}
-
-func (b *BaseChainSupervisor) processSubMethods(caps mapset.Set[protocol.Cap]) mapset.Set[string] {
-	if caps == nil || !caps.Contains(protocol.WsCap) {
-		return mapset.NewThreadUnsafeSet[string]()
-	}
-	subMethods := b.subChainMethods.Clone()
-	// EVM advertises concrete topics derived from caps instead of the generic
-	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
-	// real sub types. A topic is offered only if it can be served locally
-	// (newHeads -> NewHeadsCap, logs -> LogsCap, newPendingTransactions and
-	// drpc_pendingTransactions -> PendingTxCap).
-	if subMethods.ContainsOne("eth_subscribe") {
-		subMethods.Remove("eth_subscribe")
-		if caps.Contains(protocol.NewHeadsCap) {
-			subMethods.Add("newHeads")
-		}
-		if caps.Contains(protocol.LogsCap) {
-			subMethods.Add("logs")
-		}
-		if caps.Contains(protocol.PendingTxCap) {
-			subMethods.Add("newPendingTransactions")
-			subMethods.Add("drpc_pendingTransactions")
-		}
-	}
-	return subMethods
-}
-
-func (b *BaseChainSupervisor) processUpstreamStatuses() protocol.AvailabilityStatus {
-	var status = protocol.Unavailable
-	b.upstreamStates.Range(func(upId string, upState *protocol.UpstreamState) bool {
-		if upState.Status < status {
-			status = upState.Status
-		}
-		return true
-	})
-
-	return status
 }
 
 func (b *BaseChainSupervisor) monitor() {

@@ -152,6 +152,37 @@ func CreateRemoveEvent(id string) protocol.UpstreamEvent {
 	}
 }
 
+func CreateEventWithLabels(
+	id string,
+	status protocol.AvailabilityStatus,
+	head protocol.Block,
+	methods methods.Methods,
+	labels map[string]string,
+) protocol.UpstreamEvent {
+	labelsInfo := protocol.NewLabels()
+	for key, value := range labels {
+		labelsInfo.AddLabel(key, value)
+	}
+
+	state := protocol.DefaultUpstreamState(
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"",
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = head
+	state.Labels = labelsInfo
+
+	return protocol.UpstreamEvent{
+		Id: id,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &state,
+		},
+	}
+}
+
 func CreateEventWithBlockData(
 	id string,
 	status protocol.AvailabilityStatus,

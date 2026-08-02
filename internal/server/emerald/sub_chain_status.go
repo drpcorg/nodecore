@@ -24,6 +24,22 @@ var errNilUpstreamSupervisor = errors.New("upstream supervisor cannot be nil")
 // connection. The periodic resync bounds that staleness by one interval.
 const defaultChainStateResyncInterval = time.Minute
 
+// chainStatusStream is the server side of both status RPCs - they share the
+// response message, so the streaming scaffold is shared too.
+type chainStatusStream interface {
+	Send(*dshackle.SubscribeChainStatusResponse) error
+	Context() context.Context
+}
+
+// subscribeChainFunc starts the per-chain producer goroutine of one RPC flavor.
+type subscribeChainFunc func(
+	ctx context.Context,
+	chainSupervisor upstreams.ChainSupervisor,
+	chainSubs map[chains.Chain]*utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent],
+	responses chan *dshackle.SubscribeChainStatusResponse,
+	resyncInterval time.Duration,
+)
+
 func SubscribeChainStatus(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	stream dshackle.Blockchain_SubscribeChainStatusServer,
@@ -37,6 +53,15 @@ func SubscribeChainStatusWithResync(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	stream dshackle.Blockchain_SubscribeChainStatusServer,
 	resyncInterval time.Duration,
+) error {
+	return streamChainStatuses(upstreamSupervisor, stream, resyncInterval, subscribeChainSupervisorStates)
+}
+
+func streamChainStatuses(
+	upstreamSupervisor upstreams.UpstreamSupervisor,
+	stream chainStatusStream,
+	resyncInterval time.Duration,
+	subscribeChain subscribeChainFunc,
 ) error {
 	if upstreamSupervisor == nil {
 		return errNilUpstreamSupervisor
@@ -55,7 +80,7 @@ func SubscribeChainStatusWithResync(
 	}()
 
 	for _, chainSupervisor := range upstreamSupervisor.GetChainSupervisors() {
-		subscribeChainSupervisorStates(ctx, chainSupervisor, chainSubs, responses, resyncInterval)
+		subscribeChain(ctx, chainSupervisor, chainSubs, responses, resyncInterval)
 	}
 
 	for {
@@ -66,7 +91,7 @@ func SubscribeChainStatusWithResync(
 			if ok {
 				switch c := chainSupervisorEvent.(type) {
 				case *upstreams.AddChainSupervisorEvent:
-					subscribeChainSupervisorStates(ctx, c.ChainSupervisor, chainSubs, responses, resyncInterval)
+					subscribeChain(ctx, c.ChainSupervisor, chainSubs, responses, resyncInterval)
 				}
 			}
 		case response, ok := <-responses:
@@ -107,7 +132,7 @@ func subscribeChainSupervisorStates(
 
 		state := chainSupervisor.GetChainState()
 		if !state.HeadData.IsEmpty() {
-			if !sendResponse(ctx, responses, toFullResponse(grpcId, state)) {
+			if !sendResponse(ctx, responses, toFullResponse(grpcId, "", state)) {
 				return
 			}
 			fullSent = true
@@ -128,7 +153,7 @@ func subscribeChainSupervisorStates(
 					continue
 				}
 				state = chainSupervisor.GetChainState()
-				if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, snapshotStateWrappers(state))) {
+				if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, "", snapshotStateWrappers(state))) {
 					return
 				}
 			case event, ok := <-chainSupervisorStatesSub.Events:
@@ -142,13 +167,13 @@ func subscribeChainSupervisorStates(
 						if state.HeadData.IsEmpty() {
 							continue
 						}
-						if !sendResponse(ctx, responses, toFullResponse(grpcId, state)) {
+						if !sendResponse(ctx, responses, toFullResponse(grpcId, "", state)) {
 							return
 						}
 						fullSent = true
 						continue
 					}
-					if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, event.Wrappers)) {
+					if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, "", event.Wrappers)) {
 						return
 					}
 				}
@@ -162,6 +187,10 @@ func sendResponse(
 	responses chan<- *dshackle.SubscribeChainStatusResponse,
 	resp *dshackle.SubscribeChainStatusResponse,
 ) bool {
+	// nil = nothing to send (e.g. a caps-only delta), not a failure
+	if resp == nil {
+		return true
+	}
 	select {
 	case <-ctx.Done():
 		return false
@@ -186,49 +215,63 @@ func snapshotStateWrappers(state upstreams.ChainSupervisorState) []upstreams.Cha
 	}
 }
 
-func stateWrappersToResponse(grpcId int, wrappers []upstreams.ChainSupervisorStateWrapper) *dshackle.SubscribeChainStatusResponse {
-	events := make([]*dshackle.ChainEvent, len(wrappers))
+// stateWrappersToResponse returns nil when no wrapper maps to a wire event
+// (e.g. a caps-only delta) - sending a ChainDescription with an empty event
+// would only confuse consumers.
+func stateWrappersToResponse(grpcId int, nodeGroupId string, wrappers []upstreams.ChainSupervisorStateWrapper) *dshackle.SubscribeChainStatusResponse {
+	events := make([]*dshackle.ChainEvent, 0, len(wrappers))
 
-	for i, wrapper := range wrappers {
+	for _, wrapper := range wrappers {
 		switch w := wrapper.(type) {
 		case *upstreams.HeadWrapper:
-			events[i] = HeadToApi(w.Head)
+			events = append(events, HeadToApi(w.Head))
 		case *upstreams.BlocksWrapper:
-			events[i] = BlocksToApi(w.Blocks)
+			events = append(events, BlocksToApi(w.Blocks))
 		case *upstreams.MethodsWrapper:
-			events[i] = SupportedMethodsToApi(w.Methods)
+			events = append(events, SupportedMethodsToApi(w.Methods))
 		case *upstreams.StatusWrapper:
-			events[i] = ChainStatusToApi(w.Status)
+			events = append(events, ChainStatusToApi(w.Status))
 		case *upstreams.LowerBoundsWrapper:
-			events[i] = LowerBoundsToApi(w.LowerBounds)
+			events = append(events, LowerBoundsToApi(w.LowerBounds))
 		case *upstreams.LabelsWrapper:
-			events[i] = LabelsToApi(w.Labels)
+			events = append(events, LabelsToApi(w.Labels))
 		case *upstreams.SubMethodsWrapper:
-			events[i] = SubMethodsToApi(w.SubMethods)
+			events = append(events, SubMethodsToApi(w.SubMethods))
+		case *upstreams.CapsWrapper:
+			// caps drive the local sub-engines only; there is no wire event for them
 		}
+	}
+	if len(events) == 0 {
+		return nil
 	}
 
 	return &dshackle.SubscribeChainStatusResponse{
 		ChainDescription: &dshackle.ChainDescription{
-			Chain:      dshackle.ChainRef(grpcId),
-			ChainEvent: events,
+			Chain:       dshackle.ChainRef(grpcId),
+			ChainEvent:  events,
+			NodeGroupId: nodeGroupId,
 		},
 	}
 }
 
-func toFullResponse(grpcId int, state upstreams.ChainSupervisorState) *dshackle.SubscribeChainStatusResponse {
+func fullStateEvents(state upstreams.ChainSupervisorState) []*dshackle.ChainEvent {
+	return []*dshackle.ChainEvent{
+		ChainStatusToApi(state.Status),
+		SupportedMethodsToApi(state.Methods.GetSupportedMethods().ToSlice()),
+		LowerBoundsToApi(lo.Values(state.LowerBounds)),
+		HeadToApi(state.HeadData.Head),
+		BlocksToApi(state.Blocks),
+		SubMethodsToApi(state.SubMethods.ToSlice()),
+		LabelsToApi(state.ChainLabels),
+	}
+}
+
+func toFullResponse(grpcId int, nodeGroupId string, state upstreams.ChainSupervisorState) *dshackle.SubscribeChainStatusResponse {
 	return &dshackle.SubscribeChainStatusResponse{
 		ChainDescription: &dshackle.ChainDescription{
-			Chain: dshackle.ChainRef(grpcId),
-			ChainEvent: []*dshackle.ChainEvent{
-				ChainStatusToApi(state.Status),
-				SupportedMethodsToApi(state.Methods.GetSupportedMethods().ToSlice()),
-				LowerBoundsToApi(lo.Values(state.LowerBounds)),
-				HeadToApi(state.HeadData.Head),
-				BlocksToApi(state.Blocks),
-				SubMethodsToApi(state.SubMethods.ToSlice()),
-				LabelsToApi(state.ChainLabels),
-			},
+			Chain:       dshackle.ChainRef(grpcId),
+			ChainEvent:  fullStateEvents(state),
+			NodeGroupId: nodeGroupId,
 		},
 		BuildInfo: &dshackle.BuildInfo{
 			Version: buildinfo.ProductVersion(),

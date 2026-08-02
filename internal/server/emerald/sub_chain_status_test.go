@@ -2,6 +2,7 @@ package emerald_test
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"sync"
 	"testing"
@@ -32,10 +33,12 @@ type subscribeChainStatusStream struct {
 }
 
 type fakeChainSupervisor struct {
-	chain      chains.Chain
-	mu         sync.RWMutex
-	state      upstreams.ChainSupervisorState
-	subManager *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
+	chain           chains.Chain
+	mu              sync.RWMutex
+	state           upstreams.ChainSupervisorState
+	groupStates     map[string]upstreams.ChainSupervisorState
+	subManager      *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
+	groupSubManager *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
 }
 
 func newSubscribeChainStatusStream() *subscribeChainStatusStream {
@@ -86,9 +89,11 @@ func (s *subscribeChainStatusStream) Sent() <-chan struct{} {
 
 func newFakeChainSupervisor(chain chains.Chain, state upstreams.ChainSupervisorState) *fakeChainSupervisor {
 	return &fakeChainSupervisor{
-		chain:      chain,
-		state:      state,
-		subManager: utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake-chain-supervisor"),
+		chain:           chain,
+		state:           state,
+		groupStates:     make(map[string]upstreams.ChainSupervisorState),
+		subManager:      utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake-chain-supervisor"),
+		groupSubManager: utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake-chain-supervisor-groups"),
 	}
 }
 
@@ -133,6 +138,43 @@ func (s *fakeChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 
 func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return s.subManager.Subscribe(name)
+}
+
+func (s *fakeChainSupervisor) SubscribeNodeGroupStates(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
+	return s.groupSubManager.Subscribe(name)
+}
+
+func (s *fakeChainSupervisor) GetNodeGroupStates() map[string]upstreams.ChainSupervisorState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return maps.Clone(s.groupStates)
+}
+
+func (s *fakeChainSupervisor) GetNodeGroupState(id string) (upstreams.ChainSupervisorState, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	state, ok := s.groupStates[id]
+	return state, ok
+}
+
+func (s *fakeChainSupervisor) SetGroupState(id string, state upstreams.ChainSupervisorState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.groupStates[id] = state
+}
+
+func (s *fakeChainSupervisor) DeleteGroupState(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.groupStates, id)
+}
+
+func (s *fakeChainSupervisor) PublishGroupStateEvent(nodeGroupId string, wrappers ...upstreams.ChainSupervisorStateWrapper) {
+	s.groupSubManager.Publish(&upstreams.ChainSupervisorStateWrapperEvent{Wrappers: wrappers, NodeGroupId: nodeGroupId})
 }
 
 func (s *fakeChainSupervisor) SetState(state upstreams.ChainSupervisorState) {

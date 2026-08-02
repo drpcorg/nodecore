@@ -106,28 +106,7 @@ func createEventWithLabels(
 	methods upmethods.Methods,
 	labels map[string]string,
 ) protocol.UpstreamEvent {
-	labelsInfo := protocol.NewLabels()
-	for key, value := range labels {
-		labelsInfo.AddLabel(key, value)
-	}
-
-	state := protocol.DefaultUpstreamState(
-		methods,
-		mapset.NewThreadUnsafeSet[protocol.Cap](),
-		"",
-		nil,
-		nil,
-	)
-	state.Status = status
-	state.HeadData = protocol.Block{Height: height}
-	state.Labels = labelsInfo
-
-	return protocol.UpstreamEvent{
-		Id: id,
-		EventType: &protocol.StateUpstreamEvent{
-			State: &state,
-		},
-	}
+	return test_utils.CreateEventWithLabels(id, status, protocol.Block{Height: height}, methods, labels)
 }
 
 func publishHeadEvent(

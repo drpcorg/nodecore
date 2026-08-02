@@ -117,6 +117,59 @@ func capsEqual(a, b mapset.Set[protocol.Cap]) bool {
 	return a.Equal(b)
 }
 
+// recomputeState rebuilds a merged view (network or group) from the given
+// member snapshots, starting from prev so untouched fields (HeadData) carry over.
+func recomputeState(prev ChainSupervisorState, states []*protocol.UpstreamState, subChainMethods mapset.Set[string]) ChainSupervisorState {
+	available := lo.Filter(states, func(item *protocol.UpstreamState, _ int) bool {
+		return item.Status == protocol.Available
+	})
+	next := prev
+	next.Status = minStatus(states)
+	next.Methods = processUpstreamMethods(available)
+	next.Blocks = processUpstreamBlocks(available)
+	next.LowerBounds = processLowerBounds(available)
+	next.ChainLabels = processLabels(available)
+	next.Caps = processCaps(available)
+	next.SubMethods = processSubMethods(subChainMethods, next.Caps)
+	return next
+}
+
+func minStatus(states []*protocol.UpstreamState) protocol.AvailabilityStatus {
+	var status = protocol.Unavailable
+	for _, state := range states {
+		if state.Status < status {
+			status = state.Status
+		}
+	}
+	return status
+}
+
+func processSubMethods(subChainMethods mapset.Set[string], caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+	if caps == nil || !caps.Contains(protocol.WsCap) {
+		return mapset.NewThreadUnsafeSet[string]()
+	}
+	subMethods := subChainMethods.Clone()
+	// EVM advertises concrete topics derived from caps instead of the generic
+	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
+	// real sub types. A topic is offered only if it can be served locally
+	// (newHeads -> NewHeadsCap, logs -> LogsCap, newPendingTransactions and
+	// drpc_pendingTransactions -> PendingTxCap).
+	if subMethods.ContainsOne("eth_subscribe") {
+		subMethods.Remove("eth_subscribe")
+		if caps.Contains(protocol.NewHeadsCap) {
+			subMethods.Add("newHeads")
+		}
+		if caps.Contains(protocol.LogsCap) {
+			subMethods.Add("logs")
+		}
+		if caps.Contains(protocol.PendingTxCap) {
+			subMethods.Add("newPendingTransactions")
+			subMethods.Add("drpc_pendingTransactions")
+		}
+	}
+	return subMethods
+}
+
 func processCaps(availableUpstreams []*protocol.UpstreamState) mapset.Set[protocol.Cap] {
 	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
 	for _, upState := range availableUpstreams {

@@ -42,6 +42,10 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeNodeGroupStatus(SubscribeNodeGroupStatusRequest) → stream SubscribeChainStatusResponse`**
+
+  Server-streaming RPC: the same chain-status lifecycle, but per *node group* instead of the merged per-network view - the upstreams of a chain that share a `client_type` label and an identical supported call-method set (subscription methods don't affect grouping). Every `ChainDescription` is tagged with `node_group_id` (an opaque `"<client_type>:<methods_hash8>"` string, e.g. `erigon:3fa9c21b`; clients must not parse it). Semantics mirror the network level: a head-gated full response per live group on subscribe (each full carries `BuildInfo`), then group-scoped deltas, with groups included in the periodic resync. A group-tagged `ChainStatus` of `AVAIL_UNAVAILABLE` is the removal signal - it is sent when the group's last member leaves (and, as a resync tombstone, when a removal delta was lost), and a group is never introduced while unavailable; when a group recovers or re-forms under the same id, the stream re-introduces it with a fresh full response. Group membership is dynamic - label re-detection or a method ban moves an upstream between groups. Per-group heads are observability only: lag validation keeps measuring upstreams against the network head. `SubscribeChainStatus` is unaffected and never carries group-tagged events.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
