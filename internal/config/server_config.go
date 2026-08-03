@@ -53,7 +53,7 @@ type GrpcAuthConfig struct {
 }
 
 func (g *GrpcAuthConfig) Disabled() bool {
-	return g == nil || !g.Enabled || g.ProviderPrivateKeyPath == ""
+	return !g.Enabled || g.ProviderPrivateKeyPath == ""
 }
 
 type PyroscopeConfig struct {

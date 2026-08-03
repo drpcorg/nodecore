@@ -27,6 +27,17 @@ func newResponseSigner(cfg *config.GrpcAuthConfig) (signature.ResponseSigner, er
 	return signature.NewRSASigner(key)
 }
 
+// signingUnavailable reports that the client asked for a signature we cannot
+// produce. Both entry points check it before doing any work, so a request whose
+// nonce can never be honoured fails immediately instead of after an upstream
+// call - or, for a subscription, after the upstream subscription is live.
+func signingUnavailable(nonce uint64, signer signature.ResponseSigner) error {
+	if nonce != 0 && !signer.Enabled() {
+		return signature.ErrSigningNotConfigured
+	}
+	return nil
+}
+
 // buildReplySignature signs `result` when the client requested a signature with
 // a non-zero nonce, and returns (nil, nil) when it did not. `source` is the
 // upstream id the result came from, which is what the signature binds to.
@@ -49,7 +60,7 @@ func buildReplySignature(
 		Nonce:      nonce,
 		Signature:  sig.Value,
 		KeyId:      sig.KeyID,
-		UpstreamId: sig.UpstreamID, //nolint:staticcheck // SA1019: deprecated in proto, still populated by dshackle.
+		UpstreamId: source, //nolint:staticcheck // SA1019: deprecated in proto, still populated by dshackle.
 	}, nil
 }
 

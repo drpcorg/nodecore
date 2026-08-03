@@ -27,9 +27,8 @@ import (
 var ErrSigningNotConfigured = errors.New("Response signing requested via nonce but signing key is not configured")
 
 type Signature struct {
-	Value      []byte
-	UpstreamID string
-	KeyID      uint64
+	Value []byte
+	KeyID uint64
 }
 
 type ResponseSigner interface {
@@ -78,7 +77,7 @@ func (s *rsaSigner) Sign(nonce uint64, message []byte, source string) (Signature
 	if err != nil {
 		return Signature{}, fmt.Errorf("unable to sign a response: %w", err)
 	}
-	return Signature{Value: value, UpstreamID: source, KeyID: s.keyID}, nil
+	return Signature{Value: value, KeyID: s.keyID}, nil
 }
 
 func KeyID(pub *rsa.PublicKey) (uint64, error) {

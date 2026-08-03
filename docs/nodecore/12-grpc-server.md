@@ -69,8 +69,8 @@ The signed message is `DSHACKLESIG/<nonce>/<upstream-id>/<hex(sha256(result))>`,
 
 Three behaviours are worth knowing:
 
-- **Streamed replies are not signed.** Setting `chunk_size` puts the reply on the streaming path, where no signature is produced. This matches dshackle. A client that needs a signature must leave `chunk_size` unset.
-- **A nonce with no signing key is an error, not an unsigned reply.** If a request carries a nonce while signing is unconfigured, the item fails with an internal error rather than returning a silently unsigned result.
+- **Streamed replies are not signed.** A reply that arrives as a stream carries no signature, matching dshackle. Note that `chunk_size` requests streaming but does not guarantee it — a response served from cache or by a non-streaming connector still comes back buffered, and is signed. Combine `nonce` with `chunk_size` and whether you get a signature depends on where the response came from, so a client that needs a signature should leave `chunk_size` unset.
+- **A nonce with no signing key is an error, not an unsigned reply.** The request is rejected before it is dispatched — a `NativeCall` item fails without an upstream call, and a `NativeSubscribe` fails before the upstream subscription is established — rather than returning a silently unsigned result.
 - **Errors are never signed**, and subscription heartbeats are never signed.
 
 Upstreams on a signing-capable instance advertise the [`secure-signed`](05-upstream-config.md#fields) label, so clients can find them with a label selector.

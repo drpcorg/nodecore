@@ -54,7 +54,6 @@ func TestRSASignerRoundTripsThroughQuorumVerifier(t *testing.T) {
 
 	sig, err := signer.Sign(nonce, result, upstreamID)
 	require.NoError(t, err)
-	assert.Equal(t, upstreamID, sig.UpstreamID)
 	assert.NotEmpty(t, sig.Value)
 
 	registry := quorum.NewRegistry(map[string]crypto.PublicKey{providerID: &key.PublicKey})

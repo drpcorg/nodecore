@@ -10,7 +10,7 @@ import (
 func TestBalancingStrategyDefaultApplied(t *testing.T) {
 	// setDefaults resolves an unset global to rating.
 	cfg := &UpstreamConfig{}
-	cfg.setDefaults(nil)
+	cfg.setDefaults(&GrpcAuthConfig{})
 	assert.Equal(t, RatingBalancingStrategy, cfg.BalancingStrategyFor(chains.ETHEREUM.String()))
 }
 

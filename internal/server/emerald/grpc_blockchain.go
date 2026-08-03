@@ -19,6 +19,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -114,7 +115,13 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 	for wrapper := range executionFlow.GetResponses() {
 		item, ok := items[wrapper.RequestId]
 		if !ok {
-			item = nativeCallItem{adapter: jsonRpcNativeCallAdapter{}}
+			// Without the originating item we don't know its nonce, so a success
+			// here could silently drop a signature the client asked for.
+			log.Warn().Msgf("no request found for id %s, cannot build a reply", wrapper.RequestId)
+			if err := stream.Send(nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerError(), wrapper.UpstreamId, nil, nil)); err != nil {
+				return err
+			}
+			continue
 		}
 		if err := item.adapter.SendReply(stream, wrapper, item.nonce, s.signer); err != nil {
 			return err
@@ -156,6 +163,11 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 	}
 
 	nonce := request.GetNonce()
+	if err := signingUnavailable(nonce, s.signer); err != nil {
+		log.Warn().Msg("a subscription requested a signature but response signing is not configured")
+		return status.Error(codes.Internal, err.Error())
+	}
+
 	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
 	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec, mapDshackleSelectors([]*dshackle.Selector{request.GetSelector()})...)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
@@ -203,7 +215,8 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 
 			replyItem, err := nativeSubscribeReplyItem(wrapper, subscriptionResponse.ResponseResult(), nonce, s.signer)
 			if err != nil {
-				return status.Error(codes.Internal, err.Error())
+				log.Warn().Err(err).Msg("unable to sign a subscription event")
+				return status.Error(codes.Internal, "unable to sign a subscription event")
 			}
 			if err := stream.Send(replyItem); err != nil {
 				return err
@@ -248,6 +261,11 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 	preResponses := make([]*dshackle.NativeCallReplyItem, 0)
 
 	for _, item := range request.GetItems() {
+		if err := signingUnavailable(item.GetNonce(), s.signer); err != nil {
+			log.Warn().Msgf("item %d requested a signature but response signing is not configured", item.GetId())
+			preResponses = append(preResponses, nativeCallErrorItem(item.GetId(), protocol.ServerErrorWithCause(err), flow.NoUpstream, nil, nil))
+			continue
+		}
 		adapter := adapterFor(item)
 		builtRequest, failure := adapter.BuildRequest(configuredChain, item, request.GetSelector(), request.GetChunkSize())
 		if failure != nil {

@@ -2,6 +2,7 @@ package emerald
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/rs/zerolog/log"
 )
 
 // nativeCallAdapter bridges a single NativeCallItem to the internal protocol
@@ -209,7 +211,15 @@ func sendReply(
 	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
 	replySignature, err := buildReplySignature(signer, nonce, payload, wrapper.UpstreamId)
 	if err != nil {
-		replyItem := nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers)
+		log.Warn().Err(err).Msgf("unable to sign a response of request %s", wrapper.RequestId)
+		// ErrSigningNotConfigured is meant for the client and is normally caught
+		// before dispatch; any other cause is an internal detail, so it is logged
+		// rather than put on the wire.
+		responseError := protocol.ServerError()
+		if errors.Is(err, signature.ErrSigningNotConfigured) {
+			responseError = protocol.ServerErrorWithCause(err)
+		}
+		replyItem := nativeCallErrorItem(requestID, responseError, wrapper.UpstreamId, nil, headers)
 		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
 		replyItem.Finalization = finalizationData
 		return stream.Send(replyItem)

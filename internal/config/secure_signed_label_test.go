@@ -15,11 +15,6 @@ func TestGrpcAuthConfigDisabled(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "no config at all",
-			cfg:  nil,
-			want: true,
-		},
-		{
 			name: "explicitly switched off",
 			cfg:  &GrpcAuthConfig{Enabled: false, ProviderPrivateKeyPath: "/tmp/private.pem"},
 			want: true,
@@ -113,9 +108,8 @@ func TestSetDefaultsPublishesSecureSignedOnEveryUpstream(t *testing.T) {
 
 func TestSetDefaultsSkipsSecureSignedWhenSigningIsUnavailable(t *testing.T) {
 	tests := map[string]*GrpcAuthConfig{
-		"no grpc auth config": nil,
-		"switched off":        {Enabled: false, ProviderPrivateKeyPath: "/tmp/private.pem"},
-		"no private key":      {Enabled: true},
+		"switched off":   {Enabled: false, ProviderPrivateKeyPath: "/tmp/private.pem"},
+		"no private key": {Enabled: true},
 	}
 
 	for name, grpcAuth := range tests {

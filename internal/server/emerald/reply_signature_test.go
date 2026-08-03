@@ -20,11 +20,7 @@ import (
 )
 
 func TestNewResponseSignerDisabledWithoutGrpcAuth(t *testing.T) {
-	signer, err := newResponseSigner(nil)
-	require.NoError(t, err)
-	assert.False(t, signer.Enabled())
-
-	signer, err = newResponseSigner(&config.GrpcAuthConfig{Enabled: false})
+	signer, err := newResponseSigner(&config.GrpcAuthConfig{Enabled: false})
 	require.NoError(t, err)
 	assert.False(t, signer.Enabled())
 }
@@ -197,8 +193,54 @@ func TestSendReplyFailsItemWhenSigningRequestedButUnavailable(t *testing.T) {
 	assert.Contains(t, stream.sent[0].GetErrorMessage(), "signing key is not configured")
 }
 
-func TestBuildNativeCallRequestsCarriesPerItemNonce(t *testing.T) {
+func TestSigningUnavailable(t *testing.T) {
+	t.Run("nonce with no signing key", func(te *testing.T) {
+		require.ErrorIs(te, signingUnavailable(42, signature.NewDisabledSigner()), signature.ErrSigningNotConfigured)
+	})
+
+	t.Run("nonce with a signing key", func(te *testing.T) {
+		require.NoError(te, signingUnavailable(42, mustTestSigner(te)))
+	})
+
+	t.Run("no nonce needs no key", func(te *testing.T) {
+		require.NoError(te, signingUnavailable(0, signature.NewDisabledSigner()))
+	})
+}
+
+// A nonce that can never be honoured fails before the item is dispatched, so no
+// upstream call is made on behalf of a request that is going to fail anyway.
+func TestBuildNativeCallRequestsRejectsNonceWhenSigningIsUnavailable(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
+
+	requests, items, preResponses := service.buildNativeCallRequests(configuredChain, &dshackle.NativeCallRequest{
+		Items: []*dshackle.NativeCallItem{
+			{
+				Id:     1,
+				Method: "eth_blockNumber",
+				Nonce:  99,
+				Data:   &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)},
+			},
+			{
+				Id:     2,
+				Method: "eth_blockNumber",
+				Data:   &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)},
+			},
+		},
+	})
+
+	require.Len(t, preResponses, 1)
+	assert.Equal(t, uint32(1), preResponses[0].GetId())
+	assert.False(t, preResponses[0].GetSucceed())
+	assert.Contains(t, preResponses[0].GetErrorMessage(), "signing key is not configured")
+
+	require.Len(t, requests, 1, "the item without a nonce must still be dispatched")
+	require.Len(t, items, 1)
+	assert.Equal(t, "2", requests[0].Id())
+}
+
+func TestBuildNativeCallRequestsCarriesPerItemNonce(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, nil, mustTestSigner(t))
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 
 	_, items, preResponses := service.buildNativeCallRequests(configuredChain, &dshackle.NativeCallRequest{
