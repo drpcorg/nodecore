@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
@@ -30,7 +31,8 @@ type nativeCallAdapter interface {
 	SendReply(
 		stream dshackle.Blockchain_NativeCallServer,
 		wrapper *protocol.ResponseHolderWrapper,
-		chunkSize uint32,
+		nonce uint64,
+		signer signature.ResponseSigner,
 	) error
 }
 
@@ -87,9 +89,10 @@ func (jsonRpcNativeCallAdapter) BuildRequest(
 func (jsonRpcNativeCallAdapter) SendReply(
 	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
+	nonce uint64,
+	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, chunkSize, unwrapJsonRpcResultStream)
+	return sendReply(stream, wrapper, nonce, signer, unwrapJsonRpcResultStream)
 }
 
 type restNativeCallAdapter struct{}
@@ -146,9 +149,10 @@ func (restNativeCallAdapter) BuildRequest(
 func (restNativeCallAdapter) SendReply(
 	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
+	nonce uint64,
+	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, chunkSize, passThroughStream)
+	return sendReply(stream, wrapper, nonce, signer, passThroughStream)
 }
 
 type streamMode int
@@ -164,7 +168,8 @@ const (
 func sendReply(
 	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
+	nonce uint64,
+	signer signature.ResponseSigner,
 	mode streamMode,
 ) error {
 	if wrapper == nil || wrapper.Response == nil {
@@ -202,19 +207,19 @@ func sendReply(
 	}
 
 	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
-	replyItems := nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize, headers)
-	// Response-level metadata travels on the first chunk only; nativeCallSuccessItems
-	// already places UpstreamId/ResponseHeaders there, so match that for the rest.
-	if len(replyItems) > 0 {
-		replyItems[0].UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-		replyItems[0].Finalization = finalizationData
+	replySignature, err := buildReplySignature(signer, nonce, payload, wrapper.UpstreamId)
+	if err != nil {
+		replyItem := nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers)
+		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+		replyItem.Finalization = finalizationData
+		return stream.Send(replyItem)
 	}
-	for _, replyItem := range replyItems {
-		if err := stream.Send(replyItem); err != nil {
-			return err
-		}
-	}
-	return nil
+
+	replyItem := nativeCallSuccessItem(requestID, wrapper.UpstreamId, payload, headers)
+	replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+	replyItem.Finalization = finalizationData
+	replyItem.Signature = replySignature
+	return stream.Send(replyItem)
 }
 
 func nativeCallFinalizationData(wrapper *protocol.ResponseHolderWrapper) *dshackle.FinalizationData {

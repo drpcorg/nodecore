@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -33,13 +34,19 @@ type GrpcBlockchainService struct {
 
 	appCtx            *server_ctx.ApplicationServerContext
 	sessionAuth       *grpcSessionAuth
+	signer            signature.ResponseSigner
 	heartbeatInterval time.Duration
 }
 
-func NewGrpcBlockchainService(appCtx *server_ctx.ApplicationServerContext, sessionAuth *grpcSessionAuth) *GrpcBlockchainService {
+func NewGrpcBlockchainService(
+	appCtx *server_ctx.ApplicationServerContext,
+	sessionAuth *grpcSessionAuth,
+	signer signature.ResponseSigner,
+) *GrpcBlockchainService {
 	return &GrpcBlockchainService{
 		appCtx:            appCtx,
 		sessionAuth:       sessionAuth,
+		signer:            signer,
 		heartbeatInterval: defaultNativeSubscribeHeartbeat,
 	}
 }
@@ -77,7 +84,7 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
 	}
 
-	requests, adapters, preResponses := s.buildNativeCallRequests(configuredChain, request)
+	requests, items, preResponses := s.buildNativeCallRequests(configuredChain, request)
 	for _, preResponse := range preResponses {
 		if err := stream.Send(preResponse); err != nil {
 			return err
@@ -105,11 +112,11 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 	go executionFlow.Execute(stream.Context(), requests)
 
 	for wrapper := range executionFlow.GetResponses() {
-		adapter, ok := adapters[wrapper.RequestId]
+		item, ok := items[wrapper.RequestId]
 		if !ok {
-			adapter = jsonRpcNativeCallAdapter{}
+			item = nativeCallItem{adapter: jsonRpcNativeCallAdapter{}}
 		}
-		if err := adapter.SendReply(stream, wrapper, request.GetChunkSize()); err != nil {
+		if err := item.adapter.SendReply(stream, wrapper, item.nonce, s.signer); err != nil {
 			return err
 		}
 	}
@@ -148,6 +155,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Internal, err.Error())
 	}
 
+	nonce := request.GetNonce()
 	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
 	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec, mapDshackleSelectors([]*dshackle.Selector{request.GetSelector()})...)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
@@ -193,10 +201,11 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 				continue
 			}
 
-			if err := stream.Send(&dshackle.NativeSubscribeReplyItem{
-				Payload:    subscriptionResponse.ResponseResult(),
-				UpstreamId: wrapper.UpstreamId,
-			}); err != nil {
+			replyItem, err := nativeSubscribeReplyItem(wrapper, subscriptionResponse.ResponseResult(), nonce, s.signer)
+			if err != nil {
+				return status.Error(codes.Internal, err.Error())
+			}
+			if err := stream.Send(replyItem); err != nil {
 				return err
 			}
 			lastSent = time.Now()
@@ -222,12 +231,20 @@ func (s *GrpcBlockchainService) resolveChain(chainRef dshackle.ChainRef) (*chain
 	return configuredChain, s.appCtx.UpstreamSupervisor.GetChainSupervisor(configuredChain.Chain)
 }
 
+// nativeCallItem is what a request id resolves to while replies stream back:
+// the adapter that built the request and the nonce the client asked us to sign
+// the reply with (0 meaning "do not sign").
+type nativeCallItem struct {
+	adapter nativeCallAdapter
+	nonce   uint64
+}
+
 func (s *GrpcBlockchainService) buildNativeCallRequests(
 	configuredChain *chains.ConfiguredChain,
 	request *dshackle.NativeCallRequest,
-) ([]protocol.RequestHolder, map[string]nativeCallAdapter, []*dshackle.NativeCallReplyItem) {
+) ([]protocol.RequestHolder, map[string]nativeCallItem, []*dshackle.NativeCallReplyItem) {
 	requests := make([]protocol.RequestHolder, 0, len(request.GetItems()))
-	adapters := make(map[string]nativeCallAdapter, len(request.GetItems()))
+	items := make(map[string]nativeCallItem, len(request.GetItems()))
 	preResponses := make([]*dshackle.NativeCallReplyItem, 0)
 
 	for _, item := range request.GetItems() {
@@ -238,53 +255,29 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 			continue
 		}
 		requests = append(requests, builtRequest)
-		adapters[builtRequest.Id()] = adapter
+		items[builtRequest.Id()] = nativeCallItem{adapter: adapter, nonce: item.GetNonce()}
 	}
 
-	return requests, adapters, preResponses
+	return requests, items, preResponses
 }
 
-func nativeCallSuccessItems(
+// nativeCallSuccessItem builds the reply for a fully-buffered response. A
+// buffered response is always a single unchunked item however large: chunk_size
+// selects a streaming request, it is not a framing size for in-memory payloads.
+// Chunked replies come from streamNativeCallBody instead.
+func nativeCallSuccessItem(
 	requestID uint32,
 	upstreamID string,
 	payload []byte,
-	chunkSize uint32,
 	headers http.Header,
-) []*dshackle.NativeCallReplyItem {
-	responseHeaders := mapHeaders(headers)
-	if chunkSize == 0 || len(payload) <= int(chunkSize) {
-		return []*dshackle.NativeCallReplyItem{
-			{
-				Id:              requestID,
-				Succeed:         true,
-				Payload:         payload,
-				UpstreamId:      upstreamID,
-				ResponseHeaders: responseHeaders,
-			},
-		}
+) *dshackle.NativeCallReplyItem {
+	return &dshackle.NativeCallReplyItem{
+		Id:              requestID,
+		Succeed:         true,
+		Payload:         payload,
+		UpstreamId:      upstreamID,
+		ResponseHeaders: mapHeaders(headers),
 	}
-
-	replyItems := make([]*dshackle.NativeCallReplyItem, 0, len(payload)/int(chunkSize)+1)
-	for start := 0; start < len(payload); start += int(chunkSize) {
-		end := start + int(chunkSize)
-		if end > len(payload) {
-			end = len(payload)
-		}
-		item := &dshackle.NativeCallReplyItem{
-			Id:         requestID,
-			Succeed:    true,
-			Payload:    payload[start:end],
-			Chunked:    true,
-			FinalChunk: end == len(payload),
-		}
-		// Response-level metadata travels on the first chunk only.
-		if start == 0 {
-			item.UpstreamId = upstreamID
-			item.ResponseHeaders = responseHeaders
-		}
-		replyItems = append(replyItems, item)
-	}
-	return replyItems
 }
 
 // nativeCallChunkEmitter forwards a byte stream to the client as

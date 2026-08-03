@@ -45,7 +45,11 @@ func NewGrpcServer(appCtx *server_ctx.ApplicationServerContext) (*GrpcServer, er
 	if err != nil {
 		return nil, err
 	}
-	blockchainService := NewGrpcBlockchainService(appCtx, sessionAuth)
+	responseSigner, err := newResponseSigner(serverConfig.GrpcAuthConfig)
+	if err != nil {
+		return nil, err
+	}
+	blockchainService := NewGrpcBlockchainService(appCtx, sessionAuth, responseSigner)
 
 	dshackle.RegisterBlockchainServer(grpcServer, blockchainService)
 	if authService != nil {

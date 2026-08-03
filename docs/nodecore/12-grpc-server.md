@@ -61,6 +61,20 @@ Used only when `server.grpc-auth.enabled: true`. The handshake is a single RPC t
 
 This is the same handshake shape that the DRPC platform uses against its provider fleet. When `grpc-auth.enabled: false`, no session is required and all `BlockchainService` RPCs are open.
 
+## Response signing
+
+When `grpc-auth.enabled: true` **and** `provider-private-key-path` is set, nodecore can sign the responses it returns. Signing is opt-in per request: set a non-zero `nonce` on a `NativeCallItem` or on a `NativeSubscribeRequest`, and the reply carries a `NativeCallReplySignature` with the signature, the `key_id`, the originating `upstream_id`, and the nonce you sent.
+
+The signed message is `DSHACKLESIG/<nonce>/<upstream-id>/<hex(sha256(result))>`, signed RSA PKCS#1 v1.5 over SHA-256 — the same scheme dshackle uses, so an existing verifier works unchanged. `key_id` is the first 8 bytes of `sha256` over the X.509 SubjectPublicKeyInfo of the signing public key, read big-endian.
+
+Three behaviours are worth knowing:
+
+- **Streamed replies are not signed.** Setting `chunk_size` puts the reply on the streaming path, where no signature is produced. This matches dshackle. A client that needs a signature must leave `chunk_size` unset.
+- **A nonce with no signing key is an error, not an unsigned reply.** If a request carries a nonce while signing is unconfigured, the item fails with an internal error rather than returning a silently unsigned result.
+- **Errors are never signed**, and subscription heartbeats are never signed.
+
+Upstreams on a signing-capable instance advertise the [`secure-signed`](05-upstream-config.md#fields) label, so clients can find them with a label selector.
+
 ## Minimal client snippet (Go)
 
 ```go
