@@ -1,0 +1,97 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Avail methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "avail",
+    "api-connectors": [
+      "json-rpc",
+      "websocket"
+    ],
+    "type": "plain"
+  },
+  "spec-imports": [
+    "polkadot"
+  ],
+  "methods": [
+    {
+      "name": "chainSpec_v1_chainName",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "chainSpec_v1_genesisHash",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "chainSpec_v1_properties",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kate_blockLength",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kate_queryDataProof",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kate_queryProof",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "kate_queryRows",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "mmr_generateProof",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "mmr_root",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "mmr_verifyProof",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "mmr_verifyProofStateless",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

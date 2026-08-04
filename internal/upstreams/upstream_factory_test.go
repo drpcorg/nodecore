@@ -7,6 +7,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aptos_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
@@ -36,5 +37,26 @@ func newAptosTestOptions() *chains.Options {
 		ValidationInterval:      time.Second,
 		DisableChainValidation:  &disabled,
 		DisableHealthValidation: &disabled,
+	}
+}
+
+func TestGetChainSpecificReturnsPolkadot(t *testing.T) {
+	ctx := context.Background()
+	conf := &config.Upstream{Id: "u1", PollInterval: time.Second, Options: newPolkadotTestOptions()}
+	info := &connectorsInfo{internalRequestConnector: &stubConnector{}}
+	cs, err := getChainSpecific(ctx, conf, info, chains.GetChain("polkadot"))
+	assert.NoError(t, err)
+	assert.IsType(t, &polkadot_specific.PolkadotChainSpecificObject{}, cs)
+}
+
+func newPolkadotTestOptions() *chains.Options {
+	disabled := false
+	return &chains.Options{
+		InternalTimeout:         time.Second,
+		ValidationInterval:      time.Second,
+		DisableChainValidation:  &disabled,
+		DisableHealthValidation: &disabled,
+		ValidateSyncing:         &disabled,
+		ValidatePeers:           &disabled,
 	}
 }
