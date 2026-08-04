@@ -48,6 +48,13 @@
       }
     },
     {
+      "name": "GET#/api/v3/traces",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
       "name": "GET#/api/v3/addressInformation",
       "params": [],
       "settings": {
@@ -196,6 +203,83 @@
     },
     {
       "name": "GET#/api/v3/topAccountsByBalance",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/decode",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "POST#/api/v3/decode",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/metadata",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/dns/records",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/multisig/orders",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/multisig/wallets",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/nft/sales",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/pendingActions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/pendingTraces",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/pendingTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "GET#/api/v3/vesting",
       "params": [],
       "settings": {
         "cacheable": false

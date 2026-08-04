@@ -286,6 +286,10 @@ func TestTonSpecLoads(t *testing.T) {
 
 	restIndexerMethods := specs.GetSpecMethodsByConnectors("ton", []specs.ApiConnectorType{specs.RestIndexer})
 	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/api/v3/masterchainInfo")
+	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/api/v3/traces")
+	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/api/v3/pendingTraces")
+	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/api/v3/multisig/wallets")
+	assert.Contains(t, restIndexerMethods[specs.DefaultMethodGroup], "POST#/api/v3/decode")
 	assert.NotContains(t, restIndexerMethods[specs.DefaultMethodGroup], "GET#/getMasterchainInfo")
 
 	template, params, ok := specs.MatchRestMethod("ton", "GET#/getAddressBalance")
