@@ -151,6 +151,9 @@ func TestPolkadotChainValidator(t *testing.T) {
 		{"match with a space", "vara", `"Vara Network"`, validations.Valid},
 		{"mismatch is fatal", "polkadot", `"Kusama"`, validations.FatalSettingError},
 		{"empty chain name is fatal", "polkadot", `""`, validations.FatalSettingError},
+		// A null must take the empty-name path, not become the string "null" and
+		// get reported as a mismatch against a chain the node never claimed.
+		{"null chain name is fatal", "polkadot", `null`, validations.FatalSettingError},
 	}
 
 	for _, tt := range tests {

@@ -2,6 +2,7 @@ package polkadot_bounds
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -73,17 +74,13 @@ func (p *PolkadotLowerBoundDetector) fetchLatestHeight(ctx context.Context) (int
 	return int64(height), nil
 }
 
-// probe reports whether the upstream still serves state at the given height. A
-// "State already discarded for" error is pruning (false, nil); anything else is
-// returned as an error so the calculator retries rather than mistaking an outage
-// for pruning.
 func (p *PolkadotLowerBoundDetector) probe(ctx context.Context, height int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.internalTimeout)
 	defer cancel()
 
 	hash, err := specific_helpers.FetchPolkadotBlockHash(ctx, p.connector, p.chain, hexHeight(height))
 	if err != nil {
-		if isStateDiscarded(err) {
+		if isStateDiscarded(err.Error()) || errors.Is(err, specific_helpers.ErrPolkadotEmptyBlockHash) {
 			return false, nil
 		}
 		return false, err
@@ -96,16 +93,17 @@ func (p *PolkadotLowerBoundDetector) probe(ctx context.Context, height int64) (b
 	response := p.connector.SendRequest(ctx, request)
 	if response.HasError() {
 		respErr := response.GetError()
-		if respErr != nil && strings.Contains(strings.ToLower(respErr.Message), stateDiscardedHint) {
+		if respErr != nil && isStateDiscarded(respErr.Message) {
 			return false, nil
 		}
 		return false, respErr
 	}
-	return len(response.ResponseResult()) > 0, nil
+	result := response.ResponseResult()
+	return len(result) > 0 && !specific_helpers.IsJsonNull(result), nil
 }
 
-func isStateDiscarded(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), stateDiscardedHint)
+func isStateDiscarded(message string) bool {
+	return strings.Contains(strings.ToLower(message), stateDiscardedHint)
 }
 
 func hexHeight(height int64) string {

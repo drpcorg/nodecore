@@ -29,7 +29,6 @@ type PolkadotChainSpecificObject struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
 	options         *chains.Options
-	pollInterval    time.Duration
 	internalTimeout time.Duration
 	configuredChain *chains.ConfiguredChain
 }
@@ -39,7 +38,6 @@ func NewPolkadotChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
-	pollInterval time.Duration,
 	options *chains.Options,
 ) *PolkadotChainSpecificObject {
 	return &PolkadotChainSpecificObject{
@@ -47,7 +45,6 @@ func NewPolkadotChainSpecificObject(
 		upstreamId:      upstreamId,
 		connector:       connector,
 		options:         options,
-		pollInterval:    pollInterval,
 		internalTimeout: options.InternalTimeout,
 		configuredChain: configuredChain,
 	}
@@ -119,8 +116,8 @@ func (p *PolkadotChainSpecificObject) HealthValidators() []validations.Validator
 	if *p.options.DisableHealthValidation {
 		return []validations.Validator[protocol.AvailabilityStatus]{}
 	}
-	validateSyncing := p.options.ValidateSyncing != nil && *p.options.ValidateSyncing
-	validatePeers := p.options.ValidatePeers != nil && *p.options.ValidatePeers
+	validateSyncing := *p.options.ValidateSyncing
+	validatePeers := *p.options.ValidatePeers
 	// Both arms come from one system_health response, so with both checks off
 	// there is nothing to learn and no reason to spend the call.
 	if !validateSyncing && !validatePeers {

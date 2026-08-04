@@ -52,7 +52,7 @@ func TestParsePolkadotHeight(t *testing.T) {
 		want   uint64
 	}{
 		{"prefixed", "0x1a2b3c", 1715004},
-		{"unprefixed", "1a2b3c", 1715004},
+		{"upper case prefix", "0X1a2b3c", 1715004},
 		{"zero", "0x0", 0},
 	}
 	for _, tt := range tests {
@@ -64,11 +64,38 @@ func TestParsePolkadotHeight(t *testing.T) {
 	}
 }
 
+// The 0x prefix is required. Bare digits are rejected rather than read as hex,
+// because a decimal "1715004" would otherwise parse to 24203268 - silently wrong
+// by ~14x, which is worse than refusing the header.
 func TestParsePolkadotHeightInvalid(t *testing.T) {
-	for _, number := range []string{"", "0x", "0xzz", "not a number"} {
+	for _, number := range []string{"", "0x", "0X", "0xzz", "not a number", "1a2b3c", "1715004"} {
 		_, err := specific_helpers.ParsePolkadotHeight(number)
 		assert.Error(t, err, "expected %q to be rejected", number)
 	}
+}
+
+// A null block hash means the node does not hold that block. It must not become
+// the string "null": blockchain.NewHashIdFromString would base64-decode that to
+// a bogus 3-byte id which is then published as the head's BlockId.
+func TestFetchPolkadotBlockHashNullResult(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`null`), protocol.JsonRpc))
+
+	hash, err := specific_helpers.FetchPolkadotBlockHash(
+		context.Background(), connector, chains.GetChain("polkadot").Chain, "0x1a2b3c",
+	)
+	assert.Empty(t, hash)
+	assert.ErrorIs(t, err, specific_helpers.ErrPolkadotEmptyBlockHash)
+}
+
+func TestIsJsonNull(t *testing.T) {
+	assert.True(t, specific_helpers.IsJsonNull([]byte(`null`)))
+	assert.True(t, specific_helpers.IsJsonNull([]byte(" null\n")))
+	// A quoted "null" is a real string value, not an absent result.
+	assert.False(t, specific_helpers.IsJsonNull([]byte(`"null"`)))
+	assert.False(t, specific_helpers.IsJsonNull([]byte(`"0xabc"`)))
+	assert.False(t, specific_helpers.IsJsonNull(nil))
 }
 
 func matchPolkadotMethod(method string) func(protocol.RequestHolder) bool {

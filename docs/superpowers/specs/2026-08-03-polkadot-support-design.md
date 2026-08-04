@@ -28,15 +28,26 @@ groups in the `pkg/chains/public` submodule are `type: polkadot`:
 | zkverify | Mainnet, Testnet | `ZkVerify Mainnet` / `ZkVerify Testnet` |
 
 The `chain-id` column is what `PolkadotChainValidator` compares `system_chain`
-against, so a node reporting anything else is a fatal settings error.
+against, so a node reporting anything else is a fatal settings error. **Two of
+these values are wrong in the submodule**, confirmed by probing live nodes: avail
+reports `Avail DA Mainnet` (not `Avail Network`, cross-checked on two providers)
+and zkverify reports `zkVerify` (not `ZkVerify Mainnet`). Both need fixing in
+`drpcorg/public` or every upstream on those chains is refused at startup. The
+seven confirmed correct are polkadot, kusama, westend, vara, polymesh and the
+polkadot/westend asset hubs; paseo, paseo-asset-hub and the testnets remain
+unverified (no reachable public endpoint at the time of writing).
 
 Today `getChainSpecific` panics with `unknown blockchain type - polkadot` for all
 of them. Adding the factory case plus the `getMethodSpecName` mapping enables
 every one of them at once - there is no per-chain Go work. Avail is the only
 chain needing anything extra, and only for its 11 extra methods (Component 4).
 
-All 11 ship `expected-block-time: 3s`, `lags: {syncing: 10, lagging: 5}` and
-`options.validate-peers: false`.
+Chain settings are not uniform across the family, which matters for the health
+validator: `polkadot`, `kusama`, `vara` and `avail` ship
+`expected-block-time: 3s` and `options.validate-peers: false`, while the other
+seven ship `expected-block-time: 6s` and pin no peers option at all - so the
+peers arm follows the mode default there and **is on in strict mode**. All 11
+ship `lags: {syncing: 10, lagging: 5}`.
 
 ## Decisions
 
@@ -127,10 +138,17 @@ this hook, so the pattern is established.
 `blocks/head.go:189` treats a parse error as terminal and returns from the
 subscription goroutine; the head then stalls until `headNoUpdatesTimeout` fires
 and resubscribes. So on failure we log a warning and return the height +
-parentHash block with an empty `Hash`. This is safe: the chain-level head merge
-in `chain_supervisor.go` / `chain_supervisor_state.go` never reads `Block.Hash`,
-selection is height-based. The real hash is recorded for future fork-choice use,
-not for anything live today.
+parentHash block with an empty `Hash`.
+
+This is safe for *routing*: the chain-level head merge in `chain_supervisor.go` /
+`chain_supervisor_state.go` never reads `Block.Hash`, selection is height-based.
+It is not invisible, though - `emerald.HeadToApi` publishes `head.Hash.ToHex()`
+as the `BlockId` of every gRPC head event, so the degraded path emits an empty
+`BlockId` to gRPC consumers. An empty id is the acceptable failure here: it does
+not trip the self-parent guard in `HeadToApi`, and it is strictly better than the
+alternative the null-guard exists to prevent - a `null` hash rendering as the
+string `"null"` and base64-decoding to the bogus 3-byte id `0x9ee965`, which
+would look like a real block to a consumer walking the parent chain.
 
 `GetFinalizedBlock` returns `errUnsupportedFinalizedBlock` (decision 4), and
 `BlockProcessor()` returns `nil` so it is never called - `createBlockProcessor`
@@ -189,11 +207,26 @@ dshackle's `period() = 5`.
   `ParsePolkadotHeight` (Component 0). Only the height matters here, so no hash
   lookup is needed.
 - `probe(height)`: `chain_getBlockHash [hexHeight]` -> hash, then
-  `state_getMetadata [hash]`. Success means the state is retained.
-  An error whose message contains `State already discarded for` means pruned
-  (`false, nil`) rather than retryable - this is dshackle's `nonRetryableErrors`.
-  Any other error propagates so the calculator retries instead of mistaking an
-  outage for pruning.
+  `state_getMetadata [hash]`. A non-null metadata result means the state is
+  retained.
+- Definite no-data answers return `(false, nil)` so the search narrows at once:
+  an error message containing `State already discarded for` (dshackle's
+  `nonRetryableErrors`), a `null` block hash, or a `null` metadata result. A node
+  that cannot name a block at a height does not hold it - that is absence, not a
+  transient fault.
+- Any other error propagates, which buys retries.
+
+**The retry path is not a guarantee, and earlier drafts of this document claimed
+it was.** `LowerBoundSearchCalculator` collapses a post-retry error to no-data
+(`return err == nil && available`, `lower_bound_search.go`), so a *persistent*
+non-pruning failure - a `state_getMetadata` restricted by the provider, rate
+limiting - still reads as pruned and pushes the bound upward, after burning up to
+30 attempts with backoff to 1 minute on each of ~25 probes. This is shared
+behavior across every search-based detector (cosmos included), not something this
+chain introduces, which is why it is documented rather than worked around here.
+Classifying null answers as no-data above removes the most likely way to hit it.
+A pre-flight check that aborts detection on a `-32601` from `state_getMetadata`
+would remove the rest, and belongs in the shared calculator.
 
 Polkadot state methods key off the block *hash*, never the number, which is why
 the probe needs two calls per step.

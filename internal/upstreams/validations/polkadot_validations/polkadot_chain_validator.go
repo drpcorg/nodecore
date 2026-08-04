@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -75,7 +76,11 @@ func (p *PolkadotChainValidator) fetchChainName() (string, error) {
 	if response.HasError() {
 		return "", response.GetError()
 	}
-	chainName := protocol.ResultAsString(response.ResponseResult())
+	result := response.ResponseResult()
+	if specific_helpers.IsJsonNull(result) {
+		return "", errPolkadotEmptyChainName
+	}
+	chainName := protocol.ResultAsString(result)
 	if chainName == "" {
 		return "", errPolkadotEmptyChainName
 	}

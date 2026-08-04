@@ -1,6 +1,7 @@
 package specific_helpers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,7 +22,11 @@ type PolkadotHeader struct {
 	Number     string `json:"number"`
 }
 
-var errPolkadotEmptyBlockHash = errors.New("polkadot node returned an empty block hash")
+var ErrPolkadotEmptyBlockHash = errors.New("polkadot node returned an empty block hash")
+
+func IsJsonNull(raw []byte) bool {
+	return string(bytes.TrimSpace(raw)) == "null"
+}
 
 func FetchPolkadotHeader(
 	ctx context.Context,
@@ -50,13 +55,13 @@ func ParsePolkadotHeader(raw []byte) (*PolkadotHeader, error) {
 	return &header, nil
 }
 
-// ParsePolkadotHeight decodes a header number. Substrate reports it as a hex
-// string ("0x1a2b3c"); the prefix is tolerated as optional so a node that omits
-// it still parses.
 func ParsePolkadotHeight(number string) (uint64, error) {
-	trimmed := strings.TrimPrefix(strings.TrimPrefix(number, "0x"), "0X")
-	if trimmed == "" {
-		return 0, fmt.Errorf("polkadot header number '%s' is not a hex number", number)
+	trimmed, ok := strings.CutPrefix(number, "0x")
+	if !ok {
+		trimmed, ok = strings.CutPrefix(number, "0X")
+	}
+	if !ok || trimmed == "" {
+		return 0, fmt.Errorf("polkadot header number '%s' is not a 0x-prefixed hex number", number)
 	}
 	height, err := strconv.ParseUint(trimmed, 16, 64)
 	if err != nil {
@@ -81,9 +86,13 @@ func FetchPolkadotBlockHash(
 	if response.HasError() {
 		return "", response.GetError()
 	}
-	hash := protocol.ResultAsString(response.ResponseResult())
+	result := response.ResponseResult()
+	if IsJsonNull(result) {
+		return "", ErrPolkadotEmptyBlockHash
+	}
+	hash := protocol.ResultAsString(result)
 	if hash == "" {
-		return "", errPolkadotEmptyBlockHash
+		return "", ErrPolkadotEmptyBlockHash
 	}
 	return hash, nil
 }

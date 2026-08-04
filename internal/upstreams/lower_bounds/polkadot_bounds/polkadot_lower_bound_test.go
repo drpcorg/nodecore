@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -114,6 +115,65 @@ func TestPolkadotLowerBoundArchiveNodeConvergesLow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+// nullHashNode answers null for chain_getBlockHash below a floor, which is what a
+// blocks-pruning node does for a block it dropped. That is absence of data, so it
+// must narrow the search immediately rather than burn retries and then be
+// misclassified.
+type nullHashNode struct {
+	connectors.ApiConnector
+
+	latest    int64
+	blockFrom int64
+	probes    atomic.Int64
+}
+
+func (n *nullHashNode) SendRequest(_ context.Context, req protocol.RequestHolder) protocol.ResponseHolder {
+	switch req.Method() {
+	case "chain_getHeader":
+		return jsonRpcResult(fmt.Sprintf(`{"parentHash":"0xaa","number":"0x%x"}`, n.latest))
+	case "chain_getBlockHash":
+		n.probes.Add(1)
+		if heightFromHexParam(req) < n.blockFrom {
+			return jsonRpcResult(`null`)
+		}
+		return jsonRpcResult(fmt.Sprintf(`"0x%016x"`, heightFromHexParam(req)))
+	case "state_getMetadata":
+		return jsonRpcResult(`"0x6d657461"`)
+	}
+	return protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(-32601, "nope", nil))
+}
+
+func TestPolkadotLowerBoundTreatsNullBlockHashAsNoData(t *testing.T) {
+	node := &nullHashNode{latest: 1000, blockFrom: 900}
+
+	result, err := newDetector(node).DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, int64(900), result[0].Bound)
+	// A retried null would multiply this by the retry attempts; the binary search
+	// over 0..1000 needs only ~11 probes plus the converge re-check.
+	assert.Less(t, node.probes.Load(), int64(20), "null answers were retried instead of narrowing")
+}
+
+// A null metadata result at a resolvable hash is also no-data, not retained state.
+func TestPolkadotLowerBoundTreatsNullMetadataAsNoData(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
+		return req.Method() == "chain_getHeader"
+	})).Return(jsonRpcResult(`{"parentHash":"0xaa","number":"0x64"}`))
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
+		return req.Method() == "chain_getBlockHash"
+	})).Return(jsonRpcResult(`"0xabc"`))
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
+		return req.Method() == "state_getMetadata"
+	})).Return(jsonRpcResult(`null`))
+
+	// Nothing is retained anywhere, so the search cannot confirm a bound and must
+	// report failure rather than publish a bogus 1.
+	_, err := newDetector(connector).DetectLowerBound(context.Background())
+	assert.Error(t, err)
 }
 
 // A latest-height failure must not be reported as a bound: the processor keeps

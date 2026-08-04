@@ -279,7 +279,7 @@ func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConne
 }
 
 func NewPolkadotChainSpecific(ctx context.Context, connector connectors.ApiConnector) *polkadot_specific.PolkadotChainSpecificObject {
-	return polkadot_specific.NewPolkadotChainSpecificObject(ctx, chains.GetChain("polkadot"), "id", connector, time.Second, newTestChainOptions())
+	return polkadot_specific.NewPolkadotChainSpecificObject(ctx, chains.GetChain("polkadot"), "id", connector, newTestChainOptions())
 }
 
 func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *algorand_specific.AlgorandChainSpecificObject {
