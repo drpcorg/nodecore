@@ -47,7 +47,7 @@ func (a *AppConfig) setDefaults() {
 			a.IntegrationConfig.Drpc.setDefaults()
 		}
 	}
-	a.UpstreamConfig.setDefaults()
+	a.UpstreamConfig.setDefaults(a.ServerConfig.GrpcAuthConfig)
 }
 
 func (s *StatsConfig) setDefaults() {
@@ -229,7 +229,7 @@ func (r *RedisStorageTimeoutsConfig) setDefaults() {
 	}
 }
 
-func (u *UpstreamConfig) setDefaults() {
+func (u *UpstreamConfig) setDefaults(grpcAuth *GrpcAuthConfig) {
 	if u.Mode == "" {
 		u.Mode = DefaultMode
 	}
@@ -256,6 +256,9 @@ func (u *UpstreamConfig) setDefaults() {
 	for _, upstream := range u.Upstreams {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
 		upstream.setDefaults(chainDefaults, u.Mode)
+		if !grpcAuth.Disabled() {
+			upstream.setSecureSignedLabel()
+		}
 	}
 	if u.IntegrityConfig == nil {
 		u.IntegrityConfig = &IntegrityConfig{}
@@ -361,6 +364,18 @@ func (u *Upstream) translateDeprecatedArchiveOption() {
 		u.Labels = UpstreamLabels{}
 	}
 	u.Labels[chains.ArchiveLabel] = strconv.FormatBool(*u.Options.ArchiveCapability)
+}
+
+// setSecureSignedLabel advertises that this instance signs responses, so gRPC
+// clients can select signing-capable providers.
+func (u *Upstream) setSecureSignedLabel() {
+	if _, set := u.Labels[SecureSignedLabel]; set {
+		return
+	}
+	if u.Labels == nil {
+		u.Labels = UpstreamLabels{}
+	}
+	u.Labels[SecureSignedLabel] = "true"
 }
 
 func getDefaultPollInterval(chainName string, upstreamMode UpstreamMode) time.Duration {

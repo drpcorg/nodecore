@@ -1,6 +1,7 @@
 package emerald
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
@@ -93,7 +95,7 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 
 	request := &dshackle.NativeCallRequest{
@@ -124,7 +126,7 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	require.Len(t, adapters, 2)
 
 	assert.Equal(t, protocol.Rest, requests[0].RequestType())
-	assert.IsType(t, restNativeCallAdapter{}, adapters[requests[0].Id()])
+	assert.IsType(t, restNativeCallAdapter{}, adapters[requests[0].Id()].adapter)
 	// Method is the canonical name as sent by the gRPC client; query
 	// params live on RequestParams now, not baked into the path.
 	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method())
@@ -132,12 +134,12 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	assert.Equal(t, []string{"true"}, restReq.RequestParams().QueryParams["verbose"])
 
 	assert.Equal(t, protocol.JsonRpc, requests[1].RequestType())
-	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()])
+	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()].adapter)
 	assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, requests[1].Selectors())
 }
 
 func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 
 	request := &dshackle.NativeCallRequest{
@@ -161,7 +163,7 @@ func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsRejectsMalformedRestMethod(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "algorand"}
 
 	request := &dshackle.NativeCallRequest{
@@ -185,7 +187,7 @@ func TestBuildNativeCallRequestsRejectsMalformedRestMethod(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		ChunkSize: 100,
@@ -378,24 +380,24 @@ func TestNativeCallChunkEmitterSingleFinalFrameCarriesFirst(t *testing.T) {
 	assert.True(t, got[0].final)
 }
 
-func TestNativeCallSuccessItemsChunking(t *testing.T) {
-	items := nativeCallSuccessItems(7, "upstream-1", []byte("0123456789"), 4, nil)
-	require.Len(t, items, 3)
+// dshackle never slices a buffered payload: chunk_size only selects a stream
+// request. A buffered response is one unchunked item however large.
+func TestSendReplySendsBufferedPayloadAsSingleUnchunkedItem(t *testing.T) {
+	payload := bytes.Repeat([]byte("a"), 10_000)
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId: "upstream-1",
+		RequestId:  "1",
+		Response:   protocol.NewSimpleHttpUpstreamResponse("1", payload, protocol.JsonRpc),
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
 
-	assert.True(t, items[0].GetChunked())
-	assert.False(t, items[0].GetFinalChunk())
-	assert.Equal(t, "0123", string(items[0].GetPayload()))
-	assert.Equal(t, "upstream-1", items[0].GetUpstreamId())
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
+	require.NoError(t, err)
 
-	assert.True(t, items[1].GetChunked())
-	assert.False(t, items[1].GetFinalChunk())
-	assert.Equal(t, "4567", string(items[1].GetPayload()))
-	assert.Empty(t, items[1].GetUpstreamId(), "metadata is stamped on the first chunk only")
-
-	assert.True(t, items[2].GetChunked())
-	assert.True(t, items[2].GetFinalChunk())
-	assert.Equal(t, "89", string(items[2].GetPayload()))
-	assert.Empty(t, items[2].GetUpstreamId(), "metadata is stamped on the first chunk only")
+	require.Len(t, stream.sent, 1)
+	assert.False(t, stream.sent[0].GetChunked())
+	assert.Equal(t, payload, stream.sent[0].GetPayload())
+	assert.Equal(t, "upstream-1", stream.sent[0].GetUpstreamId())
 }
 
 func TestNativeCallSendReplyReturnsSuccessItemWithResponseUpstreamId(t *testing.T) {
@@ -407,7 +409,7 @@ func TestNativeCallSendReplyReturnsSuccessItemWithResponseUpstreamId(t *testing.
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 1)
 
@@ -427,7 +429,7 @@ func TestNativeCallSendReplyReturnsErrorItemWithResponseUpstreamId(t *testing.T)
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 1)
 
@@ -457,7 +459,7 @@ func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := restNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	err := restNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 1)
 
@@ -475,7 +477,7 @@ func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
 }
 
 func TestNativeCallUnauthenticated(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)))
+	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)), signature.NewDisabledSigner())
 	stream := &testNativeCallStream{ctx: context.Background()}
 
 	err := service.NativeCall(&dshackle.NativeCallRequest{}, stream)
@@ -491,7 +493,7 @@ func TestNativeCallUnauthenticated(t *testing.T) {
 }
 
 func TestNativeSubscribeUnauthenticated(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)))
+	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)), signature.NewDisabledSigner())
 	stream := &testNativeSubscribeStream{ctx: context.Background()}
 
 	err := service.NativeSubscribe(&dshackle.NativeSubscribeRequest{}, stream)
@@ -565,7 +567,7 @@ func (t *testNativeSubscribeStream) RecvMsg(_ any) error {
 }
 
 func TestBuildNativeCallRequestsPropagatesRequestSelectorToJsonRpcAndRestItems(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}},
@@ -595,7 +597,7 @@ func TestBuildNativeCallRequestsPropagatesRequestSelectorToJsonRpcAndRestItems(t
 }
 
 func TestBuildNativeCallRequestsAppendsRequestAndItemSelectors(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}},
@@ -618,7 +620,7 @@ func TestBuildNativeCallRequestsAppendsRequestAndItemSelectors(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsRejectsConflictingRequestAndItemSortSelectorsAtMapping(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_SAFE}}}},

@@ -2,6 +2,7 @@ package emerald
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,9 +10,11 @@ import (
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/rs/zerolog/log"
 )
 
 // nativeCallAdapter bridges a single NativeCallItem to the internal protocol
@@ -30,7 +33,8 @@ type nativeCallAdapter interface {
 	SendReply(
 		stream dshackle.Blockchain_NativeCallServer,
 		wrapper *protocol.ResponseHolderWrapper,
-		chunkSize uint32,
+		nonce uint64,
+		signer signature.ResponseSigner,
 	) error
 }
 
@@ -87,9 +91,10 @@ func (jsonRpcNativeCallAdapter) BuildRequest(
 func (jsonRpcNativeCallAdapter) SendReply(
 	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
+	nonce uint64,
+	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, chunkSize, unwrapJsonRpcResultStream)
+	return sendReply(stream, wrapper, nonce, signer, unwrapJsonRpcResultStream)
 }
 
 type restNativeCallAdapter struct{}
@@ -146,9 +151,10 @@ func (restNativeCallAdapter) BuildRequest(
 func (restNativeCallAdapter) SendReply(
 	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
+	nonce uint64,
+	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, chunkSize, passThroughStream)
+	return sendReply(stream, wrapper, nonce, signer, passThroughStream)
 }
 
 type streamMode int
@@ -164,7 +170,8 @@ const (
 func sendReply(
 	stream dshackle.Blockchain_NativeCallServer,
 	wrapper *protocol.ResponseHolderWrapper,
-	chunkSize uint32,
+	nonce uint64,
+	signer signature.ResponseSigner,
 	mode streamMode,
 ) error {
 	if wrapper == nil || wrapper.Response == nil {
@@ -202,19 +209,27 @@ func sendReply(
 	}
 
 	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
-	replyItems := nativeCallSuccessItems(requestID, wrapper.UpstreamId, payload, chunkSize, headers)
-	// Response-level metadata travels on the first chunk only; nativeCallSuccessItems
-	// already places UpstreamId/ResponseHeaders there, so match that for the rest.
-	if len(replyItems) > 0 {
-		replyItems[0].UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-		replyItems[0].Finalization = finalizationData
-	}
-	for _, replyItem := range replyItems {
-		if err := stream.Send(replyItem); err != nil {
-			return err
+	replySignature, err := buildReplySignature(signer, nonce, payload, wrapper.UpstreamId)
+	if err != nil {
+		log.Warn().Err(err).Msgf("unable to sign a response of request %s", wrapper.RequestId)
+		// ErrSigningNotConfigured is meant for the client and is normally caught
+		// before dispatch; any other cause is an internal detail, so it is logged
+		// rather than put on the wire.
+		responseError := protocol.ServerError()
+		if errors.Is(err, signature.ErrSigningNotConfigured) {
+			responseError = protocol.ServerErrorWithCause(err)
 		}
+		replyItem := nativeCallErrorItem(requestID, responseError, wrapper.UpstreamId, nil, headers)
+		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+		replyItem.Finalization = finalizationData
+		return stream.Send(replyItem)
 	}
-	return nil
+
+	replyItem := nativeCallSuccessItem(requestID, wrapper.UpstreamId, payload, headers)
+	replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
+	replyItem.Finalization = finalizationData
+	replyItem.Signature = replySignature
+	return stream.Send(replyItem)
 }
 
 func nativeCallFinalizationData(wrapper *protocol.ResponseHolderWrapper) *dshackle.FinalizationData {

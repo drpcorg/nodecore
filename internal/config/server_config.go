@@ -42,12 +42,18 @@ func (s *ServerConfig) TrustedProxyPrefixes() []netip.Prefix {
 	return s.trustedProxyPrefixes
 }
 
+const SecureSignedLabel = "secure-signed"
+
 type GrpcAuthConfig struct {
 	Enabled                bool          `yaml:"enabled"`
 	PublicKeyOwner         string        `yaml:"public-key-owner"`
 	ProviderPrivateKeyPath string        `yaml:"provider-private-key-path"`
 	ExternalPublicKeyPath  string        `yaml:"external-public-key-path"`
 	SessionTTL             time.Duration `yaml:"session-ttl"`
+}
+
+func (g *GrpcAuthConfig) Disabled() bool {
+	return !g.Enabled || g.ProviderPrivateKeyPath == ""
 }
 
 type PyroscopeConfig struct {

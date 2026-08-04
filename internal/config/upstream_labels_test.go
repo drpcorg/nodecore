@@ -265,7 +265,7 @@ upstreams:
 		t.Run(test.name, func(te *testing.T) {
 			var cfg UpstreamConfig
 			require.NoError(te, yaml.Unmarshal([]byte(test.config), &cfg))
-			cfg.setDefaults()
+			cfg.setDefaults(&GrpcAuthConfig{})
 
 			require.Len(te, cfg.Upstreams, 1)
 			assert.Equal(te, test.want, cfg.Upstreams[0].Labels)
@@ -283,7 +283,7 @@ upstreams:
       - type: json-rpc
         url: https://test.com
 `), &cfg))
-	cfg.setDefaults()
+	cfg.setDefaults(&GrpcAuthConfig{})
 
 	assert.Empty(t, cfg.Upstreams[0].Labels, "no archive option must not synthesise a label")
 }
