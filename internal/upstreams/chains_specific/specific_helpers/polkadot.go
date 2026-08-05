@@ -14,9 +14,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// PolkadotHeader is the subset of a substrate block header nodecore needs. The
-// header does NOT contain its own hash - that requires a follow-up
-// chain_getBlockHash(number) call.
 type PolkadotHeader struct {
 	ParentHash string `json:"parentHash"`
 	Number     string `json:"number"`
