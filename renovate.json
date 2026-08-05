@@ -10,7 +10,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "^\\.github/workflows/lint\\.yml$"
+        ".github/workflows/lint.yml"
       ],
       "matchStrings": [
         "uses: golangci/golangci-lint-action@\\S+\\s+with:\\s+version: (?<currentValue>v\\d+\\.\\d+\\.\\d+)"
