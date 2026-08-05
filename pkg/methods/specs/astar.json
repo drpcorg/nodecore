@@ -1,0 +1,15 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Astar methods - Ethereum and Polkadot JSON-RPC and websocket methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "astar",
+    "type": "bundle"
+  },
+  "spec-imports": [
+    "eth",
+    "polkadot"
+  ]
+}
