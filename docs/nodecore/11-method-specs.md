@@ -183,6 +183,10 @@ Both entries resolve to the same `tendermint` connector: the plain name via exac
 
 Every cosmos method is declared `cacheable: false`, for two independent reasons: the LCD selects historical state with the `x-cosmos-block-height` **header**, which is deliberately excluded from the REST cache key, and CometBFT's `height` argument is optional (an omitted height means *latest*), which no tag parser currently detects.
 
+Every polkadot method is `cacheable: false` for the same second reason: a substrate state read takes an **optional** block-hash argument, so `chain_getHeader []` (meaning *latest*) and `chain_getHeader ["0x…"]` (immutable) are the same spec entry, and an omitted ref is not something a tag parser detects. Polkadot also addresses history by block *hash* rather than height, which the finalization checks — built around block numbers — cannot evaluate.
+
+The `avail` spec shows the other way to extend a family: rather than a bundle, it is a *plain* spec that imports the `polkadot` bundle and adds Avail's own `kate_*` / `mmr_*` methods on top. A plain spec may only import specs whose connector set matches its own exactly, which is why it declares both `json-rpc` and `websocket`.
+
 ## Bundle example
 
 A bundle stitches together transport-specific plain specs:
@@ -224,6 +228,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `starknet` | `starknet-json-rpc` |
 | `ton` | `ton-http-v2`, `ton-index-v3` |
 | `cosmos` | `cosmos-tendermint`, `cosmos-rest` |
+| `polkadot` | `polkadot-json-rpc`, `polkadot-websocket` |
 
 ### Plain specs
 
@@ -231,9 +236,9 @@ Grouped by the transports they declare:
 
 | `api-connectors` | Specs |
 | --- | --- |
-| `json-rpc`, `websocket` | `arbitrum`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
+| `json-rpc`, `websocket` | `arbitrum`, `avail`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polkadot-json-rpc`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
 | `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `near-json-rpc`, `starknet-json-rpc`, `tron-json-rpc` |
-| `websocket` | `eth-websocket`, `klaytn-websocket`, `solana-websocket` |
+| `websocket` | `eth-websocket`, `klaytn-websocket`, `polkadot-websocket`, `solana-websocket` |
 | `tendermint` | `cosmos-tendermint` |
 | `rest` | `aptos`, `cosmos-rest`, `eth-beacon-chain`, `ton-http-v2`, `tron-rest` |
 | `rest-indexer` | `ton-index-v3` |

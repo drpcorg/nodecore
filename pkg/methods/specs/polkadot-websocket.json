@@ -1,0 +1,148 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Polkadot websocket subscription methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "polkadot-websocket",
+    "api-connectors": [
+      "websocket"
+    ],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "subscribe_newHead",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "chain_newHead",
+          "unsubscribe-method": "unsubscribe_newHead"
+        }
+      }
+    },
+    {
+      "name": "chain_subscribeNewHead",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "chain_newHead",
+          "unsubscribe-method": "chain_unsubscribeNewHead"
+        }
+      }
+    },
+    {
+      "name": "chain_subscribeNewHeads",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "chain_newHead",
+          "unsubscribe-method": "chain_unsubscribeNewHeads"
+        }
+      }
+    },
+    {
+      "name": "chain_subscribeAllHeads",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "chain_allHead",
+          "unsubscribe-method": "chain_unsubscribeAllHeads"
+        }
+      }
+    },
+    {
+      "name": "chain_subscribeFinalizedHeads",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "chain_finalizedHead",
+          "unsubscribe-method": "chain_unsubscribeFinalizedHeads"
+        }
+      }
+    },
+    {
+      "name": "chain_subscribeFinalisedHeads",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "chain_finalizedHead",
+          "unsubscribe-method": "chain_unsubscribeFinalisedHeads"
+        }
+      }
+    },
+    {
+      "name": "chain_subscribeRuntimeVersion",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "state_runtimeVersion",
+          "unsubscribe-method": "chain_unsubscribeRuntimeVersion"
+        }
+      }
+    },
+    {
+      "name": "state_subscribeRuntimeVersion",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "state_runtimeVersion",
+          "unsubscribe-method": "state_unsubscribeRuntimeVersion"
+        }
+      }
+    },
+    {
+      "name": "state_subscribeStorage",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "state_storage",
+          "unsubscribe-method": "state_unsubscribeStorage"
+        }
+      }
+    },
+    {
+      "name": "author_submitAndWatchExtrinsic",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "author_watchExtrinsic",
+          "unsubscribe-method": "author_unwatchExtrinsic"
+        }
+      }
+    },
+    {
+      "name": "grandpa_subscribeJustifications",
+      "params": [],
+      "settings": {
+        "cacheable": false,
+        "subscription": {
+          "is-subscribe": true,
+          "method": "grandpa_justifications",
+          "unsubscribe-method": "grandpa_unsubscribeJustifications"
+        }
+      }
+    }
+  ]
+}

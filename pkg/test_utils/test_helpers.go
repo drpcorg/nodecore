@@ -20,6 +20,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -275,6 +276,10 @@ func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConne
 		DisableHealthValidation: new(false),
 	}
 	return starknet_specific.NewStarknetChainSpecificObject(ctx, chains.GetChain("starknet"), "id", connector, time.Second, options)
+}
+
+func NewPolkadotChainSpecific(ctx context.Context, connector connectors.ApiConnector) *polkadot_specific.PolkadotChainSpecificObject {
+	return polkadot_specific.NewPolkadotChainSpecificObject(ctx, chains.GetChain("polkadot"), "id", connector, newTestChainOptions())
 }
 
 func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *algorand_specific.AlgorandChainSpecificObject {

@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/cosmos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
@@ -305,6 +306,14 @@ func getChainSpecific(
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
 			conf.PollInterval,
+			conf.Options,
+		), nil
+	case chains.Polkadot:
+		return polkadot_specific.NewPolkadotChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
 			conf.Options,
 		), nil
 	default:
