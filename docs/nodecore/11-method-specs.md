@@ -210,6 +210,8 @@ The resulting `eth` spec carries every method declared by `eth-json-rpc` plus ev
 
 The `tron` bundle is the multi-transport example: it composes `tron-json-rpc` (Ethereum-compatible `/jsonrpc`), `tron-rest` (the canonical `/wallet/*` HTTP API), and `tron-rest-solidity` (a `rest-additional` mirror over `/walletsolidity/*` for confirmed-only reads). The resulting `tron` spec carries methods across all three connectors at once.
 
+A bundle can also import other bundles: `astar` is `["eth", "polkadot"]`, because an Astar node serves the EVM RPC and the substrate RPC from the same endpoint. Both halves keep their own behaviour — the eth methods stay cacheable with their tag parsers, the polkadot methods stay `cacheable: false` — and both subscription families end up in the ws `sub` group. Same-level imports may not define the same method name, so this composition only works because the eth and polkadot method sets are disjoint.
+
 ## Shipped specs
 
 nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/specs/)). They split into **bundles**, which compose transport-specific specs, and **plain** specs, which declare their own methods and `api-connectors` (see [`spec` block](#spec-block)).
@@ -229,6 +231,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `ton` | `ton-http-v2`, `ton-index-v3` |
 | `cosmos` | `cosmos-tendermint`, `cosmos-rest` |
 | `polkadot` | `polkadot-json-rpc`, `polkadot-websocket` |
+| `astar` | `eth`, `polkadot` |
 
 ### Plain specs
 
