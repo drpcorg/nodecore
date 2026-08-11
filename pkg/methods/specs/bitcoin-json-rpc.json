@@ -107,6 +107,13 @@
       }
     },
     {
+      "name": "getchaintips",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
       "name": "getconnectioncount",
       "params": [],
       "settings": {
