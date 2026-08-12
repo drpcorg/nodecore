@@ -37,7 +37,7 @@ type EvmChainSpecificObject struct {
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		e.ctx,
 		e.upstreamId,
 		e.pollInterval,
@@ -50,7 +50,7 @@ func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, e.labelsDetectors(), e.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(e.ctx, e.upstreamId, e.labelsDetectors(), e.options.ValidationInterval*5)
 }
 
 func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
@@ -103,7 +103,7 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 	if e.hasMethod("eth_getProof") {
 		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities))
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }
 
 func (e *EvmChainSpecificObject) hasMethod(methodName string) bool {

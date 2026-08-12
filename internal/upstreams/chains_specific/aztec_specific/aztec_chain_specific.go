@@ -67,7 +67,7 @@ func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			a.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AztecChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -83,7 +83,7 @@ func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 			a.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		a.ctx,
 		a.upstreamId,
 		a.configuredChain.AverageRemoveSpeed(),

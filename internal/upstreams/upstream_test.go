@@ -26,8 +26,8 @@ import (
 
 var loadMethodSpecsOnce sync.Once
 
-func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -53,8 +53,8 @@ func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamStop_StopsRunningLifecycle(t *testing.T) {
-	upstream, _, _ := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamStop_StopsRunningLifecycle(t *testing.T) {
+	upstream, _, _ := newTestGenericUpstream(t, nil, nil, nil)
 
 	upstream.Start()
 	require.True(t, upstream.Running())
@@ -64,8 +64,8 @@ func TestBaseUpstreamStop_StopsRunningLifecycle(t *testing.T) {
 	assert.False(t, upstream.Running())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -88,8 +88,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -112,8 +112,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -140,8 +140,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -164,8 +164,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -192,8 +192,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *test
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -215,8 +215,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -237,8 +237,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -265,8 +265,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -294,8 +294,8 @@ func TestBaseUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *test
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -318,8 +318,8 @@ func TestBaseUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -346,8 +346,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -373,8 +373,8 @@ func TestBaseUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -403,8 +403,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -438,8 +438,8 @@ func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *t
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -464,8 +464,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testi
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -485,8 +485,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -516,11 +516,11 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
+func TestGenericUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 	loadMethodSpecs(t)
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
-	upstream, _, sub := newTestBaseUpstream(t, upConfig, nil, nil)
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -558,14 +558,14 @@ func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedInitialState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
+func TestGenericUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 	loadMethodSpecs(t)
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{
 		BanDuration:   20 * time.Millisecond,
 		EnableMethods: []string{"eth_call"},
 	})
-	upstream, _, sub := newTestBaseUpstream(t, upConfig, nil, nil)
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -577,57 +577,57 @@ func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 	assert.True(t, upstream.GetUpstreamState().UpstreamMethods.HasMethod("eth_call"))
 }
 
-func TestBaseUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
+func TestGenericUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
 	httpConnector := mocks.NewConnectorMockWithType(specs.JsonRpcConnector)
 	wsConnector := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 
-	upstream, _, _ := newTestBaseUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
+	upstream, _, _ := newTestGenericUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
 
 	assert.Same(t, httpConnector, upstream.GetConnector(specs.JsonRpcConnector))
 	assert.Same(t, wsConnector, upstream.GetConnector(specs.WebsocketConnector))
 	assert.Nil(t, upstream.GetConnector(specs.RestConnector))
 }
 
-func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
+func TestGenericUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
 	headProcessor.On("UpdateHead", uint64(100), uint64(7)).Once()
 
 	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "id", chains.ETHEREUM, headProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headEventProcessor})
-	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
+	upstream, _, _ := newTestGenericUpstream(t, nil, nil, aggregator)
 
 	upstream.UpdateHead(100, 7)
 
 	headProcessor.AssertExpectations(t)
 }
 
-func TestBaseUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
+func TestGenericUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
 	blockData := protocol.NewBlock(uint64(1002), 0, blockchain.EmptyHash, blockchain.EmptyHash)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
-	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "id", chains.ETHEREUM, blockProcessor)
+	blockEventProcessor := event_processors.NewGenericBlockEventProcessor(context.Background(), "id", chains.ETHEREUM, blockProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{blockEventProcessor})
-	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
+	upstream, _, _ := newTestGenericUpstream(t, nil, nil, aggregator)
 
 	upstream.UpdateBlock(blockData, protocol.FinalizedBlock)
 
 	blockProcessor.AssertExpectations(t)
 }
 
-func TestBaseUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {
+func TestGenericUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.FatalSettingError).Once()
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
-	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"id",
 		testUpstreamOptions(),
 		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
 	)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
-	upstream, _, _ := newTestBaseUpstream(t, upConfig, nil, aggregator)
+	upstream, _, _ := newTestGenericUpstream(t, upConfig, nil, aggregator)
 
 	upstream.Start()
 
@@ -635,18 +635,18 @@ func TestBaseUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) 
 	validator.AssertExpectations(t)
 }
 
-func TestBaseUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(t *testing.T) {
+func TestGenericUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.SettingsError)
 
-	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"id",
 		testUpstreamOptions(),
 		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
 	)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
-	upstream, _, sub := newTestBaseUpstream(t, nil, nil, aggregator)
+	upstream, _, sub := newTestGenericUpstream(t, nil, nil, aggregator)
 
 	t.Cleanup(upstream.Stop)
 
@@ -656,9 +656,9 @@ func TestBaseUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(
 	assertNoUpstreamEvent(t, sub)
 }
 
-func TestBaseUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
+func TestGenericUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
 	// The test upstream is on ethereum, whose syncing lag threshold is 6.
-	upstream, _, sub := newTestBaseUpstream(t, nil, nil, nil)
+	upstream, _, sub := newTestGenericUpstream(t, nil, nil, nil)
 	t.Cleanup(upstream.Stop)
 	startUpstream(t, upstream, sub)
 
@@ -680,8 +680,8 @@ func TestBaseUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
 	assert.Equal(t, protocol.Available, upstream.GetUpstreamState().Status)
 }
 
-func TestBaseUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 	t.Cleanup(upstream.Stop)
 	startUpstream(t, upstream, sub)
 
@@ -696,12 +696,12 @@ func TestBaseUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *test
 	assert.Equal(t, protocol.Unavailable, upstream.GetUpstreamState().Status)
 }
 
-func newTestBaseUpstream(
+func newTestGenericUpstream(
 	t *testing.T,
 	upConfig *config.Upstream,
 	connectorMocks []*mocks.ConnectorMock,
 	aggregator *event_processors.UpstreamProcessorAggregator,
-) (*upstreams.BaseUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
+) (*upstreams.GenericUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
 	t.Helper()
 	loadMethodSpecs(t)
 
@@ -732,7 +732,7 @@ func newTestBaseUpstream(
 		apiConnectors = append(apiConnectors, connector)
 	}
 
-	upstream := upstreams.NewBaseUpstreamWithParams(
+	upstream := upstreams.NewGenericUpstreamWithParams(
 		"id",
 		chains.ETHEREUM,
 		apiConnectors,
@@ -765,7 +765,7 @@ func newUpstreamConfig(methodsConfig *config.MethodsConfig) *config.Upstream {
 // that Start emits at the end of its lifecycle to announce the upstream's
 // initial state to subscribers. Tests that exercise post-Start event flows
 // use this so the announcement doesn't masquerade as their expected event.
-func startUpstream(t *testing.T, upstream *upstreams.BaseUpstream, sub *utils.Subscription[protocol.UpstreamEvent]) {
+func startUpstream(t *testing.T, upstream *upstreams.GenericUpstream, sub *utils.Subscription[protocol.UpstreamEvent]) {
 	t.Helper()
 	upstream.Start()
 	event := nextUpstreamEvent(t, sub)

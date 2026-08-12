@@ -16,7 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type BaseUpstreamSupervisor struct {
+type GenericUpstreamSupervisor struct {
 	ctx context.Context
 
 	chainSupervisors *utils.CMap[chains.Chain, ChainSupervisor]
@@ -35,7 +35,7 @@ type BaseUpstreamSupervisor struct {
 	subChainSupervisorManager *utils.SubscriptionManager[ChainSupervisorEvent]
 }
 
-func NewBaseUpstreamSupervisor(
+func NewGenericUpstreamSupervisor(
 	ctx context.Context,
 	upstreamsConfig *config.UpstreamConfig,
 	tracker dimensions.DimensionTracker,
@@ -43,7 +43,7 @@ func NewBaseUpstreamSupervisor(
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
 ) UpstreamSupervisor {
-	return &BaseUpstreamSupervisor{
+	return &GenericUpstreamSupervisor{
 		ctx:                       ctx,
 		upstreams:                 utils.NewCMap[string, Upstream](),
 		chainSupervisors:          utils.NewCMap[chains.Chain, ChainSupervisor](),
@@ -59,11 +59,11 @@ func NewBaseUpstreamSupervisor(
 	}
 }
 
-func (b *BaseUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent] {
+func (b *GenericUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent] {
 	return b.subChainSupervisorManager.Subscribe(name)
 }
 
-func (b *BaseUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
+func (b *GenericUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
 	result := make([]ChainSupervisor, 0)
 	b.chainSupervisors.Range(func(key chains.Chain, val ChainSupervisor) bool {
 		result = append(result, val)
@@ -73,25 +73,25 @@ func (b *BaseUpstreamSupervisor) GetChainSupervisors() []ChainSupervisor {
 	return result
 }
 
-func (b *BaseUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) ChainSupervisor {
+func (b *GenericUpstreamSupervisor) GetChainSupervisor(chain chains.Chain) ChainSupervisor {
 	if c, ok := b.chainSupervisors.Load(chain); ok {
 		return c
 	}
 	return nil
 }
 
-func (b *BaseUpstreamSupervisor) GetUpstream(upstreamId string) Upstream {
+func (b *GenericUpstreamSupervisor) GetUpstream(upstreamId string) Upstream {
 	if up, ok := b.upstreams.Load(upstreamId); ok {
 		return up
 	}
 	return nil
 }
 
-func (b *BaseUpstreamSupervisor) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
+func (b *GenericUpstreamSupervisor) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {
 	return b.executor
 }
 
-func (b *BaseUpstreamSupervisor) StartUpstreams() {
+func (b *GenericUpstreamSupervisor) StartUpstreams() {
 	log.Info().Msgf("upstreams will be started in %s mode", b.upstreamsConfig.Mode)
 
 	go b.processEvents()
@@ -160,7 +160,7 @@ func createUpstreamExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Exec
 	return resilience.CreateUpstreamExecutor(policies...)
 }
 
-func (b *BaseUpstreamSupervisor) processEvents() {
+func (b *GenericUpstreamSupervisor) processEvents() {
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -168,7 +168,7 @@ func (b *BaseUpstreamSupervisor) processEvents() {
 		case event, ok := <-b.eventsChan:
 			if ok {
 				chainSupervisor, exists := b.chainSupervisors.LoadOrStoreLazy(event.Chain, func() ChainSupervisor {
-					return NewBaseChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice(), b.tracker, b.upstreamsConfig.ValidateLagFor(event.Chain.String()), b.GetUpstream)
+					return NewGenericChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice(), b.tracker, b.upstreamsConfig.ValidateLagFor(event.Chain.String()), b.GetUpstream)
 				})
 
 				if !exists {

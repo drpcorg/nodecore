@@ -66,7 +66,7 @@ func GetResponseType(wrapper *ResponseHolderWrapper, err error) ResultType {
 			} else {
 				return ResultTotalFailure
 			}
-		case *BaseUpstreamResponse:
+		case *GenericUpstreamResponse:
 			if response.HasError() {
 				return ResultOkWithError
 			}
@@ -85,7 +85,7 @@ func IsRetryable(response ResponseHolder) bool {
 	shouldRetry := false
 
 	switch resp := response.(type) {
-	case *BaseUpstreamResponse:
+	case *GenericUpstreamResponse:
 		shouldRetry = response.HasError() && errors_config.IsRetryable(response.GetError().Message)
 	case *ReplyError:
 		shouldRetry = resp.ErrorKind == PartialFailure

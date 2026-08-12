@@ -129,7 +129,7 @@ func (c *CosmosRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProces
 			c.upstreamId, c.chain.Chain, c.options.InternalTimeout, c.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(c.ctx, c.upstreamId, c.chain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(c.ctx, c.upstreamId, c.chain.AverageRemoveSpeed(), detectors)
 }
 
 func (c *CosmosRestSpecific) LabelsProcessor() labels.LabelsProcessor {
@@ -141,11 +141,11 @@ func (c *CosmosRestSpecific) LabelsProcessor() labels.LabelsProcessor {
 			c.options.InternalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(c.ctx, c.upstreamId, labelsDetectors, c.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(c.ctx, c.upstreamId, labelsDetectors, c.options.ValidationInterval*5)
 }
 
 func (c *CosmosRestSpecific) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		c.ctx,
 		c.upstreamId,
 		c.pollInterval,

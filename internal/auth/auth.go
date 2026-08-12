@@ -30,7 +30,7 @@ func NewAuthProcessor(ctx context.Context, authCfg *config.AuthConfig, integrati
 	if len(authCfg.KeyConfigs) == 0 {
 		authProcessor = newSimpleAuthProcessor(authRequestStrategy)
 	} else {
-		keyService, err := keymanagement.NewBaseKeyService(ctx, authCfg.KeyConfigs, integrationResolver)
+		keyService, err := keymanagement.NewGenericKeyService(ctx, authCfg.KeyConfigs, integrationResolver)
 		if err != nil {
 			return nil, err
 		}

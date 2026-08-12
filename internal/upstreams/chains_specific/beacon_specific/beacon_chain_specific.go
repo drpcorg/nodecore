@@ -64,7 +64,7 @@ func NewBeaconChainSpecificObject(
 // GetFinalizedBlock (GET /eth/v1/beacon/headers/finalized). Safe-block detection
 // is disabled - beacon has no "safe" head and doesn't implement GetSafeBlock.
 func (b *BeaconChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.pollInterval,
@@ -94,7 +94,7 @@ func (b *BeaconChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	labelsDetectors := []labels.LabelsDetector{
 		labels.NewClientLabelDetectorHandler(b.upstreamId, b.connector, clientDetector, b.internalTimeout),
 	}
-	return labels.NewBaseLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
 }
 
 func (b *BeaconChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -104,7 +104,7 @@ func (b *BeaconChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoun
 		b.internalTimeout,
 		b.connector,
 	)
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.configuredChain.AverageRemoveSpeed(),

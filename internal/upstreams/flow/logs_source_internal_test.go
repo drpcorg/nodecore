@@ -85,7 +85,7 @@ func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
 	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block)
 
 	require.Len(t, logs, 1)
-	assert.Equal(t, "id", upstreamId) // BaseUpstream id from TestEvmUpstream
+	assert.Equal(t, "id", upstreamId) // GenericUpstream id from TestEvmUpstream
 	connLow.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 

@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewBaseWsProcessorReturnsErrorWhenDialServiceFails(t *testing.T) {
+func TestNewGenericWsProcessorReturnsErrorWhenDialServiceFails(t *testing.T) {
 	dialService := mocks.NewDialWsServiceMock()
 	registry := mocks.NewRequestRegistryMock()
 	session := mocks.NewWsSessionMock()
@@ -29,14 +29,14 @@ func TestNewBaseWsProcessorReturnsErrorWhenDialServiceFails(t *testing.T) {
 
 	dialService.On("NewConnectFunc", mock.Anything).Return(nil, expectedErr).Once()
 
-	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, registry, session, wsProtocol)
+	processor, err := wsupstream.NewGenericWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, registry, session, wsProtocol)
 
 	assert.Nil(t, processor)
 	require.ErrorIs(t, err, expectedErr)
 	dialService.AssertExpectations(t)
 }
 
-func TestBaseWsProcessorSendWsRequestReturnsProtocolError(t *testing.T) {
+func TestGenericWsProcessorSendWsRequestReturnsProtocolError(t *testing.T) {
 	loadMethodSpecs(t)
 
 	processor := newProcessorForNoStart(t)
@@ -53,7 +53,7 @@ func TestBaseWsProcessorSendWsRequestReturnsProtocolError(t *testing.T) {
 	processor.wsProtocol.AssertExpectations(t)
 }
 
-func TestBaseWsProcessorSendWsRequestReturnsErrorWhenSpecMethodMissing(t *testing.T) {
+func TestGenericWsProcessorSendWsRequestReturnsErrorWhenSpecMethodMissing(t *testing.T) {
 	processor := newProcessorForNoStart(t)
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("unknown_method", nil, chains.ETHEREUM)
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestBaseWsProcessorSendWsRequestReturnsErrorWhenSpecMethodMissing(t *testin
 	require.EqualError(t, callErr, "no spec method found for unknown_method")
 }
 
-func TestBaseWsProcessorSendWsRequestReturnsErrorWhenMethodIsNotSubscription(t *testing.T) {
+func TestGenericWsProcessorSendWsRequestReturnsErrorWhenMethodIsNotSubscription(t *testing.T) {
 	loadMethodSpecs(t)
 
 	processor := newProcessorForNoStart(t)
@@ -77,7 +77,7 @@ func TestBaseWsProcessorSendWsRequestReturnsErrorWhenMethodIsNotSubscription(t *
 	require.EqualError(t, callErr, "'eth_blockNumber' is not subscribe method and it can't be sent via SendWsRequest, use SendRpcRequest instead")
 }
 
-func TestBaseWsProcessorSendWsRequest(t *testing.T) {
+func TestGenericWsProcessorSendWsRequest(t *testing.T) {
 	loadMethodSpecs(t)
 
 	processor := newStartedProcessor(t)
@@ -103,7 +103,7 @@ func TestBaseWsProcessorSendWsRequest(t *testing.T) {
 	assert.Equal(t, reqOp.GetChannel(wsupstream.MessageResponse), responseChan)
 }
 
-func TestBaseWsProcessorSendWsRequestAbortsWhenWriteFails(t *testing.T) {
+func TestGenericWsProcessorSendWsRequestAbortsWhenWriteFails(t *testing.T) {
 	loadMethodSpecs(t)
 
 	processor := newStartedProcessor(t)
@@ -131,7 +131,7 @@ func TestBaseWsProcessorSendWsRequestAbortsWhenWriteFails(t *testing.T) {
 	require.ErrorIs(t, callErr, expectedErr)
 }
 
-func TestBaseWsProcessorSendRpcRequest(t *testing.T) {
+func TestGenericWsProcessorSendRpcRequest(t *testing.T) {
 	processor := newStartedProcessor(t)
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
@@ -157,7 +157,7 @@ func TestBaseWsProcessorSendRpcRequest(t *testing.T) {
 	assert.Same(t, expectedResponse, response)
 }
 
-func TestBaseWsProcessorSendRpcRequestReturnsErrorWhenChannelClosed(t *testing.T) {
+func TestGenericWsProcessorSendRpcRequestReturnsErrorWhenChannelClosed(t *testing.T) {
 	processor := newStartedProcessor(t)
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
@@ -182,7 +182,7 @@ func TestBaseWsProcessorSendRpcRequestReturnsErrorWhenChannelClosed(t *testing.T
 	require.EqualError(t, callErr, "no response on method eth_blockNumber via ws")
 }
 
-func TestBaseWsProcessorSendRpcRequestReturnsContextError(t *testing.T) {
+func TestGenericWsProcessorSendRpcRequestReturnsContextError(t *testing.T) {
 	processor := newStartedProcessor(t)
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestBaseWsProcessorSendRpcRequestReturnsContextError(t *testing.T) {
 	require.EqualError(t, callErr, "no response on method eth_blockNumber via ws due to context canceled")
 }
 
-func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T) {
+func TestGenericWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T) {
 	serverConnReady := make(chan *websocket.Conn, 1)
 	serverErrs := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +249,7 @@ func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T
 	}).Once()
 	requestRegistry.On("CancelAll").Maybe()
 
-	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
+	processor, err := wsupstream.NewGenericWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
 	require.NoError(t, err)
 
 	subscription := processor.SubscribeWsStates("test")
@@ -278,7 +278,7 @@ func TestBaseWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testing.T
 	}
 }
 
-func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
+func TestGenericWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 	serverConnReady := make(chan *websocket.Conn, 1)
 	serverErrs := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -309,7 +309,7 @@ func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 	dialService.On("NewConnectFunc", mock.Anything).Return(wsupstream.DialFunc(dialFunc), nil).Once()
 	requestRegistry.On("CancelAll").Maybe()
 
-	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
+	processor, err := wsupstream.NewGenericWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
 	require.NoError(t, err)
 
 	subscription := processor.SubscribeWsStates("test")
@@ -336,7 +336,7 @@ func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 	}
 }
 
-// TestBaseWsProcessorIgnoresStaleDisconnectAfterReconnect is a regression test for a
+// TestGenericWsProcessorIgnoresStaleDisconnectAfterReconnect is a regression test for a
 // reconnect storm: when the main loop disconnects out-of-band (here via an unknown
 // response format) while the current connection's reader is still alive, that reader
 // emits a disconnect event AFTER the loop has already reconnected. Without a
@@ -345,7 +345,7 @@ func TestBaseWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {
 // all subscriptions on every cycle. The fix tags disconnect events with the session
 // generation and ignores stale ones, so exactly two connections are dialed and the
 // second one survives.
-func TestBaseWsProcessorIgnoresStaleDisconnectAfterReconnect(t *testing.T) {
+func TestGenericWsProcessorIgnoresStaleDisconnectAfterReconnect(t *testing.T) {
 	var dials atomic.Int32
 	conn2Ready := make(chan *websocket.Conn, 1)
 
@@ -398,7 +398,7 @@ func TestBaseWsProcessorIgnoresStaleDisconnectAfterReconnect(t *testing.T) {
 	}).Maybe()
 	requestRegistry.On("CancelAll").Maybe()
 
-	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
+	processor, err := wsupstream.NewGenericWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, session, wsProtocol)
 	require.NoError(t, err)
 
 	subscription := processor.SubscribeWsStates("test")
@@ -434,7 +434,7 @@ func TestBaseWsProcessorIgnoresStaleDisconnectAfterReconnect(t *testing.T) {
 }
 
 type processorFixture struct {
-	processor       *wsupstream.BaseWsProcessor
+	processor       *wsupstream.GenericWsProcessor
 	dialService     *mocks.DialWsServiceMock
 	requestRegistry *mocks.RequestRegistryMock
 	wsSession       *mocks.WsSessionMock
@@ -453,7 +453,7 @@ func newProcessorForNoStart(t *testing.T) *processorFixture {
 		return nil, nil
 	}), nil).Once()
 
-	processor, err := wsupstream.NewBaseWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, wsSession, wsProtocol)
+	processor, err := wsupstream.NewGenericWsProcessor(context.Background(), "upstream-1", "ws://endpoint", dialService, requestRegistry, wsSession, wsProtocol)
 	require.NoError(t, err)
 
 	return &processorFixture{

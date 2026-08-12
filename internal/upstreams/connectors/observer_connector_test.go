@@ -20,7 +20,7 @@ import (
 )
 
 func TestObserverConnectorSuccessfulResponse(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 	executor := resilience.CreateUpstreamExecutor()
 	connectorMock := mocks.NewConnectorMock()
@@ -47,7 +47,7 @@ func TestObserverConnectorSuccessfulResponse(t *testing.T) {
 }
 
 func TestObserverConnectorRetryRequest(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 	executor := resilience.CreateUpstreamExecutor(
 		resilience.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 10 * time.Millisecond}),
@@ -133,7 +133,7 @@ func TestObserverConnectorRetryableNonRetryableErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			tracker := dimensions.NewBaseDimensionTracker()
+			tracker := dimensions.NewGenericDimensionTracker()
 			hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 			executor := resilience.CreateUpstreamExecutor()
 			connectorMock := mocks.NewConnectorMock()

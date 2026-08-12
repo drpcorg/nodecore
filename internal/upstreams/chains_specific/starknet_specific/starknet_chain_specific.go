@@ -58,7 +58,7 @@ func NewStarknetChainSpecificObject(
 }
 
 func (s *StarknetChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		s.ctx,
 		s.upstreamId,
 		s.pollInterval,
@@ -79,7 +79,7 @@ func (s *StarknetChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			s.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
 }
 
 func (s *StarknetChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
@@ -91,7 +91,7 @@ func (s *StarknetChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBo
 	detectors := []lower_bounds.LowerBoundDetector{
 		starknet_bounds.NewStarknetLowerBoundDetector(s.upstreamId),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		s.ctx,
 		s.upstreamId,
 		s.configuredChain.AverageRemoveSpeed(),

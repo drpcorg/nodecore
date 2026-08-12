@@ -13,22 +13,22 @@ type Lifecycle interface {
 	Running() bool
 }
 
-type BaseLifecycle struct {
+type GenericLifecycle struct {
 	name       string
 	running    atomic.Bool
 	parentCtx  context.Context
 	cancelFunc *Atomic[context.CancelFunc]
 }
 
-func NewBaseLifecycle(name string, parentCtx context.Context) *BaseLifecycle {
-	return &BaseLifecycle{
+func NewGenericLifecycle(name string, parentCtx context.Context) *GenericLifecycle {
+	return &GenericLifecycle{
 		name:       name,
 		parentCtx:  parentCtx,
 		cancelFunc: NewAtomic[context.CancelFunc](),
 	}
 }
 
-func (l *BaseLifecycle) Start(f func(ctx context.Context) error) {
+func (l *GenericLifecycle) Start(f func(ctx context.Context) error) {
 	if l.running.CompareAndSwap(false, true) {
 		if l.parentCtx.Err() != nil {
 			log.Error().Err(l.parentCtx.Err()).Msgf("parent context of '%s' is closed", l.name)
@@ -45,7 +45,7 @@ func (l *BaseLifecycle) Start(f func(ctx context.Context) error) {
 	}
 }
 
-func (l *BaseLifecycle) Stop() {
+func (l *GenericLifecycle) Stop() {
 	if l.running.CompareAndSwap(true, false) {
 		if l.cancelFunc.Load() != nil {
 			l.cancelFunc.Load()()
@@ -55,10 +55,10 @@ func (l *BaseLifecycle) Stop() {
 	}
 }
 
-func (l *BaseLifecycle) Running() bool {
+func (l *GenericLifecycle) Running() bool {
 	return l.running.Load()
 }
 
-func (l *BaseLifecycle) GetParentContext() context.Context {
+func (l *GenericLifecycle) GetParentContext() context.Context {
 	return l.parentCtx
 }

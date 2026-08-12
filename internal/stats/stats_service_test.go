@@ -34,7 +34,7 @@ func TestCreateStatsService(t *testing.T) {
 			name:   "base stats service",
 			config: &config.StatsConfig{Enabled: true, Type: config.Local},
 			condition: func(actual StatsService) bool {
-				_, ok := actual.(*BaseStatsService)
+				_, ok := actual.(*GenericStatsService)
 				return ok
 			},
 		},

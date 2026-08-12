@@ -178,7 +178,7 @@ func sendReply(
 		return fmt.Errorf("response wrapper is empty")
 	}
 	var headers http.Header
-	if resp, ok := wrapper.Response.(*protocol.BaseUpstreamResponse); ok {
+	if resp, ok := wrapper.Response.(*protocol.GenericUpstreamResponse); ok {
 		headers = resp.ResponseHeaders()
 	}
 	resultStart := -1

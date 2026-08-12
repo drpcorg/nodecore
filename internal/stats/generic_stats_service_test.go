@@ -37,7 +37,7 @@ func TestStatsServiceDisabledThenNoInterationToIntegrationClient(t *testing.T) {
 	statsCfg := &config.StatsConfig{
 		Enabled: false,
 	}
-	statsService := NewBaseStatsServiceWithIntegrationClient(context.Background(), statsCfg, client)
+	statsService := NewGenericStatsServiceWithIntegrationClient(context.Background(), statsCfg, client)
 	statsService.Start(&mockOutbox{})
 
 	statsService.AddRequestResults([]protocol.RequestResult{protocol.NewUnaryRequestResult()})
@@ -71,7 +71,7 @@ func TestStatsServiceProcessStatsDataAndStop(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	statsService := NewBaseStatsServiceWithIntegrationClient(ctx, statsCfg, client)
+	statsService := NewGenericStatsServiceWithIntegrationClient(ctx, statsCfg, client)
 	statsService.Start(&mockOutbox{})
 	statsService.AddRequestResults([]protocol.RequestResult{result, result1})
 
@@ -158,13 +158,13 @@ func (f *fakeOutbox) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func newTestService(testContext context.Context, client integration.IntegrationClient) *BaseStatsService {
+func newTestService(testContext context.Context, client integration.IntegrationClient) *GenericStatsService {
 	statsConfig := &config.StatsConfig{
 		Enabled:       true,
 		FlushInterval: time.Hour,
 	}
 
-	return NewBaseStatsServiceWithIntegrationClient(
+	return NewGenericStatsServiceWithIntegrationClient(
 		testContext,
 		statsConfig,
 		client,

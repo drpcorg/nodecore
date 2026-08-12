@@ -59,10 +59,10 @@ type Source struct {
 type SourceBuilder func(srcCtx context.Context) (*Source, error)
 
 // Engine aggregates subscriptions for a single chain. Consumers depend on this
-// interface; the concrete implementation is baseEngine.
+// interface; the concrete implementation is genericEngine.
 type Engine interface {
 	// Subscribe attaches a subscriber to the shared source identified by key,
-	// building it via build on the first subscriber. See baseEngine.Subscribe.
+	// building it via build on the first subscriber. See genericEngine.Subscribe.
 	Subscribe(key string, build SourceBuilder) (*Subscription, error)
 }
 
@@ -118,8 +118,8 @@ func (s *Subscription) Err() *protocol.ResponseError {
 	return s.sub.err
 }
 
-// baseEngine is the default Engine implementation.
-type baseEngine struct {
+// genericEngine is the default Engine implementation.
+type genericEngine struct {
 	ctx           context.Context
 	chain         chains.Chain
 	teardownDelay time.Duration
@@ -127,10 +127,10 @@ type baseEngine struct {
 	sources *utils.CMap[string, *sourceActor]
 }
 
-var _ Engine = (*baseEngine)(nil)
+var _ Engine = (*genericEngine)(nil)
 
 func NewEngine(ctx context.Context, chain chains.Chain) Engine {
-	return &baseEngine{
+	return &genericEngine{
 		ctx:           ctx,
 		chain:         chain,
 		teardownDelay: defaultTeardownDelay,
@@ -148,7 +148,7 @@ func NewEngine(ctx context.Context, chain chains.Chain) Engine {
 // own confirmation is swallowed by the source builder, and each subscriber
 // allocates its own client-facing subscription id in the caller (see
 // SubscriptionRequestProcessor).
-func (e *baseEngine) Subscribe(key string, build SourceBuilder) (*Subscription, error) {
+func (e *genericEngine) Subscribe(key string, build SourceBuilder) (*Subscription, error) {
 	for {
 		a := e.getOrCreate(key, build)
 		reply := make(chan *Subscription, 1)
@@ -167,7 +167,7 @@ func (e *baseEngine) Subscribe(key string, build SourceBuilder) (*Subscription, 
 	}
 }
 
-func (e *baseEngine) getOrCreate(key string, build SourceBuilder) *sourceActor {
+func (e *genericEngine) getOrCreate(key string, build SourceBuilder) *sourceActor {
 	if a, ok := e.sources.Load(key); ok {
 		return a
 	}
@@ -184,13 +184,13 @@ func (e *baseEngine) getOrCreate(key string, build SourceBuilder) *sourceActor {
 	return a
 }
 
-func (e *baseEngine) newSubscription(a *sourceActor, sub *subscriber) *Subscription {
+func (e *genericEngine) newSubscription(a *sourceActor, sub *subscriber) *Subscription {
 	return &Subscription{Events: sub.ch, actor: a, sub: sub}
 }
 
 // run is the actor goroutine: it builds the source once, then owns all of the
 // key's state inside a single select loop until the source ends.
-func (e *baseEngine) run(a *sourceActor, build SourceBuilder) {
+func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 	srcCtx, cancel := context.WithCancel(e.ctx)
 	src, err := build(srcCtx)
 	if err != nil {

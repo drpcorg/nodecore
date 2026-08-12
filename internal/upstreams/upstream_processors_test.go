@@ -85,7 +85,7 @@ func TestCreateHealthEventProcessor_ReturnsHealthProcessor(t *testing.T) {
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseHealthEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericHealthEventProcessor{}, processor)
 	assert.Equal(t, event_processors.HealthValidatorProcessorType, processor.Type())
 }
 
@@ -139,7 +139,7 @@ func TestCreateSettingsEventProcessor_ReturnsSettingsProcessor(t *testing.T) {
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseSettingsEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericSettingsEventProcessor{}, processor)
 	assert.Equal(t, event_processors.SettingsValidatorProcessorType, processor.Type())
 }
 
@@ -154,7 +154,7 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessorForEvm(t *testing.T) {
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseLowerBoundEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericLowerBoundEventProcessor{}, processor)
 	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
@@ -182,7 +182,7 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessor(t *testing.T) {
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseLowerBoundEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericLowerBoundEventProcessor{}, processor)
 	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
@@ -238,7 +238,7 @@ func TestCreateBlockEventProcessor_ReturnsProcessorForEthereum(t *testing.T) {
 	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, chainSpecific, chains.GetChain(chains.ETHEREUM.String()))
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseBlockEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericBlockEventProcessor{}, processor)
 	assert.Equal(t, event_processors.BlockEventProcessorType, processor.Type())
 }
 

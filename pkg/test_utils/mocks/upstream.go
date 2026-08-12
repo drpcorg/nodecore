@@ -82,7 +82,7 @@ func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) upstream
 func (u *UpstreamSupervisorMock) GetUpstream(id string) upstreams.Upstream {
 	args := u.Called(id)
 
-	return args.Get(0).(*upstreams.BaseUpstream)
+	return args.Get(0).(*upstreams.GenericUpstream)
 }
 
 func (u *UpstreamSupervisorMock) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {

@@ -11,7 +11,7 @@ import (
 )
 
 func TestLifecycleStartOnlyOneTime(t *testing.T) {
-	l := utils.NewBaseLifecycle("name", context.Background())
+	l := utils.NewGenericLifecycle("name", context.Background())
 	tMock := testInterfaceMock{}
 	tMock.On("Test").Return(nil)
 	f := func(ctx context.Context) error {
@@ -26,7 +26,7 @@ func TestLifecycleStartOnlyOneTime(t *testing.T) {
 }
 
 func TestLifecycleStartAndStop(t *testing.T) {
-	l := utils.NewBaseLifecycle("name", context.Background())
+	l := utils.NewGenericLifecycle("name", context.Background())
 	tMock := testInterfaceMock{}
 	tMock.On("Test").Return(nil)
 	f := func(ctx context.Context) error {
@@ -44,7 +44,7 @@ func TestLifecycleStartAndStop(t *testing.T) {
 }
 
 func TestLifecycleCantStart(t *testing.T) {
-	l := utils.NewBaseLifecycle("name", context.Background())
+	l := utils.NewGenericLifecycle("name", context.Background())
 	tMock := testInterfaceMock{}
 	tMock.On("Test").Return(errors.New("err"))
 	f := func(ctx context.Context) error {

@@ -55,15 +55,15 @@ func NewHeadUpdateData(height, slot uint64) *HeadUpdateData {
 	}
 }
 
-type BaseBlockUpdateData struct {
+type GenericBlockUpdateData struct {
 	block     protocol.Block
 	blockType protocol.BlockType
 }
 
-func (b *BaseBlockUpdateData) data() {}
+func (b *GenericBlockUpdateData) data() {}
 
-func NewBaseBlockUpdateData(block protocol.Block, blockType protocol.BlockType) *BaseBlockUpdateData {
-	return &BaseBlockUpdateData{
+func NewGenericBlockUpdateData(block protocol.Block, blockType protocol.BlockType) *GenericBlockUpdateData {
+	return &GenericBlockUpdateData{
 		block:     block,
 		blockType: blockType,
 	}
@@ -78,7 +78,7 @@ type BlockEventProcessor interface {
 type HeadEventProcessor struct {
 	upstreamId    string
 	chain         chains.Chain
-	lifecycle     *utils.BaseLifecycle
+	lifecycle     *utils.GenericLifecycle
 	headProcessor blocks.HeadProcessor
 	emitter       Emitter
 }
@@ -147,28 +147,28 @@ func NewHeadEventProcessor(
 	return &HeadEventProcessor{
 		upstreamId:    upstreamId,
 		chain:         chain,
-		lifecycle:     utils.NewBaseLifecycle(fmt.Sprintf("%s_head_event_processor", upstreamId), ctx),
+		lifecycle:     utils.NewGenericLifecycle(fmt.Sprintf("%s_head_event_processor", upstreamId), ctx),
 		headProcessor: headProcessor,
 	}
 }
 
-type BaseBlockEventProcessor struct {
+type GenericBlockEventProcessor struct {
 	upstreamId     string
 	chain          chains.Chain
-	lifecycle      *utils.BaseLifecycle
+	lifecycle      *utils.GenericLifecycle
 	blockProcessor blocks.BlockProcessor
 	emitter        Emitter
 }
 
-func (b *BaseBlockEventProcessor) SetEmitter(emitter Emitter) {
+func (b *GenericBlockEventProcessor) SetEmitter(emitter Emitter) {
 	b.emitter = emitter
 }
 
-func (b *BaseBlockEventProcessor) Type() EventProcessorType {
+func (b *GenericBlockEventProcessor) Type() EventProcessorType {
 	return BlockEventProcessorType
 }
 
-func (b *BaseBlockEventProcessor) Start() {
+func (b *GenericBlockEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		b.blockProcessor.Start()
 
@@ -194,40 +194,40 @@ func (b *BaseBlockEventProcessor) Start() {
 	})
 }
 
-func (b *BaseBlockEventProcessor) Stop() {
+func (b *GenericBlockEventProcessor) Stop() {
 	b.lifecycle.Stop()
 	b.blockProcessor.Stop()
 }
 
-func (b *BaseBlockEventProcessor) Running() bool {
+func (b *GenericBlockEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *BaseBlockEventProcessor) UpdateBlock(data BlockUpdateData) {
-	if blockUpdateData, ok := data.(*BaseBlockUpdateData); ok {
+func (b *GenericBlockEventProcessor) UpdateBlock(data BlockUpdateData) {
+	if blockUpdateData, ok := data.(*GenericBlockUpdateData); ok {
 		b.blockProcessor.UpdateBlock(blockUpdateData.block, blockUpdateData.blockType)
 	} else {
-		log.Warn().Msgf("BaseBlockEventProcessor got unsupported BlockUpdateData type: %T", data)
+		log.Warn().Msgf("GenericBlockEventProcessor got unsupported BlockUpdateData type: %T", data)
 	}
 }
 
-func NewBaseBlockEventProcessor(
+func NewGenericBlockEventProcessor(
 	ctx context.Context,
 	upstreamId string,
 	chain chains.Chain,
 	blockProcessor blocks.BlockProcessor,
-) *BaseBlockEventProcessor {
+) *GenericBlockEventProcessor {
 	if blockProcessor == nil {
 		return nil
 	}
 
-	return &BaseBlockEventProcessor{
-		lifecycle:      utils.NewBaseLifecycle(fmt.Sprintf("%s_block_event_processor", upstreamId), ctx),
+	return &GenericBlockEventProcessor{
+		lifecycle:      utils.NewGenericLifecycle(fmt.Sprintf("%s_block_event_processor", upstreamId), ctx),
 		upstreamId:     upstreamId,
 		chain:          chain,
 		blockProcessor: blockProcessor,
 	}
 }
 
-var _ BlockEventProcessor = (*BaseBlockEventProcessor)(nil)
+var _ BlockEventProcessor = (*GenericBlockEventProcessor)(nil)
 var _ BlockEventProcessor = (*HeadEventProcessor)(nil)
