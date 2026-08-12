@@ -39,7 +39,7 @@ func TestRpcHead(t *testing.T) {
 		PollInterval: 50 * time.Millisecond,
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
-	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))
+	headProcessor := blocks.NewGenericHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(connector))
 	sub := headProcessor.Subscribe("test")
 	go headProcessor.Start()
 
@@ -122,7 +122,7 @@ func TestSubHeadSubscribe(t *testing.T) {
 		PollInterval: 10 * time.Millisecond,
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
-	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	headProcessor := blocks.NewGenericHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	sub := headProcessor.Subscribe("test")
 	go headProcessor.Start()
 
@@ -161,7 +161,7 @@ func TestSubHeadManualUpdate(t *testing.T) {
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
 
-	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	headProcessor := blocks.NewGenericHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	sub := headProcessor.Subscribe("test")
 	go headProcessor.Start()
 
@@ -206,7 +206,7 @@ func TestSubHeadGetLastBlock(t *testing.T) {
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
 
-	headProcessor := blocks.NewBaseHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
+	headProcessor := blocks.NewGenericHeadProcessor(ctx, &upConfig, connector, test_utils.NewEvmChainSpecific(reqConnector))
 	sub := headProcessor.Subscribe("test")
 
 	headProcessor.Start()

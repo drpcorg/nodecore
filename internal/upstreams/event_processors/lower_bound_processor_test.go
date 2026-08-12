@@ -12,34 +12,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewBaseLowerBoundEventProcessorNilProcessorReturnsNil(t *testing.T) {
-	processor := event_processors.NewBaseLowerBoundEventProcessor(context.Background(), "upstream-1", nil)
+func TestNewGenericLowerBoundEventProcessorNilProcessorReturnsNil(t *testing.T) {
+	processor := event_processors.NewGenericLowerBoundEventProcessor(context.Background(), "upstream-1", nil)
 
 	assert.Nil(t, processor)
 }
 
-func TestBaseLowerBoundEventProcessorType(t *testing.T) {
+func TestGenericLowerBoundEventProcessorType(t *testing.T) {
 	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
-	processor := event_processors.NewBaseLowerBoundEventProcessor(context.Background(), "upstream-1", lowerBoundProcessor)
+	processor := event_processors.NewGenericLowerBoundEventProcessor(context.Background(), "upstream-1", lowerBoundProcessor)
 
 	require.NotNil(t, processor)
 	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
-func TestBaseLowerBoundEventProcessorRunningInitiallyFalse(t *testing.T) {
+func TestGenericLowerBoundEventProcessorRunningInitiallyFalse(t *testing.T) {
 	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
-	processor := event_processors.NewBaseLowerBoundEventProcessor(context.Background(), "upstream-1", lowerBoundProcessor)
+	processor := event_processors.NewGenericLowerBoundEventProcessor(context.Background(), "upstream-1", lowerBoundProcessor)
 
 	require.NotNil(t, processor)
 	assert.False(t, processor.Running())
 }
 
-func TestBaseLowerBoundEventProcessorStartEmitsEvents(t *testing.T) {
+func TestGenericLowerBoundEventProcessorStartEmitsEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
-	processor := event_processors.NewBaseLowerBoundEventProcessor(ctx, "upstream-1", lowerBoundProcessor)
+	processor := event_processors.NewGenericLowerBoundEventProcessor(ctx, "upstream-1", lowerBoundProcessor)
 	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
 
 	lowerBoundProcessor.On("Start").Return()
@@ -73,12 +73,12 @@ func TestBaseLowerBoundEventProcessorStartEmitsEvents(t *testing.T) {
 	lowerBoundProcessor.AssertExpectations(t)
 }
 
-func TestBaseLowerBoundEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
+func TestGenericLowerBoundEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
-	processor := event_processors.NewBaseLowerBoundEventProcessor(ctx, "upstream-1", lowerBoundProcessor)
+	processor := event_processors.NewGenericLowerBoundEventProcessor(ctx, "upstream-1", lowerBoundProcessor)
 
 	lowerBoundProcessor.On("Start").Return()
 	lowerBoundProcessor.On("Subscribe", "upstream-1_lower_bounds")
@@ -97,10 +97,10 @@ func TestBaseLowerBoundEventProcessorStopStopsUnderlyingProcessor(t *testing.T) 
 	lowerBoundProcessor.AssertExpectations(t)
 }
 
-func TestBaseLowerBoundEventProcessorPredictLowerBound(t *testing.T) {
+func TestGenericLowerBoundEventProcessorPredictLowerBound(t *testing.T) {
 	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
 	lowerBoundProcessor.On("PredictLowerBound", protocol.StateBound, int64(12)).Return(int64(345))
-	processor := event_processors.NewBaseLowerBoundEventProcessor(context.Background(), "id", lowerBoundProcessor)
+	processor := event_processors.NewGenericLowerBoundEventProcessor(context.Background(), "id", lowerBoundProcessor)
 
 	assert.Equal(t, int64(345), processor.PredictLowerBound(protocol.StateBound, 12))
 	lowerBoundProcessor.AssertExpectations(t)

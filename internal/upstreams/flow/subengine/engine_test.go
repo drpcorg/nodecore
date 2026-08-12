@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestEngine(delay time.Duration) *baseEngine {
-	return &baseEngine{
+func newTestEngine(delay time.Duration) *genericEngine {
+	return &genericEngine{
 		ctx:           context.Background(),
 		chain:         chains.ETHEREUM,
 		teardownDelay: delay,

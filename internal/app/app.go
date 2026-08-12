@@ -58,13 +58,13 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the storage registry: %w", err)
 	}
-	dimensionTracker := dimensions.NewBaseDimensionTracker()
+	dimensionTracker := dimensions.NewGenericDimensionTracker()
 	statsService := stats.NewStatsService(ctx, appConfig.StatsConfig, integrationResolver)
 	rateLimitBudgetRegistry, err := ratelimiter.NewRateLimitBudgetRegistry(appConfig.RateLimit, storageRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the rate limit budget registry: %w", err)
 	}
-	upstreamSupervisor := upstreams.NewBaseUpstreamSupervisor(
+	upstreamSupervisor := upstreams.NewGenericUpstreamSupervisor(
 		ctx,
 		appConfig.UpstreamConfig,
 		dimensionTracker,
@@ -73,7 +73,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		appConfig.ServerConfig.TorUrl,
 	)
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
-	cacheProcessor, err := caches.NewBaseCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, storageRegistry)
+	cacheProcessor, err := caches.NewGenericCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, storageRegistry)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the cache processor: %w", err)
 	}

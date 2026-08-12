@@ -11,7 +11,7 @@ import (
 )
 
 // update upstream state through one pipeline
-func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool) {
+func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid bool) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
 	validUpstream := initialValid
 	// baseAvail is the availability reported by health probes (setStatus),
@@ -92,7 +92,7 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 	}
 }
 
-func (u *BaseUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
+func (u *GenericUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
 		Id:        u.id,
 		Chain:     u.configuredChain.Chain,
@@ -100,7 +100,7 @@ func (u *BaseUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType)
 	}
 }
 
-func (u *BaseUpstream) publishUpstreamEvent(state protocol.UpstreamState, eventType protocol.UpstreamEventType) {
+func (u *GenericUpstream) publishUpstreamEvent(state protocol.UpstreamState, eventType protocol.UpstreamEventType) {
 	u.upstreamState.Store(state)
 	upstreamEvent := u.createUpstreamEvent(eventType)
 

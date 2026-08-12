@@ -96,7 +96,7 @@ func newTonBaseChainSpecificObject(
 // processor; the masterchain is BFT-final, so it tracks the same head the
 // head processor sees, and there is no "safe" block concept.
 func (t *tonBaseChainSpecificObject) newTonBlockProcessor(chainSpecific blocks.BlockChainSpecific) blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,

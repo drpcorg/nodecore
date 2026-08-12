@@ -23,7 +23,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-type BaseStatsService struct {
+type GenericStatsService struct {
 	ctx                context.Context
 	enabled            *atomic.Bool
 	integrationClient  integration.IntegrationClient
@@ -52,13 +52,13 @@ func newStatsDataHolder() *statsDataHolder {
 	}
 }
 
-func (b *BaseStatsService) Start(outbox outbox.Storer) {
+func (b *GenericStatsService) Start(outbox outbox.Storer) {
 	b.outbox = outbox
 
 	go b.process()
 }
 
-func (b *BaseStatsService) Stop(ctx context.Context) error {
+func (b *GenericStatsService) Stop(ctx context.Context) error {
 	b.enabled.Store(false)
 	b.once.Do(func() {
 		close(b.stopChan)
@@ -71,7 +71,7 @@ func (b *BaseStatsService) Stop(ctx context.Context) error {
 	}
 }
 
-func (b *BaseStatsService) AddRequestResults(requestResults []protocol.RequestResult) {
+func (b *GenericStatsService) AddRequestResults(requestResults []protocol.RequestResult) {
 	if !b.enabled.Load() {
 		return
 	}
@@ -110,7 +110,7 @@ func (b *BaseStatsService) AddRequestResults(requestResults []protocol.RequestRe
 	}
 }
 
-func (b *BaseStatsService) process() {
+func (b *GenericStatsService) process() {
 	defer close(b.waitChan)
 
 	if !b.enabled.Load() {
@@ -144,7 +144,7 @@ func (b *BaseStatsService) process() {
 	}
 }
 
-func (b *BaseStatsService) flush() error {
+func (b *GenericStatsService) flush() error {
 	current := b.statsDataHolder.Swap(newStatsDataHolder())
 	current.closed.Store(true)
 
@@ -165,7 +165,7 @@ func (b *BaseStatsService) flush() error {
 	return b.storeUnprocessed(aggregated)
 }
 
-func (b *BaseStatsService) flushUnprocessed() error {
+func (b *GenericStatsService) flushUnprocessed() error {
 	stats, keys, err := b.listUnprocessed()
 	if err != nil {
 		return err
@@ -192,7 +192,7 @@ func (b *BaseStatsService) flushUnprocessed() error {
 	return nil
 }
 
-func (b *BaseStatsService) storeUnprocessed(aggregated statsMap) error {
+func (b *GenericStatsService) storeUnprocessed(aggregated statsMap) error {
 	data, err := marshalStatsMap(aggregated)
 	if err != nil {
 		return err
@@ -207,7 +207,7 @@ func (b *BaseStatsService) storeUnprocessed(aggregated statsMap) error {
 
 const defaultLimit = 5
 
-func (b *BaseStatsService) listUnprocessed() (statsMap, []string, error) {
+func (b *GenericStatsService) listUnprocessed() (statsMap, []string, error) {
 	ctx, cancelF := context.WithTimeout(b.ctx, time.Second*5)
 	defer cancelF()
 
@@ -317,7 +317,7 @@ func hashToString(data []byte) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func (b *BaseStatsService) extractUnaryRequestKey(requestResult *protocol.UnaryRequestResult) statsdata.StatsKey {
+func (b *GenericStatsService) extractUnaryRequestKey(requestResult *protocol.UnaryRequestResult) statsdata.StatsKey {
 	key := statsdata.StatsKey{
 		// round to the nearest 5 minutes to avoid too many stats entries,
 		// but it also could be configurable through the local config or an integration client
@@ -343,11 +343,11 @@ func (b *BaseStatsService) extractUnaryRequestKey(requestResult *protocol.UnaryR
 	return key
 }
 
-func NewBaseStatsService(
+func NewGenericStatsService(
 	ctx context.Context,
 	statsConfig *config.StatsConfig,
 	integrationResolver *integration.IntegrationResolver,
-) *BaseStatsService {
+) *GenericStatsService {
 	integrationClient := integrationResolver.GetIntegration(integration.GetIntegrationType(statsConfig.Type))
 	if integrationClient == nil {
 		panic(errors.New("stats: integration client is nil"))
@@ -357,7 +357,7 @@ func NewBaseStatsService(
 
 	isEnabled := new(atomic.Bool)
 	isEnabled.Store(statsConfig.Enabled)
-	statsService := &BaseStatsService{
+	statsService := &GenericStatsService{
 		ctx:                ctx,
 		statsFlushInterval: statsConfig.FlushInterval,
 		enabled:            isEnabled,
@@ -370,17 +370,17 @@ func NewBaseStatsService(
 	return statsService
 }
 
-func NewBaseStatsServiceWithIntegrationClient(
+func NewGenericStatsServiceWithIntegrationClient(
 	ctx context.Context,
 	statsConfig *config.StatsConfig,
 	integrationClient integration.IntegrationClient,
-) *BaseStatsService {
+) *GenericStatsService {
 	var statsDataHolderPointer atomic.Pointer[statsDataHolder]
 	statsDataHolderPointer.Store(newStatsDataHolder())
 
 	isEnabled := new(atomic.Bool)
 	isEnabled.Store(statsConfig.Enabled)
-	statsService := &BaseStatsService{
+	statsService := &GenericStatsService{
 		ctx:                ctx,
 		statsFlushInterval: statsConfig.FlushInterval,
 		enabled:            isEnabled,
@@ -393,7 +393,7 @@ func NewBaseStatsServiceWithIntegrationClient(
 	return statsService
 }
 
-var _ StatsService = (*BaseStatsService)(nil)
+var _ StatsService = (*GenericStatsService)(nil)
 
 type persistedStatsItem struct {
 	Key           statsdata.StatsKey `json:"key"`

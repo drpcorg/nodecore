@@ -144,7 +144,7 @@ func NewRequestObserver(isSub bool) *RequestObserver {
 func GetRespKindFromResponse(response ResponseHolder) ResponseKind {
 	var respKind ResponseKind
 	switch r := response.(type) {
-	case *BaseUpstreamResponse:
+	case *GenericUpstreamResponse:
 		if !r.HasError() {
 			respKind = Ok
 		} else {

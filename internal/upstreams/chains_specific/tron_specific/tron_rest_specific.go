@@ -35,7 +35,7 @@ type TronRestSpecific struct {
 }
 
 func (t *TronRestSpecific) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,
@@ -141,7 +141,7 @@ func (t *TronRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcesso
 		tron_bounds.NewTronLowerBoundDetector(t.upstreamId, t.chain.Chain, t.options.InternalTimeout, t.connector),
 	}
 
-	return lower_bounds.NewBaseLowerBoundProcessor(t.ctx, t.upstreamId, t.chain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(t.ctx, t.upstreamId, t.chain.AverageRemoveSpeed(), detectors)
 }
 
 func (t *TronRestSpecific) LabelsProcessor() labels.LabelsProcessor {
@@ -153,7 +153,7 @@ func (t *TronRestSpecific) LabelsProcessor() labels.LabelsProcessor {
 			t.options.InternalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
 }
 
 type TronRestBlock struct {

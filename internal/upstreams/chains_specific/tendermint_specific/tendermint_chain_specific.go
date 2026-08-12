@@ -137,7 +137,7 @@ func (t *TendermintChainSpecific) LowerBoundProcessor() lower_bounds.LowerBoundP
 			t.upstreamId, t.chain.Chain, t.options.InternalTimeout, t.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(t.ctx, t.upstreamId, t.chain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(t.ctx, t.upstreamId, t.chain.AverageRemoveSpeed(), detectors)
 }
 
 func (t *TendermintChainSpecific) LabelsProcessor() labels.LabelsProcessor {
@@ -149,11 +149,11 @@ func (t *TendermintChainSpecific) LabelsProcessor() labels.LabelsProcessor {
 			t.options.InternalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
 }
 
 func (t *TendermintChainSpecific) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,

@@ -9,7 +9,7 @@ import (
 )
 
 func TestTrackerAllDimensions(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	chain := chains.POLYGON
 	upId := "id1"
 	method := "method"

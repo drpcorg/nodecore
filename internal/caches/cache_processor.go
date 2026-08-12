@@ -35,16 +35,16 @@ type CacheProcessor interface {
 	Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool)
 }
 
-type BaseCacheProcessor struct {
+type GenericCacheProcessor struct {
 	policies       []*CachePolicy
 	receiveTimeout time.Duration
 }
 
-func NewBaseCacheProcessor(
+func NewGenericCacheProcessor(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheConfig *config.CacheConfig,
 	storageRegistry *storages.StorageRegistry,
-) (*BaseCacheProcessor, error) {
+) (*GenericCacheProcessor, error) {
 	cacheConnectors := make([]CacheConnector, 0)
 
 	for _, connectorCfg := range cacheConfig.CacheConnectors {
@@ -83,13 +83,13 @@ func NewBaseCacheProcessor(
 		return nil, false
 	})
 
-	return &BaseCacheProcessor{
+	return &GenericCacheProcessor{
 		receiveTimeout: cacheConfig.ReceiveTimeout,
 		policies:       cachePolicies,
 	}, nil
 }
 
-func (c *BaseCacheProcessor) Store(
+func (c *GenericCacheProcessor) Store(
 	ctx context.Context,
 	chain chains.Chain,
 	request protocol.RequestHolder,
@@ -100,7 +100,7 @@ func (c *BaseCacheProcessor) Store(
 	}
 }
 
-func (c *BaseCacheProcessor) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
+func (c *GenericCacheProcessor) Receive(ctx context.Context, chain chains.Chain, request protocol.RequestHolder) ([]byte, bool) {
 	if len(c.policies) == 0 {
 		return nil, false
 	}

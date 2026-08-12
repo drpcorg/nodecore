@@ -67,7 +67,7 @@ func (b *BitcoinChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			b.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
 }
 
 func (b *BitcoinChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -83,7 +83,7 @@ func (b *BitcoinChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBou
 			b.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.configuredChain.AverageRemoveSpeed(),

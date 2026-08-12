@@ -27,9 +27,9 @@ type HeadEvent struct {
 	HeadData protocol.Block
 }
 
-type BaseHeadProcessor struct {
+type GenericHeadProcessor struct {
 	upstreamId           string
-	lifecycle            *utils.BaseLifecycle
+	lifecycle            *utils.GenericLifecycle
 	head                 Head
 	lastUpdate           *utils.Atomic[time.Time]
 	headNoUpdatesTimeout time.Duration
@@ -37,12 +37,12 @@ type BaseHeadProcessor struct {
 	manualHeadChan       chan protocol.Block
 }
 
-func NewBaseHeadProcessor(
+func NewGenericHeadProcessor(
 	ctx context.Context,
 	upConfig *config.Upstream,
 	headConnector connectors.ApiConnector,
 	specific BlockChainSpecific,
-) *BaseHeadProcessor {
+) *GenericHeadProcessor {
 	configuredChain := chains.GetChain(upConfig.ChainName)
 	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, headConnector, specific, upConfig.Options)
 
@@ -59,30 +59,30 @@ func NewBaseHeadProcessor(
 	}
 
 	name := fmt.Sprintf("%s_head_processor", upConfig.Id)
-	return &BaseHeadProcessor{
+	return &GenericHeadProcessor{
 		upstreamId:           upConfig.Id,
 		head:                 head,
 		manualHeadChan:       make(chan protocol.Block, 100),
-		lifecycle:            utils.NewBaseLifecycle(name, ctx),
+		lifecycle:            utils.NewGenericLifecycle(name, ctx),
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent](name),
 	}
 }
 
-func (h *BaseHeadProcessor) GetCurrentBlock() protocol.Block {
+func (h *GenericHeadProcessor) GetCurrentBlock() protocol.Block {
 	return h.head.GetCurrentBlock()
 }
 
-func (h *BaseHeadProcessor) Subscribe(name string) *utils.Subscription[HeadEvent] {
+func (h *GenericHeadProcessor) Subscribe(name string) *utils.Subscription[HeadEvent] {
 	return h.subManager.Subscribe(name)
 }
 
-func (h *BaseHeadProcessor) Running() bool {
+func (h *GenericHeadProcessor) Running() bool {
 	return h.lifecycle.Running()
 }
 
-func (h *BaseHeadProcessor) Start() {
+func (h *GenericHeadProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
 		h.head.Start()
 		h.lastUpdate.Store(time.Now())
@@ -118,12 +118,12 @@ func (h *BaseHeadProcessor) Start() {
 	})
 }
 
-func (h *BaseHeadProcessor) Stop() {
+func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
 	h.head.Stop()
 }
 
-func (h *BaseHeadProcessor) UpdateHead(height, slot uint64) {
+func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {
 	h.manualHeadChan <- protocol.NewBlockWithHeights(height, slot)
 }
 
@@ -144,4 +144,4 @@ func createHead(
 	}
 }
 
-var _ HeadProcessor = (*BaseHeadProcessor)(nil)
+var _ HeadProcessor = (*GenericHeadProcessor)(nil)

@@ -128,7 +128,7 @@ func (a *AptosChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 	detectors := []lower_bounds.LowerBoundDetector{
 		aptos_bounds.NewAptosLowerBoundDetector(a.upstreamId, a.configuredChain.Chain, a.internalTimeout, a.connector),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(a.ctx, a.upstreamId, a.configuredChain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(a.ctx, a.upstreamId, a.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (a *AptosChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -140,7 +140,7 @@ func (a *AptosChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			a.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AptosChainSpecificObject) BlockProcessor() blocks.BlockProcessor {

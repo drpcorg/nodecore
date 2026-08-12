@@ -15,7 +15,7 @@ import (
 
 func TestRatingRegistryNoUpstreams(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName, CalculationInterval: 1 * time.Minute})
 

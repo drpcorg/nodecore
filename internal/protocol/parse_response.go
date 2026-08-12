@@ -18,7 +18,7 @@ func astSearcher(body []byte) *ast.Searcher {
 	return searcher
 }
 
-func parseJsonRpcBody(id string, body []byte, responseCode int) *BaseUpstreamResponse {
+func parseJsonRpcBody(id string, body []byte, responseCode int) *GenericUpstreamResponse {
 	var upstreamError *ResponseError
 	var result []byte
 
@@ -49,7 +49,7 @@ func parseJsonRpcBody(id string, body []byte, responseCode int) *BaseUpstreamRes
 		upstreamError, result = incorrectJsonRpcBody()
 	}
 
-	return &BaseUpstreamResponse{
+	return &GenericUpstreamResponse{
 		id:           id,
 		result:       result,
 		responseCode: responseCode,
@@ -64,12 +64,12 @@ func incorrectJsonRpcBody() (*ResponseError, []byte) {
 	return err, errBytes
 }
 
-func parseHttpResponse(id string, body []byte, responseCode int) *BaseUpstreamResponse {
+func parseHttpResponse(id string, body []byte, responseCode int) *GenericUpstreamResponse {
 	var err *ResponseError
 	if responseCode < 200 || responseCode >= 300 {
 		err = parseRestErrorBody(body, responseCode)
 	}
-	return &BaseUpstreamResponse{
+	return &GenericUpstreamResponse{
 		id:           id,
 		result:       body,
 		error:        err,

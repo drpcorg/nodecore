@@ -22,7 +22,7 @@ func TestNewLocalKey_AndKeyResolver_Retrieval(t *testing.T) {
 		Type:           config.Local,
 		LocalKeyConfig: test_utils.BuildLocalKeyConfig("secret-abc", []string{"127.0.0.1"}, nil, nil),
 	}
-	keyService, err := keymanagement.NewBaseKeyService(context.Background(), []*config.KeyConfig{cfg}, integration.NewIntegrationResolver(nil))
+	keyService, err := keymanagement.NewGenericKeyService(context.Background(), []*config.KeyConfig{cfg}, integration.NewIntegrationResolver(nil))
 	assert.NoError(t, err)
 	time.Sleep(30 * time.Millisecond)
 
@@ -51,7 +51,7 @@ func TestKeyResolverNoIntegrationThenErr(t *testing.T) {
 		},
 	}
 
-	keyService, err := keymanagement.NewBaseKeyService(context.Background(), cfg, resolver)
+	keyService, err := keymanagement.NewGenericKeyService(context.Background(), cfg, resolver)
 
 	assert.Nil(t, keyService)
 	assert.Error(t, err, "there is no drpc integration config to load drpc keys")
@@ -79,7 +79,7 @@ func TestKeyResolverDrpcKeysFailedInitKeys(t *testing.T) {
 
 	client.On("InitKeys", "id", cfg[0].DrpcKeyConfig).Return(nil, errors.New("some err"))
 
-	_, err := keymanagement.NewBaseKeyServiceWithRetryInterval(context.Background(), cfg, resolver, 5*time.Millisecond)
+	_, err := keymanagement.NewGenericKeyServiceWithRetryInterval(context.Background(), cfg, resolver, 5*time.Millisecond)
 	assert.NoError(t, err)
 
 	time.Sleep(20 * time.Millisecond)
@@ -117,7 +117,7 @@ func TestKeyResolverDrpcKeysEvents(t *testing.T) {
 
 	client.On("InitKeys", "id", cfg[0].DrpcKeyConfig).Return(eventChan, nil).Once()
 
-	keyService, err := keymanagement.NewBaseKeyService(context.Background(), cfg, resolver)
+	keyService, err := keymanagement.NewGenericKeyService(context.Background(), cfg, resolver)
 	assert.NoError(t, err)
 
 	eventChan <- keydata.NewUpdatedKeyEvent(allKeys[0])

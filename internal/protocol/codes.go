@@ -23,7 +23,7 @@ func ToHttpCode(response ResponseHolder) int {
 		default:
 			code = http.StatusInternalServerError
 		}
-	case *BaseUpstreamResponse:
+	case *GenericUpstreamResponse:
 		if resp.requestType == Rest {
 			return resp.ResponseCode()
 		}

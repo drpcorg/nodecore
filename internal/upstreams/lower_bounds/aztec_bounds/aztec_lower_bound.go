@@ -23,7 +23,7 @@ var errAztecNoOldestHistoric = errors.New("aztec node returned no oldestHistoric
 // synchronizer publishes this number directly, no binary-search probing
 // needed).
 //
-// On any error the detector returns (nil, err). BaseLowerBoundProcessor
+// On any error the detector returns (nil, err). GenericLowerBoundProcessor
 // logs the error and skips the tick, so the previously cached lower bound
 // stays in place. Faking a default value here would risk clobbering a real
 // prune boundary on a transient endpoint outage (the public Aztec endpoint

@@ -26,7 +26,7 @@ func TestNewUpstreamProcessorAggregator_SkipsNilProcessors(t *testing.T) {
 func TestUpstreamProcessorAggregatorIsHealthProcessorDisabled_FalseWhenPresent(t *testing.T) {
 	validator := mocks.NewHealthValidatorMock()
 
-	healthProcessor := event_processors.NewBaseHealthEventProcessor(
+	healthProcessor := event_processors.NewGenericHealthEventProcessor(
 		context.Background(),
 		"upstream-1",
 		aggregatorTestUpstreamOptions(),
@@ -54,10 +54,10 @@ func TestUpstreamProcessorAggregatorUpdateBlock_ForwardsData(t *testing.T) {
 	blockData := protocol.NewBlockWithHeight(66)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
-	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
+	blockEventProcessor := event_processors.NewGenericBlockEventProcessor(context.Background(), "upstream-1", chains.ETHEREUM, blockProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{blockEventProcessor})
 
-	aggregator.UpdateBlock(event_processors.NewBaseBlockUpdateData(blockData, protocol.FinalizedBlock))
+	aggregator.UpdateBlock(event_processors.NewGenericBlockUpdateData(blockData, protocol.FinalizedBlock))
 
 	blockProcessor.AssertExpectations(t)
 }
@@ -66,7 +66,7 @@ func TestUpstreamProcessorAggregatorValidateSettings_ReturnsProcessorResult(t *t
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.Valid).Once()
 
-	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"upstream-1",
 		aggregatorTestUpstreamOptions(),

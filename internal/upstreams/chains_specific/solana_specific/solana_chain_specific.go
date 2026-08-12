@@ -46,7 +46,7 @@ func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, solana_labels.NewSolanaClientLabelsDetector(), s.options.InternalTimeout),
 	}
 
-	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
 }
 
 func (s *SolanaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -57,7 +57,7 @@ func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoun
 	detectors := []lower_bounds.LowerBoundDetector{
 		solana_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.options.InternalTimeout, s.connector),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (s *SolanaChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
