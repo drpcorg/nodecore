@@ -352,7 +352,7 @@ func handleRequest(
 			WithApiKey(appCtx.AuthProcessor.GetKeyValue(authPayload))
 	}
 
-	executionFlow := flow.NewBaseExecutionFlow(
+	executionFlow := flow.NewGenericExecutionFlow(
 		chain,
 		appCtx.UpstreamSupervisor,
 		appCtx.CacheProcessor,

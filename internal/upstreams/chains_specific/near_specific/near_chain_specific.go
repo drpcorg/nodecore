@@ -58,7 +58,7 @@ func NewNearChainSpecificObject(
 }
 
 func (n *NearChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		n.ctx,
 		n.upstreamId,
 		n.pollInterval,
@@ -79,7 +79,7 @@ func (n *NearChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			n.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
+	return labels.NewGenericLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
 }
 
 func (n *NearChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
@@ -96,7 +96,7 @@ func (n *NearChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundP
 			n.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		n.ctx,
 		n.upstreamId,
 		n.configuredChain.AverageRemoveSpeed(),

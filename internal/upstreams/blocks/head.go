@@ -31,7 +31,7 @@ type Head interface {
 }
 
 type RpcHead struct {
-	lifecycle       *utils.BaseLifecycle
+	lifecycle       *utils.GenericLifecycle
 	block           *utils.Atomic[protocol.Block]
 	chainSpecific   BlockChainSpecific
 	pollInterval    time.Duration
@@ -64,7 +64,7 @@ func NewRpcHead(
 	chainSpecific BlockChainSpecific,
 ) *RpcHead {
 	head := RpcHead{
-		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_rpc_head", upstreamId), ctx),
+		lifecycle:       utils.NewGenericLifecycle(fmt.Sprintf("%s_rpc_head", upstreamId), ctx),
 		block:           utils.NewAtomic[protocol.Block](),
 		chainSpecific:   chainSpecific,
 		pollInterval:    pollInterval,
@@ -125,7 +125,7 @@ func (r *RpcHead) poll() {
 }
 
 type SubscriptionHead struct {
-	lifecycle       *utils.BaseLifecycle
+	lifecycle       *utils.GenericLifecycle
 	block           *utils.Atomic[protocol.Block]
 	chainSpecific   BlockChainSpecific
 	headConnector   connectors.ApiConnector
@@ -232,7 +232,7 @@ func NewSubHead(
 	chainSpecific BlockChainSpecific,
 ) *SubscriptionHead {
 	head := SubscriptionHead{
-		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_subscription_head", upstreamId), ctx),
+		lifecycle:       utils.NewGenericLifecycle(fmt.Sprintf("%s_subscription_head", upstreamId), ctx),
 		upstreamId:      upstreamId,
 		chainSpecific:   chainSpecific,
 		headConnector:   headConnector,

@@ -187,7 +187,7 @@ func newEvmChainSpecificForChain(chainName string) *specific.EvmChainSpecificObj
 
 func lowerBoundDetectorCount(t *testing.T, processor lower_bounds.LowerBoundProcessor) int {
 	t.Helper()
-	base, ok := processor.(*lower_bounds.BaseLowerBoundProcessor)
+	base, ok := processor.(*lower_bounds.GenericLowerBoundProcessor)
 	require.True(t, ok)
 
 	detectors := reflect.ValueOf(base).Elem().FieldByName("lowerBoundsDetectors")

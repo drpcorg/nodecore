@@ -50,7 +50,7 @@ type registryState struct {
 	subs     map[string]*registrySubscription
 }
 
-type BaseRequestRegistry struct {
+type GenericRequestRegistry struct {
 	ctx           context.Context
 	chain         chains.Chain
 	upId          string
@@ -61,7 +61,7 @@ type BaseRequestRegistry struct {
 	allOps *utils.CMap[string, RequestOperation]
 }
 
-func (b *BaseRequestRegistry) Cancel(opId string) {
+func (b *GenericRequestRegistry) Cancel(opId string) {
 	op, ok := b.allOps.LoadAndDelete(opId)
 	if !ok {
 		return
@@ -69,13 +69,13 @@ func (b *BaseRequestRegistry) Cancel(opId string) {
 	b.closeReq(op)
 }
 
-func (b *BaseRequestRegistry) Register(
+func (b *GenericRequestRegistry) Register(
 	ctx context.Context,
 	request protocol.RequestHolder,
 	requestId, subType string,
 	doOnCLose DoOnClose,
 ) RequestOperation {
-	req := NewBaseRequestOp(ctx, requestId, request.Method(), subType, doOnCLose)
+	req := NewGenericRequestOp(ctx, requestId, request.Method(), subType, doOnCLose)
 	select {
 	case <-b.ctx.Done():
 		req.Cancel()
@@ -85,7 +85,7 @@ func (b *BaseRequestRegistry) Register(
 	return req
 }
 
-func (b *BaseRequestRegistry) Start(req RequestOperation) {
+func (b *GenericRequestRegistry) Start(req RequestOperation) {
 	go func() {
 		jsonRpcWsOperations.WithLabelValues(b.chain.String(), b.upId).Inc()
 		defer jsonRpcWsOperations.WithLabelValues(b.chain.String(), b.upId).Dec()
@@ -107,24 +107,24 @@ func (b *BaseRequestRegistry) Start(req RequestOperation) {
 	}()
 }
 
-func (b *BaseRequestRegistry) Abort(requestId string) {
+func (b *GenericRequestRegistry) Abort(requestId string) {
 	b.sendCmd(newAbortCommand(requestId))
 	b.allOps.Delete(requestId)
 }
 
-func (b *BaseRequestRegistry) OnRpcMessage(response *protocol.WsResponse) {
+func (b *GenericRequestRegistry) OnRpcMessage(response *protocol.WsResponse) {
 	b.sendCmd(newRpcCommand(response))
 }
 
-func (b *BaseRequestRegistry) OnSubscriptionMessage(response *protocol.WsResponse) {
+func (b *GenericRequestRegistry) OnSubscriptionMessage(response *protocol.WsResponse) {
 	b.sendCmd(newSubscriptionCommand(response))
 }
 
-func (b *BaseRequestRegistry) CancelAll() {
+func (b *GenericRequestRegistry) CancelAll() {
 	b.sendCmd(newCancelAllCommand())
 }
 
-func (b *BaseRequestRegistry) run() {
+func (b *GenericRequestRegistry) run() {
 	for {
 		select {
 		case <-b.ctx.Done():
@@ -135,8 +135,8 @@ func (b *BaseRequestRegistry) run() {
 	}
 }
 
-func NewBaseRequestRegistry(ctx context.Context, chain chains.Chain, upId, methodSpec string) *BaseRequestRegistry {
-	registry := &BaseRequestRegistry{
+func NewGenericRequestRegistry(ctx context.Context, chain chains.Chain, upId, methodSpec string) *GenericRequestRegistry {
+	registry := &GenericRequestRegistry{
 		ctx:        ctx,
 		chain:      chain,
 		upId:       upId,
@@ -154,7 +154,7 @@ func NewBaseRequestRegistry(ctx context.Context, chain chains.Chain, upId, metho
 	return registry
 }
 
-func (b *BaseRequestRegistry) sendCmd(cmd registryCommand) {
+func (b *GenericRequestRegistry) sendCmd(cmd registryCommand) {
 	select {
 	case <-b.ctx.Done():
 		log.Warn().Msgf("RequestRegistry of '%s' is not working, command is ignored", b.upId)
@@ -162,7 +162,7 @@ func (b *BaseRequestRegistry) sendCmd(cmd registryCommand) {
 	}
 }
 
-func (b *BaseRequestRegistry) closeReq(req RequestOperation) {
+func (b *GenericRequestRegistry) closeReq(req RequestOperation) {
 	done := make(chan bool, 1)
 	b.sendCmd(newFinishCommand(req, done))
 
@@ -179,4 +179,4 @@ func (b *BaseRequestRegistry) closeReq(req RequestOperation) {
 	b.allOps.Delete(req.Id())
 }
 
-var _ RequestRegistry = (*BaseRequestRegistry)(nil)
+var _ RequestRegistry = (*GenericRequestRegistry)(nil)

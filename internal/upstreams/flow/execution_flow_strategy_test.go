@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *BaseExecutionFlow {
+func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *GenericExecutionFlow {
 	t.Helper()
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
@@ -29,7 +29,7 @@ func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *BaseE
 		CalculationInterval:     1 * time.Minute,
 	})
 
-	return &BaseExecutionFlow{
+	return &GenericExecutionFlow{
 		chain:              chains.ETHEREUM,
 		upstreamSupervisor: upSupervisor,
 		registry:           registry,
@@ -52,7 +52,7 @@ func TestCreateStrategyUsesBaseWhenConfigured(t *testing.T) {
 
 	strategy := exec.createStrategy(context.Background(), request)
 
-	assert.IsType(t, &BaseStrategy{}, strategy)
+	assert.IsType(t, &GenericStrategy{}, strategy)
 }
 
 func TestCreateStrategyPerChainOverrideWinsOverGlobal(t *testing.T) {

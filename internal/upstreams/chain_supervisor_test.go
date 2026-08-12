@@ -131,7 +131,7 @@ func createEventWithLabels(
 }
 
 func publishHeadEvent(
-	chainSupervisor *upstreams.BaseChainSupervisor,
+	chainSupervisor *upstreams.GenericChainSupervisor,
 	id string,
 	status protocol.AvailabilityStatus,
 	head protocol.Block,
@@ -180,7 +180,7 @@ func createEventWithCaps(
 }
 
 func TestChainSupervisorUpdateHeadWithHeightFc(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -214,7 +214,7 @@ func TestChainSupervisorUpdateHeadDoesNotPublishWrapperForEmptyChosenHead(t *tes
 		Head:   protocol.NewBlockWithHeight(100),
 	}).Return(true, protocol.ZeroBlock{})
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(
+	chainSupervisor := upstreams.NewGenericChainSupervisor(
 		context.Background(),
 		chains.ARBITRUM,
 		fcMock,
@@ -250,7 +250,7 @@ func TestChainSupervisorUpdateHeadPublishesWrapperForNonEmptyChosenHead(t *testi
 		Head:   protocol.NewBlockWithHeight(100),
 	}).Return(true, head)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(
+	chainSupervisor := upstreams.NewGenericChainSupervisor(
 		context.Background(),
 		chains.ARBITRUM,
 		fcMock,
@@ -279,7 +279,7 @@ func TestChainSupervisorUpdateHeadPublishesWrapperForNonEmptyChosenHead(t *testi
 }
 
 func TestChainSupervisorUpdateHead_MergedHeadGoesDownOnReorg(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -299,8 +299,8 @@ func TestChainSupervisorUpdateHead_MergedHeadGoesDownOnReorg(t *testing.T) {
 }
 
 func TestChainSupervisorHeadLag_NoUnderflowWhenMergedHeadLower(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), tracker, false, nil)
+	tracker := dimensions.NewGenericDimensionTracker()
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), tracker, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -322,8 +322,8 @@ func TestChainSupervisorHeadLag_NoUnderflowWhenMergedHeadLower(t *testing.T) {
 }
 
 func TestChainSupervisorTrackLags(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), tracker, false, nil)
+	tracker := dimensions.NewGenericDimensionTracker()
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), tracker, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -392,7 +392,7 @@ func TestChainSupervisorPropagatesHeadLag(t *testing.T) {
 		}
 		return nil
 	}
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, true, getUpstream)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, true, getUpstream)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -422,7 +422,7 @@ func TestChainSupervisorPropagatesHeadLag(t *testing.T) {
 func TestChainSupervisorDoesNotPropagateHeadLagWhenDisabled(t *testing.T) {
 	stub := &lagStub{}
 	getUpstream := func(string) upstreams.Upstream { return stub }
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, getUpstream)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, getUpstream)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -450,7 +450,7 @@ func TestChainSupervisorPropagatesHeadLagOnlyOnThresholdCrossing(t *testing.T) {
 		}
 		return nil
 	}
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, true, getUpstream)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, true, getUpstream)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -477,7 +477,7 @@ func TestChainSupervisorPropagatesHeadLagOnlyOnThresholdCrossing(t *testing.T) {
 }
 
 func TestChainSupervisorUpdateStatus(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -497,7 +497,7 @@ func TestChainSupervisorUpdateStatus(t *testing.T) {
 }
 
 func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods1 := mocks.NewMethodsMock()
 	methods1.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 	methods2 := mocks.NewMethodsMock()
@@ -521,7 +521,7 @@ func TestChainSupervisorUnionUpstreamMethods(t *testing.T) {
 }
 
 func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
@@ -558,7 +558,7 @@ func TestChainSupervisorUnionUpstreamBlockInfo(t *testing.T) {
 }
 
 func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
@@ -576,7 +576,7 @@ func TestChainSupervisorRemoveUpstreamState(t *testing.T) {
 }
 
 func TestChainSupervisorHeadEventRefreshesUpstreamSnapshot(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
@@ -598,7 +598,7 @@ func TestChainSupervisorHeadEventRefreshesUpstreamSnapshot(t *testing.T) {
 }
 
 func TestChainSupervisorRemoveUpstreamRecomputesHead(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
@@ -623,7 +623,7 @@ func TestChainSupervisorRemoveUpstreamRecomputesHead(t *testing.T) {
 }
 
 func TestChainSupervisorRemoveUpstreamWithoutTrackedHeadDoesNotResetChosenHead(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
 
@@ -644,7 +644,7 @@ func TestChainSupervisorRemoveUpstreamWithoutTrackedHeadDoesNotResetChosenHead(t
 }
 
 func TestChainSupervisorGetChainAndUpstreamIds(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -660,7 +660,7 @@ func TestChainSupervisorGetChainAndUpstreamIds(t *testing.T) {
 }
 
 func TestChainSupervisorGetSortedUpstreamIds(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -693,7 +693,7 @@ func TestChainSupervisorGetSortedUpstreamIds(t *testing.T) {
 func TestChainSupervisorProcessSubMethods(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -747,7 +747,7 @@ func TestChainSupervisorProcessSubMethods(t *testing.T) {
 func TestChainSupervisorSubMethodsEvmWithoutTopicCapsIsEmpty(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -774,7 +774,7 @@ func TestChainSupervisorSubMethodsEvmWithoutTopicCapsIsEmpty(t *testing.T) {
 func TestChainSupervisorSubMethodsEvmNewHeadsOnly(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -797,7 +797,7 @@ func TestChainSupervisorSubMethodsEvmNewHeadsOnly(t *testing.T) {
 func TestChainSupervisorSubMethodsEvmPendingTx(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -822,7 +822,7 @@ func TestChainSupervisorSubMethodsEvmPendingTx(t *testing.T) {
 func TestChainSupervisorSubMethodsEmptyWithoutWsCap(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -846,7 +846,7 @@ func TestChainSupervisorSubMethodsEmptyWithoutWsCap(t *testing.T) {
 func TestChainSupervisorSubMethodsSolanaUsesNativeMethods(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.SOLANA, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.SOLANA, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -873,7 +873,7 @@ func TestChainSupervisorSubMethodsSolanaUsesNativeMethods(t *testing.T) {
 func TestChainSupervisorCapsAggregatedAcrossUpstreams(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -920,13 +920,13 @@ func TestChainSupervisorCapsAggregatedAcrossUpstreams(t *testing.T) {
 }
 
 func TestChainSupervisorLowerBoundsInitialStateIsEmpty(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 
 	assert.Empty(t, chainSupervisor.GetChainState().LowerBounds)
 }
 
 func TestChainSupervisorLowerBoundsSingleAvailableUpstream(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -943,7 +943,7 @@ func TestChainSupervisorLowerBoundsSingleAvailableUpstream(t *testing.T) {
 }
 
 func TestChainSupervisorLowerBoundsUseMinimumBoundPerTypeAcrossAvailableUpstreams(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -963,7 +963,7 @@ func TestChainSupervisorLowerBoundsUseMinimumBoundPerTypeAcrossAvailableUpstream
 }
 
 func TestChainSupervisorLowerBoundsIgnoreUnavailableUpstreams(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -980,7 +980,7 @@ func TestChainSupervisorLowerBoundsIgnoreUnavailableUpstreams(t *testing.T) {
 }
 
 func TestChainSupervisorLowerBoundsIgnoreUpstreamsWithoutLowerBoundsInfo(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -995,7 +995,7 @@ func TestChainSupervisorLowerBoundsIgnoreUpstreamsWithoutLowerBoundsInfo(t *test
 }
 
 func TestChainSupervisorLowerBoundsUpdateExistingUpstreamState(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1016,7 +1016,7 @@ func TestChainSupervisorLowerBoundsUpdateExistingUpstreamState(t *testing.T) {
 }
 
 func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamBecomesUnavailable(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1038,7 +1038,7 @@ func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamBecomesUnavailable(t *te
 }
 
 func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1065,13 +1065,13 @@ func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
 }
 
 func TestChainSupervisorLabelsInitialStateIsEmpty(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 
 	assert.Empty(t, chainSupervisor.GetChainState().ChainLabels)
 }
 
 func TestChainSupervisorLabelsSingleAvailableUpstream(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1091,7 +1091,7 @@ func TestChainSupervisorLabelsSingleAvailableUpstream(t *testing.T) {
 }
 
 func TestChainSupervisorLabelsAggregateIdenticalLabelsAcrossAvailableUpstreams(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1111,7 +1111,7 @@ func TestChainSupervisorLabelsAggregateIdenticalLabelsAcrossAvailableUpstreams(t
 }
 
 func TestChainSupervisorLabelsIgnoreUnavailableUpstreams(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1133,7 +1133,7 @@ func TestChainSupervisorLabelsIgnoreUnavailableUpstreams(t *testing.T) {
 }
 
 func TestChainSupervisorLabelsIgnoreUpstreamsWithoutLabels(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1152,7 +1152,7 @@ func TestChainSupervisorLabelsIgnoreUpstreamsWithoutLabels(t *testing.T) {
 }
 
 func TestChainSupervisorLabelsRecomputeWhenUpstreamBecomesUnavailable(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 
@@ -1181,7 +1181,7 @@ func TestChainSupervisorLabelsRecomputeWhenUpstreamBecomesUnavailable(t *testing
 }
 
 func TestChainSupervisorLabelsRecomputeWhenUpstreamRemoved(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methods := mocks.NewMethodsMock()
 	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
 

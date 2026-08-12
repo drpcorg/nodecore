@@ -15,17 +15,17 @@ type LabelsProcessor interface {
 	Subscribe(name string) *utils.Subscription[lo.Tuple2[string, string]]
 }
 
-type BaseLabelsProcessor struct {
+type GenericLabelsProcessor struct {
 	upstreamId string
 	delay      time.Duration
 
-	lifecycle  *utils.BaseLifecycle
+	lifecycle  *utils.GenericLifecycle
 	subManager *utils.SubscriptionManager[lo.Tuple2[string, string]]
 
 	labelsDetectors []LabelsDetector
 }
 
-func (b *BaseLabelsProcessor) Start() {
+func (b *GenericLabelsProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		labelDetectorsChanArr := make([]<-chan lo.Tuple2[string, string], 0, len(b.labelsDetectors))
 		for _, detector := range b.labelsDetectors {
@@ -50,40 +50,40 @@ func (b *BaseLabelsProcessor) Start() {
 	})
 }
 
-func (b *BaseLabelsProcessor) Stop() {
+func (b *GenericLabelsProcessor) Stop() {
 	log.Info().Msgf("stopping labels processor of upstream '%s'", b.upstreamId)
 	b.lifecycle.Stop()
 }
 
-func (b *BaseLabelsProcessor) Running() bool {
+func (b *GenericLabelsProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *BaseLabelsProcessor) Subscribe(name string) *utils.Subscription[lo.Tuple2[string, string]] {
+func (b *GenericLabelsProcessor) Subscribe(name string) *utils.Subscription[lo.Tuple2[string, string]] {
 	return b.subManager.Subscribe(name)
 }
 
-func NewBaseLabelsProcessor(
+func NewGenericLabelsProcessor(
 	ctx context.Context,
 	upstreamId string,
 	labelsDetectors []LabelsDetector,
 	delay time.Duration,
-) *BaseLabelsProcessor {
+) *GenericLabelsProcessor {
 	if len(labelsDetectors) == 0 {
 		return nil
 	}
 
 	name := fmt.Sprintf("%s_labels_processor", upstreamId)
-	return &BaseLabelsProcessor{
+	return &GenericLabelsProcessor{
 		upstreamId:      upstreamId,
 		subManager:      utils.NewSubscriptionManager[lo.Tuple2[string, string]](name),
-		lifecycle:       utils.NewBaseLifecycle(name, ctx),
+		lifecycle:       utils.NewGenericLifecycle(name, ctx),
 		labelsDetectors: labelsDetectors,
 		delay:           delay,
 	}
 }
 
-func (b *BaseLabelsProcessor) detectLabels(ctx context.Context, detector LabelsDetector) chan lo.Tuple2[string, string] {
+func (b *GenericLabelsProcessor) detectLabels(ctx context.Context, detector LabelsDetector) chan lo.Tuple2[string, string] {
 	labelsChan := make(chan lo.Tuple2[string, string], 10)
 
 	go func() {
@@ -113,4 +113,4 @@ func detectLabelsAndSend(detector LabelsDetector, labelsChan chan lo.Tuple2[stri
 	}
 }
 
-var _ LabelsProcessor = (*BaseLabelsProcessor)(nil)
+var _ LabelsProcessor = (*GenericLabelsProcessor)(nil)

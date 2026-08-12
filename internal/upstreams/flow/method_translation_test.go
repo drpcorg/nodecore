@@ -139,13 +139,13 @@ func TestSatsToBtc(t *testing.T) {
 	assert.Equal(t, "21.12345678", string(satsToBtc(2_112_345_678)))
 }
 
-func bitcoinTestUpstream(connector connectors.ApiConnector, headHeight uint64) *upstreams.BaseUpstream {
+func bitcoinTestUpstream(connector connectors.ApiConnector, headHeight uint64) *upstreams.GenericUpstream {
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	state := protocol.DefaultUpstreamState(mocks.NewMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil)
 	state.HeadData = protocol.NewBlockWithHeight(headHeight)
 	upState.Store(state)
 
-	return upstreams.NewBaseUpstreamWithParams(
+	return upstreams.NewGenericUpstreamWithParams(
 		"id",
 		chains.BITCOIN,
 		[]connectors.ApiConnector{connector},

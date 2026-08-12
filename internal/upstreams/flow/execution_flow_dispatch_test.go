@@ -18,7 +18,7 @@ import (
 func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
@@ -37,7 +37,7 @@ func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
 func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
@@ -56,7 +56,7 @@ func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testi
 func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
@@ -77,7 +77,7 @@ func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", chains.ETHEREUM).Return(nil).Once()
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain:              chains.ETHEREUM,
 		upstreamSupervisor: upSupervisor,
 	}
@@ -94,7 +94,7 @@ func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
 func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain:     chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{IntegrityConfig: &config.IntegrityConfig{}}},
 	}
@@ -110,7 +110,7 @@ func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
 func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
@@ -129,7 +129,7 @@ func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T
 func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},

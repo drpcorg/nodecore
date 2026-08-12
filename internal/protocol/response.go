@@ -297,7 +297,7 @@ func (w *WsJsonRpcResponse) ResponseCode() int {
 	return 0
 }
 
-type BaseUpstreamResponse struct {
+type GenericUpstreamResponse struct {
 	id              string
 	result          []byte
 	error           *ResponseError
@@ -313,45 +313,45 @@ type BaseUpstreamResponse struct {
 	streamHint StreamHint
 }
 
-func (h *BaseUpstreamResponse) ResponseCode() int {
+func (h *GenericUpstreamResponse) ResponseCode() int {
 	return h.responseCode
 }
 
-func (h *BaseUpstreamResponse) ResponseHeaders() http.Header {
+func (h *GenericUpstreamResponse) ResponseHeaders() http.Header {
 	return h.responseHeaders
 }
 
-func (h *BaseUpstreamResponse) WithResponseHeaders(headers http.Header) *BaseUpstreamResponse {
+func (h *GenericUpstreamResponse) WithResponseHeaders(headers http.Header) *GenericUpstreamResponse {
 	h.responseHeaders = headers
 	return h
 }
 
-func (h *BaseUpstreamResponse) ResponseResultString() (string, error) {
+func (h *GenericUpstreamResponse) ResponseResultString() (string, error) {
 	if len(h.result) > 0 && h.result[0] == '"' && h.result[len(h.result)-1] == '"' {
 		return string(h.result[1 : len(h.result)-1]), nil
 	}
 	return "", errors.New("result is not a string")
 }
 
-var _ ResponseHolder = (*BaseUpstreamResponse)(nil)
+var _ ResponseHolder = (*GenericUpstreamResponse)(nil)
 
-func (h *BaseUpstreamResponse) Id() string {
+func (h *GenericUpstreamResponse) Id() string {
 	return h.id
 }
 
-func (h *BaseUpstreamResponse) ResponseResult() []byte {
+func (h *GenericUpstreamResponse) ResponseResult() []byte {
 	return h.result
 }
 
-func (h *BaseUpstreamResponse) HasStream() bool {
+func (h *GenericUpstreamResponse) HasStream() bool {
 	return h.stream != nil
 }
 
-func (h *BaseUpstreamResponse) GetError() *ResponseError {
+func (h *GenericUpstreamResponse) GetError() *ResponseError {
 	return h.error
 }
 
-func (h *BaseUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
+func (h *GenericUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	if h.requestType == JsonRpc {
 		if h.HasError() {
 			return jsonRpcResponseReader(realId, "error", h.ResponseResult())
@@ -367,7 +367,7 @@ func (h *BaseUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	return bytes.NewReader(h.result)
 }
 
-func (h *BaseUpstreamResponse) HasError() bool {
+func (h *GenericUpstreamResponse) HasError() bool {
 	return h.error != nil
 }
 
@@ -381,8 +381,8 @@ func jsonRpcResponseReader(id []byte, bodyName string, body []byte) io.Reader {
 	)
 }
 
-func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *BaseUpstreamResponse {
-	return &BaseUpstreamResponse{
+func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *GenericUpstreamResponse {
+	return &GenericUpstreamResponse{
 		id:          id,
 		requestType: requestType,
 		stream:      reader,
@@ -392,26 +392,26 @@ func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType Requ
 // WithStreamHint attaches the first-chunk analysis produced by
 // AnalyzeFirstChunk so the gRPC result-unwrap consumer can emit the result
 // without re-scanning the chunk. A nil hint leaves the response without one.
-func (h *BaseUpstreamResponse) WithStreamHint(hint StreamHint) *BaseUpstreamResponse {
+func (h *GenericUpstreamResponse) WithStreamHint(hint StreamHint) *GenericUpstreamResponse {
 	h.streamHint = hint
 	return h
 }
 
 // GetStreamHint returns the streaming hint, or nil if none was recorded.
-func (h *BaseUpstreamResponse) GetStreamHint() StreamHint {
+func (h *GenericUpstreamResponse) GetStreamHint() StreamHint {
 	return h.streamHint
 }
 
-func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *BaseUpstreamResponse {
-	return &BaseUpstreamResponse{
+func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *GenericUpstreamResponse {
+	return &GenericUpstreamResponse{
 		id:          id,
 		result:      body,
 		requestType: requestType,
 	}
 }
 
-func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *BaseUpstreamResponse {
-	var response *BaseUpstreamResponse
+func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *GenericUpstreamResponse {
+	var response *GenericUpstreamResponse
 	switch requestType {
 	case JsonRpc:
 		response = parseJsonRpcBody(id, body, responseCode)
@@ -447,8 +447,8 @@ func ResultAsNumber(result []byte) uint64 {
 	return uint64(num)
 }
 
-func NewHttpUpstreamResponseWithError(error *ResponseError) *BaseUpstreamResponse {
-	return &BaseUpstreamResponse{
+func NewHttpUpstreamResponseWithError(error *ResponseError) *GenericUpstreamResponse {
+	return &GenericUpstreamResponse{
 		error: error,
 	}
 }

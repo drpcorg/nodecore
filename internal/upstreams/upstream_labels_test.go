@@ -26,7 +26,7 @@ func (t *typedStubConnector) GetType() specs.ApiConnectorType {
 	return specs.JsonRpcConnector
 }
 
-func TestNewBaseUpstreamSeedsManualLabels(t *testing.T) {
+func TestNewGenericUpstreamSeedsManualLabels(t *testing.T) {
 	upstream := newUpstreamWithLabelsDetection(t, config.UpstreamLabels{
 		"archive":  "false",
 		"provider": "hetzner",
@@ -38,18 +38,18 @@ func TestNewBaseUpstreamSeedsManualLabels(t *testing.T) {
 	}, upstream.GetUpstreamState().Labels.GetAllLabels())
 }
 
-func TestNewBaseUpstreamWithoutManualLabelsHasEmptyLabels(t *testing.T) {
+func TestNewGenericUpstreamWithoutManualLabelsHasEmptyLabels(t *testing.T) {
 	upstream := newUpstreamWithLabelsDetection(t, nil, false)
 
 	assert.Empty(t, upstream.GetUpstreamState().Labels.GetAllLabels())
 }
 
-// TestNewBaseUpstreamSeedsManualLabelsEvenWhenLabelsDetectionDisabled covers the
+// TestNewGenericUpstreamSeedsManualLabelsEvenWhenLabelsDetectionDisabled covers the
 // headline promise in the docs: manual labels are seeded into upstream state at
 // construction time, independent of whether the runtime label detectors are ever
 // started. Every other seeding test here runs with detection enabled, so on its own
 // none of them proves the seed survives disable-labels-detection: true.
-func TestNewBaseUpstreamSeedsManualLabelsEvenWhenLabelsDetectionDisabled(t *testing.T) {
+func TestNewGenericUpstreamSeedsManualLabelsEvenWhenLabelsDetectionDisabled(t *testing.T) {
 	upstream := newUpstreamWithLabelsDetection(t, config.UpstreamLabels{
 		"archive":  "false",
 		"provider": "hetzner",
@@ -76,7 +76,7 @@ func TestDetectorLabelOverwritesManualLabel(t *testing.T) {
 	assert.Equal(t, "false", value, "a detector event must win over the manual seed")
 }
 
-func newUpstreamWithLabelsDetection(t *testing.T, labels config.UpstreamLabels, disableLabelsDetection bool) *BaseUpstream {
+func newUpstreamWithLabelsDetection(t *testing.T, labels config.UpstreamLabels, disableLabelsDetection bool) *GenericUpstream {
 	t.Helper()
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
@@ -112,7 +112,7 @@ func newUpstreamWithLabelsDetection(t *testing.T, labels config.UpstreamLabels, 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	upstream, err := NewBaseUpstream(ctx, cancel, conf, configuredChain, 12, &upstreamCreationData{
+	upstream, err := NewGenericUpstream(ctx, cancel, conf, configuredChain, 12, &upstreamCreationData{
 		upstreamConnectorsInfo: &connectorsInfo{
 			internalRequestConnector: stub,
 			headConnector:            stub,

@@ -36,7 +36,7 @@ func TestCalculateRatingSortedUpstreamsSize(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisors").Return([]upstreams.ChainSupervisor{multiChain, singleChain})
 
-	registry := NewRatingRegistry(upSupervisor, dimensions.NewBaseDimensionTracker(), &config.ScorePolicyConfig{
+	registry := NewRatingRegistry(upSupervisor, dimensions.NewGenericDimensionTracker(), &config.ScorePolicyConfig{
 		CalculationFunctionName: config.DefaultLatencyPolicyFuncName,
 		CalculationInterval:     1 * time.Minute,
 	})
@@ -75,7 +75,7 @@ func gaugeValue(t *testing.T, chain chains.Chain, method, upstreamId string) flo
 
 func newChainSupervisorWithUpstreams(t *testing.T, chain chains.Chain, methods *mocks.MethodsMock, ids ...string) upstreams.ChainSupervisor {
 	t.Helper()
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chain, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chain, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	go chainSupervisor.Start()
 
 	for _, id := range ids {

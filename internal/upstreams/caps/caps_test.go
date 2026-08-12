@@ -80,16 +80,16 @@ func (s *scriptedDetector) DetectCaps(_ context.Context) <-chan mapset.Set[proto
 	return s.ch
 }
 
-func TestBaseCapProcessor(t *testing.T) {
+func TestGenericCapProcessor(t *testing.T) {
 	t.Run("nil when there are no detectors", func(t *testing.T) {
-		assert.Nil(t, caps.NewBaseCapProcessor(context.Background(), "u", nil))
+		assert.Nil(t, caps.NewGenericCapProcessor(context.Background(), "u", nil))
 	})
 
 	t.Run("merges disjoint detectors and publishes on change only", func(t *testing.T) {
 		ws := &scriptedDetector{domain: []protocol.Cap{protocol.WsCap}, ch: make(chan mapset.Set[protocol.Cap], 1)}
 		pt := &scriptedDetector{domain: []protocol.Cap{protocol.PendingTxCap}, ch: make(chan mapset.Set[protocol.Cap], 1)}
 
-		proc := caps.NewBaseCapProcessor(context.Background(), "u", []caps.CapDetector{ws, pt})
+		proc := caps.NewGenericCapProcessor(context.Background(), "u", []caps.CapDetector{ws, pt})
 		require.NotNil(t, proc)
 
 		sub := proc.Subscribe("s")

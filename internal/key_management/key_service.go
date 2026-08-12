@@ -17,19 +17,19 @@ type KeyService interface {
 	GetKey(keyStr string) (keydata.Key, bool)
 }
 
-type BaseKeyService struct {
+type GenericKeyService struct {
 	ctx           context.Context
 	keys          *utils.CMap[string, keydata.Key]
 	retryInterval time.Duration
 }
 
-func NewBaseKeyServiceWithRetryInterval(
+func NewGenericKeyServiceWithRetryInterval(
 	ctx context.Context,
 	keyCfgs []*config.KeyConfig,
 	integrationResolver *integration.IntegrationResolver,
 	retryInterval time.Duration,
 ) (KeyService, error) {
-	keyService := &BaseKeyService{
+	keyService := &GenericKeyService{
 		retryInterval: retryInterval,
 		keys:          utils.NewCMap[string, keydata.Key](),
 		ctx:           ctx,
@@ -61,11 +61,11 @@ func NewBaseKeyServiceWithRetryInterval(
 	return keyService, nil
 }
 
-func NewBaseKeyService(ctx context.Context, keyCfgs []*config.KeyConfig, integrationResolver *integration.IntegrationResolver) (KeyService, error) {
-	return NewBaseKeyServiceWithRetryInterval(ctx, keyCfgs, integrationResolver, 10*time.Second)
+func NewGenericKeyService(ctx context.Context, keyCfgs []*config.KeyConfig, integrationResolver *integration.IntegrationResolver) (KeyService, error) {
+	return NewGenericKeyServiceWithRetryInterval(ctx, keyCfgs, integrationResolver, 10*time.Second)
 }
 
-func (k *BaseKeyService) GetKey(keyStr string) (keydata.Key, bool) {
+func (k *GenericKeyService) GetKey(keyStr string) (keydata.Key, bool) {
 	key, ok := k.keys.Load(keyStr)
 	return key, ok
 }
@@ -81,7 +81,7 @@ func getIntegration(
 	return integrationClient, nil
 }
 
-func (k *BaseKeyService) watchKeys(keyEvents <-chan keydata.KeyEvent) {
+func (k *GenericKeyService) watchKeys(keyEvents <-chan keydata.KeyEvent) {
 	for {
 		select {
 		case <-k.ctx.Done():
@@ -101,4 +101,4 @@ func (k *BaseKeyService) watchKeys(keyEvents <-chan keydata.KeyEvent) {
 	}
 }
 
-var _ KeyService = (*BaseKeyService)(nil)
+var _ KeyService = (*GenericKeyService)(nil)

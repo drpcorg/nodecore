@@ -22,8 +22,8 @@ type SettingsEventProcessor interface {
 	ValidationEventProcessor[validations.ValidationSettingResult]
 }
 
-type BaseSettingsEventProcessor struct {
-	lifecycle          *utils.BaseLifecycle
+type GenericSettingsEventProcessor struct {
+	lifecycle          *utils.GenericLifecycle
 	upstreamId         string
 	validationInterval time.Duration
 	validator          *validations.ValidationProcessor[validations.ValidationSettingResult]
@@ -32,15 +32,15 @@ type BaseSettingsEventProcessor struct {
 	currentValidationState *utils.Atomic[validations.ValidationSettingResult]
 }
 
-func (b *BaseSettingsEventProcessor) Type() EventProcessorType {
+func (b *GenericSettingsEventProcessor) Type() EventProcessorType {
 	return SettingsValidatorProcessorType
 }
 
-func (b *BaseSettingsEventProcessor) SetEmitter(emitter Emitter) {
+func (b *GenericSettingsEventProcessor) SetEmitter(emitter Emitter) {
 	b.emitter = emitter
 }
 
-func (b *BaseSettingsEventProcessor) Start() {
+func (b *GenericSettingsEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		go func() {
 			for {
@@ -72,27 +72,27 @@ func (b *BaseSettingsEventProcessor) Start() {
 	})
 }
 
-func (b *BaseSettingsEventProcessor) Stop() {
+func (b *GenericSettingsEventProcessor) Stop() {
 	b.lifecycle.Stop()
 }
 
-func (b *BaseSettingsEventProcessor) Running() bool {
+func (b *GenericSettingsEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *BaseSettingsEventProcessor) Validate() validations.ValidationSettingResult {
+func (b *GenericSettingsEventProcessor) Validate() validations.ValidationSettingResult {
 	result := b.validator.Validate()
 	b.currentValidationState.Store(result)
 
 	return result
 }
 
-func NewBaseSettingsEventProcessor(
+func NewGenericSettingsEventProcessor(
 	ctx context.Context,
 	upstreamId string,
 	options *chains.Options,
 	validator *validations.ValidationProcessor[validations.ValidationSettingResult],
-) *BaseSettingsEventProcessor {
+) *GenericSettingsEventProcessor {
 	if validator == nil || (*options.DisableValidation || *options.DisableSettingsValidation) {
 		return nil
 	}
@@ -100,8 +100,8 @@ func NewBaseSettingsEventProcessor(
 	currentValidationState := utils.NewAtomic[validations.ValidationSettingResult]()
 	currentValidationState.Store(validations.UnknownResult)
 
-	return &BaseSettingsEventProcessor{
-		lifecycle:              utils.NewBaseLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
+	return &GenericSettingsEventProcessor{
+		lifecycle:              utils.NewGenericLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
 		validationInterval:     options.ValidationInterval,
 		validator:              validator,
 		upstreamId:             upstreamId,
@@ -113,23 +113,23 @@ type HealthEventProcessor interface {
 	ValidationEventProcessor[protocol.AvailabilityStatus]
 }
 
-type BaseHealthEventProcessor struct {
-	lifecycle          *utils.BaseLifecycle
+type GenericHealthEventProcessor struct {
+	lifecycle          *utils.GenericLifecycle
 	emitter            Emitter
 	upstreamId         string
 	validationInterval time.Duration
 	validator          *validations.ValidationProcessor[protocol.AvailabilityStatus]
 }
 
-func (b *BaseHealthEventProcessor) Type() EventProcessorType {
+func (b *GenericHealthEventProcessor) Type() EventProcessorType {
 	return HealthValidatorProcessorType
 }
 
-func (b *BaseHealthEventProcessor) SetEmitter(emitter Emitter) {
+func (b *GenericHealthEventProcessor) SetEmitter(emitter Emitter) {
 	b.emitter = emitter
 }
 
-func (b *BaseHealthEventProcessor) Start() {
+func (b *GenericHealthEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		go func() {
 			b.validateHealth()
@@ -148,42 +148,42 @@ func (b *BaseHealthEventProcessor) Start() {
 	})
 }
 
-func (b *BaseHealthEventProcessor) Stop() {
+func (b *GenericHealthEventProcessor) Stop() {
 	b.lifecycle.Stop()
 }
 
-func (b *BaseHealthEventProcessor) Running() bool {
+func (b *GenericHealthEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *BaseHealthEventProcessor) Validate() protocol.AvailabilityStatus {
+func (b *GenericHealthEventProcessor) Validate() protocol.AvailabilityStatus {
 	return b.validator.Validate()
 }
 
-func (b *BaseHealthEventProcessor) validateHealth() {
+func (b *GenericHealthEventProcessor) validateHealth() {
 	availabilityStatus := b.Validate()
 	log.Debug().Msgf("availability status of upstream '%s' - %s", b.upstreamId, availabilityStatus)
 
 	b.emitter(&protocol.StatusUpstreamStateEvent{Status: availabilityStatus})
 }
 
-func NewBaseHealthEventProcessor(
+func NewGenericHealthEventProcessor(
 	ctx context.Context,
 	upstreamId string,
 	options *chains.Options,
 	validator *validations.ValidationProcessor[protocol.AvailabilityStatus],
-) *BaseHealthEventProcessor {
+) *GenericHealthEventProcessor {
 	if validator == nil || (*options.DisableValidation || *options.DisableHealthValidation) {
 		return nil
 	}
 
-	return &BaseHealthEventProcessor{
-		lifecycle:          utils.NewBaseLifecycle(fmt.Sprintf("%s_health_event_processor", upstreamId), ctx),
+	return &GenericHealthEventProcessor{
+		lifecycle:          utils.NewGenericLifecycle(fmt.Sprintf("%s_health_event_processor", upstreamId), ctx),
 		validationInterval: options.ValidationInterval,
 		validator:          validator,
 		upstreamId:         upstreamId,
 	}
 }
 
-var _ HealthEventProcessor = (*BaseHealthEventProcessor)(nil)
-var _ SettingsEventProcessor = (*BaseSettingsEventProcessor)(nil)
+var _ HealthEventProcessor = (*GenericHealthEventProcessor)(nil)
+var _ SettingsEventProcessor = (*GenericSettingsEventProcessor)(nil)

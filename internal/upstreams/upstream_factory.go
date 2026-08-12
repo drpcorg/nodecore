@@ -83,7 +83,7 @@ func CreateUpstream(
 		autoTune:               autoTune,
 	}
 
-	return NewBaseUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
+	return NewGenericUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
 }
 
 func createRateLimiter(
@@ -131,8 +131,8 @@ func createConnector(
 	case specs.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
-		reqRegistry := ws.NewBaseRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
-		wsProcessor, err := ws.NewBaseWsProcessor(
+		reqRegistry := ws.NewGenericRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
+		wsProcessor, err := ws.NewGenericWsProcessor(
 			ctx,
 			upId,
 			connectorConfig.Url,

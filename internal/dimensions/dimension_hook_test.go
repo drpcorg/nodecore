@@ -13,7 +13,7 @@ import (
 )
 
 func TestDimensionsHookMultipleResults(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	hook := dimensions.NewDimensionHook(tracker)
 
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}

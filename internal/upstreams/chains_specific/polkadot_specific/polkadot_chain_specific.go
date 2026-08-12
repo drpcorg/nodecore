@@ -160,7 +160,7 @@ func (p *PolkadotChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBo
 			p.upstreamId, p.configuredChain.Chain, p.internalTimeout, p.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		p.ctx, p.upstreamId, p.configuredChain.AverageRemoveSpeed(), detectors,
 	)
 }

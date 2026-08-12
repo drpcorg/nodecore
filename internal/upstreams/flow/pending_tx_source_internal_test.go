@@ -379,7 +379,7 @@ func TestIsNullResult(t *testing.T) {
 // pendingDrpcUpstream builds an upstream with BOTH a websocket connector (for the
 // shared newPendingTransactions sub, feeding wsCh) and a json-rpc connector (for
 // the eth_getTransactionByHash enrichment, returning txResult).
-func pendingDrpcUpstream(id string, wsCh chan *protocol.WsResponse, opId string, txResult protocol.ResponseHolder) *upstreams.BaseUpstream {
+func pendingDrpcUpstream(id string, wsCh chan *protocol.WsResponse, opId string, txResult protocol.ResponseHolder) *upstreams.GenericUpstream {
 	wsConn := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 	wsConn.On("Subscribe", mock.Anything, mock.Anything).Return(protocol.NewJsonRpcWsUpstreamResponse(wsCh, opId), nil)
 	wsConn.On("Unsubscribe", mock.Anything).Maybe()
@@ -389,7 +389,7 @@ func pendingDrpcUpstream(id string, wsCh chan *protocol.WsResponse, opId string,
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	upState.Store(protocol.DefaultUpstreamState(pendingMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "idx", nil, nil))
-	return upstreams.NewBaseUpstreamWithParams(
+	return upstreams.NewGenericUpstreamWithParams(
 		id,
 		chains.ARBITRUM,
 		[]connectors.ApiConnector{wsConn, jsonConn},
@@ -502,7 +502,7 @@ func TestDrpcPendingTxSourceEnrichesConcurrently(t *testing.T) {
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	upState.Store(protocol.DefaultUpstreamState(pendingMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "idx", nil, nil))
-	up1 := upstreams.NewBaseUpstreamWithParams(
+	up1 := upstreams.NewGenericUpstreamWithParams(
 		"up1",
 		chains.ARBITRUM,
 		[]connectors.ApiConnector{wsConn, jsonConn},

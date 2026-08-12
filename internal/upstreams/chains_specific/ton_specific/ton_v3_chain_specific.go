@@ -48,7 +48,7 @@ func (t *TonV3ChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			t.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.labelsDelay)
+	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.labelsDelay)
 }
 
 func (t *TonV3ChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
