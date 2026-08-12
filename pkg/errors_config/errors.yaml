@@ -122,6 +122,7 @@ retryable-errors:
   - str: server shutting down
   - str: <!DOCTYPE html>
   - str: Public RPC Rate Limit Hit
+  - str: Public endpoint rate limit
   - str: the containing module is disabled
   - str: historical state not available
   - str: node does not have console

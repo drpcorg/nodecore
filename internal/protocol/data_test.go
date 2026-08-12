@@ -32,6 +32,11 @@ func TestIsRetryable(t *testing.T) {
 			response: protocol.NewHttpUpstreamResponse("1", []byte(`{"id":"23r23","jsonrpc":"2.0","error":{"message":"missing trie node","code":2}}`), 200, protocol.JsonRpc),
 		},
 		{
+			name:     "base response with dRPC public endpoint rate limit error",
+			expected: true,
+			response: protocol.NewHttpUpstreamResponse("1", []byte(`{"id":1,"jsonrpc":"2.0","error":{"message":"You reached Public endpoint rate limit, please upgrade to paid plan","code":15}}`), 200, protocol.JsonRpc),
+		},
+		{
 			name:     "reply error with TotalFailure",
 			expected: false,
 			response: protocol.NewReplyError("1", nil, protocol.JsonRpc, protocol.TotalFailure),
