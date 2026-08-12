@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/beacon_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/beacon_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -213,3 +214,9 @@ type beaconHeaderResponse struct {
 }
 
 var _ chains_specific.ChainSpecific = (*BeaconChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (b *BeaconChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

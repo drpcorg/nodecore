@@ -30,6 +30,7 @@ upstream-config:
         disable-safe-block-detection: false
         disable-finalized-block-detection: false
         disable-labels-detection: false
+        disable-methods-detection: false
         validate-syncing: true
         validate-peers: true
         min-peers: 5
@@ -133,7 +134,7 @@ upstream-config:
 The cost-conscious profile. nodecore deliberately runs lazy and minimises the amount of work it does against each upstream:
 
 - **Head tracking via HTTP polling at `1m`.** When `head-connector` is not set, nodecore picks the *simplest* connector available (`json-rpc` over `rest` over `grpc` over `websocket`). For an upstream with both `json-rpc` and `websocket` connectors, the WebSocket is left dormant and heads are pulled by polling JSON-RPC.
-- **Most periodic validators are off by default.** With no explicit overrides, the following fall back to *disabled*: `disable-lower-bounds-detection`, `disable-labels-detection`, `validate-syncing`, `validate-peers`, `validate-call-limit`. Only the cheap, structural validators run (chain id / net version, health).
+- **Most periodic validators are off by default.** With no explicit overrides, the following fall back to *disabled*: `disable-lower-bounds-detection`, `disable-labels-detection`, `disable-methods-detection`, `validate-syncing`, `validate-peers`, `validate-call-limit`. Only the cheap, structural validators run (chain id / net version, health).
 - **Stale-read protection is opt-in.** Because heads are polled lazily, `eth_blockNumber` and `eth_getBlockByNumber` can return values older than the actual tip. To compensate, enable the [integrity](#integrity) feature (`integrity.enabled: true`) - it cross-checks responses against the most-advanced upstream and retries when they look stale. Integrity is the recommended way to get consistency in `default` mode.
 
 This mode is the right choice when upstreams are expensive (paid RPCs, metered providers) and you care more about cost / request-count than about being on the exact-current head.
@@ -156,6 +157,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `poll-interval` (when unset) | `1m` | chain's `expected-block-time` |
 | `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
 | `disable-labels-detection` | `true` (off) | `false` (on) |
+| `disable-methods-detection` | `true` (off) | `false` (on) |
 | `validate-syncing` | `false` (off) | `true` (on) |
 | `validate-lag` | `false` (off) | `true` (on) |
 | `validate-peers` | `false` (off) | `true` (on) |
@@ -306,6 +308,7 @@ chain-defaults:
       disable-health-validation: false
       disable-lower-bounds-detection: false
       disable-labels-detection: false
+      disable-methods-detection: false
       validate-syncing: true
       validate-peers: true
       min-peers: 5
@@ -339,6 +342,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `disable-health-validation` - Disables only the health validators (per chain family). **_Default_**: `false`
   * `disable-lower-bounds-detection` - Disables the earliest-available-block detector. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-labels-detection` - Disables the EVM label detectors (client/version, archive, gas, flashblock, etc.). Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `disable-methods-detection` - Disables runtime detection of which RPC methods the node actually serves. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode. See [How method detection interacts with `methods`](#how-method-detection-interacts-with-methods)
   * `archive` - **Deprecated**, use the per-upstream [`labels`](#fields) `archive` entry instead. When set on an upstream it is translated into that label at startup with a warning. Setting it under `chain-defaults.<chain>.options` has never had any effect
   * `validate-syncing` - For EVM chains, calls `eth_syncing` periodically and marks the upstream unavailable when it is syncing. For beacon-chain upstreams it probes `GET /eth/v1/node/syncing` instead (marking the upstream `Syncing`, or `Unavailable` when its execution layer is offline). Bitcoin-family upstreams probe `getblockchaininfo` (`initialblockdownload`, plus a headers-vs-blocks lag threshold). For NEAR upstreams the `status` probe's `sync_info.syncing` and a stale-head guard on `latest_block_time` drive the same signal (always on as part of health validation). Starknet upstreams probe `starknet_syncing` (a plain `false` or a sync object, judged with a lag threshold). TON upstream health uses `getMasterchainInfo` liveness (v2) and `masterchainInfo` `gen_utime` freshness (v3). Cosmos upstreams read the node's own flag — `status` → `sync_info.catching_up` over the `tendermint` connector, `GET /cosmos/base/tendermint/v1beta1/syncing` over the LCD. Polkadot upstreams read `isSyncing` from `system_health`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `validate-peers` - For EVM chains, calls `net_peerCount` periodically and pairs with `min-peers`. For beacon-chain upstreams it probes `GET /eth/v1/node/peer_count`. Bitcoin-family upstreams call `getconnectioncount`. NEAR upstreams probe `network_info` `num_active_peers`. Starknet has no peer probe (nodes sync from the feeder gateway, not p2p), so `validate-peers` has no effect there; likewise for TON upstreams. Cosmos upstreams probe `net_info` → `n_peers` over the `tendermint` connector only — the LCD exposes no peer count, so a `rest`-driven cosmos upstream ignores this flag too. Polkadot upstreams read `peers` from the same `system_health` response as the syncing check, gated on the node's own `shouldHavePeers` flag. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
@@ -698,6 +702,8 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
   > **⚠️ Connector scope (current limitation)**: Every entry in `enable` is applied to **all** of the API connectors declared by the chain's [method spec](11-method-specs.md). There is no per-connector targeting today, so on a chain that exposes the same method on multiple transports (e.g. EVM chains where the spec has both `json-rpc` and `websocket`), you cannot enable a method only on `json-rpc` while leaving it off on `websocket` - the flag toggles every connector at once.
   >
   > nodecore is chain-agnostic, and for chains that legitimately use several transports this is a real limitation: methods that are valid on one transport but not the other still need an explicit `api-connector` selector here. A future revision of this field will accept an `api-connector` qualifier so an entry like `eth_call@json-rpc` (or an equivalent structured form) can be scoped to a single transport. Until then, only configure `enable` for methods that share the same shape across every connector the chain advertises.
+
+  > **Method detection**: in `strict` mode these lists are combined with what [method detection](#how-method-detection-interacts-with-methods) finds the node actually serves. `enable` always wins.
 - `rate-limit-budget` - Reference to a shared rate limit budget defined in the top-level `rate-limit` section. See [Rate Limiting](06-rate-limiting.md) for details
 - `rate-limit` - Inline rate limiting configuration specific to this upstream. Cannot be used together with `rate-limit-budget`. See [Rate Limiting](06-rate-limiting.md) for details
 - `rate-limit-auto-tune` - Automatically adjusts the upstream's outgoing rate limit based on observed error rate and utilization. See [Rate Limiting](06-rate-limiting.md#auto-tune-rate-limiting) for the field semantics
@@ -707,6 +713,22 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 
   > **Automatic `secure-signed` label**: when [gRPC response signing](12-grpc-server.md) is configured - `server.grpc-auth.enabled` is `true` **and** `provider-private-key-path` is set - every upstream is given `secure-signed: "true"` at startup, so gRPC clients can select signing-capable providers with a label selector. An explicitly configured `secure-signed` label always wins, which lets you opt a single upstream out.
   > **Migration**: `options.archive` is **deprecated but still honoured**. When it is set, nodecore logs a warning at startup and translates it into this `archive` label, so existing configs keep their override; an explicit `labels.archive` always wins. Prefer `labels: {archive: false}` in new configs. Two limits worth knowing: only the **upstream-level** `options.archive` is translated - `chain-defaults.<chain>.options.archive` has never had any effect (it was parsed but never merged into the upstream's options) - and `labels` itself is per-upstream only, with no chain-defaults equivalent, so a `chain-defaults.<chain>.labels` key is silently ignored
+
+#### How method detection interacts with `methods`
+
+When [`disable-methods-detection`](#chain-defaults) is off - the default in `strict` mode - the upstream's final method set is built in this order:
+
+1. every method in the chain's [method spec](11-method-specs.md);
+2. minus everything method detection found the node does not serve;
+3. minus everything in `methods.disable`;
+4. minus any method currently banned for failing at runtime (see `methods.ban-duration`);
+5. plus everything in `methods.enable`.
+
+`methods.enable` is applied last, so it is an operator override that outranks both detection and runtime bans. If detection reports a method as unsupported while `enable` forces it on, nodecore logs a warning naming that method and keeps it enabled - the configured intent stands, but the conflict is visible in the logs.
+
+Detection only ever **removes** methods. It never adds one the chain's spec does not declare, so every served method keeps its spec-defined cache policy, block-tag parsing and sticky/integrity behaviour. Methods nodecore answers itself, such as `eth_chainId` and `net_version`, are never subject to detection because their availability does not depend on the node.
+
+In `default` mode detection is off and an unsupported method is discovered reactively instead: the first request to fail with a "method not found"-style error bans it for `ban-duration`. Both modes keep that reactive ban - detection just means a `strict`-mode upstream stops advertising the method before any client hits the failure.
 
 ## Validators and labels
 
@@ -751,6 +773,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Lower-bound detector (Polkadot) | Polkadot | `disable-lower-bounds-detection` | Binary-searches the oldest retained state. Each probe costs two calls — `chain_getBlockHash` to turn a height into a hash, then `state_getMetadata` at that hash — because polkadot state methods key off hashes, never heights. `State already discarded for` is read as pruned rather than as a transient failure. Steady state costs a single probe per cycle, because the previously found bound is re-confirmed before any search |
 | Lower-bound detector (Tendermint) | Cosmos (`tendermint`) | `disable-lower-bounds-detection` | Reads `status` → `sync_info.earliest_block_height` and publishes it as the state lower bound. One call, no search — CometBFT tells you the oldest height it still holds. Reported verbatim, `0` included |
 | Lower-bound detector (Cosmos LCD) | Cosmos (`rest`) | `disable-lower-bounds-detection` | The LCD has no `earliest_block_height` equivalent, so the bound is binary-searched over `GET /cosmos/base/tendermint/v1beta1/blocks/{height}` (a pruned height answers 4xx). Steady state costs a single probe per cycle, because the previously found bound is re-confirmed before any search |
+| Method detector (EVM) | EVM | `disable-methods-detection` | Narrows the upstream's method set to what the node actually serves. `rpc_modules` attributes every spec method to a module and strips those whose module the node does not report; a short list of methods that module granularity cannot settle (`trace_callMany`, `eth_simulateV1`, `debug_storageRangeAt`, …) is then confirmed with a direct read-only call. Runs at upstream start and every `validation-interval * 20`. Only ever removes methods - see [How method detection interacts with `methods`](#how-method-detection-interacts-with-methods) |
 | Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities. The archive probe is skipped when the upstream sets the manual label `archive: false` (see [`labels`](#fields)), which leaves the configured value in place |
 | Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |

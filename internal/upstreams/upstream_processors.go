@@ -9,7 +9,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
-	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/samber/lo"
@@ -107,7 +106,7 @@ func CreateCapEventProcessor(
 	conf *config.Upstream,
 	chainSpecific chains_specific.ChainSpecific,
 	connectorsInfo *connectorsInfo,
-	upstreamMethods methods.Methods,
+	methodsSource caps.MethodsSource,
 	headProcessor blocks.HeadProcessor,
 ) event_processors.UpstreamStateEventProcessor {
 	wsConnector, _ := lo.Find(connectorsInfo.allConnectors, func(c connectors.ApiConnector) bool {
@@ -116,7 +115,7 @@ func CreateCapEventProcessor(
 	input := caps.DetectorInput{
 		WsConnector:   wsConnector,
 		HeadConnector: connectorsInfo.headConnector,
-		Methods:       upstreamMethods,
+		Methods:       methodsSource,
 		Head:          headProcessor,
 	}
 
@@ -125,6 +124,22 @@ func CreateCapEventProcessor(
 		return nil
 	}
 	eventProcessor := event_processors.NewGenericCapEventProcessor(ctx, conf.Id, capProcessor)
+	if eventProcessor == nil {
+		return nil
+	}
+	return eventProcessor
+}
+
+func CreateMethodsEventProcessor(
+	ctx context.Context,
+	conf *config.Upstream,
+	chainSpecific chains_specific.ChainSpecific,
+) event_processors.UpstreamStateEventProcessor {
+	methodsProcessor := createMethodsProcessor(chainSpecific, conf.Options)
+	if methodsProcessor == nil {
+		return nil
+	}
+	eventProcessor := event_processors.NewMethodsEventProcessor(ctx, conf.Id, methodsProcessor)
 	if eventProcessor == nil {
 		return nil
 	}

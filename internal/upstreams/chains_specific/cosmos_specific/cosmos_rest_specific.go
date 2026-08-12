@@ -16,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/cosmos_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/cosmos_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/cosmos_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -158,3 +159,9 @@ func (c *CosmosRestSpecific) BlockProcessor() blocks.BlockProcessor {
 }
 
 var _ chains_specific.ChainSpecific = (*CosmosRestSpecific)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (c *CosmosRestSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

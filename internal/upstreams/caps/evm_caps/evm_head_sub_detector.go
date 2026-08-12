@@ -5,6 +5,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -19,10 +20,12 @@ import (
 type EvmHeadSubCapDetector struct {
 	name     string
 	headConn connectors.ApiConnector
-	methods  methods.Methods
+	// methods is read on every evaluation rather than captured, so a later method
+	// detection round is reflected in the caps this detector asserts.
+	methods caps.MethodsSource
 }
 
-func NewEvmHeadSubCapDetector(name string, headConn connectors.ApiConnector, methods methods.Methods) *EvmHeadSubCapDetector {
+func NewEvmHeadSubCapDetector(name string, headConn connectors.ApiConnector, methods caps.MethodsSource) *EvmHeadSubCapDetector {
 	return &EvmHeadSubCapDetector{name: name, headConn: headConn, methods: methods}
 }
 
@@ -66,12 +69,18 @@ func (e *EvmHeadSubCapDetector) DetectCaps(ctx context.Context) <-chan mapset.Se
 }
 
 func (e *EvmHeadSubCapDetector) capsFor(state protocol.SubscribeConnectorState) mapset.Set[protocol.Cap] {
-	caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
-	if state == protocol.WsConnected && e.methods != nil && e.methods.HasMethod("eth_subscribe") {
-		caps.Add(protocol.NewHeadsCap)
-		if e.methods.HasMethod("eth_getLogs") {
-			caps.Add(protocol.LogsCap)
+	detected := mapset.NewThreadUnsafeSet[protocol.Cap]()
+
+	var upstreamMethods methods.Methods
+	if e.methods != nil {
+		upstreamMethods = e.methods()
+	}
+
+	if state == protocol.WsConnected && upstreamMethods != nil && upstreamMethods.HasMethod("eth_subscribe") {
+		detected.Add(protocol.NewHeadsCap)
+		if upstreamMethods.HasMethod("eth_getLogs") {
+			detected.Add(protocol.LogsCap)
 		}
 	}
-	return caps
+	return detected
 }

@@ -121,7 +121,14 @@ func NewGenericUpstream(
 			CreateHealthEventProcessor(ctx, conf, chainSpecific),
 			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
 			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
-			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
+			CreateMethodsEventProcessor(ctx, conf, chainSpecific),
+			// The method set is passed as an accessor, not a value: method detection and
+			// bans replace it during the upstream's life, and cap detectors must see the
+			// current one. Safe here because upstreamState is populated above, before the
+			// aggregator is built.
+			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, func() methods.Methods {
+				return upstream.upstreamState.Load().UpstreamMethods
+			}, headProcessor),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)
@@ -261,6 +268,7 @@ func (u *GenericUpstream) PartialStop() {
 	u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.LabelsProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.CapEventProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.MethodsEventProcessorType)
 }
 
 func (u *GenericUpstream) Resume() {
@@ -270,6 +278,7 @@ func (u *GenericUpstream) Resume() {
 	u.processorAggregator.StartProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LabelsProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.CapEventProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.MethodsEventProcessorType)
 }
 
 func (u *GenericUpstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
@@ -319,10 +328,18 @@ func (u *GenericUpstream) GetHashIndex() string {
 	return u.upstreamIndexHex
 }
 
-func (u *GenericUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) methods.Methods {
+// newUpstreamMethods rebuilds the upstream's method set from the chain spec. Composition
+// order is spec - unsupported - config disable - banned + config enable:
+// methods.NewUpstreamMethods removes everything disabled before adding anything enabled,
+// so putting both runtime subtractions in DisableMethods leaves config enable as the last
+// word - the same precedence the ban path grants it.
+//
+// bannedMethods and unsupportedMethods stay separate sets in the caller: an unban must
+// restore only what a ban took away, never what detection found missing.
+func (u *GenericUpstream) newUpstreamMethods(bannedMethods, unsupportedMethods mapset.Set[string]) methods.Methods {
 	newConfig := &config.MethodsConfig{
 		EnableMethods:  u.upConfig.Methods.EnableMethods,
-		DisableMethods: lo.Union(bannedMethods.ToSlice(), u.upConfig.Methods.DisableMethods),
+		DisableMethods: lo.Union(bannedMethods.ToSlice(), unsupportedMethods.ToSlice(), u.upConfig.Methods.DisableMethods),
 	}
 	connectorTypes := lo.Map(u.apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
 		return item.GetType()

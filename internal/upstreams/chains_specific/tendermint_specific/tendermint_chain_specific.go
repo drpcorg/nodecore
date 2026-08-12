@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/tendermint_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/tendermint_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tendermint_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -185,3 +186,9 @@ type TendermintHeader struct {
 }
 
 var _ chains_specific.ChainSpecific = (*TendermintChainSpecific)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (t *TendermintChainSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

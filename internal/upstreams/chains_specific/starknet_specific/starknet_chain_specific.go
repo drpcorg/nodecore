@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/starknet_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/starknet_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/starknet_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -199,3 +200,9 @@ type starknetBlockHeader struct {
 }
 
 var _ chains_specific.ChainSpecific = (*StarknetChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (s *StarknetChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

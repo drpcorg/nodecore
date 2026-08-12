@@ -140,6 +140,29 @@ func (u *UnbanMethodUpstreamStateEvent) ProcessEvent(state UpstreamState) Upstre
 	return state
 }
 
+// UnsupportedMethodsUpstreamStateEvent replaces the upstream's detected-unsupported set
+// wholesale. Detection produces a whole-set view - the pipeline has already merged every
+// detector's verdict - so this carries the full set rather than incremental
+// strip/restore. It is deliberately not BanMethodUpstreamStateEvent: a ban expires after
+// Methods.BanDuration, whereas a method the node was never built with must stay gone
+// until detection itself says otherwise.
+type UnsupportedMethodsUpstreamStateEvent struct {
+	Methods mapset.Set[string]
+}
+
+// Same always reports false: the comparison needs the previously detected set, which
+// processStateEvents tracks rather than UpstreamState, so dedup happens there - the same
+// arrangement the ban events use.
+func (u *UnsupportedMethodsUpstreamStateEvent) Same(_ UpstreamState) bool {
+	return false
+}
+
+// ProcessEvent is a no-op. The detected set is combined with the ban set and the
+// upstream's config by processStateEvents, which owns both.
+func (u *UnsupportedMethodsUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
+	return state
+}
+
 // CapsUpstreamStateEvent replaces the upstream's capability set wholesale. Caps are
 // produced by the per-chain cap pipeline (caps.CapProcessor aggregating CapDetectors),
 // which already merges every detector's view into one set, so the event carries the
@@ -178,6 +201,7 @@ func (l *LabelsUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamSta
 
 var _ AbstractUpstreamStateEvent = (*LabelsUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*CapsUpstreamStateEvent)(nil)
+var _ AbstractUpstreamStateEvent = (*UnsupportedMethodsUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*UnbanMethodUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*BanMethodUpstreamStateEvent)(nil)
 var _ AbstractUpstreamStateEvent = (*BlockUpstreamStateEvent)(nil)

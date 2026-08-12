@@ -1,0 +1,29 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "DETECTABLE JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "detectable",
+    "api-connectors": ["json-rpc"],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "chain_getBalance",
+      "params": []
+    },
+    {
+      "name": "trace_block",
+      "params": []
+    },
+    {
+      "name": "chain_chainId",
+      "settings": {
+        "local": true
+      },
+      "params": []
+    }
+  ]
+}

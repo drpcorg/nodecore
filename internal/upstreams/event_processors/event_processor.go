@@ -16,6 +16,7 @@ const (
 	SettingsValidatorProcessorType
 	LabelsProcessorType
 	CapEventProcessorType
+	MethodsEventProcessorType
 )
 
 type UpstreamStateEventProcessor interface {

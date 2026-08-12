@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/solana_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/solana_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/solana_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -197,3 +198,9 @@ type SolanaSlotEvent struct {
 }
 
 var _ chains_specific.ChainSpecific = (*SolanaChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (s *SolanaChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

@@ -188,3 +188,13 @@ func TestLabelsUpstreamStateEvent(t *testing.T) {
 	assert.NotSame(t, state.Labels, nextState.Labels)
 	assert.True(t, event.Same(nextState))
 }
+
+func TestUnsupportedMethodsUpstreamStateEvent(t *testing.T) {
+	event := &protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	}
+	state := newUpstreamState()
+
+	assert.False(t, event.Same(state), "dedup is the event loop's job, so Same must always report false")
+	assert.Equal(t, state, event.ProcessEvent(state), "the set is applied by processStateEvents, not here")
+}

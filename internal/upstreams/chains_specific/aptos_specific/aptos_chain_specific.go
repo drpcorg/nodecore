@@ -16,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/aptos_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/aptos_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/aptos_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -158,3 +159,9 @@ func heightToHashId(height uint64) blockchain.HashId {
 }
 
 var _ chains_specific.ChainSpecific = (*AptosChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (a *AptosChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

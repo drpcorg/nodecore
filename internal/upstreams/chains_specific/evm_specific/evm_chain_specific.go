@@ -16,6 +16,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/evm_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods/evm_methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -80,6 +82,25 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 	}
 
 	return labelsDetectors
+}
+
+// MethodsProcessor detects which of the chain spec's methods this node actually serves.
+// The interval is much longer than the labels one because the answer changes only when a
+// node is restarted with different --http.api flags, where labels track moving values
+// like client version and gas settings.
+func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	base := methods.DetectableMethods(e.chain.MethodSpec, connectorTypes(e.allConnectors))
+	detectors := []methods.MethodsDetector{
+		evm_methods.NewEvmMethodsDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+	}
+
+	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, e.options.ValidationInterval*20)
+}
+
+func connectorTypes(apiConnectors []connectors.ApiConnector) []specs.ApiConnectorType {
+	return lo.Map(apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
+		return item.GetType()
+	})
 }
 
 // archiveDetectionSuppressed reports whether the upstream's manual 'archive' label

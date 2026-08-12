@@ -21,6 +21,7 @@ type Options struct {
 	DisableSafeBlockDetection             *bool         `yaml:"disable-safe-block-detection"`
 	DisableFinalizedBlockDetection        *bool         `yaml:"disable-finalized-block-detection"`
 	DisableLabelsDetection                *bool         `yaml:"disable-labels-detection"`
+	DisableMethodsDetection               *bool         `yaml:"disable-methods-detection"`
 	DisableLogIndexValidation             *bool         `yaml:"disable-log-index-validation"`
 	DisableLivenessSubscriptionValidation *bool         `yaml:"disable-liveness-subscription-validation"`
 	// ArchiveCapability is deprecated: set the 'archive' upstream label instead. It is
