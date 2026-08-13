@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUpstreamMethodsNoSpecThenError(t *testing.T) {
@@ -116,4 +117,43 @@ func checkMethods(t *testing.T, expected mapset.Set[string], methods methods.Met
 		assert.Equal(t, methodName, method.Name)
 		assert.True(t, methods.HasMethod(methodName))
 	}
+}
+
+func TestIsForceEnabled(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoaderWithFs(os.DirFS("full")).Load())
+
+	// "test" and "test_another" are in group "trace"; "test2" is in "super-group".
+	traceMethod := specs.GetSpecMethod("test", "test")
+	require.NotNil(t, traceMethod)
+	otherMethod := specs.GetSpecMethod("test", "test2")
+	require.NotNil(t, otherMethod)
+
+	tests := []struct {
+		name     string
+		enabled  []string
+		method   *specs.Method
+		expected bool
+	}{
+		{name: "nil config", enabled: nil, method: traceMethod, expected: false},
+		{name: "unrelated entry", enabled: []string{"something_else"}, method: traceMethod, expected: false},
+		{name: "exact method name", enabled: []string{"test"}, method: traceMethod, expected: true},
+		{name: "own group", enabled: []string{"trace"}, method: traceMethod, expected: true},
+		{name: "another method's group", enabled: []string{"trace"}, method: otherMethod, expected: false},
+		{name: "the synthetic default group covers everything", enabled: []string{specs.DefaultMethodGroup}, method: otherMethod, expected: true},
+		{name: "a non-subscription is not covered by the sub group", enabled: []string{specs.SubMethodGroup}, method: traceMethod, expected: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var methodsConfig *config.MethodsConfig
+			if test.enabled != nil {
+				methodsConfig = &config.MethodsConfig{EnableMethods: test.enabled}
+			}
+			assert.Equal(t, test.expected, methods.IsForceEnabled(methodsConfig, test.method))
+		})
+	}
+}
+
+func TestIsForceEnabledNilMethod(t *testing.T) {
+	assert.False(t, methods.IsForceEnabled(&config.MethodsConfig{EnableMethods: []string{"test"}}, nil))
 }

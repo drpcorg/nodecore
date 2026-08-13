@@ -45,12 +45,15 @@ type MethodProbeDetector struct {
 	// others: a round where three probes answer and five time out would otherwise report
 	// only the three and silently restore whatever the five had established.
 	//
-	// It is a plain map with no mutex. DetectUnsupported runs once per round on a goroutine
-	// the processor spawns, and the processor's wg.Wait() for round N happens-before it
-	// spawns round N+1, so rounds never overlap. Within a round the probe goroutines write
-	// to an indexed slice and this map is merged only after their wg.Wait(), so it always
-	// has a single writer.
-	known map[string]protocol.MethodAvailability
+	// knownMu guards it because this detector outlives a single processor run. Rounds within
+	// one run cannot overlap, but the instance is reused across PartialStop()/Resume(), and
+	// GenericLifecycle.Stop() only cancels the context without waiting for the round in
+	// flight - cancelling aborts the probe calls, yet the merge below still runs - while
+	// Start() spawns the next round immediately. Two goroutines writing a plain map is a
+	// fatal throw rather than a recoverable panic, so the lock is worth its cost of once
+	// per round.
+	knownMu sync.Mutex
+	known   map[string]protocol.MethodAvailability
 }
 
 // NewMethodProbeDetector builds a detector for the probe-list methods the chain's spec
@@ -93,6 +96,9 @@ func (m *MethodProbeDetector) DetectUnsupported(ctx context.Context) mapset.Set[
 		}()
 	}
 	wg.Wait()
+
+	m.knownMu.Lock()
+	defer m.knownMu.Unlock()
 
 	// Merge only conclusive answers, so an inconclusive probe leaves the previous answer
 	// for that method in place.

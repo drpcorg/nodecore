@@ -6,6 +6,9 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 
@@ -16,6 +19,10 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 	// from bannedMethods so that an unban - which fires on a timer - can never restore a
 	// method the node structurally lacks.
 	unsupportedMethods := mapset.NewThreadUnsafeSet[string]()
+	methodSpecName := chains.GetMethodSpecNameByChain(u.configuredChain.Chain)
+	forceEnabled := func(method string) bool {
+		return methods.IsForceEnabled(u.upConfig.Methods, specs.GetSpecMethodWithFallback(methodSpecName, method))
+	}
 	validUpstream := initialValid
 	// baseAvail is the availability reported by health probes (setStatus),
 	// tracked here rather than in the shared UpstreamState because only the
@@ -49,30 +56,19 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				eventType = &protocol.ValidUpstreamEvent{State: &state}
 				validUpstream = true
 			case *protocol.BanMethodUpstreamStateEvent:
-				if bannedMethods.ContainsOne(stateEvent.Method) {
-					continue
-				}
-				// Test the composed set rather than re-deriving the precedence rule: the
-				// config can force a method on by name or by group, and only the composition
-				// knows which wins. A ban the config enables away is not worth recording -
-				// it would leave the method enabled, fire a pointless unban later, and
-				// re-arm on the next failure.
-				candidate := bannedMethods.Clone()
-				candidate.Add(stateEvent.Method)
-				newMethods := u.newUpstreamMethods(candidate, unsupportedMethods)
-				if newMethods.HasMethod(stateEvent.Method) {
-					log.Warn().Msgf(
-						"the method %s failed on upstream %s but stays enabled because the config force-enables it",
-						stateEvent.Method, u.id,
-					)
+				// A ban the config enables away is not worth recording: it would leave the
+				// method enabled, fire a pointless unban later, and re-arm on the next
+				// failure. This sits on a per-request path - MethodBanHook fires for every
+				// failing response - so it must stay cheap and silent.
+				if bannedMethods.ContainsOne(stateEvent.Method) || forceEnabled(stateEvent.Method) {
 					continue
 				}
 				time.AfterFunc(u.upConfig.Methods.BanDuration, func() {
 					u.emitter(&protocol.UnbanMethodUpstreamStateEvent{Method: stateEvent.Method})
 				})
 				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.id)
-				bannedMethods = candidate
-				state.UpstreamMethods = newMethods
+				bannedMethods.Add(stateEvent.Method)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
 			case *protocol.UnbanMethodUpstreamStateEvent:
 				if !bannedMethods.ContainsOne(stateEvent.Method) {
 					continue
@@ -85,19 +81,15 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 					continue
 				}
 				unsupportedMethods = stateEvent.Methods.Clone()
-				newMethods := u.newUpstreamMethods(bannedMethods, unsupportedMethods)
-				// Ask the composed set which of detection's verdicts were overridden. That
-				// covers an enable by name, by group, and any future override mechanism -
-				// a name-list check would silently miss `enable: [trace]`.
 				for _, method := range unsupportedMethods.ToSlice() {
-					if newMethods.HasMethod(method) {
+					if forceEnabled(method) {
 						log.Warn().Msgf(
 							"method %s is not supported by upstream %s but stays enabled because the config force-enables it",
 							method, u.id,
 						)
 					}
 				}
-				state.UpstreamMethods = newMethods
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
 			case *protocol.StatusUpstreamStateEvent:
 				if !validUpstream {
 					continue
