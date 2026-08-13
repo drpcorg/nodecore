@@ -2,10 +2,8 @@ package methods
 
 import (
 	"context"
-	"slices"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/nodecore/internal/config"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
@@ -38,14 +36,4 @@ func DetectableMethods(specName string, connectorTypes []specs.ApiConnectorType)
 	}
 
 	return detectable
-}
-
-// IsExplicitlyEnabled reports whether the operator pinned this method on for the
-// upstream. Config enable is the last word: it outranks both a detector's verdict and a
-// runtime ban, so both paths ask here rather than each re-deriving the rule.
-func IsExplicitlyEnabled(methodsConfig *config.MethodsConfig, method string) bool {
-	if methodsConfig == nil {
-		return false
-	}
-	return slices.Contains(methodsConfig.EnableMethods, method)
 }

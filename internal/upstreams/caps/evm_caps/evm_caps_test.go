@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps/evm_caps"
-	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -146,7 +144,7 @@ func TestEvmHeadSubCapDetector(t *testing.T) {
 		methods.On("HasMethod", "eth_subscribe").Return(true)
 		methods.On("HasMethod", "eth_getLogs").Return(true)
 
-		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, staticMethods(methods))
+		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, methods)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		out := detector.DetectCaps(ctx)
@@ -163,7 +161,7 @@ func TestEvmHeadSubCapDetector(t *testing.T) {
 		methods.On("HasMethod", "eth_subscribe").Return(true)
 		methods.On("HasMethod", "eth_getLogs").Return(false)
 
-		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, staticMethods(methods))
+		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, methods)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		out := detector.DetectCaps(ctx)
@@ -179,7 +177,7 @@ func TestEvmHeadSubCapDetector(t *testing.T) {
 		methods := mocks.NewMethodsMock()
 		methods.On("HasMethod", "eth_subscribe").Return(false)
 
-		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, staticMethods(methods))
+		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, methods)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		out := detector.DetectCaps(ctx)
@@ -193,7 +191,7 @@ func TestEvmHeadSubCapDetector(t *testing.T) {
 		headConn := mocks.NewConnectorMock()
 		headConn.On("SubscribeStates", "head").Return(nil)
 
-		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, staticMethods(mocks.NewMethodsMock()))
+		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, mocks.NewMethodsMock())
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		out := detector.DetectCaps(ctx)
@@ -201,46 +199,4 @@ func TestEvmHeadSubCapDetector(t *testing.T) {
 		_, ok := <-out
 		assert.False(t, ok)
 	})
-
-	t.Run("re-reads the method set on every evaluation", func(t *testing.T) {
-		headConn, mgr := stateFeed("head")
-
-		full := mocks.NewMethodsMock()
-		full.On("HasMethod", "eth_subscribe").Return(true)
-		full.On("HasMethod", "eth_getLogs").Return(true)
-
-		narrowed := mocks.NewMethodsMock()
-		narrowed.On("HasMethod", "eth_subscribe").Return(false)
-
-		// An atomic, not a plain variable: the detector reads the source from its own
-		// goroutine, so a bare reassignment here would be a data race under -race.
-		// utils.NewAtomic is unusable for an interface type - its constructor stores T's
-		// zero value, and atomic.Value panics on a nil store.
-		var current atomic.Value
-		current.Store(full)
-
-		detector := evm_caps.NewEvmHeadSubCapDetector("head", headConn, func() methods.Methods {
-			return current.Load().(methods.Methods)
-		})
-
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		out := detector.DetectCaps(ctx)
-
-		mgr.Publish(protocol.WsConnected)
-		got := <-out
-		assert.True(t, got.Contains(protocol.NewHeadsCap))
-
-		// Detection has since stripped eth_subscribe. The next evaluation must observe
-		// that rather than a set captured at construction.
-		current.Store(narrowed)
-		mgr.Publish(protocol.WsConnected)
-		got = <-out
-		assert.Equal(t, 0, got.Cardinality(), "a snapshot would still assert NewHeads here")
-	})
-}
-
-// staticMethods adapts a fixed method set to the MethodsSource the detector takes.
-func staticMethods(m methods.Methods) func() methods.Methods {
-	return func() methods.Methods { return m }
 }

@@ -21,9 +21,8 @@ type MethodsEventProcessor struct {
 
 func (m *MethodsEventProcessor) Start() {
 	m.lifecycle.Start(func(ctx context.Context) error {
-		m.methodsProcessor.Start()
-
 		methodsSub := m.methodsProcessor.Subscribe(fmt.Sprintf("%s_methods", m.upstreamId))
+		m.methodsProcessor.Start()
 
 		go func() {
 			defer methodsSub.Unsubscribe()

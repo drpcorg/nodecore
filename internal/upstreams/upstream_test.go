@@ -1008,3 +1008,45 @@ func TestCreateMethodsEventProcessorRespectsTheOption(t *testing.T) {
 	assert.Nil(t, build(true), "the option must switch the whole pipeline off")
 	assert.NotNil(t, build(false))
 }
+
+func TestGenericUpstreamUnsupportedMethods_GroupEnableWins(t *testing.T) {
+	// `enable: [trace]` is a group name, not a method name, so a name-list check would
+	// miss it. The composition still re-enables trace_block, and the warning must fire.
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace"},
+	})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	require.Eventually(t, func() bool {
+		return upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block")
+	}, time.Second, 10*time.Millisecond, "a group enable outranks detection just as a name enable does")
+}
+
+func TestGenericUpstreamBanMethod_GroupEnabledMethodIsNotBanned(t *testing.T) {
+	// The ban would be undone by the group enable, so recording it would only schedule a
+	// pointless unban and re-arm on the next failure.
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace"},
+	})
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	upstream.BanMethod("trace_block")
+
+	assertNoUpstreamEvent(t, sub)
+	assert.True(t,
+		upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block"),
+		"the method stays enabled, so nothing should have changed",
+	)
+}

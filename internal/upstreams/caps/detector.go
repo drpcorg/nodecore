@@ -23,13 +23,6 @@ type CapDetector interface {
 	Domain() []protocol.Cap
 }
 
-// MethodsSource yields the upstream's current method set. It is a function rather than a
-// value because that set is not fixed for the upstream's lifetime: method detection
-// narrows it, bans remove entries, and a later detection round replaces it. A detector
-// that captured a value would keep asserting caps for methods the node has since been
-// found not to serve.
-type MethodsSource func() methods.Methods
-
 // DetectorInput bundles everything a chain needs to build its cap detectors. It is
 // assembled at the upstream level (where the connector set and methods are known)
 // and handed to ChainSpecific.CapDetectors.
@@ -39,7 +32,7 @@ type DetectorInput struct {
 	// HeadConnector is the connector driving the head; for ws-derived caps like
 	// NewHeads it must be a websocket connector.
 	HeadConnector connectors.ApiConnector
-	Methods       MethodsSource
+	Methods       methods.Methods
 	// Head is the shared head processor, used to gate WsCap on head liveness for
 	// ws-driven heads. Nil when the upstream has no head processor.
 	Head HeadSource

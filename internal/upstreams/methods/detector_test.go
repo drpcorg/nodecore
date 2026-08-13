@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -28,12 +27,4 @@ func TestDetectableMethodsUnknownSpecIsEmpty(t *testing.T) {
 	detectable := methods.DetectableMethods("no-such-spec", []specs.ApiConnectorType{specs.JsonRpcConnector})
 
 	assert.True(t, detectable.IsEmpty())
-}
-
-func TestIsExplicitlyEnabled(t *testing.T) {
-	methodsConfig := &config.MethodsConfig{EnableMethods: []string{"trace_block"}}
-
-	assert.True(t, methods.IsExplicitlyEnabled(methodsConfig, "trace_block"))
-	assert.False(t, methods.IsExplicitlyEnabled(methodsConfig, "debug_traceCall"))
-	assert.False(t, methods.IsExplicitlyEnabled(nil, "trace_block"))
 }

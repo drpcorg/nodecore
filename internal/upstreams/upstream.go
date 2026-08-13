@@ -122,13 +122,7 @@ func NewGenericUpstream(
 			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
 			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
 			CreateMethodsEventProcessor(ctx, conf, chainSpecific),
-			// The method set is passed as an accessor, not a value: method detection and
-			// bans replace it during the upstream's life, and cap detectors must see the
-			// current one. Safe here because upstreamState is populated above, before the
-			// aggregator is built.
-			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, func() methods.Methods {
-				return upstream.upstreamState.Load().UpstreamMethods
-			}, headProcessor),
+			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)
