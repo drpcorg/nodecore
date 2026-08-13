@@ -54,6 +54,13 @@
         "cacheable": false
       },
       "params": []
+    },
+    {
+      "name": "eth_getTdByNumber",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
     }
   ]
 }

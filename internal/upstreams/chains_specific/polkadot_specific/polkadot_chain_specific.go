@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/polkadot_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/polkadot_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -186,3 +187,9 @@ func blockFromHeader(header *specific_helpers.PolkadotHeader) (protocol.Block, e
 }
 
 var _ chains_specific.ChainSpecific = (*PolkadotChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (p *PolkadotChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/algorand_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/algorand_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/algorand_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -251,3 +252,9 @@ func subOne(round uint64) uint64 {
 }
 
 var _ chains_specific.ChainSpecific = (*AlgorandChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (a *AlgorandChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

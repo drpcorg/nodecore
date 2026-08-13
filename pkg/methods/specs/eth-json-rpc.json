@@ -397,6 +397,27 @@
       "params": []
     },
     {
+      "name": "eth_simulateV1",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_getStorageValues",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
+      "name": "eth_callBundle",
+      "settings": {
+        "cacheable": false
+      },
+      "params": []
+    },
+    {
       "name": "eth_getBlockTransactionCountByNumber",
       "params": [],
       "tag-parser": {

@@ -188,6 +188,13 @@ func createLabelsProcessor(chainSpecific chains_specific.ChainSpecific, options 
 	return chainSpecific.LabelsProcessor()
 }
 
+func createMethodsProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) methods.MethodsProcessor {
+	if *options.DisableMethodsDetection {
+		return nil
+	}
+	return chainSpecific.MethodsProcessor()
+}
+
 func createBlockProcessor(chainSpecific chains_specific.ChainSpecific) blocks.BlockProcessor {
 	return chainSpecific.BlockProcessor()
 }

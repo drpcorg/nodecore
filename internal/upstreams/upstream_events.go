@@ -2,17 +2,27 @@ package upstreams
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 
 // update upstream state through one pipeline
 func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid bool) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
+	// unsupportedMethods is what method detection last reported. It is tracked separately
+	// from bannedMethods so that an unban - which fires on a timer - can never restore a
+	// method the node structurally lacks.
+	unsupportedMethods := mapset.NewThreadUnsafeSet[string]()
+	methodSpecName := chains.GetMethodSpecNameByChain(u.configuredChain.Chain)
+	forceEnabled := func(method string) bool {
+		return methods.IsForceEnabled(u.upConfig.Methods, specs.GetSpecMethodWithFallback(methodSpecName, method))
+	}
 	validUpstream := initialValid
 	// baseAvail is the availability reported by health probes (setStatus),
 	// tracked here rather than in the shared UpstreamState because only the
@@ -46,7 +56,11 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				eventType = &protocol.ValidUpstreamEvent{State: &state}
 				validUpstream = true
 			case *protocol.BanMethodUpstreamStateEvent:
-				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.upConfig.Methods.EnableMethods, stateEvent.Method) {
+				// A ban the config enables away is not worth recording: it would leave the
+				// method enabled, fire a pointless unban later, and re-arm on the next
+				// failure. This sits on a per-request path - MethodBanHook fires for every
+				// failing response - so it must stay cheap and silent.
+				if bannedMethods.ContainsOne(stateEvent.Method) || forceEnabled(stateEvent.Method) {
 					continue
 				}
 				time.AfterFunc(u.upConfig.Methods.BanDuration, func() {
@@ -54,14 +68,28 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				})
 				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Add(stateEvent.Method)
-				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
 			case *protocol.UnbanMethodUpstreamStateEvent:
 				if !bannedMethods.ContainsOne(stateEvent.Method) {
 					continue
 				}
 				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Remove(stateEvent.Method)
-				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
+			case *protocol.UnsupportedMethodsUpstreamStateEvent:
+				if unsupportedMethods.Equal(stateEvent.Methods) {
+					continue
+				}
+				unsupportedMethods = stateEvent.Methods.Clone()
+				for _, method := range unsupportedMethods.ToSlice() {
+					if forceEnabled(method) {
+						log.Warn().Msgf(
+							"method %s is not supported by upstream %s but stays enabled because the config force-enables it",
+							method, u.id,
+						)
+					}
+				}
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
 			case *protocol.StatusUpstreamStateEvent:
 				if !validUpstream {
 					continue

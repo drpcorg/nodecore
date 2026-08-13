@@ -294,3 +294,45 @@ func TestSetOptionsDefaultsHandlesNilChainOptions(t *testing.T) {
 
 	assert.True(t, *options.DisableValidation)
 }
+
+func TestSetOptionsDefaultsMethodsDetectionStrictModeFallback(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chainSettings(nil), StrictMode)
+
+	assert.False(t, *options.DisableMethodsDetection, "strict mode must detect methods by default")
+}
+
+func TestSetOptionsDefaultsMethodsDetectionDefaultModeFallback(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chainSettings(nil), DefaultMode)
+
+	assert.True(t, *options.DisableMethodsDetection, "default mode must not detect methods")
+}
+
+func TestSetOptionsDefaultsMethodsDetectionChainDefaultsOverrideFallback(t *testing.T) {
+	options := &chains.Options{}
+	chainDefaults := &ChainDefaults{Options: &chains.Options{DisableMethodsDetection: new(true)}}
+
+	setOptionsDefaults(options, chainDefaults, chainSettings(nil), StrictMode)
+
+	assert.True(t, *options.DisableMethodsDetection, "chain defaults must beat the strict-mode fallback")
+}
+
+func TestSetOptionsDefaultsMethodsDetectionGlobalChainSettingsOverrideFallback(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chainSettings(&chains.Options{DisableMethodsDetection: new(true)}), StrictMode)
+
+	assert.True(t, *options.DisableMethodsDetection, "global chain settings must beat the strict-mode fallback")
+}
+
+func TestSetOptionsDefaultsMethodsDetectionUpstreamValueWins(t *testing.T) {
+	options := &chains.Options{DisableMethodsDetection: new(true)}
+	chainDefaults := &ChainDefaults{Options: &chains.Options{DisableMethodsDetection: new(false)}}
+
+	setOptionsDefaults(options, chainDefaults, chainSettings(nil), StrictMode)
+
+	assert.True(t, *options.DisableMethodsDetection, "an explicit per-upstream value must be left alone")
+}

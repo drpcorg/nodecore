@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 )
 
@@ -31,4 +32,9 @@ type ChainSpecific interface {
 	LowerBoundProcessor() lower_bounds.LowerBoundProcessor
 	LabelsProcessor() labels.LabelsProcessor
 	BlockProcessor() blocks.BlockProcessor
+
+	// MethodsProcessor returns the chain's method-detection processor, or nil when the
+	// chain has no way to introspect a node. Detection only ever subtracts, so nil means
+	// the upstream keeps the full method set its spec declares.
+	MethodsProcessor() methods.MethodsProcessor
 }

@@ -124,3 +124,30 @@ func (c *ChainMethods) GetMethod(methodName string) *specs.Method {
 }
 
 var _ Methods = (*ChainMethods)(nil)
+
+// IsForceEnabled reports whether the upstream's config pins this method on - by its own
+// name, by its spec group, or by one of the synthetic groups every method belongs to.
+//
+// It is the read side of the expansion NewUpstreamMethods performs above, and config enable
+// is applied last there, so a method this returns true for can be neither banned nor
+// stripped by detection. Checking the name alone is not enough: `enable: [trace]` names a
+// group, and `enable: [default]` covers every method there is.
+func IsForceEnabled(methodsConfig *config.MethodsConfig, method *specs.Method) bool {
+	if methodsConfig == nil || method == nil {
+		return false
+	}
+
+	for _, enabled := range methodsConfig.EnableMethods {
+		if enabled == method.Name || enabled == specs.DefaultMethodGroup {
+			return true
+		}
+		if method.Group != "" && enabled == method.Group {
+			return true
+		}
+		if enabled == specs.SubMethodGroup && method.IsSubscribe() {
+			return true
+		}
+	}
+
+	return false
+}

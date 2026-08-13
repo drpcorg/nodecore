@@ -2,20 +2,10 @@ package flow
 
 import (
 	"context"
-	"regexp"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
-	"github.com/samber/lo"
 )
-
-var methodPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`method ([A-Za-z0-9_]+) does not exist/is not available`),
-	regexp.MustCompile(`([A-Za-z0-9_]+) found but the containing module is disabled`),
-	regexp.MustCompile(`[Mm]ethod not found`),
-	regexp.MustCompile(`[Mm]ethod is not available`),
-	regexp.MustCompile(`The method ([A-Za-z0-9_]+) is not available`),
-}
 
 type MethodBanHook struct {
 	upstreamSupervisor upstreams.UpstreamSupervisor
@@ -26,11 +16,9 @@ func (m *MethodBanHook) OnResponseReceived(_ context.Context, request protocol.R
 		return
 	}
 
-	errorMessage := respWrapper.Response.GetError().Message
-	ok := lo.SomeBy(methodPatterns, func(item *regexp.Regexp) bool {
-		return item.MatchString(errorMessage)
-	})
-	if !ok {
+	// Only a definite "this method is absent" justifies a ban. MethodAvailable and
+	// MethodAvailabilityUnknown both leave the method alone.
+	if protocol.ClassifyMethodAvailability(respWrapper.Response.GetError()) != protocol.MethodNotAvailable {
 		return
 	}
 

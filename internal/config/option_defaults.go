@@ -149,6 +149,13 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
+	if upstreamOptions.DisableMethodsDetection == nil {
+		upstreamOptions.DisableMethodsDetection = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableMethodsDetection }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableMethodsDetection }),
+			lo.Ternary(upstreamMode == StrictMode, false, true),
+		)
+	}
 	if upstreamOptions.DisableLogIndexValidation == nil {
 		upstreamOptions.DisableLogIndexValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),

@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
@@ -847,4 +848,205 @@ func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) m
 	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig, nil)
 	require.NoError(t, err)
 	return upstreamMethods
+}
+
+func TestGenericUpstreamUnsupportedMethods_StripsDetectedMethod(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	// Detection subtracts exactly like a disable does, so the resulting set is the one
+	// the spec would produce with trace_block disabled.
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, &config.MethodsConfig{
+			BanDuration:    upConfig.Methods.BanDuration,
+			EnableMethods:  upConfig.Methods.EnableMethods,
+			DisableMethods: []string{"trace_block"},
+		}),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+
+	event := nextUpstreamEvent(t, sub)
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestGenericUpstreamUnsupportedMethods_IdenticalSetIsNotRepublished(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	unsupported := mapset.NewThreadUnsafeSet[string]("trace_block")
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{Methods: unsupported})
+	nextUpstreamEvent(t, sub)
+
+	// A re-detection round that finds the same thing must not wake subscribers.
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{Methods: unsupported.Clone()})
+	assertNoUpstreamEvent(t, sub)
+}
+
+func TestGenericUpstreamUnsupportedMethods_SurvivesAnUnban(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+	nextUpstreamEvent(t, sub)
+
+	// A different method is banned and then auto-unbanned after BanDuration. The unban
+	// must restore only the banned method, never the detected one.
+	upstream.BanMethod("eth_call")
+	nextUpstreamEvent(t, sub)
+	nextUpstreamEvent(t, sub)
+
+	supported := upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()
+	assert.True(t, supported.ContainsOne("eth_call"), "the ban must have expired")
+	assert.False(t, supported.ContainsOne("trace_block"), "an unban must not resurrect an unsupported method")
+}
+
+func TestGenericUpstreamUnsupportedMethods_ConfigEnableWins(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace_block"},
+	})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	require.Eventually(t, func() bool {
+		return upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block")
+	}, time.Second, 10*time.Millisecond, "config enable is applied last and must outrank detection")
+}
+
+func TestGenericUpstreamStartsMethodsDetectionAndNarrowsTheMethodSet(t *testing.T) {
+	methodsProcessor := mocks.NewMethodsProcessorMock()
+	methodsProcessor.On("Start").Return()
+	methodsProcessor.On("Subscribe", "id_methods").Return()
+	methodsProcessor.On("Stop").Return()
+
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	methodsEventProcessor := event_processors.NewMethodsEventProcessor(context.Background(), upConfig.Id, methodsProcessor)
+	require.NotNil(t, methodsEventProcessor)
+
+	aggregator := event_processors.NewUpstreamProcessorAggregator(
+		[]event_processors.UpstreamStateEventProcessor{methodsEventProcessor},
+	)
+
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, aggregator)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	// Resume() runs inside Start(), so the processor must be running by now.
+	require.True(t, methodsEventProcessor.Running(), "Resume must start the methods event processor")
+
+	before := upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()
+	require.True(t, before.ContainsOne("trace_block"), "the upstream starts with the full spec set")
+
+	methodsProcessor.Publish(mapset.NewThreadUnsafeSet[string]("trace_block"))
+
+	require.Eventually(t, func() bool {
+		supported := upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()
+		// Locally-served methods are never detectable, so they must survive regardless.
+		return !supported.ContainsOne("trace_block") &&
+			supported.ContainsOne("net_version") &&
+			supported.ContainsOne("eth_chainId")
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// Not AssertExpectations: Stop is registered so the t.Cleanup teardown does not panic
+	// on an unexpected call, but that teardown runs after this body, so Stop has not been
+	// called yet here. MethodsEventProcessor's own test covers the Stop delegation.
+	methodsProcessor.AssertCalled(t, "Start")
+	methodsProcessor.AssertCalled(t, "Subscribe", "id_methods")
+}
+
+func TestCreateMethodsEventProcessorRespectsTheOption(t *testing.T) {
+	loadMethodSpecs(t)
+
+	build := func(disabled bool) event_processors.UpstreamStateEventProcessor {
+		conf := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+		conf.Options.DisableMethodsDetection = new(disabled)
+
+		connector := mocks.NewConnectorMock()
+		connector.On("GetType").Return(specs.JsonRpcConnector).Maybe()
+
+		chainSpecific := evm_specific.NewEvmChainSpecific(
+			context.Background(),
+			conf.Id,
+			connector,
+			[]connectors.ApiConnector{connector},
+			chains.GetChain(chains.ETHEREUM.String()),
+			time.Second,
+			conf.Options,
+			nil,
+		)
+
+		return upstreams.CreateMethodsEventProcessor(context.Background(), conf, chainSpecific)
+	}
+
+	assert.Nil(t, build(true), "the option must switch the whole pipeline off")
+	assert.NotNil(t, build(false))
+}
+
+func TestGenericUpstreamUnsupportedMethods_GroupEnableWins(t *testing.T) {
+	// `enable: [trace]` is a group name, not a method name, so a name-list check would
+	// miss it. The composition still re-enables trace_block, and the warning must fire.
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace"},
+	})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	require.Eventually(t, func() bool {
+		return upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block")
+	}, time.Second, 10*time.Millisecond, "a group enable outranks detection just as a name enable does")
+}
+
+func TestGenericUpstreamBanMethod_GroupEnabledMethodIsNotBanned(t *testing.T) {
+	// The ban would be undone by the group enable, so recording it would only schedule a
+	// pointless unban and re-arm on the next failure.
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace"},
+	})
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	upstream.BanMethod("trace_block")
+
+	assertNoUpstreamEvent(t, sub)
+	assert.True(t,
+		upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block"),
+		"the method stays enabled, so nothing should have changed",
+	)
 }

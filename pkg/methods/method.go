@@ -17,7 +17,8 @@ import (
 const newValue = "$newValue"
 
 type Method struct {
-	Name string
+	Name  string
+	Group string
 
 	Subscription      *Subscription
 	sticky            *Sticky
@@ -185,6 +186,7 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 		enforceIntegrity:  enforceIntegrity,
 		dispatch:          dispatch,
 		Name:              methodData.Name,
+		Group:             methodData.Group,
 		parser:            parser,
 		modifyParser:      modifyParser,
 		sticky:            sticky,

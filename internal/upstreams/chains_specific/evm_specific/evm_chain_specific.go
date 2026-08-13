@@ -16,6 +16,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/evm_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods/evm_methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -80,6 +82,28 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 	}
 
 	return labelsDetectors
+}
+
+// MethodsProcessor detects which of the chain spec's methods this node actually serves.
+//
+// The two detectors are peers rather than stages: rpc_modules attributes methods to modules
+// wholesale, while the probes settle the handful of methods a present module does not
+// guarantee. Their verdicts are unioned, so an inconclusive probe can never resurrect a
+// method whose module the node does not report - ordering them buys nothing.
+func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	base := methods.DetectableMethods(e.chain.MethodSpec, connectorTypes(e.allConnectors))
+	detectors := []methods.MethodsDetector{
+		evm_methods.NewRpcModulesDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+		evm_methods.NewMethodProbeDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+	}
+
+	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, methods.DetectionInterval)
+}
+
+func connectorTypes(apiConnectors []connectors.ApiConnector) []specs.ApiConnectorType {
+	return lo.Map(apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
+		return item.GetType()
+	})
 }
 
 // archiveDetectionSuppressed reports whether the upstream's manual 'archive' label

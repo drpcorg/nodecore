@@ -18,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/tron_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/tron_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tron_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -217,3 +218,9 @@ func NewTronSpecific(
 }
 
 var _ chains_specific.ChainSpecific = (*TronRestSpecific)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (t *TronRestSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}

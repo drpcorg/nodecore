@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
@@ -143,4 +144,10 @@ func tonBlockFromIdExt(last tonBlockIdExt) protocol.Block {
 		blockchain.NewHashIdFromString(last.RootHash),
 		blockchain.EmptyHash,
 	)
+}
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (t *tonBaseChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
 }

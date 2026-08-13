@@ -131,6 +131,22 @@ func CreateCapEventProcessor(
 	return eventProcessor
 }
 
+func CreateMethodsEventProcessor(
+	ctx context.Context,
+	conf *config.Upstream,
+	chainSpecific chains_specific.ChainSpecific,
+) event_processors.UpstreamStateEventProcessor {
+	methodsProcessor := createMethodsProcessor(chainSpecific, conf.Options)
+	if methodsProcessor == nil {
+		return nil
+	}
+	eventProcessor := event_processors.NewMethodsEventProcessor(ctx, conf.Id, methodsProcessor)
+	if eventProcessor == nil {
+		return nil
+	}
+	return eventProcessor
+}
+
 func CreateLabelsEventProcessor(
 	ctx context.Context,
 	conf *config.Upstream,
