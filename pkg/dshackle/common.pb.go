@@ -200,6 +200,7 @@ const (
 	ChainRef_CHAIN_MOVA__MAINNET                ChainRef = 1170
 	ChainRef_CHAIN_ETHERLINK__MAINNET           ChainRef = 1171
 	ChainRef_CHAIN_NEO_X__MAINNET               ChainRef = 1172
+	ChainRef_CHAIN_MOVA__MAINNET_V2             ChainRef = 1173
 	// Testnets start with 10_000
 	ChainRef_CHAIN_ETHEREUM__MORDEN                    ChainRef = 10001
 	ChainRef_CHAIN_ETHEREUM__KOVAN                     ChainRef = 10002
@@ -567,6 +568,7 @@ var (
 		1170:   "CHAIN_MOVA__MAINNET",
 		1171:   "CHAIN_ETHERLINK__MAINNET",
 		1172:   "CHAIN_NEO_X__MAINNET",
+		1173:   "CHAIN_MOVA__MAINNET_V2",
 		10001:  "CHAIN_ETHEREUM__MORDEN",
 		10002:  "CHAIN_ETHEREUM__KOVAN",
 		10003:  "CHAIN_BITCOIN__TESTNET",
@@ -929,6 +931,7 @@ var (
 		"CHAIN_MOVA__MAINNET":                       1170,
 		"CHAIN_ETHERLINK__MAINNET":                  1171,
 		"CHAIN_NEO_X__MAINNET":                      1172,
+		"CHAIN_MOVA__MAINNET_V2":                    1173,
 		"CHAIN_ETHEREUM__MORDEN":                    10001,
 		"CHAIN_ETHEREUM__KOVAN":                     10002,
 		"CHAIN_BITCOIN__TESTNET":                    10003,
@@ -1811,7 +1814,7 @@ const file_common_proto_rawDesc = "" +
 	"\ttimestamp\x18\x03 \x01(\x04R\ttimestamp\"Y\n" +
 	"\x10FinalizationData\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x04R\x06height\x12-\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x19.emerald.FinalizationTypeR\x04type*\x8fS\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x19.emerald.FinalizationTypeR\x04type*\xacS\n" +
 	"\bChainRef\x12\x15\n" +
 	"\x11CHAIN_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CHAIN_BITCOIN__MAINNET\x10\x01\x12\x1b\n" +
@@ -1989,6 +1992,7 @@ const file_common_proto_rawDesc = "" +
 	"\x13CHAIN_MOVA__MAINNET\x10\x92\t\x12\x1d\n" +
 	"\x18CHAIN_ETHERLINK__MAINNET\x10\x93\t\x12\x19\n" +
 	"\x14CHAIN_NEO_X__MAINNET\x10\x94\t\x12\x1b\n" +
+	"\x16CHAIN_MOVA__MAINNET_V2\x10\x95\t\x12\x1b\n" +
 	"\x16CHAIN_ETHEREUM__MORDEN\x10\x91N\x12\x1a\n" +
 	"\x15CHAIN_ETHEREUM__KOVAN\x10\x92N\x12\x1b\n" +
 	"\x16CHAIN_BITCOIN__TESTNET\x10\x93N\x12\x1c\n" +
