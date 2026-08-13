@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
@@ -91,7 +92,7 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 // guarantee. Their verdicts are unioned, so an inconclusive probe can never resurrect a
 // method whose module the node does not report - ordering them buys nothing.
 func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
-	base := methods.DetectableMethods(e.chain.MethodSpec, connectorTypes(e.allConnectors))
+	base := e.detectableMethods()
 	detectors := []methods.MethodsDetector{
 		evm_methods.NewRpcModulesDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
 		evm_methods.NewMethodProbeDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
@@ -100,9 +101,29 @@ func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, methods.DetectionInterval)
 }
 
-func connectorTypes(apiConnectors []connectors.ApiConnector) []specs.ApiConnectorType {
-	return lo.Map(apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
+// detectableMethods is the set of spec methods the detectors above may form an opinion
+// about - the chain spec's methods restricted to the connectors that speak JSON-RPC.
+func (e *EvmChainSpecificObject) detectableMethods() mapset.Set[string] {
+	return methods.DetectableMethods(e.chain.MethodSpec, detectableConnectorTypes(e.allConnectors))
+}
+
+// detectableConnectorTypes narrows the upstream's connectors to the ones both detectors
+// reason about. Their whole evidence base is JSON-RPC: rpc_modules is asked over the
+// internal JSON-RPC connector and attributes a method by its module prefix, and the probes
+// are JSON-RPC calls. A method served by any other connector - a REST path from a
+// rest-additional spec, say - is invisible to that evidence, yet moduleOf would happily
+// read the segment before the first underscore of "GET#/api/v1/node_info" as a module,
+// find no node reporting it, and strip the method. Feeding those methods in at all is the
+// bug; leaving them out is the fix.
+func detectableConnectorTypes(apiConnectors []connectors.ApiConnector) []specs.ApiConnectorType {
+	types := lo.Map(apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
 		return item.GetType()
+	})
+
+	return lo.Filter(types, func(connectorType specs.ApiConnectorType, index int) bool {
+		// Websocket counts: its methods (eth_subscribe and friends) are JSON-RPC in shape and
+		// carry a real module prefix, so module attribution holds for them too.
+		return connectorType == specs.JsonRpcConnector || connectorType == specs.WebsocketConnector
 	})
 }
 
