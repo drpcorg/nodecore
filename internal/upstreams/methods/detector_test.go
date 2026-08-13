@@ -21,6 +21,14 @@ func TestDetectableMethodsExcludesLocalMethods(t *testing.T) {
 	assert.False(t, detectable.ContainsOne("chain_chainId"), "a locally-served method must never be detectable")
 }
 
+func TestDetectableMethodsWithoutConnectorsIsEmpty(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoaderWithFs(os.DirFS("detectable")).Load())
+
+	detectable := methods.DetectableMethods("detectable", nil)
+
+	assert.True(t, detectable.IsEmpty(), "no connector means nothing to detect, not every method")
+}
+
 func TestDetectableMethodsUnknownSpecIsEmpty(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoaderWithFs(os.DirFS("detectable")).Load())
 

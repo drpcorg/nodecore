@@ -37,6 +37,12 @@ type MethodsDetector interface {
 // to decide what they can route here.
 func DetectableMethods(specName string, connectorTypes []specs.ApiConnectorType) mapset.Set[string] {
 	detectable := mapset.NewThreadUnsafeSet[string]()
+	if len(connectorTypes) == 0 {
+		// No connector, nothing to form an opinion about. Passing the empty list on would
+		// mean the opposite: GetSpecMethodsByConnectors reads it as "don't filter" and
+		// returns every method of every connector.
+		return detectable
+	}
 
 	specMethods := specs.GetSpecMethodsByConnectors(specName, connectorTypes)
 	if specMethods == nil {
