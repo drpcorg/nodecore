@@ -85,16 +85,19 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 }
 
 // MethodsProcessor detects which of the chain spec's methods this node actually serves.
-// The interval is much longer than the labels one because the answer changes only when a
-// node is restarted with different --http.api flags, where labels track moving values
-// like client version and gas settings.
+//
+// The two detectors are peers rather than stages: rpc_modules attributes methods to modules
+// wholesale, while the probes settle the handful of methods a present module does not
+// guarantee. Their verdicts are unioned, so an inconclusive probe can never resurrect a
+// method whose module the node does not report - ordering them buys nothing.
 func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	base := methods.DetectableMethods(e.chain.MethodSpec, connectorTypes(e.allConnectors))
 	detectors := []methods.MethodsDetector{
-		evm_methods.NewEvmMethodsDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+		evm_methods.NewRpcModulesDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+		evm_methods.NewMethodProbeDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
 	}
 
-	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, e.options.ValidationInterval*20)
+	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, methods.DetectionInterval)
 }
 
 func connectorTypes(apiConnectors []connectors.ApiConnector) []specs.ApiConnectorType {

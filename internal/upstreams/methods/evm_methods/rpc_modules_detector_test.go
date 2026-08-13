@@ -71,7 +71,7 @@ func TestRpcModulesDetectorErrorMeansNoOpinion(t *testing.T) {
 
 	unsupported := detector.DetectUnsupported(context.Background())
 
-	assert.True(t, unsupported.IsEmpty(), "a node that does not implement rpc_modules must not lose any method")
+	assert.Nil(t, unsupported, "a node that does not implement rpc_modules contributes nothing and leaves the probes to decide")
 }
 
 func TestRpcModulesDetectorMalformedBodyMeansNoOpinion(t *testing.T) {
@@ -85,7 +85,7 @@ func TestRpcModulesDetectorMalformedBodyMeansNoOpinion(t *testing.T) {
 
 	unsupported := detector.DetectUnsupported(context.Background())
 
-	assert.True(t, unsupported.IsEmpty())
+	assert.Nil(t, unsupported, "an unintelligible body is not evidence about modules")
 }
 
 func TestRpcModulesDetectorEmptyReplyMeansNoOpinion(t *testing.T) {
@@ -99,5 +99,5 @@ func TestRpcModulesDetectorEmptyReplyMeansNoOpinion(t *testing.T) {
 
 	unsupported := detector.DetectUnsupported(context.Background())
 
-	assert.True(t, unsupported.IsEmpty(), "an empty module map is indistinguishable from no answer, so strip nothing")
+	assert.Nil(t, unsupported, "an empty module map is indistinguishable from no answer")
 }

@@ -44,13 +44,16 @@ func NewRpcModulesDetector(
 }
 
 func (r *RpcModulesDetector) DetectUnsupported(ctx context.Context) mapset.Set[string] {
-	unsupported := mapset.NewThreadUnsafeSet[string]()
-
 	modules := r.detectModules(ctx)
 	if len(modules) == 0 {
-		return unsupported
+		// Nothing usable came back. Reporting an empty verdict would claim every method is
+		// supported; nil says we do not know, and the processor keeps whatever this
+		// detector last established. A node that never implements rpc_modules therefore
+		// contributes nothing at all, leaving MethodProbeDetector to decide alone.
+		return nil
 	}
 
+	unsupported := mapset.NewThreadUnsafeSet[string]()
 	for method := range r.base.Iter() {
 		module, ok := moduleOf(method)
 		if !ok {
@@ -64,9 +67,9 @@ func (r *RpcModulesDetector) DetectUnsupported(ctx context.Context) mapset.Set[s
 	return unsupported
 }
 
-// detectModules returns the node's module map, or nil when there is no usable answer.
-// Every failure - a node that never implemented rpc_modules, a transient error, a body
-// that is not a module map - is nil, i.e. "no opinion", never "nothing is supported".
+// detectModules returns the node's module map, or nil when there is no usable answer -
+// a node that never implemented rpc_modules, a transient error, or a body that is not a
+// module map are all "we do not know", never "nothing is supported".
 func (r *RpcModulesDetector) detectModules(ctx context.Context) map[string]string {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("rpc_modules", nil, r.chain)
 	if err != nil {

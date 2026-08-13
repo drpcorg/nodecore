@@ -71,7 +71,6 @@ internal/upstreams/methods/
   detector.go                   MethodsDetector, DetectableMethods
   methods_processor.go          MethodsProcessor, GenericMethodsProcessor
   evm_methods/
-    evm_methods_detector.go     EvmMethodsDetector (stages the two below)
     rpc_modules_detector.go     RpcModulesDetector
     method_probe_detector.go    MethodProbeDetector
 ```
@@ -81,14 +80,22 @@ No import cycle: `methods` gains dependencies on `connectors`, `protocol` and `p
 ### The detector interface
 
 ```go
-// MethodsDetector reports which methods an upstream does not support. It returns
-// the unsupported subset rather than the supported one so that the empty set is
-// the safe answer at every level: a detector with no opinion, a failed call and a
-// fully-featured node all mean "strip nothing".
 type MethodsDetector interface {
     DetectUnsupported(ctx context.Context) mapset.Set[string]
 }
 ```
+
+The return value is **three-valued**, and that distinction carries the design:
+
+| value | meaning |
+|---|---|
+| non-empty set | "these methods are missing" |
+| empty, non-nil | "I asked, and nothing is missing" |
+| `nil` | "I have never managed to find out" |
+
+Collapsing the last two would make a briefly unreachable node indistinguishable from a fully-featured one: an empty verdict published during an outage restores every method the previous round stripped, and stands until the next round. `GenericMethodsProcessor` keeps each detector's last non-nil verdict, so a detector returning `nil` contributes what it last established instead of dropping out of the merge.
+
+A detector that can answer for only part of its subject retains the rest itself, at whatever granularity it owns - see `MethodProbeDetector`, which retains per probe so one timed-out call does not discard what is known about the other seven.
 
 There is deliberately no `Domain()`, unlike `caps.CapDetector`. Cap detectors make *positive* assertions, so the processor must know which slice of the merged set each detector owns in order to replace just that slice. Unsupported-method sets are negative and additive, so a plain union is unambiguous and there is nothing to attribute.
 
@@ -111,8 +118,11 @@ func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
     return methods.NewGenericMethodsProcessor(
         e.ctx,
         e.upstreamId,
-        evm_methods.NewEvmMethodsDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
-        e.options.ValidationInterval*20,
+        []methods.MethodsDetector{
+            evm_methods.NewRpcModulesDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+            evm_methods.NewMethodProbeDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+        },
+        methods.DetectionInterval,
     )
 }
 ```
@@ -133,34 +143,35 @@ The `IsLocal()` filter lives here so no detector can forget it. Three eth spec m
 
 Serving would not break, because `createRequestProcessor` routes on `IsLocal()` *before* any upstream matching (`execution_flow.go:333`) and `LocalRequestProcessor` answers from `chains.ConfiguredChain`. The damage is elsewhere: `ChainSupervisor.GetSupportedMethods()` (`chain_supervisor.go:130`) is the union across upstreams and feeds the emerald chain-status API (`internal/server/emerald/sub_chain_status.go:181, 225`), which dshackle-mode clients read to decide what they can route here. Stripping a local method makes a client stop sending nodecore something nodecore answers locally and infallibly — the same class of error as over-enablement, in the other direction.
 
-## The EVM detector
+## The EVM detectors
 
 `rpc_modules` is a **reliable negative and an unreliable positive**:
 
 - module `trace` absent ⇒ `trace_callMany` is definitely absent;
 - module `trace` present ⇒ `trace_callMany` is *probably* present, but a given build may lack it. This is the entire reason a probe list exists.
 
-So the two detectors are **staged, not parallel peers**. `EvmMethodsDetector.DetectUnsupported` runs:
+The two detectors are therefore **peers, not stages**: `RpcModulesDetector` answers for every base method by module membership, `MethodProbeDetector` answers for the eight methods module membership cannot settle, and the processor unions their verdicts. A method is stripped if its module is absent **or** its probe says not-available.
 
-1. **`RpcModulesDetector`** — one `rpc_modules` call, opining on *every* base method including probe-list ones. Module absent ⇒ stripped.
-2. **`MethodProbeDetector`** — probes only the probe-list methods that survived stage 1, i.e. those whose module is present, which is exactly the case module granularity cannot settle. These run concurrently with each other.
+An earlier draft staged them - probing only the methods that survived module attribution - on the grounds that a probe returning `Unknown` must not resurrect a method whose module is absent. Under union semantics that cannot happen: an inconclusive probe contributes nothing, so the module verdict stands on its own. Ordering bought only a smaller request count, and it cost a bespoke composer (`EvmMethodsDetector`) plus a second place for retention to live. Peers are simpler and equally correct.
 
-A method is stripped if its module is absent **or** its probe says not-available.
+The price is paid in requests: on a node without `trace`/`debug`, the probe detector still asks about ~6 methods whose module is already known to be absent, and each answers `-32601`. Those calls go out over the observer-wrapped `internalRequestConnector`, so they are recorded as upstream errors and feed the error-rate rating function. At the hourly [detection interval](#the-processor) that is ~144 synthetic errors per upstream per day, which is small but not zero, and proportionally larger on a low-traffic upstream. It is also not new: every other detector - labels, lower bounds, block probes - uses the same instrumented connector, and the lower-bound binary searches generate failing calls today. Excluding detection traffic from the dimension and stats hooks is the clean fix and is deliberately out of scope here.
 
-Staging rather than running them as independent peers closes a real gap. If the probe detector owned those 8 methods exclusively, then on a geth with no `trace` module `trace_callMany`'s fate would rest entirely on its probe — and a probe returning `Unknown` (connection reset, timeout, proxy 502) would *keep* the method despite `rpc_modules` having said the whole module is off. A transient probe failure would shadow reliable negative evidence, and it would do so precisely when the node is unhealthy at boot. Staged, the probe is never reached for those methods.
-
-When `rpc_modules` is not implemented at all, stage 1 strips nothing and all probes run — dshackle's `switchIfEmpty` fallback, emerging from the staging instead of being coded as a special case.
+When `rpc_modules` is not implemented at all, its detector returns `nil` on every round, contributes nothing, and the probes decide alone - dshackle's `switchIfEmpty` fallback, falling out of the three-valued contract rather than being coded as a special case.
 
 ### RpcModulesDetector
 
 Sends `rpc_modules` via `protocol.NewInternalUpstreamJsonRpcRequest` (`internal/protocol/json_rpc_request.go:48`) and parses the `{"eth":"1.0","debug":"1.0"}` reply with sonic. Each base method is attributed to a module by its `prefix_`; unsupported is the set of base methods whose module is absent from the reply.
 
 - Methods with no attributable `prefix_` are left alone.
-- On any error, malformed body, or a node that does not implement `rpc_modules`, it returns an empty set — not a failure. Detection has no opinion, and the full spec stands for that stage.
+- On any error, malformed body, empty module map, or a node that does not implement `rpc_modules`, it returns **nil**. It holds no state: the processor keeps its last verdict, so "we could not ask" never degrades into "everything is supported".
 
 ### MethodProbeDetector
 
-Calls each method it is given with empty params and classifies the response (see [Error classification](#error-classification)): `MethodNotAvailable` ⇒ strip, `MethodAvailable` ⇒ keep, `Unknown` ⇒ leave alone, so a transient node error never strips a method.
+Calls each of its methods with empty params and classifies the response (see [Error classification](#error-classification)): `MethodNotAvailable` ⇒ strip, `MethodAvailable` ⇒ keep, `Unknown` ⇒ no answer.
+
+Unlike `RpcModulesDetector` this detector **is** stateful, because its subject is divisible: it keeps the last conclusive answer **per probe**. A round where three probes answer and five time out must not report only the three - that would silently restore whatever the five had established. Only conclusive results are merged into that map, so an inconclusive probe leaves the previous answer in place, and the detector returns nil only while no probe has ever answered.
+
+The map has a single writer despite the concurrency: the probe goroutines write to an indexed slice, and the merge into the map happens after their `wg.Wait()`. Rounds themselves never overlap, since the processor's `wg.Wait()` for round N happens-before it spawns round N+1.
 
 The probe list starts as dshackle's (`BasicEthUpstreamRpcMethodsDetector.kt:36-46`), intersected with the chain's base set so a probe naming a method absent from the spec is skipped automatically:
 
@@ -169,7 +180,7 @@ eth_getBlockReceipts, trace_callMany, trace_rawTransaction, eth_simulateV1,
 eth_getStorageValues, debug_storageRangeAt, eth_getTdByNumber, eth_callBundle
 ```
 
-It lives as a package-level var in `evm_methods` and is read by both detectors.
+It lives as a package-level var in `evm_methods`; `NewMethodProbeDetector` intersects it with the chain's base set at construction.
 
 **Hard rule: read-only methods only.** Nothing in the `eth_sendRawTransaction` family, or anything else that can mutate node or chain state, goes in this list. A detector runs unprompted on every upstream start.
 
@@ -197,13 +208,17 @@ func NewGenericMethodsProcessor(
 
 `Start()` spawns a goroutine that detects **immediately and then every `delay`**, exactly like `GenericLabelsProcessor.detectLabels` (`label_processor.go:86-104`): one round up front so a fresh upstream narrows within a round trip, then a `time.After(delay)` loop. Nothing blocks the caller.
 
-Each round runs every detector concurrently, unions their verdicts, and publishes the merged set — but **only when it differs from the last published set**, following `GenericCapProcessor.aggregate` (`caps/cap_processor.go:122-126`) rather than `GenericLabelsProcessor`, which republishes every round. With a periodic ticker over a value that rarely changes, the steady state is "no publish", so the event loop and the chain-supervisor recompute are never woken for nothing. Dedup in the `processStateEvents` switch stays as a second layer, since a restarted processor's first round republishes unconditionally.
+Each round runs every detector concurrently and unions their verdicts, but the merge is over **`latest`, not over this round's answers**: a detector's slot is replaced only when it returns non-nil. Dropping an unanswering detector's contribution would restore every method it had previously stripped - the same failure the three-valued contract exists to prevent, one level up. An empty non-nil verdict *does* clear a slot, so a node that gains modules converges. `latest` lives in the `Start()` goroutine rather than on the struct: that goroutine is its only owner, and a restarted processor should begin with no history. This mirrors `GenericCapProcessor.aggregate`'s per-detector `latest` slice.
+
+Until some detector has ever answered, the merge is empty for lack of information and must not be published - that would strip nothing while looking like a real verdict. The processor holds instead, and the upstream keeps the full spec it had before detection existed.
+
+The merged set is published **only when it differs from the last published set**, following `GenericCapProcessor.aggregate` (`caps/cap_processor.go:122-126`) rather than `GenericLabelsProcessor`, which republishes every round. Over a value that rarely changes the steady state is "no publish", so the event loop and the chain-supervisor recompute are never woken for nothing. Dedup in the `processStateEvents` switch stays as a second layer, since a restarted processor's first round republishes unconditionally.
 
 `NewGenericMethodsProcessor` returns nil for an empty detector list, so the whole pipeline disappears for non-EVM chains — the same nil-means-absent convention as `NewGenericCapProcessor` and `NewGenericLabelsProcessor`.
 
-`delay` is `options.ValidationInterval * 20` — 10 minutes at the 30s default — passed from `evm_specific` the way the labels processors pass `options.ValidationInterval * 5` (`evm_chain_specific.go:53`). Deriving it from `ValidationInterval` rather than hardcoding a duration means an operator who tightens or loosens validation cadence moves detection with it, and no new config knob is needed. The multiplier is higher than labels' because `rpc_modules` changes only when a node is restarted with different `--http.api` flags, where labels track things like `client_version` and gas settings.
+`delay` is `methods.DetectionInterval`, a flat **one hour**, rather than a multiple of `ValidationInterval` the way the labels processors derive theirs. Deriving it looks tidier but has a failure mode: an operator setting `validation-interval: 5s` for tight health checks would silently get detection every 100 seconds, multiplying the probe traffic discussed under [The EVM detectors](#the-evm-detectors) by a factor of 36. A constant is predictable, and the value it tracks - which `--http.api` flags a node was started with - changes on the order of months. dshackle detects once at launch and never again, so hourly is already the more responsive end of the trade.
 
-Each round shares **one** `context.WithTimeout(ctx, options.InternalTimeout)` budget, and detectors run concurrently — as do stage-2 probes within `EvmMethodsDetector` — so a round converges in roughly one `InternalTimeout` (5s default) even against an unresponsive node, rather than 9 sequential round trips. Dshackle parallelises the same way with `Mono.zip`.
+Each call is bounded by `options.InternalTimeout`, detectors run concurrently, and the probes run concurrently within `MethodProbeDetector` — so a round converges in roughly one `InternalTimeout` (5s default) even against an unresponsive node, rather than nine sequential round trips. Dshackle parallelises the same way with `Mono.zip`.
 
 ### MethodsEventProcessor
 
@@ -269,12 +284,14 @@ A warning is logged per method that `config enable` forces back on against detec
 
 `MethodsEventProcessor` is registered in `Resume()` / `PartialStop()` (`upstream.go:257-273`) exactly like its siblings. Two things drive a detection round:
 
-- **The ticker**, which is the primary mechanism: immediately on processor start, then every `options.ValidationInterval * 20`. At boot the upstream serves the full spec set until that first round lands and `processStateEvents` applies the event — one round trip in the normal case.
+- **The ticker**, which is the primary mechanism: immediately on processor start, then every `methods.DetectionInterval` (one hour). At boot the upstream serves the full spec set until that first round lands and `processStateEvents` applies the event — one round trip in the normal case.
 - **Processor restart** via `Resume()`, which re-runs the immediate round.
 
 The ticker is load-bearing rather than a belt-and-braces addition, because `Resume()` alone would miss the case the whole feature exists for. `Resume()` fires only on `ValidUpstreamEvent` (`upstream_supervisor.go:188`), which comes from **settings** validation going invalid→valid — chain-id and friends. An operator adding `trace` to `--http.api` and restarting geth keeps the same chain-id, so settings validation never fails; the restart surfaces as an availability change through `StatusUpstreamStateEvent`, which does not touch `PartialStop`/`Resume`. Without a ticker, a widened node would keep its old narrowed verdict until nodecore itself restarted.
 
-Detection failure is non-fatal: log a warning, publish nothing, and let the next round correct it. The upstream keeps the full spec (over-permissive, with the ban hook covering it) rather than being held back or torn down over a probe that timed out. `rpc_modules` not being implemented is not a failure at all — stage 1 strips nothing and the probes still run.
+Detection failure is non-fatal: log a warning, publish nothing, and let the next round correct it. The upstream keeps the full spec (over-permissive, with the ban hook covering it) rather than being held back or torn down over a probe that timed out. `rpc_modules` not being implemented is not a failure at all — that detector simply contributes nothing and the probes still run.
+
+A failed round at boot therefore leaves the upstream un-narrowed for up to an hour. That is accepted: it is the behaviour nodecore had before detection existed, the ban hook still covers the methods that actually get called, and dshackle - which detects once at launch and never retries - would leave it that way permanently.
 
 Nothing in `Start()` blocks on detection. Resolving methods before first traffic would mean a synchronous network round in `Start()`, and the window it closes is a fraction of a second of the over-enablement that is already today's steady-state behaviour — not worth paying for.
 
@@ -333,7 +350,7 @@ Touches `caps/caps_test.go` `DetectorInput` literals and `NewGenericUpstreamWith
 ## Tests
 
 - **`internal/protocol`**: table test over `ClassifyMethodAvailability` — every not-available pattern, every params pattern, `-32601`, unrelated errors → `Unknown`, and a message matching both lists resolving to `MethodNotAvailable`.
-- **`evm_methods`**: `RpcModulesDetector` — module attribution, `{eth,net,web3}` stripping `trace_*`/`debug_*`, no-prefix methods left alone, and errored/malformed/unimplemented replies returning an empty set. `MethodProbeDetector` — per-response tri-state, including `Unknown` leaving a method alone. `EvmMethodsDetector` — probes only reach methods surviving stage 1; a stripped module is not resurrected by an `Unknown` probe; an empty stage 1 still runs every probe.
+- **`evm_methods`**: `RpcModulesDetector` — module attribution, `{eth,net,web3}` stripping `trace_*`/`debug_*`, no-prefix methods left alone, and errored/malformed/empty/unimplemented replies each returning nil. `MethodProbeDetector` — per-response tri-state; a probe that cannot be reached keeps its last answer while another probe answers in the same round; a conclusive answer replaces a retained one; nil while nothing has ever been learned; methods outside the chain's spec are never asked about.
 - **`methods`**: `DetectableMethods` excludes `IsLocal()` methods. `GenericMethodsProcessor` publishes the union of its detectors' verdicts to a subscriber; `Start()` returns without waiting on detection; the first round is immediate and a second round follows after `delay` (injected short in the test, as `label_processor_test.go` does); an unchanged verdict publishes nothing on the second round while a changed one publishes; `NewGenericMethodsProcessor` returns nil for no detectors.
 - **`event_processors`**: `MethodsEventProcessor` forwards a published set to the emitter as the event; `CreateMethodsEventProcessor` returns nil when the option is on. Follows `labels_event_processor_test.go`.
 - **`upstream_events`**: unsupported and banned sets coexisting; unban not restoring an unsupported method; `config enable` overriding detection; a duplicate event not republishing.
@@ -350,7 +367,8 @@ All tests live in the package that owns the target, so unexported functions are 
 
 - **Polkadot.** `rpc_methods` fits `MethodsDetector` unchanged, as a single stage with no probes, and is separate work.
 - **Chains with no introspection.** Solana and Aztec expose nothing to query, so the only option is probing every spec method individually — dozens of real calls per upstream start. Bitcoin's `help` returns a human-readable text blob to scrape; Cosmos/Tendermint expose a REST index page. All fit the interface later; none are worth it now.
-- **A dedicated config option for the detection interval.** `delay` is derived as `options.ValidationInterval * 20`, the way labels derive theirs as `* 5`. Adding `methods-detection-interval` to `chains.Options` is a small follow-up if an operator ever needs to tune it independently, but shipping a knob nobody has asked for is not worth the config surface.
+- **A dedicated config option for the detection interval.** `methods.DetectionInterval` is a constant. Adding `methods-detection-interval` to `chains.Options` is a small follow-up if an operator ever needs to tune it, but shipping a knob nobody has asked for is not worth the config surface.
+- **Excluding detection traffic from the dimension and stats hooks.** Probe errors are recorded against the upstream and feed the error-rate rating function. This is pre-existing behaviour shared by every detector in the codebase, and dropping staging nudges the volume up; fixing it properly means plumbing an uninstrumented connector through `getChainSpecific`, which is its own change.
 - **Blocking the upstream's start on detection.** An earlier draft resolved methods synchronously in `Start()`. Rejected: it buys a fraction of a second of correctness at the cost of a blocking network round in startup, and the window it closes is the over-enablement nodecore already lives with today.
 - **Detection adding methods.** Covered under [Semantics](#semantics): the spec is the ceiling.
 - **Per-connector method sets.** Detection runs over `internalRequestConnector` and its verdict applies to the upstream as a whole. Splitting a method set per connector is a separate concern that `methods.NewUpstreamMethods` already handles via `apiConnectorTypes`, and detection does not change it.

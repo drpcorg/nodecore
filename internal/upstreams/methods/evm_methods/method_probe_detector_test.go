@@ -12,6 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMethodProbeDetectorStripsAbsentMethod(t *testing.T) {
@@ -48,7 +49,7 @@ func TestMethodProbeDetectorKeepsMethodThatRejectsParams(t *testing.T) {
 	assert.True(t, unsupported.IsEmpty(), "a params complaint proves the method exists")
 }
 
-func TestMethodProbeDetectorKeepsMethodOnUnknownError(t *testing.T) {
+func TestMethodProbeDetectorNilWhenNothingWasEverLearned(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("trace_callMany"))).
@@ -62,7 +63,7 @@ func TestMethodProbeDetectorKeepsMethodOnUnknownError(t *testing.T) {
 
 	unsupported := detector.DetectUnsupported(context.Background())
 
-	assert.True(t, unsupported.IsEmpty(), "a transient failure must never strip a method")
+	assert.Nil(t, unsupported, "a transient failure must neither strip a method nor claim everything is supported")
 }
 
 func TestMethodProbeDetectorKeepsMethodOnSuccess(t *testing.T) {
@@ -114,6 +115,71 @@ func TestMethodProbeDetectorNoProbesSendsNothing(t *testing.T) {
 
 	unsupported := detector.DetectUnsupported(context.Background())
 
-	assert.True(t, unsupported.IsEmpty())
+	assert.Nil(t, unsupported, "with nothing to ask there is nothing to contribute")
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+func TestMethodProbeDetectorRetainsAnswersPerProbe(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	// Round 1: both answer. Round 2: trace_callMany times out while the other still
+	// answers. Losing the retained answer would restore trace_callMany.
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("trace_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithMessage("Method not found"), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("trace_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithMessage("connection reset by peer"), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("debug_storageRangeAt"))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{}`), protocol.JsonRpc)).
+		Twice()
+
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("trace_callMany", "debug_storageRangeAt"),
+	)
+
+	first := detector.DetectUnsupported(context.Background())
+	require.True(t, mapset.NewThreadUnsafeSet[string]("trace_callMany").Equal(first), "got %v", first.ToSlice())
+
+	second := detector.DetectUnsupported(context.Background())
+	assert.True(t, mapset.NewThreadUnsafeSet[string]("trace_callMany").Equal(second),
+		"a probe that could not be reached must keep its last answer; got %v", second.ToSlice())
+}
+
+func TestMethodProbeDetectorConclusiveAnswerReplacesTheRetainedOne(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	// The node gains the method between rounds, so the retained "absent" must be dropped.
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("trace_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithMessage("Method not found"), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("trace_callMany"))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc)).
+		Once()
+
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("trace_callMany"),
+	)
+
+	require.False(t, detector.DetectUnsupported(context.Background()).IsEmpty())
+	assert.True(t, detector.DetectUnsupported(context.Background()).IsEmpty(), "a definite answer must replace the retained one")
+}
+
+func TestMethodProbeDetectorIgnoresMethodsOutsideTheSpec(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+
+	// eth_getBalance is not on the probe list, and trace_callMany is not in this base, so
+	// nothing should be asked at all.
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("eth_getBalance"),
+	)
+
+	assert.Nil(t, detector.DetectUnsupported(context.Background()))
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }

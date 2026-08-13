@@ -138,3 +138,96 @@ func receiveVerdict(t *testing.T, events <-chan mapset.Set[string]) mapset.Set[s
 		return nil
 	}
 }
+
+func TestGenericMethodsProcessorRetainsAnUnansweringDetector(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Round 1 both answer. From round 2 the first cannot, while the second repeats itself -
+	// the merge must not change, or trace_block comes back. Round 3 the second finds
+	// something new, which is the only thing that publishes again.
+	first := &scriptedDetector{rounds: []mapset.Set[string]{
+		mapset.NewThreadUnsafeSet[string]("trace_block"),
+		nil,
+		nil,
+	}}
+	second := &scriptedDetector{rounds: []mapset.Set[string]{
+		mapset.NewThreadUnsafeSet[string]("debug_storageRangeAt"),
+		mapset.NewThreadUnsafeSet[string]("debug_storageRangeAt"),
+		mapset.NewThreadUnsafeSet[string]("debug_storageRangeAt", "eth_callBundle"),
+	}}
+
+	processor := methods.NewGenericMethodsProcessor(
+		ctx, "upstream-1", []methods.MethodsDetector{first, second}, 50*time.Millisecond,
+	)
+	require.NotNil(t, processor)
+
+	sub := processor.Subscribe("test")
+	defer sub.Unsubscribe()
+	processor.Start()
+	defer processor.Stop()
+
+	published := receiveVerdict(t, sub.Events)
+	expected := mapset.NewThreadUnsafeSet[string]("trace_block", "debug_storageRangeAt")
+	assert.True(t, expected.Equal(published), "expected %v, got %v", expected.ToSlice(), published.ToSlice())
+
+	// Round 2 published nothing, so the next value is round three's - and it still carries
+	// trace_block, from a detector that has been silent for two rounds.
+	published = receiveVerdict(t, sub.Events)
+	expected = mapset.NewThreadUnsafeSet[string]("trace_block", "debug_storageRangeAt", "eth_callBundle")
+	assert.True(t, expected.Equal(published), "expected %v, got %v", expected.ToSlice(), published.ToSlice())
+}
+
+func TestGenericMethodsProcessorEmptyVerdictClearsADetectorsContribution(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// An empty non-nil verdict asserts that nothing is missing, so it must clear the slot -
+	// otherwise a node that gains modules never converges.
+	detector := &scriptedDetector{rounds: []mapset.Set[string]{
+		mapset.NewThreadUnsafeSet[string]("trace_block"),
+		mapset.NewThreadUnsafeSet[string](),
+	}}
+
+	processor := methods.NewGenericMethodsProcessor(
+		ctx, "upstream-1", []methods.MethodsDetector{detector}, 50*time.Millisecond,
+	)
+	require.NotNil(t, processor)
+
+	sub := processor.Subscribe("test")
+	defer sub.Unsubscribe()
+	processor.Start()
+	defer processor.Stop()
+
+	published := receiveVerdict(t, sub.Events)
+	assert.True(t, mapset.NewThreadUnsafeSet[string]("trace_block").Equal(published))
+
+	published = receiveVerdict(t, sub.Events)
+	assert.True(t, published.IsEmpty(), "a node that gained the module must get its methods back, got %v", published.ToSlice())
+}
+
+func TestGenericMethodsProcessorPublishesNothingUntilSomeDetectorAnswers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	detector := &scriptedDetector{rounds: []mapset.Set[string]{nil}}
+
+	processor := methods.NewGenericMethodsProcessor(
+		ctx, "upstream-1", []methods.MethodsDetector{detector}, time.Hour,
+	)
+	require.NotNil(t, processor)
+
+	sub := processor.Subscribe("test")
+	defer sub.Unsubscribe()
+	processor.Start()
+	defer processor.Stop()
+
+	// Publishing an empty verdict here would strip nothing while looking like a real
+	// answer; the upstream must simply keep its full spec.
+	require.Eventually(t, func() bool { return detector.calls.Load() > 0 }, 2*time.Second, 10*time.Millisecond)
+	select {
+	case published := <-sub.Events:
+		t.Fatalf("nothing should have been published, got %v", published.ToSlice())
+	case <-time.After(200 * time.Millisecond):
+	}
+}
