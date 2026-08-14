@@ -131,6 +131,10 @@ loop:
 								return
 							}
 						}
+						encoded := requestHandler.ResponseEncode(response.Response)
+						if encoded.Suppress {
+							continue
+						}
 						writeEvent := func() {
 							wsLock.Lock()
 							defer wsLock.Unlock()
@@ -138,8 +142,7 @@ loop:
 							if err != nil {
 								log.Error().Err(err).Msg("couldn't get writer to send a response")
 							} else {
-								resp := requestHandler.ResponseEncode(response.Response)
-								if _, err = io.Copy(writer, resp.ResponseReader); err != nil {
+								if _, err = io.Copy(writer, encoded.ResponseReader); err != nil {
 									log.Error().Err(err).Msg("couldn't copy message")
 								}
 								if err = writer.Close(); err != nil {
