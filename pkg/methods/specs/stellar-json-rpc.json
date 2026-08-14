@@ -1,0 +1,100 @@
+{
+  "openrpc": "1.0.0",
+  "info": {
+    "title": "Stellar JSON-RPC methods",
+    "version": "1.0.0"
+  },
+  "spec": {
+    "name": "stellar-json-rpc",
+    "api-connectors": [
+      "json-rpc"
+    ],
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "getHealth",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getNetwork",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getVersionInfo",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getLatestLedger",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getLedgers",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getLedgerEntries",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getEvents",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getTransactions",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "getFeeStats",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "sendTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    },
+    {
+      "name": "simulateTransaction",
+      "params": [],
+      "settings": {
+        "cacheable": false
+      }
+    }
+  ]
+}

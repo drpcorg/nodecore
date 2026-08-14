@@ -113,7 +113,16 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		restPath := c.Param("*") // for rest requests
 		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request(), trustedProxies)
 		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
-		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
+		// An empty rest path with a GET is a REST call on the API root: a
+		// JSON-RPC request is always a POST, so nothing legitimate is
+		// reclassified. Without this, a root endpoint (Horizon's GET /) is
+		// reachable only through the double-slash /queries/{chain}//, because
+		// echo hands us an empty wildcard for /queries/{chain}/.
+		reqType := lo.Ternary(
+			len(restPath) > 0 || c.Request().Method == http.MethodGet,
+			protocol.Rest,
+			protocol.JsonRpc,
+		)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
 
 		err := appCtx.AuthProcessor.Authenticate(c.Request().Context(), authPayload)

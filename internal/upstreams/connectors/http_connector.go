@@ -302,6 +302,14 @@ func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string
 		if _, taken := h.additionalHeaders[canonical]; taken {
 			continue
 		}
+		// Content-Type is a singleton field and applyConfigHeaders already
+		// pre-set the JSON default, so a client-declared type must REPLACE it
+		// rather than stack behind it - upstreams resolve the field with
+		// Header.Get, which returns the first value.
+		if canonical == "Content-Type" && len(vs) > 0 {
+			req.Header.Set(canonical, vs[0])
+			continue
+		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
@@ -490,6 +498,13 @@ func encodeMultiValuedQuery(params map[string][]string) string {
 // compare the original path bytes in signature pre-images.
 func joinEndpointAndPath(endpoint, path string) string {
 	base, query, hasQuery := strings.Cut(endpoint, "?")
+	// The configured endpoint may or may not carry a trailing slash, and every
+	// path template starts with one. Concatenating blindly would send
+	// "//health" - or a bare "//" for a root template like Horizon's GET#/ -
+	// and "//" is a different path to the upstream than "/".
+	if strings.HasSuffix(base, "/") && strings.HasPrefix(path, "/") {
+		base = strings.TrimSuffix(base, "/")
+	}
 	full := base + path
 	if hasQuery && query != "" {
 		full += "?" + query

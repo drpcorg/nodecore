@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/stellar_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/pkg/methods"
@@ -308,6 +309,15 @@ func getChainSpecific(
 		)
 	case chains.Starknet:
 		return starknet_specific.NewStarknetChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
+			conf.Options,
+		), nil
+	case chains.Stellar:
+		return stellar_specific.NewStellarChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,

@@ -354,3 +354,45 @@ func TestAptosSpecMatchesNestedAccountAndTableRoutes(t *testing.T) {
 		assert.Equal(t, want, template, method)
 	}
 }
+
+func TestStellarSpecLoads(t *testing.T) {
+	err := specs.NewMethodSpecLoader().Load()
+	assert.NoError(t, err)
+
+	spec := specs.GetSpecMethod("stellar", "getLatestLedger")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("stellar", "simulateTransaction")
+	assert.NotNil(t, spec)
+	assert.False(t, spec.IsBroadcastDispatch())
+
+	spec = specs.GetSpecMethod("stellar", "GET#/")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("stellar", "POST#/transactions_async")
+	assert.NotNil(t, spec)
+
+	spec = specs.GetSpecMethod("stellar", "eth_call")
+	assert.Nil(t, spec)
+
+	// each API's methods resolve only for upstreams that carry its connector
+	jsonRpcMethods := specs.GetSpecMethodsByConnectors("stellar", []specs.ApiConnectorType{specs.JsonRpcConnector})
+	assert.Contains(t, jsonRpcMethods[specs.DefaultMethodGroup], "getHealth")
+	assert.Contains(t, jsonRpcMethods[specs.DefaultMethodGroup], "getLedgerEntries")
+	assert.NotContains(t, jsonRpcMethods[specs.DefaultMethodGroup], "GET#/health")
+
+	restMethods := specs.GetSpecMethodsByConnectors("stellar", []specs.ApiConnectorType{specs.RestConnector})
+	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "GET#/health")
+	assert.Contains(t, restMethods[specs.DefaultMethodGroup], "POST#/transactions")
+	assert.NotContains(t, restMethods[specs.DefaultMethodGroup], "getHealth")
+
+	template, params, ok := specs.MatchRestMethod("stellar", "GET#/accounts/GABCDEF/transactions")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/accounts/*/transactions", template)
+	assert.Equal(t, []string{"GABCDEF"}, params)
+
+	template, params, ok = specs.MatchRestMethod("stellar", "GET#/paths/strict-send")
+	assert.True(t, ok)
+	assert.Equal(t, "GET#/paths/strict-send", template)
+	assert.Empty(t, params)
+}

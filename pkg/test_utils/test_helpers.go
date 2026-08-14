@@ -23,6 +23,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/stellar_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
@@ -304,6 +305,18 @@ func NewBeaconChainSpecific(ctx context.Context, connector connectors.ApiConnect
 
 func NewAptosChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aptos_specific.AptosChainSpecificObject {
 	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, newTestChainOptions())
+}
+
+func NewStellarRpcChainSpecific(ctx context.Context, connector connectors.ApiConnector) *stellar_specific.StellarRpcChainSpecificObject {
+	return stellar_specific.NewStellarRpcChainSpecificObject(
+		ctx, chains.GetChain("stellar"), "id", connector, time.Second, newTestChainOptions(),
+	)
+}
+
+func NewStellarHorizonChainSpecific(ctx context.Context, connector connectors.ApiConnector) *stellar_specific.StellarHorizonChainSpecificObject {
+	return stellar_specific.NewStellarHorizonChainSpecificObject(
+		ctx, chains.GetChain("stellar"), "id", connector, time.Second, newTestChainOptions(),
+	)
 }
 
 func NewBitcoinChainSpecific(ctx context.Context, connector connectors.ApiConnector) *bitcoin_specific.BitcoinChainSpecificObject {

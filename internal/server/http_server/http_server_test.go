@@ -324,3 +324,56 @@ func TestHttpServerPostKeyValidateWithErr(t *testing.T) {
 	assert.Equal(t, `{"id":42,"jsonrpc":"2.0","error":{"message":"auth error - my err","code":403}}`, string(respBody))
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
+
+// Horizon's root document lives at GET / and arrives with an empty rest path.
+// A JSON-RPC call is always a POST, so an empty-path GET is REST - otherwise
+// the root is only reachable through the double-slash /queries/{chain}//.
+// The response SHAPE is what pins the branch: REST errors are {"message":...},
+// JSON-RPC errors are a jsonrpc envelope.
+func TestHttpServerRoutesEmptyPathGetAsRest(t *testing.T) {
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/queries/some-chain", nil)
+	assert.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.NoError(t, err)
+
+	respBody, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, `{"message":"chain some-chain is not supported"}`, string(respBody))
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+// The POST side must not move: an empty-path POST stays JSON-RPC.
+func TestHttpServerKeepsEmptyPathPostAsJsonRpc(t *testing.T) {
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
+
+	body := `{"jsonrpc":"2.0","id":42,"method":"eth_chainId"}`
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/some-chain", bytes.NewReader([]byte(body)))
+	assert.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.NoError(t, err)
+
+	respBody, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, `{"id":42,"jsonrpc":"2.0","error":{"message":"chain some-chain is not supported","code":2}}`, string(respBody))
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}

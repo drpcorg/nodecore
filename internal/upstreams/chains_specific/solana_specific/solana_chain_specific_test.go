@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
@@ -51,7 +51,7 @@ func TestSolanaParseSubBlockErrEpochInfo(t *testing.T) {
 
 	connector.AssertExpectations(t)
 
-	hash, parentHash := specific.SyntheticHashes(405220706, 405220705)
+	hash, parentHash := specific_helpers.SyntheticHashes(405220706, 405220705)
 	blockData := protocol.NewBlock(405220706, 405220706, hash, parentHash)
 	assert.Equal(t, blockData, block)
 }
@@ -90,14 +90,14 @@ func TestSolanaParseSubBLock(t *testing.T) {
 
 	connector.AssertExpectations(t)
 
-	hash, parentHash := specific.SyntheticHashes(405219988, 405219987)
+	hash, parentHash := specific_helpers.SyntheticHashes(405219988, 405219987)
 	blockData := protocol.NewBlock(383325939, 405219988, hash, parentHash)
 	assert.Equal(t, blockData, block)
 
 	block, err = solanaSpecific.ParseSubscriptionBlock(body1)
 	assert.Nil(t, err)
 
-	hash, parentHash = specific.SyntheticHashes(405219989, 405219988)
+	hash, parentHash = specific_helpers.SyntheticHashes(405219989, 405219988)
 	blockData = protocol.NewBlock(383325940, 405219989, hash, parentHash)
 	assert.Equal(t, blockData, block)
 
@@ -128,7 +128,7 @@ func TestSolanaGetLatestBlock(t *testing.T) {
 
 	connector.AssertExpectations(t)
 
-	hash, parentHash := specific.SyntheticHashes(405219988, 405219987)
+	hash, parentHash := specific_helpers.SyntheticHashes(405219988, 405219987)
 	blockData := protocol.NewBlock(383325939, 405219988, hash, parentHash)
 
 	assert.Equal(t, blockData, block)
