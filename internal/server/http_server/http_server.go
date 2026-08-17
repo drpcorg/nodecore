@@ -113,7 +113,24 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		restPath := c.Param("*") // for rest requests
 		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request(), trustedProxies)
 		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
-		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
+		// An empty rest path with a GET is a REST call on the API root: a
+		// JSON-RPC request is always a POST, so nothing legitimate is
+		// reclassified. Without this, a root endpoint (Horizon's GET /) is
+		// reachable only through the double-slash /queries/{chain}//, because
+		// echo hands us an empty wildcard for /queries/{chain}/.
+		//
+		// A WebSocket handshake is a GET too, and it is excluded: the auth and
+		// invalid-UTF-8 checks below run *before* the upgrade (deliberately - see
+		// the comment there) and encode with reqType, while a ws connection
+		// carries JSON-RPC (ws_server.go builds a JsonRpcHandler unconditionally).
+		// A handshake failure has to keep the JSON-RPC envelope, which is the only
+		// place its error code is reported.
+		isWsUpgrade := c.Request().Header.Get("Upgrade") == "websocket"
+		reqType := lo.Ternary(
+			len(restPath) > 0 || (c.Request().Method == http.MethodGet && !isWsUpgrade),
+			protocol.Rest,
+			protocol.JsonRpc,
+		)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
 
 		err := appCtx.AuthProcessor.Authenticate(c.Request().Context(), authPayload)
@@ -141,7 +158,7 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 			)
 		}
 
-		if c.Request().Header.Get("Upgrade") == "websocket" {
+		if isWsUpgrade {
 			conn, err := upgrader.Upgrade(c.Response().Writer, c.Request(), nil)
 			if err != nil {
 				log.Error().Err(err).Msg("couldn't upgrade http to ws")

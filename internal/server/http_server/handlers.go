@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
@@ -45,7 +46,13 @@ func NewRestHandler(preReq *Request, req *http.Request, restPath string) (*RestH
 	if err != nil {
 		return nil, err
 	}
-	if len(body) > 0 && !sonic.Valid(body) {
+	// REST bodies are only required to be valid JSON when the client says (or
+	// implies) the body IS JSON. Some REST upstreams take other content types -
+	// Horizon's POST /transactions is application/x-www-form-urlencoded - and
+	// those bodies pass through opaquely. With no Content-Type at all we keep
+	// the strict behavior and assume JSON.
+	contentType := req.Header.Get("Content-Type")
+	if len(body) > 0 && (contentType == "" || strings.Contains(contentType, "json")) && !sonic.Valid(body) {
 		return nil, errors.New("no valid json")
 	}
 	specName := chains.GetMethodSpecNameByChainName(preReq.Chain)
