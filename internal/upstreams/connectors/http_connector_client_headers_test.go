@@ -216,3 +216,104 @@ func TestEndpointBasePathIsPreserved(t *testing.T) {
 
 	assert.Equal(t, "/api/health", got)
 }
+
+// The regression this guard exists for: `curl -d '{"...}"'` sends
+// application/x-www-form-urlencoded by default, and a browser `fetch` with a
+// JSON.stringify body sends text/plain - neither chosen by the developer. Both
+// carry a JSON body, and grpc-gateway (Cosmos LCD) / Aptos answer 415 for a
+// non-JSON content type, so nodecore's application/json default must keep
+// winning for them the way it did before Horizon needed passthrough.
+func TestJsonBodyKeepsTheJsonDefaultDespiteAFormContentType(t *testing.T) {
+	var got []string
+	ts := captureHeaders(t, &got)
+	defer ts.Close()
+
+	connector, err := connectors.NewHttpConnector(
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
+	require.NoError(t, err)
+
+	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
+		map[string][]string{"Content-Type": {"application/x-www-form-urlencoded"}},
+		[]byte(`{"tx_bytes":"Cr4BCrsBChwvY29z","mode":"BROADCAST_MODE_SYNC"}`),
+	))
+	require.False(t, response.HasError())
+
+	assert.Equal(t, []string{"application/json"}, got)
+}
+
+func TestJsonBodyKeepsTheJsonDefaultDespiteATextPlainContentType(t *testing.T) {
+	var got []string
+	ts := captureHeaders(t, &got)
+	defer ts.Close()
+
+	connector, err := connectors.NewHttpConnector(
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
+	require.NoError(t, err)
+
+	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
+		map[string][]string{"Content-Type": {"text/plain;charset=UTF-8"}},
+		[]byte(`{"a":1}`),
+	))
+	require.False(t, response.HasError())
+
+	assert.Equal(t, []string{"application/json"}, got)
+}
+
+// A body that is NOT JSON leaves the default as a provably wrong guess, so the
+// client's declaration is the only information available - Horizon's
+// POST /transactions is exactly this.
+func TestNonJsonBodyLetsTheClientContentTypeThrough(t *testing.T) {
+	var got []string
+	ts := captureHeaders(t, &got)
+	defer ts.Close()
+
+	connector, err := connectors.NewHttpConnector(
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
+	require.NoError(t, err)
+
+	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
+		map[string][]string{"Content-Type": {"application/x-www-form-urlencoded"}},
+		[]byte("tx=AAAAAgAAAABmZm9vAAAAZAAA"),
+	))
+	require.False(t, response.HasError())
+
+	assert.Equal(t, []string{"application/x-www-form-urlencoded"}, got)
+}
+
+// A client declaring a JSON type needs no body inspection at all: replacing the
+// default with an equivalent value is a no-op, and skipping the scan keeps the
+// common path free (the handler already validated that body).
+func TestJsonSuffixContentTypeIsForwardedWithoutBodyInspection(t *testing.T) {
+	var got []string
+	ts := captureHeaders(t, &got)
+	defer ts.Close()
+
+	connector, err := connectors.NewHttpConnector(
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
+	require.NoError(t, err)
+
+	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
+		map[string][]string{"Content-Type": {"application/vnd.api+json"}},
+		[]byte(`{"a":1}`),
+	))
+	require.False(t, response.HasError())
+
+	assert.Equal(t, []string{"application/vnd.api+json"}, got)
+}
+
+// An empty body carries no evidence either way; the declaration stands.
+func TestEmptyBodyLetsTheClientContentTypeThrough(t *testing.T) {
+	var got []string
+	ts := captureHeaders(t, &got)
+	defer ts.Close()
+
+	connector, err := connectors.NewHttpConnector(
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
+	require.NoError(t, err)
+
+	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
+		map[string][]string{"Content-Type": {"application/x-www-form-urlencoded"}}, nil))
+	require.False(t, response.HasError())
+
+	assert.Equal(t, []string{"application/x-www-form-urlencoded"}, got)
+}

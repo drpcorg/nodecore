@@ -377,3 +377,56 @@ func TestHttpServerKeepsEmptyPathPostAsJsonRpc(t *testing.T) {
 	assert.Equal(t, `{"id":42,"jsonrpc":"2.0","error":{"message":"chain some-chain is not supported","code":2}}`, string(respBody))
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
+
+// A WebSocket handshake is an HTTP GET, so the empty-path-GET-is-REST rule must
+// not catch it: the two pre-upgrade failure paths (auth, invalid-UTF-8 chain)
+// run before the upgrade branch and encode with reqType, and a WS connection
+// carries JSON-RPC (ws_server.go builds a JsonRpcHandler unconditionally), so
+// its errors have to keep the JSON-RPC envelope and its error code.
+func TestHttpServerWsHandshakeAuthErrorKeepsJsonRpcShape(t *testing.T) {
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(errors.New("bad key"))
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/queries/optimism/api-key/BAD", nil)
+	assert.NoError(t, err)
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.NoError(t, err)
+
+	respBody, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, `{"id":0,"jsonrpc":"2.0","error":{"message":"auth error - bad key","code":403}}`, string(respBody))
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}
+
+// The same GET without the Upgrade header is a REST root call - the case the
+// routing rule exists for.
+func TestHttpServerPlainGetWithoutUpgradeStaysRest(t *testing.T) {
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	server := http_server.NewHttpServer(context.Background(), appCtx)
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(errors.New("bad key"))
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/queries/optimism/api-key/BAD", nil)
+	assert.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.NoError(t, err)
+
+	respBody, err := io.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, `{"message":"auth error - bad key"}`, string(respBody))
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+}

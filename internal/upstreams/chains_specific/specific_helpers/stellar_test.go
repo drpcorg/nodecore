@@ -135,3 +135,49 @@ func TestFetchStellarHorizonHealthSurfacesAnUnparseableError(t *testing.T) {
 		context.Background(), connector, chains.GetChain("stellar").Chain)
 	assert.Error(t, err)
 }
+
+// A rate-limited Horizon answers 429 with an RFC-7807 problem+json body. That
+// body unmarshals into StellarHorizonHealth without error - every boolean
+// absent, so every boolean false - which would report a node whose database is
+// down and swallow the real cause. The transport error has to win instead.
+func TestFetchStellarHorizonHealthDoesNotTreatA429AsAHealthDocument(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewHttpUpstreamResponse("1",
+			[]byte(`{"type":"https://stellar.org/horizon-errors/rate_limit_exceeded",`+
+				`"title":"Rate limit exceeded","status":429}`), 429, protocol.Rest))
+
+	_, err := specific_helpers.FetchStellarHorizonHealth(
+		context.Background(), connector, chains.GetChain("stellar").Chain)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rate_limit_exceeded")
+}
+
+// A 503 whose body is not the health document (e.g. a proxy's problem+json) is
+// also a transport error, not an all-false verdict.
+func TestFetchStellarHorizonHealthRejectsANon503ShapedBodyOn503(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewHttpUpstreamResponse("1",
+			[]byte(`{"type":"about:blank","title":"Service Unavailable","status":503}`), 503, protocol.Rest))
+
+	_, err := specific_helpers.FetchStellarHorizonHealth(
+		context.Background(), connector, chains.GetChain("stellar").Chain)
+	assert.Error(t, err)
+}
+
+// A 200 that omits the booleans is not a health document either - without the
+// presence check it would read as a maximally unhealthy node.
+func TestParseStellarHorizonHealthRequiresAllThreeBooleans(t *testing.T) {
+	_, err := specific_helpers.ParseStellarHorizonHealth([]byte(`{"database_connected":true,"core_up":true}`))
+	assert.ErrorIs(t, err, specific_helpers.ErrStellarHorizonNotHealthDocument)
+
+	_, err = specific_helpers.ParseStellarHorizonHealth([]byte(`{}`))
+	assert.ErrorIs(t, err, specific_helpers.ErrStellarHorizonNotHealthDocument)
+
+	health, err := specific_helpers.ParseStellarHorizonHealth(
+		[]byte(`{"database_connected":true,"core_up":true,"core_synced":false}`))
+	require.NoError(t, err)
+	assert.True(t, health.DatabaseConnected)
+	assert.False(t, health.CoreSynced)
+}

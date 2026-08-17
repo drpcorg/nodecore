@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -267,7 +268,7 @@ func (h *HttpConnector) sendRest(ctx context.Context, request protocol.RequestHo
 	}
 	h.applyConfigHeaders(req)
 	if rp != nil {
-		h.applyClientHeaders(req, rp.Headers)
+		h.applyClientHeaders(req, rp.Headers, body)
 	}
 
 	// REST bodies are opaque pass-through; if the caller asked for streaming
@@ -293,7 +294,7 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 // via http.CanonicalHeaderKey; without this, a config
 // "Authorization" + a client "authorization" would slip past as distinct
 // strings and both end up on the wire after req.Header.Add canonicalises.
-func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string) {
+func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string, body []byte) {
 	for k, vs := range headers {
 		canonical := http.CanonicalHeaderKey(k)
 		if defaultRequestHeaderDeny.Contains(canonical) {
@@ -302,18 +303,44 @@ func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string
 		if _, taken := h.additionalHeaders[canonical]; taken {
 			continue
 		}
-		// Content-Type is a singleton field and applyConfigHeaders already
-		// pre-set the JSON default, so a client-declared type must REPLACE it
-		// rather than stack behind it - upstreams resolve the field with
-		// Header.Get, which returns the first value.
-		if canonical == "Content-Type" && len(vs) > 0 {
-			req.Header.Set(canonical, vs[0])
+		if canonical == contentTypeHeader && len(vs) > 0 {
+			// Content-Type is a singleton field, so a forwarded client value must
+			// REPLACE the JSON default applyConfigHeaders pre-set rather than stack
+			// behind it: upstreams resolve the field with Header.Get, which returns
+			// the first value, and two values is malformed per RFC 9110.
+			if clientContentTypeWins(vs[0], body) {
+				req.Header.Set(canonical, vs[0])
+			}
 			continue
 		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
 	}
+}
+
+const contentTypeHeader = "Content-Type"
+
+// clientContentTypeWins decides whether to believe a client's Content-Type over
+// the connector's application/json default.
+//
+// That default is a *guess* about an opaque REST body, and for every REST family
+// before Horizon it was a load-bearing one: `curl -d` defaults to
+// application/x-www-form-urlencoded and a browser `fetch` with a JSON.stringify
+// body defaults to text/plain, neither chosen by the developer, and grpc-gateway
+// (Cosmos LCD) / Aptos answer 415 for a non-JSON type. Those clients worked only
+// because the default masked their header.
+//
+// So: if the client already declares JSON the two agree and there is nothing to
+// decide (and no body scan to pay for). Otherwise the body settles it - a body
+// that parses as JSON proves the default right, and one that does not leaves the
+// client's declaration as the only information available, which is what makes
+// Horizon's form-encoded POST /transactions work.
+func clientContentTypeWins(clientContentType string, body []byte) bool {
+	if strings.Contains(clientContentType, "json") {
+		return true
+	}
+	return !sonic.Valid(body)
 }
 
 // canonicalizeHeaders normalises configured-header keys via
