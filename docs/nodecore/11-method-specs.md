@@ -228,6 +228,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `bitcoin` | `bitcoin-json-rpc`, `bitcoin-esplora` |
 | `near` | `near-json-rpc` |
 | `starknet` | `starknet-json-rpc` |
+| `stellar` | `stellar-json-rpc`, `stellar-horizon` |
 | `ton` | `ton-http-v2`, `ton-index-v3` |
 | `cosmos` | `cosmos-tendermint`, `cosmos-rest` |
 | `polkadot` | `polkadot-json-rpc`, `polkadot-websocket` |
@@ -240,10 +241,10 @@ Grouped by the transports they declare:
 | `api-connectors` | Specs |
 | --- | --- |
 | `json-rpc`, `websocket` | `arbitrum`, `avail`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polkadot-json-rpc`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
-| `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `near-json-rpc`, `starknet-json-rpc`, `tron-json-rpc` |
+| `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `near-json-rpc`, `starknet-json-rpc`, `stellar-json-rpc`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `polkadot-websocket`, `solana-websocket` |
 | `tendermint` | `cosmos-tendermint` |
-| `rest` | `aptos`, `cosmos-rest`, `eth-beacon-chain`, `ton-http-v2`, `tron-rest` |
+| `rest` | `aptos`, `cosmos-rest`, `eth-beacon-chain`, `stellar-horizon`, `ton-http-v2`, `tron-rest` |
 | `rest-indexer` | `ton-index-v3` |
 | `rest-additional` | `bitcoin-esplora`, `hyperliquid-rest-additional`, `tron-rest-solidity` |
 

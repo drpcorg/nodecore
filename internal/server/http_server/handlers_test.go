@@ -178,3 +178,47 @@ func TestJsonRpcHandlerAcceptsNonUtf8Params(t *testing.T) {
 	require.NoError(t, err, "invalid bytes outside the method name must not reject the request")
 	assert.NotNil(t, handler)
 }
+
+// Horizon's POST /transactions is application/x-www-form-urlencoded
+// (tx=<base64 XDR>). That body is not JSON and must still reach the upstream.
+func TestRestHandlerAcceptsFormUrlencodedBody(t *testing.T) {
+	req := newRestReq(t, "POST", "/transactions", strings.NewReader("tx=AAAAAgAAAA"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	handler, err := http_server.NewRestHandler(&http_server.Request{Chain: "hyperliquid"}, req, "transactions")
+
+	assert.NoError(t, err, "a declared non-JSON body must pass through opaquely")
+	assert.NotNil(t, handler)
+}
+
+func TestRestHandlerStillRejectsMalformedDeclaredJsonBody(t *testing.T) {
+	req := newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`))
+	req.Header.Set("Content-Type", "application/json")
+
+	_, err := http_server.NewRestHandler(&http_server.Request{Chain: "hyperliquid"}, req, "exchange")
+
+	assert.Error(t, err, "a body the client says is JSON must still be validated")
+}
+
+// A JSON suffix type (application/problem+json, application/vnd.api+json) is
+// still JSON and must still be validated.
+func TestRestHandlerRejectsMalformedJsonSuffixBody(t *testing.T) {
+	req := newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`))
+	req.Header.Set("Content-Type", "application/vnd.api+json; charset=utf-8")
+
+	_, err := http_server.NewRestHandler(&http_server.Request{Chain: "hyperliquid"}, req, "exchange")
+
+	assert.Error(t, err)
+}
+
+// With no Content-Type at all we keep the old strict behavior: an undeclared
+// body is assumed to be JSON.
+func TestRestHandlerRejectsMalformedUndeclaredBody(t *testing.T) {
+	_, err := http_server.NewRestHandler(
+		&http_server.Request{Chain: "hyperliquid"},
+		newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`)),
+		"exchange",
+	)
+
+	assert.Error(t, err)
+}

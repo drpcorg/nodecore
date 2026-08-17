@@ -2,7 +2,6 @@ package solana_specific
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 
 	"github.com/bytedance/sonic"
@@ -10,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/solana_labels"
@@ -18,7 +18,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/solana_validations"
-	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
@@ -171,20 +170,8 @@ func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.
 	return block, nil
 }
 
-func SyntheticHashes(slot uint64, parentSlot uint64) (blockchain.HashId, blockchain.HashId) {
-	b1 := make([]byte, 32)
-	binary.BigEndian.PutUint64(b1, slot)
-	syntheticHash := blockchain.NewHashIdFromBytes(b1)
-
-	b2 := make([]byte, 32)
-	binary.BigEndian.PutUint64(b2, parentSlot)
-	syntheticParentHash := blockchain.NewHashIdFromBytes(b2)
-
-	return syntheticHash, syntheticParentHash
-}
-
 func createNewSolanaBlock(height uint64, slot uint64) protocol.Block {
-	hash, parentHash := SyntheticHashes(slot, slot-1)
+	hash, parentHash := specific_helpers.SyntheticHashes(slot, slot-1)
 	return protocol.NewBlock(height, slot, hash, parentHash)
 }
 
