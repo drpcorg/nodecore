@@ -39,7 +39,7 @@ func TestEthAllInfoLabelsDetectorReturnsNilWhenConnectorIsNil(t *testing.T) {
 	assert.Nil(t, detector.DetectLabels())
 }
 
-func TestEthAllInfoLabelsDetectorReturnsTrueWhenInfoSucceeds(t *testing.T) {
+func TestEthAllInfoLabelsDetectorReturnsAllInfoWhenInfoSucceeds(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchAllMidsInfoRequest)).
@@ -50,11 +50,11 @@ func TestEthAllInfoLabelsDetectorReturnsTrueWhenInfoSucceeds(t *testing.T) {
 
 	result := detector.DetectLabels()
 
-	assert.Equal(t, map[string]string{"allInfo": "true"}, result)
+	assert.Equal(t, map[string]string{"allInfo": "true", "partialInfo": "false"}, result)
 	connector.AssertExpectations(t)
 }
 
-func TestEthAllInfoLabelsDetectorReturnsFalseWhenInfoErrors(t *testing.T) {
+func TestEthAllInfoLabelsDetectorReturnsPartialInfoWhenInfoErrors(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchAllMidsInfoRequest)).
@@ -65,6 +65,58 @@ func TestEthAllInfoLabelsDetectorReturnsFalseWhenInfoErrors(t *testing.T) {
 
 	result := detector.DetectLabels()
 
-	assert.Equal(t, map[string]string{"allInfo": "false"}, result)
+	assert.Equal(t, map[string]string{"allInfo": "false", "partialInfo": "true"}, result)
+	connector.AssertExpectations(t)
+}
+
+func TestEthAllInfoLabelsDetectorLabelConstantsMatchEmittedKeys(t *testing.T) {
+	assert.Equal(t, "allInfo", eth_labels.AllInfoLabel)
+	assert.Equal(t, "partialInfo", eth_labels.PartialInfoLabel)
+}
+
+// the two labels are mutually exclusive on every detection, so a routing rule
+// on either one always matches a disjoint set of upstreams
+func TestEthAllInfoLabelsDetectorLabelsAreAlwaysComplementary(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		response *protocol.GenericUpstreamResponse
+	}{
+		{"ok", protocol.NewHttpUpstreamResponse("1", []byte(`{"BTC":"1"}`), 200, protocol.Rest)},
+		{"unprocessable", protocol.NewHttpUpstreamResponse("1", []byte(`nope`), 422, protocol.Rest)},
+		{"server error", protocol.NewHttpUpstreamResponse("1", []byte(`boom`), 500, protocol.Rest)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector := mocks.NewConnectorMock()
+			connector.
+				On("SendRequest", mock.Anything, mock.MatchedBy(matchAllMidsInfoRequest)).
+				Return(tc.response).
+				Once()
+
+			detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
+
+			result := detector.DetectLabels()
+
+			assert.Len(t, result, 2)
+			assert.NotEqual(t, result[eth_labels.AllInfoLabel], result[eth_labels.PartialInfoLabel])
+			connector.AssertExpectations(t)
+		})
+	}
+}
+
+func TestEthAllInfoLabelsDetectorDetectsOnEveryCall(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchAllMidsInfoRequest)).
+		Return(protocol.NewHttpUpstreamResponse("1", []byte(`nope`), 422, protocol.Rest)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchAllMidsInfoRequest)).
+		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"BTC":"1"}`), 200, protocol.Rest)).
+		Once()
+
+	detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
+
+	assert.Equal(t, map[string]string{"allInfo": "false", "partialInfo": "true"}, detector.DetectLabels())
+	assert.Equal(t, map[string]string{"allInfo": "true", "partialInfo": "false"}, detector.DetectLabels())
 	connector.AssertExpectations(t)
 }

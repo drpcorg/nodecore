@@ -17,11 +17,19 @@ import (
 // so it cleanly distinguishes upstreams that can serve the full `info` set.
 var allInfoProbeBody = []byte(`{"type":"allMids"}`)
 
+const (
+	AllInfoLabel     = "allInfo"
+	PartialInfoLabel = "partialInfo"
+)
+
 // EthAllInfoLabelsDetector probes the HyperCore `info` endpoint via the
-// rest-additional connector and emits the "allInfo" label: "true" when the
-// upstream can serve public-only info methods (allMids succeeds), "false"
-// otherwise. It is a no-op (returns nil) for non-Hyperliquid chains or when no
-// rest-additional connector is configured.
+// rest-additional connector and emits a pair of complementary labels:
+// "allInfo" is "true" when the upstream can serve the full info set (allMids
+// succeeds), while "partialInfo" is "true" when it can serve only a subset of
+// the info methods (allMids fails). Exactly one of the two is ever "true", so
+// routing rules can select either capability directly. It is a no-op (returns
+// nil) for non-Hyperliquid chains or when no rest-additional connector is
+// configured.
 type EthAllInfoLabelsDetector struct {
 	upstreamId      string
 	chain           chains.Chain
@@ -40,12 +48,16 @@ func (e *EthAllInfoLabelsDetector) DetectLabels() map[string]string {
 	defer cancel()
 
 	resp := e.connector.SendRequest(ctx, req)
-	value := "true"
-	if resp.HasError() {
-		value = "false"
-		log.Error().Err(resp.GetError()).Msgf("allMids info probe failed for upstream '%s', marking allInfo=false", e.upstreamId)
+	infoLabels := map[string]string{
+		AllInfoLabel:     "true",
+		PartialInfoLabel: "false",
 	}
-	return map[string]string{"allInfo": value}
+	if resp.HasError() {
+		infoLabels[AllInfoLabel] = "false"
+		infoLabels[PartialInfoLabel] = "true"
+		log.Error().Err(resp.GetError()).Msgf("allMids info probe failed for upstream '%s', marking %s=false and %s=true", e.upstreamId, AllInfoLabel, PartialInfoLabel)
+	}
+	return infoLabels
 }
 
 func NewEthAllInfoLabelsDetector(
