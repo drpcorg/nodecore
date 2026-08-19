@@ -31,12 +31,13 @@ const (
 	Ton                 BlockchainType = "ton"
 	Aztec               BlockchainType = "aztec"
 	Aptos               BlockchainType = "aptos"
+	Celestia            BlockchainType = "celestia"
 )
 
 func IsValidBlockchainType(t string) bool {
 	switch BlockchainType(t) {
 	case Algorand, Bitcoin, Cosmos, Ethereum, EthereumBeaconChain,
-		Near, Polkadot, Solana, Starknet, Stellar, Ton, Aztec, Aptos:
+		Near, Polkadot, Solana, Starknet, Stellar, Ton, Aztec, Aptos, Celestia:
 		return true
 	default:
 		return false
@@ -370,6 +371,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "ton"
 	case Cosmos:
 		return "cosmos"
+	case Celestia:
+		return "celestia"
 	}
 
 	return ""
