@@ -1,0 +1,31 @@
+{
+  "spec": {
+    "api-connectors": ["grpc"],
+    "name": "grpc_test",
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "/pkg.Service/UnaryNoSettings",
+      "params": []
+    },
+    {
+      "name": "/pkg.Service/UnaryExplicit",
+      "params": [],
+      "settings": {
+        "grpc": {
+          "call-type": "unary"
+        }
+      }
+    },
+    {
+      "name": "/pkg.Service/StreamNoCacheable",
+      "params": [],
+      "settings": {
+        "grpc": {
+          "call-type": "server-stream"
+        }
+      }
+    }
+  ]
+}

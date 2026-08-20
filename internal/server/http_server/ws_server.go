@@ -94,7 +94,7 @@ loop:
 				}
 				break loop
 			}
-			preRequest := &Request{
+			preRequest := &server_ctx.Request{
 				Chain: chain,
 			}
 			requestHandler, err := NewJsonRpcHandler(preRequest, bytes.NewReader(message.message), true)
@@ -103,7 +103,7 @@ loop:
 				break loop
 			}
 
-			handleResp := handleRequest(cancelCtx, requestHandler, authPayload, appCtx, subCtx)
+			handleResp := appCtx.HandleRequest(cancelCtx, requestHandler, authPayload, subCtx)
 
 			wg.Add(1)
 			go func(ctx context.Context) {
@@ -118,7 +118,7 @@ loop:
 					select {
 					case <-ctx.Done():
 						return
-					case response, ok := <-handleResp.responseWrappers:
+					case response, ok := <-handleResp.ResponseWrappers():
 						if !ok {
 							return
 						}

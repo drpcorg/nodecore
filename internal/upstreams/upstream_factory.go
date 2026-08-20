@@ -18,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/stellar_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/sui_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/pkg/methods"
@@ -154,6 +155,8 @@ func createConnector(
 		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
 	case specs.RestAdditional:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
+	case specs.GrpcConnector:
+		return connectors.NewGrpcConnector(connectorConfig, upId)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}
@@ -318,6 +321,15 @@ func getChainSpecific(
 		), nil
 	case chains.Stellar:
 		return stellar_specific.NewStellarChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
+			conf.Options,
+		), nil
+	case chains.Sui:
+		return sui_specific.NewSuiChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,

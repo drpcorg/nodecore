@@ -1,0 +1,435 @@
+package grpc_ingress
+
+import (
+	"context"
+	"net"
+	"net/http"
+	"testing"
+	"time"
+
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/auth"
+	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/integration"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	"github.com/drpcorg/nodecore/internal/stats"
+	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/dshackle"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/sui"
+	"github.com/drpcorg/nodecore/pkg/test_utils"
+	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	v1reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
+	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
+)
+
+const suiGetServiceInfo = "/sui.rpc.v2.LedgerService/GetServiceInfo"
+
+func startIngressServer(t testing.TB, appCtx *server_ctx.ApplicationServerContext, register func(*grpc.Server)) *grpc.ClientConn {
+	t.Helper()
+	listener := bufconn.Listen(1024 * 1024)
+	server := NewServer(appCtx)
+	if register != nil {
+		register(server)
+	}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+		server.Stop()
+	})
+	return conn
+}
+
+// ingressAppCtx builds an application context whose sui chain has one live
+// upstream served by the given connector mock.
+func ingressAppCtx(t *testing.T, connector *mocks.ConnectorMock) *server_ctx.ApplicationServerContext {
+	t.Helper()
+	authProc := mocks.NewMockAuthProcessor()
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
+	authProc.On("PostKeyValidate", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	authProc.On("GetKeyValue", mock.Anything).Return("")
+	return ingressAppCtxWithAuth(t, connector, authProc)
+}
+
+// ingressAppCtxWithAuth is ingressAppCtx with a caller-provided auth processor.
+func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authProc auth.AuthProcessor) *server_ctx.ApplicationServerContext {
+	t.Helper()
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string](suiGetServiceInfo))
+	methodsMock.On("HasMethod", mock.Anything).Return(true)
+
+	upstream := test_utils.TestEvmUpstream(connector, &config.Upstream{
+		Id:           "id",
+		PollInterval: 10 * time.Millisecond,
+		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
+	}, methodsMock, nil)
+
+	chainSupervisor := upstreams.NewGenericChainSupervisor(
+		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice(), dimensions.NewGenericDimensionTracker(), false, nil,
+	)
+	go chainSupervisor.Start()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil)
+	state.HeadData = protocol.Block{Height: 100}
+	chainSupervisor.PublishUpstreamEvent(protocol.UpstreamEvent{
+		Id:        "id",
+		Chain:     chains.SUI,
+		EventType: &protocol.StateUpstreamEvent{State: &state},
+	})
+	time.Sleep(20 * time.Millisecond)
+
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.SUI).Return(chainSupervisor)
+	upSup.On("GetExecutor").Return(test_utils.CreateExecutor())
+	upSup.On("GetUpstream", "id").Return(upstream)
+
+	cacheProcessor := mocks.NewCacheProcessorMock()
+	cacheProcessor.On("Receive", mock.Anything, mock.Anything, mock.Anything).Return([]byte(nil), false)
+	cacheProcessor.On("Store", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+
+	appConfig := &config.AppConfig{
+		UpstreamConfig: &config.UpstreamConfig{
+			BalancingStrategy: config.BaseBalancingStrategy,
+			IntegrityConfig:   &config.IntegrityConfig{},
+		},
+	}
+
+	return server_ctx.NewApplicationServerContext(
+		upSup,
+		cacheProcessor,
+		nil,
+		authProc,
+		appConfig,
+		nil,
+		stats.NewStatsService(t.Context(), nil, nil),
+		dimensions.NewGenericDimensionTracker(),
+		nil,
+		nil,
+	)
+}
+
+func suiIngressContext(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	return metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "sui", "x-nodecore-key", "some-key")
+}
+
+// A typed client calls a chain method on the catch-all: the request bytes
+// reach the upstream verbatim, the response decodes with the client's own
+// generated stubs, and the upstream's filtered metadata arrives in the right
+// buckets (headers as headers, trailers as trailers).
+func TestChainIngressUnaryCall(t *testing.T) {
+	serviceInfo := &sui.GetServiceInfoResponse{
+		Chain:            new("mainnet"),
+		CheckpointHeight: new(uint64(42)),
+	}
+	respBytes, err := proto.Marshal(serviceInfo)
+	require.NoError(t, err)
+
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		body, bodyErr := r.Body()
+		return r.Method() == suiGetServiceInfo && r.RequestType() == protocol.Grpc && bodyErr == nil && len(body) == 0
+	})).Return(
+		protocol.NewGrpcUpstreamResponse("1", respBytes).
+			WithResponseHeaders(http.Header{"x-up-meta": {"checkpoint-42"}}).
+			WithResponseTrailers(map[string][]string{"x-up-trailer": {"tv"}}),
+	).Once()
+
+	conn := startIngressServer(t, ingressAppCtx(t, connector), nil)
+
+	var reply sui.GetServiceInfoResponse
+	var header, trailer metadata.MD
+	err = conn.Invoke(suiIngressContext(t), suiGetServiceInfo,
+		&sui.GetServiceInfoRequest{}, &reply, grpc.Header(&header), grpc.Trailer(&trailer))
+	require.NoError(t, err)
+	connector.AssertExpectations(t)
+
+	assert.Equal(t, "mainnet", reply.GetChain())
+	assert.Equal(t, uint64(42), reply.GetCheckpointHeight())
+	assert.Equal(t, []string{"checkpoint-42"}, header.Get("x-up-meta"))
+	assert.Equal(t, []string{"tv"}, trailer.Get("x-up-trailer"))
+}
+
+// The upstream's verbatim status - typed details included - reaches the client.
+func TestChainIngressUpstreamStatusRidesVerbatim(t *testing.T) {
+	upstreamStatus, err := status.New(codes.NotFound, "object not found").
+		WithDetails(&errdetails.ErrorInfo{Reason: "OBJECT_PRUNED", Domain: "sui.io"})
+	require.NoError(t, err)
+	statusProto, err := proto.Marshal(upstreamStatus.Proto())
+	require.NoError(t, err)
+
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	dummyRequest := protocol.NewUpstreamGrpcRequest("1", suiGetServiceInfo, nil, nil, "")
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(
+		protocol.NewGrpcUpstreamErrorResponse(dummyRequest, &protocol.GrpcStatus{
+			Code:        codes.NotFound,
+			Message:     "object not found",
+			StatusProto: statusProto,
+		}),
+	).Once()
+
+	conn := startIngressServer(t, ingressAppCtx(t, connector), nil)
+
+	var reply sui.GetServiceInfoResponse
+	err = conn.Invoke(suiIngressContext(t), suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &reply)
+	require.Error(t, err)
+
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+	assert.Equal(t, "object not found", st.Message())
+	require.Len(t, st.Details(), 1)
+	errorInfo, ok := st.Details()[0].(*errdetails.ErrorInfo)
+	require.True(t, ok)
+	assert.Equal(t, "OBJECT_PRUNED", errorInfo.Reason)
+}
+
+func TestChainIngressUnknownMethod(t *testing.T) {
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+
+	err := conn.Invoke(suiIngressContext(t), "/sui.rpc.v2.LedgerService/Bogus",
+		&sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+
+	assert.Equal(t, codes.Unimplemented, status.Code(err))
+	assert.ErrorContains(t, err, "unknown method /sui.rpc.v2.LedgerService/Bogus")
+}
+
+// server-streaming methods ARE in the spec, so the answer is "not supported
+// yet", not "unknown method"
+func TestChainIngressServerStreamMethodUnimplemented(t *testing.T) {
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+
+	err := conn.Invoke(suiIngressContext(t), "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints",
+		&sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+
+	assert.Equal(t, codes.Unimplemented, status.Code(err))
+	assert.ErrorContains(t, err, "server-streaming methods are not supported yet")
+}
+
+func TestChainIngressRequiresChainMetadata(t *testing.T) {
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	err := conn.Invoke(ctx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.ErrorContains(t, err, "X-Nodecore-Chain metadata is required")
+
+	wrongChainCtx := metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "not-a-chain")
+	err = conn.Invoke(wrongChainCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.ErrorContains(t, err, "chain not-a-chain is not supported")
+}
+
+// an unknown emerald.* method must answer UNIMPLEMENTED immediately - the
+// namespace belongs to the registered dshackle services and is never proxied
+func TestChainIngressGuardsEmeraldNamespace(t *testing.T) {
+	authProc := mocks.NewMockAuthProcessor()
+	appCtx := server_ctx.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
+	conn := startIngressServer(t, appCtx, nil)
+	ctx := metadata.AppendToOutgoingContext(t.Context(), "x-nodecore-chain", "sui")
+
+	err := conn.Invoke(ctx, "/emerald.Bogus/Method", &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+
+	assert.Equal(t, codes.Unimplemented, status.Code(err))
+	authProc.AssertNotCalled(t, "Authenticate")
+}
+
+// stubAuthServer is a real generated-stub service: registering it next to
+// the raw catch-all proves the delegating codec's proto path.
+type stubAuthServer struct {
+	dshackle.UnimplementedAuthServer
+}
+
+func (stubAuthServer) Authenticate(_ context.Context, request *dshackle.AuthRequest) (*dshackle.AuthResponse, error) {
+	return &dshackle.AuthResponse{ProviderToken: "echo:" + request.GetToken()}, nil
+}
+
+// A generated service registered next to the raw catch-all (in production:
+// the reflection service) keeps working through the delegating codec's proto
+// path.
+func TestChainIngressKeepsRegisteredServicesWorking(t *testing.T) {
+	appCtx := ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector))
+	conn := startIngressServer(t, appCtx, func(server *grpc.Server) {
+		dshackle.RegisterAuthServer(server, stubAuthServer{})
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	// a round-tripped payload - not the ingress's "unknown method" and not a
+	// codec/transport failure - proves the proto path works
+	response, err := dshackle.NewAuthClient(conn).Authenticate(ctx, &dshackle.AuthRequest{Token: "any"})
+	require.NoError(t, err)
+	assert.Equal(t, "echo:any", response.GetProviderToken())
+}
+
+func reflectionRoundTrip(t *testing.T, conn *grpc.ClientConn, request *v1reflectionpb.ServerReflectionRequest) *v1reflectionpb.ServerReflectionResponse {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	stream, err := v1reflectionpb.NewServerReflectionClient(conn).ServerReflectionInfo(ctx)
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(request))
+	response, err := stream.Recv()
+	require.NoError(t, err)
+	return response
+}
+
+// reflection must advertise every spec-declared chain service, so tools like
+// Postman and `grpcurl list` discover the ingress surface natively
+func TestChainIngressReflectionListsChainServices(t *testing.T) {
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+
+	response := reflectionRoundTrip(t, conn, &v1reflectionpb.ServerReflectionRequest{
+		MessageRequest: &v1reflectionpb.ServerReflectionRequest_ListServices{},
+	})
+
+	services := make([]string, 0)
+	for _, service := range response.GetListServicesResponse().GetService() {
+		services = append(services, service.GetName())
+	}
+	for _, expected := range []string{
+		"sui.rpc.v2.LedgerService",
+		"sui.rpc.v2.StateService",
+		"sui.rpc.v2.MovePackageService",
+		"sui.rpc.v2.TransactionExecutionService",
+		"sui.rpc.v2.SignatureVerificationService",
+		"sui.rpc.v2.NameService",
+		"sui.rpc.v2.SubscriptionService",
+		"grpc.reflection.v1.ServerReflection",
+	} {
+		assert.Contains(t, services, expected)
+	}
+}
+
+// symbol lookup must serve complete descriptors for every advertised service -
+// this is what grpcurl/Postman encode real requests against
+func TestChainIngressReflectionServesChainSymbols(t *testing.T) {
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+
+	response := reflectionRoundTrip(t, conn, &v1reflectionpb.ServerReflectionRequest{
+		MessageRequest: &v1reflectionpb.ServerReflectionRequest_FileContainingSymbol{
+			FileContainingSymbol: "sui.rpc.v2.SignatureVerificationService",
+		},
+	})
+
+	require.Nil(t, response.GetErrorResponse(), "symbol must resolve: %v", response.GetErrorResponse())
+	assert.NotEmpty(t, response.GetFileDescriptorResponse().GetFileDescriptorProto())
+}
+
+// realKeyAuthProcessor builds a real basic auth processor with one local key
+// and no request strategy - the shape the ingress runs with when key auth is
+// configured.
+func realKeyAuthProcessor(t *testing.T) auth.AuthProcessor {
+	t.Helper()
+	authProc, err := auth.NewAuthProcessor(t.Context(), &config.AuthConfig{
+		Enabled: true,
+		KeyConfigs: []*config.KeyConfig{
+			{
+				Id:   "k1",
+				Type: config.Local,
+				LocalKeyConfig: &config.LocalKeyConfig{
+					Key:               "secret-key",
+					KeySettingsConfig: &config.KeySettingsConfig{},
+				},
+			},
+		},
+	}, integration.NewIntegrationResolver(nil))
+	require.NoError(t, err)
+	time.Sleep(50 * time.Millisecond)
+	return authProc
+}
+
+// end-to-end key auth: the X-Nodecore-Key metadata must authenticate against
+// a real auth processor, and its absence or a wrong value must be rejected
+// before anything reaches an upstream
+func TestChainIngressAuthViaXNodecoreKey(t *testing.T) {
+	respBytes, err := proto.Marshal(&sui.GetServiceInfoResponse{Chain: new("mainnet")})
+	require.NoError(t, err)
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	connector.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewGrpcUpstreamResponse("1", respBytes)).Once()
+
+	conn := startIngressServer(t, ingressAppCtxWithAuth(t, connector, realKeyAuthProcessor(t)), nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	chainCtx := metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "sui")
+
+	// no key at all
+	err = conn.Invoke(chainCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.ErrorContains(t, err, "api-key must be provided")
+
+	// wrong key
+	wrongKeyCtx := metadata.AppendToOutgoingContext(chainCtx, "x-nodecore-key", "nope")
+	err = conn.Invoke(wrongKeyCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.ErrorContains(t, err, "specified api-key not found")
+
+	// valid key reaches the upstream
+	var reply sui.GetServiceInfoResponse
+	validCtx := metadata.AppendToOutgoingContext(chainCtx, "x-nodecore-key", "secret-key")
+	require.NoError(t, conn.Invoke(validCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &reply))
+	assert.Equal(t, "mainnet", reply.GetChain())
+	connector.AssertExpectations(t)
+}
+
+// end-to-end token auth: the X-Nodecore-Token metadata must authenticate
+// against a real token-strategy processor
+func TestChainIngressAuthViaXNodecoreToken(t *testing.T) {
+	authProc, err := auth.NewAuthProcessor(t.Context(), &config.AuthConfig{
+		Enabled: true,
+		RequestStrategyConfig: &config.RequestStrategyConfig{
+			Type:                       config.Token,
+			TokenRequestStrategyConfig: &config.TokenRequestStrategyConfig{Value: "super-secret"},
+		},
+	}, integration.NewIntegrationResolver(nil))
+	require.NoError(t, err)
+
+	respBytes, err := proto.Marshal(&sui.GetServiceInfoResponse{Chain: new("mainnet")})
+	require.NoError(t, err)
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	connector.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewGrpcUpstreamResponse("1", respBytes)).Once()
+
+	conn := startIngressServer(t, ingressAppCtxWithAuth(t, connector, authProc), nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	chainCtx := metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "sui")
+
+	err = conn.Invoke(chainCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.ErrorContains(t, err, "invalid secret token")
+
+	var reply sui.GetServiceInfoResponse
+	validCtx := metadata.AppendToOutgoingContext(chainCtx, "x-nodecore-token", "super-secret")
+	require.NoError(t, conn.Invoke(validCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &reply))
+	assert.Equal(t, "mainnet", reply.GetChain())
+	connector.AssertExpectations(t)
+}
