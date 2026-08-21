@@ -3,6 +3,7 @@ package grpc_ingress
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -12,11 +13,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
@@ -27,14 +30,20 @@ import (
 // Metadata keys are case-insensitive (lowercase on the wire).
 const xNodecoreChain = "X-Nodecore-Chain"
 
+// firstMessageDeadline bounds the wait for a call's single request message; a
+// real client sends it in the same flush as the headers. Variable so tests
+// can shrink it.
+var firstMessageDeadline = 10 * time.Second
+
 // NewServer builds the chain-ingress grpc.Server: the delegating codec (the
 // reflection service's generated handlers keep the plain proto codec behind
 // one type assertion; the catch-all gets raw bytes), the UnknownServiceHandler
-// serving every unregistered method, chain-aware reflection, and keepalive
-// enforcement so a client that opens a call and never sends is bounded even
-// without its own deadline. baseOptions carry the shared transport options
-// (tls). These options apply only to this server - the dshackle server never
-// sees them.
+// serving every unregistered method, and chain-aware reflection. Keepalives
+// detect dead peers and reap idle connections; a LIVE client that opens a
+// call and never sends is bounded separately, by firstMessageDeadline in the
+// request decode. baseOptions carry the shared transport options (tls).
+// These options apply only to this server - the dshackle server never sees
+// them.
 func NewServer(appCtx *server_ctx.ApplicationServerContext, baseOptions ...grpc.ServerOption) *grpc.Server {
 	ingress := newChainIngress(appCtx)
 	options := append(baseOptions,
@@ -82,6 +91,7 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 
 	ctx := stream.Context()
 	md, _ := metadata.FromIncomingContext(ctx)
+	ctx = c.contextWithClientIps(ctx, md)
 
 	authPayload := auth.NewGrpcAuthPayload(md)
 	if err := c.appCtx.AuthProcessor.Authenticate(ctx, authPayload); err != nil {
@@ -100,6 +110,21 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 		return grpcStatusFromResponseError(wrapper.Response.GetError()).Err()
 	}
 	return stream.SendMsg(&rawFrame{data: wrapper.Response.ResponseResult()})
+}
+
+// contextWithClientIps resolves the caller's IPs the same way the HTTP server
+// does (key allowed-ips checks read them): the gRPC peer address plus the
+// x-forwarded-for metadata, honored only from server.trusted-proxies.
+func (c *chainIngress) contextWithClientIps(ctx context.Context, md metadata.MD) context.Context {
+	remoteAddr := ""
+	if grpcPeer, ok := peer.FromContext(ctx); ok && grpcPeer.Addr != nil {
+		remoteAddr = grpcPeer.Addr.String()
+	}
+	var trustedProxies []netip.Prefix
+	if c.appCtx.AppConfig != nil {
+		trustedProxies = c.appCtx.AppConfig.ServerConfig.TrustedProxyPrefixes()
+	}
+	return utils.ContextWithResolvedIps(ctx, remoteAddr, md.Get("x-forwarded-for"), trustedProxies)
 }
 
 // grpcRequestHandler decodes one unary gRPC call for the shared ingress
@@ -134,15 +159,15 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, "server-streaming methods are not supported yet", nil)
 	}
 
-	var requestFrame rawFrame
-	if err := h.stream.RecvMsg(&requestFrame); err != nil {
+	requestFrame, err := h.receiveRequestFrame()
+	if err != nil {
 		return nil, err
 	}
 
 	request := protocol.NewUpstreamGrpcRequest(
 		"1",
 		h.method,
-		&protocol.RequestParams{Headers: h.md},
+		&protocol.RequestParams{Headers: server_ctx.SanitizeForwardedHeaders(h.md, xNodecoreChain)},
 		requestFrame.data,
 		specName,
 	)
@@ -151,6 +176,36 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 
 func (h *grpcRequestHandler) GetRequestType() protocol.RequestType {
 	return protocol.Grpc
+}
+
+// receiveRequestFrame reads the one request message every routable method has
+// (unary now, server-stream later; client-streaming/bidi are rejected by the
+// spec lookup before this point), bounded by firstMessageDeadline: keepalives
+// only detect dead peers, so without this a live client that opens a call and
+// never sends would hold the stream and its goroutine forever. Receive errors
+// keep their gRPC identity (client cancel, oversized message) instead of
+// degrading to INTERNAL.
+func (h *grpcRequestHandler) receiveRequestFrame() (*rawFrame, error) {
+	var requestFrame rawFrame
+	received := make(chan error, 1)
+	go func() {
+		received <- h.stream.RecvMsg(&requestFrame)
+	}()
+
+	select {
+	case err := <-received:
+		if err == nil {
+			return &requestFrame, nil
+		}
+		if st, ok := status.FromError(err); ok {
+			return nil, protocol.NewGrpcStatusError(st.Code(), st.Message())
+		}
+		return nil, err
+	case <-time.After(firstMessageDeadline):
+		// returning closes the stream, which unblocks the RecvMsg goroutine
+		return nil, protocol.NewGrpcStatusError(codes.DeadlineExceeded,
+			fmt.Sprintf("no request message received within %s", firstMessageDeadline))
+	}
 }
 
 // forwardResponseMetadata forwards the upstream's filtered response metadata:

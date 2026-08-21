@@ -227,3 +227,26 @@ func TestGrpcConnectorReceivesResponsesAboveDefaultGrpcLimit(t *testing.T) {
 	require.False(t, response.HasError(), "unexpected error: %v", response.GetError())
 	assert.Greater(t, len(response.ResponseResult()), 4<<20)
 }
+
+// error replies carry the upstream's filtered metadata too - RESOURCE_EXHAUSTED
+// trailers (rate-limit hints) are exactly the ones a client needs
+func TestGrpcConnectorRetryableErrorKeepsResponseMetadata(t *testing.T) {
+	stub := &authServerStub{handler: func(ctx context.Context, _ *dshackle.AuthRequest) (*dshackle.AuthResponse, error) {
+		require.NoError(t, grpc.SetHeader(ctx, metadata.Pairs("x-up-meta", "hv")))
+		_ = grpc.SetTrailer(ctx, metadata.Pairs("x-ratelimit-reset", "42", "grpc-status-details-bin", "leak"))
+		return nil, status.Error(codes.ResourceExhausted, "rate limited")
+	}}
+	connector := startGrpcConnector(t, &config.ApiConnectorConfig{Url: "grpc://bufnet"}, stub)
+
+	response := connector.SendRequest(t.Context(), grpcAuthRequest(t, "t", nil))
+
+	replyError, ok := response.(*protocol.ReplyError)
+	require.True(t, ok)
+	assert.True(t, protocol.IsRetryable(response))
+
+	headers := metadata.MD(replyError.ResponseHeaders())
+	assert.Equal(t, []string{"hv"}, headers.Get("x-up-meta"))
+	trailers := replyError.ResponseTrailers()
+	assert.Equal(t, []string{"42"}, trailers["x-ratelimit-reset"])
+	assert.NotContains(t, trailers, "grpc-status-details-bin", "reserved grpc-* keys stay filtered")
+}

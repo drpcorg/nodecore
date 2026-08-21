@@ -312,8 +312,9 @@ reflection surface. Either server can run without the other.
    same (one `recvAndDecompress`, then handler; verified in v1.83.0
    server.go). Extra frames from rogue clients are never read (HTTP/2 flow
    control bounds them); the response + trailers finish the stream. A client
-   that never sends is bounded by its own deadline + server keepalive
-   enforcement (config in this task).
+   that never sends is bounded by a first-message receive deadline (keepalive
+   enforcement only rate-limits pings and detects dead peers - it does NOT
+   bound a live, silent open stream; corrected during review).
 8. Build `UpstreamGrpcRequest` → `GenericExecutionFlow` → forward the
    upstream's filtered response metadata (`SendHeader` for headers,
    `SetTrailer` for trailers — from the response holder's

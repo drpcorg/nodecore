@@ -41,6 +41,10 @@ metadata (metadata keys are case-insensitive): `x-nodecore-key`, `x-nodecore-tok
 `authorization: Bearer <jwt>`. Key scoping (allowed/forbidden methods) applies to full gRPC method
 names such as `/sui.rpc.v2.LedgerService/GetObject`.
 
+Credential headers/metadata (`X-Nodecore-Key`, `X-Nodecore-Token`, `Authorization`) are consumed by
+nodecore and stripped before a request is forwarded — they never reach an upstream provider.
+Upstream authentication is configured separately, via each connector's `headers`.
+
 ## Fields
 
 * `enabled` - Enables or disables authentication globally. **_Default_**: `false`

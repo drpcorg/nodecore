@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -432,4 +433,122 @@ func TestChainIngressAuthViaXNodecoreToken(t *testing.T) {
 	require.NoError(t, conn.Invoke(validCtx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &reply))
 	assert.Equal(t, "mainnet", reply.GetChain())
 	connector.AssertExpectations(t)
+}
+
+// allowed-ips keys over the ingress: the peer IP is resolved into the context
+// (bufconn's unparseable peer address falls back to 127.0.0.1), so an
+// ip-scoped key denies or passes - and never panics the process
+func TestChainIngressKeyAllowedIps(t *testing.T) {
+	ipScopedProcessor := func(allowedIp string) auth.AuthProcessor {
+		authProc, err := auth.NewAuthProcessor(t.Context(), &config.AuthConfig{
+			Enabled: true,
+			KeyConfigs: []*config.KeyConfig{
+				{
+					Id:   "k1",
+					Type: config.Local,
+					LocalKeyConfig: &config.LocalKeyConfig{
+						Key:               "secret-key",
+						KeySettingsConfig: &config.KeySettingsConfig{AllowedIps: []string{allowedIp}},
+					},
+				},
+			},
+		}, integration.NewIntegrationResolver(nil))
+		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond)
+		return authProc
+	}
+	call := func(authProc auth.AuthProcessor) error {
+		connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+		respBytes, err := proto.Marshal(&sui.GetServiceInfoResponse{Chain: new("mainnet")})
+		require.NoError(t, err)
+		connector.On("SendRequest", mock.Anything, mock.Anything).
+			Return(protocol.NewGrpcUpstreamResponse("1", respBytes)).Maybe()
+		conn := startIngressServer(t, ingressAppCtxWithAuth(t, connector, authProc), nil)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		t.Cleanup(cancel)
+		ctx = metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "sui", "x-nodecore-key", "secret-key")
+		return conn.Invoke(ctx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	}
+
+	err := call(ipScopedProcessor("10.9.9.9"))
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.ErrorContains(t, err, "not allowed")
+
+	assert.NoError(t, call(ipScopedProcessor("127.0.0.1")))
+}
+
+// a live client that opens a call and never sends its request message must be
+// bounded by the first-message deadline, not held forever
+func TestChainIngressSilentStreamIsBounded(t *testing.T) {
+	previous := firstMessageDeadline
+	firstMessageDeadline = 300 * time.Millisecond
+	t.Cleanup(func() { firstMessageDeadline = previous })
+
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "sui")
+
+	stream, err := conn.NewStream(ctx, &grpc.StreamDesc{
+		StreamName:    "GetServiceInfo",
+		ClientStreams: true,
+		ServerStreams: true,
+	}, suiGetServiceInfo)
+	require.NoError(t, err)
+
+	// never send; the server must close the call with DEADLINE_EXCEEDED
+	err = stream.RecvMsg(&sui.GetServiceInfoResponse{})
+	require.Error(t, err)
+	assert.Equal(t, codes.DeadlineExceeded, status.Code(err))
+	assert.ErrorContains(t, err, "no request message received")
+}
+
+// receive-side errors keep their gRPC identity: an oversized request message
+// must surface as RESOURCE_EXHAUSTED, not INTERNAL
+func TestChainIngressOversizedRequestIsResourceExhausted(t *testing.T) {
+	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	ctx = metadata.AppendToOutgoingContext(ctx, "x-nodecore-chain", "sui")
+
+	// >4MB (the server-side default receive limit), sent as an opaque payload
+	big := &dshackle.AuthRequest{Token: strings.Repeat("a", 5<<20)}
+	err := conn.Invoke(ctx, suiGetServiceInfo, big, &sui.GetServiceInfoResponse{})
+
+	require.Error(t, err)
+	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
+}
+
+// nodecore's credential/routing metadata is consumed by the ingress and must
+// never enter the request holder; everything else is forwarded to the upstream
+func TestChainIngressStripsNodecoreMetadataBeforeForwarding(t *testing.T) {
+	var forwarded map[string][]string
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	respBytes, err := proto.Marshal(&sui.GetServiceInfoResponse{Chain: new("mainnet")})
+	require.NoError(t, err)
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		forwarded = r.RequestParams().Headers
+		return true
+	})).Return(protocol.NewGrpcUpstreamResponse("1", respBytes)).Once()
+
+	conn := startIngressServer(t, ingressAppCtxWithAuth(t, connector, realKeyAuthProcessor(t)), nil)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		"x-nodecore-chain", "sui",
+		"x-nodecore-key", "secret-key",
+		"x-nodecore-token", "some-token",
+		"authorization", "Bearer some-jwt",
+		"x-custom-meta", "keep-me",
+	)
+
+	require.NoError(t, conn.Invoke(ctx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{}))
+	connector.AssertExpectations(t)
+
+	md := metadata.MD(forwarded)
+	assert.Equal(t, []string{"keep-me"}, md.Get("x-custom-meta"))
+	assert.Empty(t, md.Get("x-nodecore-key"))
+	assert.Empty(t, md.Get("x-nodecore-token"))
+	assert.Empty(t, md.Get("x-nodecore-chain"))
+	assert.Empty(t, md.Get("authorization"))
 }

@@ -99,3 +99,25 @@ func TestNewGrpcUpstreamResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, body, encoded, "gRPC bodies must encode verbatim, with no JSON framing")
 }
+
+// gRPC errors made the retryable call at construction; upstream status
+// messages must never be re-matched by the JSON-RPC retry patterns
+// ("transaction not found" is a retryable pattern for EVM nodes)
+func TestGrpcClientErrorMessageIsNotRematchedForRetry(t *testing.T) {
+	req := protocol.NewUpstreamGrpcRequest("1", "/pkg.Service/Method", nil, nil, "")
+	response := protocol.NewGrpcUpstreamErrorResponse(req, &protocol.GrpcStatus{
+		Code:    codes.NotFound,
+		Message: "transaction not found",
+	})
+
+	assert.False(t, protocol.IsRetryable(response))
+}
+
+func TestNewGrpcStatusErrorCarriesTypedStatus(t *testing.T) {
+	respError := protocol.NewGrpcStatusError(codes.ResourceExhausted, "grpc: received message larger than max")
+
+	grpcStatus, ok := protocol.GrpcStatusFromError(respError)
+	require.True(t, ok)
+	assert.Equal(t, codes.ResourceExhausted, grpcStatus.Code)
+	assert.Equal(t, protocol.GrpcErrorCodeBase+int(codes.ResourceExhausted), respError.Code)
+}

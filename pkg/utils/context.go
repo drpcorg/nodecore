@@ -62,22 +62,31 @@ func ParseTrustedProxies(entries []string) ([]netip.Prefix, error) {
 // client IP, falling back to the direct peer when the header is absent. Note
 // that in this mode a directly connected client can present an arbitrary IP.
 func ContextWithIps(ctx context.Context, request *http.Request, trustedProxies []netip.Prefix) context.Context {
+	return ContextWithResolvedIps(ctx, request.RemoteAddr, request.Header.Values("X-Forwarded-For"), trustedProxies)
+}
+
+// ContextWithResolvedIps is the transport-agnostic core of ContextWithIps:
+// the peer address and the raw X-Forwarded-For values (each possibly a
+// comma-separated list, in wire order) come from the caller, so HTTP requests
+// and gRPC metadata share one client-IP resolution policy.
+func ContextWithResolvedIps(ctx context.Context, remoteAddr string, forwardedForValues []string, trustedProxies []netip.Prefix) context.Context {
+	forwarded := flattenForwardedFor(forwardedForValues)
 	ipValues := mapset.NewThreadUnsafeSet[string]()
 	if len(trustedProxies) == 0 {
-		for _, ip := range forwardedForIPs(request) {
+		for _, ip := range forwarded {
 			ipValues.Add(ip)
 		}
 		if ipValues.IsEmpty() {
-			ipValues.Add(remoteIP(request.RemoteAddr))
+			ipValues.Add(remoteIP(remoteAddr))
 		}
 	} else {
-		ipValues.Add(clientIP(request, trustedProxies))
+		ipValues.Add(clientIP(remoteAddr, forwarded, trustedProxies))
 	}
 	return context.WithValue(ctx, ipKey, ipValues)
 }
 
-func clientIP(request *http.Request, trustedProxies []netip.Prefix) string {
-	peer := remoteIP(request.RemoteAddr)
+func clientIP(remoteAddr string, forwarded []string, trustedProxies []netip.Prefix) string {
+	peer := remoteIP(remoteAddr)
 	peerAddr, err := netip.ParseAddr(peer)
 	if err != nil || !isTrustedProxy(peerAddr, trustedProxies) {
 		return peer
@@ -85,7 +94,6 @@ func clientIP(request *http.Request, trustedProxies []netip.Prefix) string {
 	// The peer is a trusted proxy: take the right-most X-Forwarded-For entry that
 	// is not itself a trusted proxy (the proxy appends the connecting IP on the
 	// right, so trusted hops are skipped from the right).
-	forwarded := forwardedForIPs(request)
 	for i := len(forwarded) - 1; i >= 0; i-- {
 		addr, ok := parseForwardedHop(forwarded[i])
 		if !ok {
@@ -117,12 +125,10 @@ func parseForwardedHop(hop string) (netip.Addr, bool) {
 	return netip.Addr{}, false
 }
 
-// forwardedForIPs returns the X-Forwarded-For entries in wire order, left to
-// right. A request may carry the header several times, so all of its values are
-// flattened - net/http keeps them as separate entries and Header.Get would only
-// see the first one.
-func forwardedForIPs(request *http.Request) []string {
-	values := request.Header.Values("X-Forwarded-For")
+// flattenForwardedFor returns the X-Forwarded-For entries in wire order, left
+// to right. The header/metadata may be carried several times, so all values
+// are flattened.
+func flattenForwardedFor(values []string) []string {
 	ips := make([]string, 0, len(values))
 	for _, value := range values {
 		for _, ip := range strings.Split(value, ",") {
@@ -164,10 +170,13 @@ func isTrustedProxy(addr netip.Addr, trustedProxies []netip.Prefix) bool {
 	return false
 }
 
+// IpsFromContext returns the resolved client IPs, or an EMPTY set when the
+// context carries none - never nil, so allowed-ip checks fail closed (deny)
+// instead of panicking on an ingress that forgot to resolve IPs.
 func IpsFromContext(ctx context.Context) mapset.Set[string] {
 	ips, ok := ctx.Value(ipKey).(mapset.Set[string])
 	if !ok {
-		return nil
+		return mapset.NewThreadUnsafeSet[string]()
 	}
 	return ips
 }

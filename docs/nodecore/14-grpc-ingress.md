@@ -71,8 +71,9 @@ advertised set does not depend on `x-nodecore-chain`), matching how a node prese
 ## Semantics
 
 - **Pass-through bodies.** Request and response messages are forwarded byte-for-byte; nodecore
-  never parses them. Client metadata is forwarded to the upstream minus the reserved `grpc-*`
-  family, hop-by-hop keys, and keys the connector config owns; upstream response metadata comes
+  never parses them. Client metadata is forwarded to the upstream minus nodecore's own
+  credential/routing metadata (`x-nodecore-*`, `authorization` — consumed here, never forwarded),
+  the reserved `grpc-*` family, hop-by-hop keys, and keys the connector config owns; upstream response metadata comes
   back filtered the same way — headers as headers, **trailers as trailers**.
 - **Verbatim upstream errors.** A non-OK status from the upstream reaches the client with its
   original code, message, and typed `google.rpc.Status` details. Transient upstream failures

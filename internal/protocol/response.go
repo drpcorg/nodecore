@@ -514,6 +514,28 @@ type ReplyError struct {
 	ErrorKind     ResponseErrorKind
 	responseError *ResponseError
 	responseType  RequestType
+	// upstream response metadata may ride on error replies too - e.g. a
+	// RESOURCE_EXHAUSTED carrying rate-limit hints in its trailers
+	responseHeaders  http.Header
+	responseTrailers map[string][]string
+}
+
+func (r *ReplyError) ResponseHeaders() http.Header {
+	return r.responseHeaders
+}
+
+func (r *ReplyError) WithResponseHeaders(headers http.Header) *ReplyError {
+	r.responseHeaders = headers
+	return r
+}
+
+func (r *ReplyError) ResponseTrailers() map[string][]string {
+	return r.responseTrailers
+}
+
+func (r *ReplyError) WithResponseTrailers(trailers map[string][]string) *ReplyError {
+	r.responseTrailers = trailers
+	return r
 }
 
 func (r *ReplyError) ResponseCode() int {

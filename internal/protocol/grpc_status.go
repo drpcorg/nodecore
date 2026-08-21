@@ -44,6 +44,14 @@ func grpcResponseError(grpcStatus *GrpcStatus) *ResponseError {
 	}
 }
 
+// NewGrpcStatusError builds a ResponseError carrying a gRPC status as its
+// typed GrpcStatus, so the ingress replays it to the client verbatim instead
+// of degrading it to INTERNAL (e.g. receive-side errors: client cancel,
+// oversized request message).
+func NewGrpcStatusError(code codes.Code, message string) *ResponseError {
+	return grpcResponseError(&GrpcStatus{Code: code, Message: message})
+}
+
 // NewGrpcUpstreamResponse frames a successful unary gRPC reply: the response
 // message bytes verbatim, never parsed.
 func NewGrpcUpstreamResponse(id string, body []byte) *GenericUpstreamResponse {
@@ -80,6 +88,16 @@ func NewGrpcUpstreamErrorResponse(request RequestHolder, grpcStatus *GrpcStatus)
 			requestType: Grpc,
 		}
 	}
+}
+
+// IsGrpcErrorNotRetryable reports whether an error is a gRPC status whose
+// retryability was already decided at construction time by the closed code
+// model (retryable codes become partial failures; everything else must NOT be
+// re-litigated by the JSON-RPC message matching in errors_config - upstream
+// status messages like "transaction not found" would falsely match).
+func IsGrpcErrorNotRetryable(respError *ResponseError) bool {
+	_, ok := GrpcStatusFromError(respError)
+	return ok
 }
 
 // IsGrpcRateLimited reports whether a response is an upstream RESOURCE_EXHAUSTED,

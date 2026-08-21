@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -92,4 +93,38 @@ func TestGrpcAuthPayloadMethodScoping(t *testing.T) {
 	forbidden := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "")
 	err := processor.PostKeyValidate(context.Background(), payload, forbidden)
 	assert.ErrorContains(t, err, "method '/sui.rpc.v2.LedgerService/GetObject' is not allowed")
+}
+
+// allowed-ips over gRPC: without resolved IPs the key check must DENY, never
+// panic; with the peer's IP resolved into the context it must pass
+func TestGrpcAuthPayloadAllowedIps(t *testing.T) {
+	appCfg := &config.AuthConfig{
+		Enabled: true,
+		KeyConfigs: []*config.KeyConfig{
+			{
+				Id:   "k1",
+				Type: config.Local,
+				LocalKeyConfig: &config.LocalKeyConfig{
+					Key: "secret-key",
+					KeySettingsConfig: &config.KeySettingsConfig{
+						AllowedIps: []string{"10.1.2.3"},
+					},
+				},
+			},
+		},
+	}
+	processor, err := auth.NewAuthProcessor(context.Background(), appCfg, integration.NewIntegrationResolver(nil))
+	require.NoError(t, err)
+	time.Sleep(50 * time.Millisecond)
+	payload := auth.NewGrpcAuthPayload(metadata.Pairs(auth.XNodecoreKey, "secret-key"))
+
+	// no IPs in the context: fail closed
+	_, err = processor.PreKeyValidate(context.Background(), payload)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "not allowed")
+
+	// resolved peer IP matches the allow list
+	ipCtx := utils.ContextWithResolvedIps(context.Background(), "10.1.2.3:50051", nil, nil)
+	_, err = processor.PreKeyValidate(ipCtx, payload)
+	assert.NoError(t, err)
 }

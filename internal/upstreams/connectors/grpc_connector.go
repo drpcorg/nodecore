@@ -195,9 +195,15 @@ func (g *GrpcConnector) SendRequest(ctx context.Context, request protocol.Reques
 				grpcStatus.StatusProto = statusProto
 			}
 		}
+		// error replies carry the upstream metadata too - RESOURCE_EXHAUSTED
+		// trailers (rate-limit hints) are exactly the ones a client needs
 		response := protocol.NewGrpcUpstreamErrorResponse(request, grpcStatus)
-		if generic, isGeneric := response.(*protocol.GenericUpstreamResponse); isGeneric {
-			generic.WithResponseHeaders(g.filterResponseMetadata(headerMD)).
+		switch resp := response.(type) {
+		case *protocol.GenericUpstreamResponse:
+			resp.WithResponseHeaders(g.filterResponseMetadata(headerMD)).
+				WithResponseTrailers(g.filterResponseMetadata(trailerMD))
+		case *protocol.ReplyError:
+			resp.WithResponseHeaders(g.filterResponseMetadata(headerMD)).
 				WithResponseTrailers(g.filterResponseMetadata(trailerMD))
 		}
 		return response

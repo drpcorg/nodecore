@@ -86,6 +86,12 @@ func IsRetryable(response ResponseHolder) bool {
 
 	switch resp := response.(type) {
 	case *GenericUpstreamResponse:
+		// gRPC errors made the retryable/not-retryable call at construction
+		// (closed code model); the message patterns are JSON-RPC vocabulary
+		// and must not run against upstream gRPC status messages
+		if IsGrpcErrorNotRetryable(response.GetError()) {
+			return false
+		}
 		shouldRetry = response.HasError() && errors_config.IsRetryable(response.GetError().Message)
 	case *ReplyError:
 		shouldRetry = resp.ErrorKind == PartialFailure
