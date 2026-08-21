@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/outbox"
-	"github.com/drpcorg/nodecore/internal/server/emerald"
+	"github.com/drpcorg/nodecore/internal/server/grpc_server"
 	"github.com/drpcorg/nodecore/internal/server/health_server"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
@@ -44,7 +44,7 @@ type App struct {
 
 	httpServer   *echo.Echo
 	healthServer *echo.Echo
-	grpcServer   *emerald.GrpcServer
+	grpcServer   *grpc_server.GrpcServer
 }
 
 func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
@@ -98,7 +98,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		subEngineRegistry,
 	)
 
-	grpcServer, err := emerald.NewGrpcServer(appCtx)
+	grpcServer, err := grpc_server.NewGrpcServer(appCtx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create grpc server: %w", err)
 	}

@@ -10,17 +10,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
-	"github.com/drpcorg/nodecore/internal/stats/hook"
 
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
-	"github.com/drpcorg/nodecore/internal/upstreams/flow"
-	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
@@ -41,23 +37,6 @@ var requestTimeToLastByte = prometheus.NewHistogram(
 
 func init() {
 	prometheus.MustRegister(requestTimeToLastByte)
-}
-
-type HandleResponse struct {
-	responseWrappers chan *protocol.ResponseHolderWrapper
-	corsOrigins      []string
-}
-
-func NewHandleResponse(responseWrappers chan *protocol.ResponseHolderWrapper, corsOrigins []string) *HandleResponse {
-	return &HandleResponse{
-		responseWrappers: responseWrappers,
-		corsOrigins:      corsOrigins,
-	}
-}
-
-type Request struct {
-	Chain            string
-	UpstreamRequests []protocol.RequestHolder
 }
 
 type Response struct {
@@ -213,7 +192,7 @@ func handleHttp(
 	authPayload auth.AuthPayload,
 	appCtx *server_ctx.ApplicationServerContext,
 ) error {
-	preRequest := &Request{
+	preRequest := &server_ctx.Request{
 		Chain: chain,
 	}
 	var requestHandler RequestHandler
@@ -236,7 +215,7 @@ func handleHttp(
 			resp.EncodeResponse([]byte("0")),
 		)
 	}
-	handleResp := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
+	handleResp := appCtx.HandleRequest(ctx, requestHandler, authPayload, nil)
 
 	return handleResponse(ctx, requestHandler, reqCtx, handleResp)
 }
@@ -245,13 +224,13 @@ func handleResponse(
 	ctx context.Context,
 	requestHandler RequestHandler,
 	reqCtx echo.Context,
-	handleResp *HandleResponse,
+	handleResp *server_ctx.HandleResponse,
 ) error {
 	var responseReader io.Reader
 	code := http.StatusOK
 	httpResponse := reqCtx.Response()
 	if !requestHandler.IsSingle() {
-		responses := utils.Map(handleResp.responseWrappers, func(wrapper *protocol.ResponseHolderWrapper) *Response {
+		responses := utils.Map(handleResp.ResponseWrappers(), func(wrapper *protocol.ResponseHolderWrapper) *Response {
 			return requestHandler.ResponseEncode(wrapper.Response)
 		})
 		responseReader = ArraySortingStream(ctx, responses, requestHandler.RequestCount())
@@ -264,7 +243,7 @@ func handleResponse(
 				protocol.ToHttpCode(resp),
 				resp.EncodeResponse([]byte("0")),
 			)
-		case responseWrapper, ok := <-handleResp.responseWrappers:
+		case responseWrapper, ok := <-handleResp.ResponseWrappers():
 			if ok {
 				httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
 				code = protocol.ToHttpCode(responseWrapper.Response)
@@ -275,7 +254,7 @@ func handleResponse(
 		}
 	}
 
-	setCorsHeaders(reqCtx, handleResp.corsOrigins)
+	setCorsHeaders(reqCtx, handleResp.CorsOrigins())
 
 	return writeResponse(httpResponse, code, responseReader)
 }
@@ -319,96 +298,4 @@ func writeResponse(httpResponse *echo.Response, code int, responseReader io.Read
 	httpResponse.WriteHeader(code)
 	_, err := io.Copy(httpResponse, responseReader)
 	return err
-}
-
-func handleRequest(
-	ctx context.Context,
-	requestHandler RequestHandler,
-	authPayload auth.AuthPayload,
-	appCtx *server_ctx.ApplicationServerContext,
-	subCtx *flow.SubCtx,
-) *HandleResponse {
-	var request *Request
-
-	corsOrigins, err := appCtx.AuthProcessor.PreKeyValidate(ctx, authPayload)
-	if err != nil {
-		return NewHandleResponse(
-			createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
-			nil,
-		)
-	}
-
-	request, err = requestHandler.RequestDecode(ctx)
-	if err != nil {
-		return NewHandleResponse(createWrapperFromError(request, err, requestHandler.GetRequestType()), nil)
-	}
-	if !chains.IsSupported(request.Chain) {
-		return NewHandleResponse(
-			createWrapperFromError(request, protocol.WrongChainError(request.Chain), requestHandler.GetRequestType()),
-			nil,
-		)
-	}
-	chain := chains.GetChain(request.Chain).Chain
-
-	if appCtx.UpstreamSupervisor.GetChainSupervisor(chain) == nil {
-		return NewHandleResponse(
-			createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType()),
-			nil,
-		)
-	}
-
-	for _, requestHolder := range request.UpstreamRequests {
-		err = appCtx.AuthProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
-		if err != nil {
-			return NewHandleResponse(
-				createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
-				nil,
-			)
-		}
-		requestHolder.RequestObserver().
-			WithApiKey(appCtx.AuthProcessor.GetKeyValue(authPayload))
-	}
-
-	executionFlow := flow.NewGenericExecutionFlow(
-		chain,
-		appCtx.UpstreamSupervisor,
-		appCtx.CacheProcessor,
-		appCtx.Registry,
-		appCtx.AppConfig,
-		subCtx,
-		appCtx.QuorumRegistry,
-		appCtx.SubEngineRegistry,
-	)
-	executionFlow.AddHooks(
-		flow.NewMethodBanHook(appCtx.UpstreamSupervisor),
-		dimensions.NewDimensionHook(appCtx.DimensionTracker),
-		hook.NewStatsHook(appCtx.StatsService),
-	)
-
-	go executionFlow.Execute(ctx, request.UpstreamRequests)
-	responseChan := executionFlow.GetResponses()
-
-	return NewHandleResponse(responseChan, corsOrigins)
-}
-
-func createWrapperFromError(request *Request, err error, requestType protocol.RequestType) chan *protocol.ResponseHolderWrapper {
-	respChan := make(chan *protocol.ResponseHolderWrapper)
-	errWrapper := func(id string) *protocol.ResponseHolderWrapper {
-		return &protocol.ResponseHolderWrapper{
-			UpstreamId: flow.NoUpstream,
-			RequestId:  id,
-			Response:   protocol.NewTotalFailureFromErr(id, err, requestType),
-		}
-	}
-	go func() {
-		if request == nil || len(request.UpstreamRequests) == 0 {
-			respChan <- errWrapper("0")
-		} else {
-			for _, req := range request.UpstreamRequests {
-				respChan <- errWrapper(req.Id())
-			}
-		}
-		close(respChan)
-	}()
-	return respChan
 }

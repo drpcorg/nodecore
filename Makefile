@@ -30,6 +30,13 @@ stats-proto-gen:
     		--go-grpc_out=internal/stats/api \
     		stats_request.proto
 
+# One pattern rule serves every vendored chain API: per-chain differences
+# (proto root inside the vendor repo, subtree to generate, output path) live
+# in chain-apis/<chain>.gen.yaml, never here. `make sui-proto-gen` today; a
+# future chain adds its submodule + yaml and its target already works.
+%-proto-gen:
+	buf generate --template chain-apis/$*.gen.yaml
+
 .PHONY: generate-networks
 generate-networks:
 	go run cmd/chains/init_chains.go

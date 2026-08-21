@@ -1,0 +1,18 @@
+{
+  "spec": {
+    "api-connectors": ["json-rpc"],
+    "name": "test",
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "eth_call",
+      "params": [],
+      "settings": {
+        "grpc": {
+          "call-type": "unary"
+        }
+      }
+    }
+  ]
+}

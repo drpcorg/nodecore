@@ -1,6 +1,10 @@
 package protocol
 
-import "regexp"
+import (
+	"regexp"
+
+	"google.golang.org/grpc/codes"
+)
 
 // MethodAvailability is what an upstream's error says about whether a method exists on
 // that upstream. It is three-valued on purpose: "no opinion" has to be distinguishable
@@ -43,6 +47,19 @@ var methodAvailablePatterns = []*regexp.Regexp{
 func ClassifyMethodAvailability(respError *ResponseError) MethodAvailability {
 	if respError == nil {
 		return MethodAvailabilityUnknown
+	}
+	// gRPC statuses form a closed code model, so they classify on the code
+	// alone: UNIMPLEMENTED is the wire's own "method absent". The message
+	// patterns below are JSON-RPC vocabulary and must not run against them.
+	if grpcStatus, ok := GrpcStatusFromError(respError); ok {
+		switch grpcStatus.Code {
+		case codes.Unimplemented:
+			return MethodNotAvailable
+		case codes.InvalidArgument:
+			return MethodAvailable
+		default:
+			return MethodAvailabilityUnknown
+		}
 	}
 	if respError.Code == NoSupportedMethod {
 		return MethodNotAvailable

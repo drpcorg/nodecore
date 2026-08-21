@@ -13,6 +13,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 )
 
 type RequestHandler interface {
-	RequestDecode(context.Context) (*Request, error)
+	RequestDecode(context.Context) (*server_ctx.Request, error)
 	ResponseEncode(response protocol.ResponseHolder) *Response
 	IsSingle() bool
 	RequestCount() int
@@ -28,7 +29,7 @@ type RequestHandler interface {
 }
 
 type RestHandler struct {
-	preReq         *Request
+	preReq         *server_ctx.Request
 	methodTemplate string
 	requestBody    []byte
 	requestParams  *protocol.RequestParams
@@ -41,7 +42,7 @@ type RestHandler struct {
 // GETs and other no-body verbs the request body is allowed to be empty;
 // only non-empty bodies are validated as JSON so callers like algod's REST
 // API don't get rejected at parse time.
-func NewRestHandler(preReq *Request, req *http.Request, restPath string) (*RestHandler, error) {
+func NewRestHandler(preReq *server_ctx.Request, req *http.Request, restPath string) (*RestHandler, error) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err
@@ -68,7 +69,7 @@ func NewRestHandler(preReq *Request, req *http.Request, restPath string) (*RestH
 	}, nil
 }
 
-func (r *RestHandler) RequestDecode(_ context.Context) (*Request, error) {
+func (r *RestHandler) RequestDecode(_ context.Context) (*server_ctx.Request, error) {
 	specName := chains.GetMethodSpecNameByChainName(r.preReq.Chain)
 	upstreamReq := protocol.NewUpstreamRestRequest(
 		"1",
@@ -77,7 +78,7 @@ func (r *RestHandler) RequestDecode(_ context.Context) (*Request, error) {
 		r.requestBody,
 		specName,
 	)
-	return &Request{
+	return &server_ctx.Request{
 		Chain:            r.preReq.Chain,
 		UpstreamRequests: []protocol.RequestHolder{upstreamReq},
 	}, nil
@@ -111,7 +112,7 @@ var _ RequestHandler = (*RestHandler)(nil)
 var errNonUtf8Method = errors.New("method name is not a valid utf-8 string")
 
 type JsonRpcHandler struct {
-	preReq          *Request
+	preReq          *server_ctx.Request
 	idMap           map[string]lo.Tuple2[json.RawMessage, int]
 	requestBody     []byte
 	single          bool
@@ -121,7 +122,7 @@ type JsonRpcHandler struct {
 
 var _ RequestHandler = (*JsonRpcHandler)(nil)
 
-func NewJsonRpcHandler(preReq *Request, requestBody io.Reader, isWsCtx bool) (*JsonRpcHandler, error) {
+func NewJsonRpcHandler(preReq *server_ctx.Request, requestBody io.Reader, isWsCtx bool) (*JsonRpcHandler, error) {
 	body, err := io.ReadAll(requestBody)
 	if err != nil {
 		return nil, err
@@ -175,7 +176,7 @@ func (j *JsonRpcHandler) RequestCount() int {
 	return len(j.jsonRpcRequests)
 }
 
-func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
+func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*server_ctx.Request, error) {
 	upstreamRequests := make([]protocol.RequestHolder, 0)
 
 	for i, jsonRpcReq := range j.jsonRpcRequests {
@@ -197,7 +198,7 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*Request, error) {
 		upstreamRequests = append(upstreamRequests, upstreamReq)
 	}
 
-	return &Request{
+	return &server_ctx.Request{
 		Chain:            j.preReq.Chain,
 		UpstreamRequests: upstreamRequests,
 	}, nil

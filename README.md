@@ -8,18 +8,18 @@ A fault-tolerant, API-agnostic RPC load balancer for blockchain APIs.
 
 nodecore sits in front of your blockchain RPC providers and intelligently distributes requests across them, optimizing for performance metrics such as latency, throughput, and error rate. It continuously scores upstreams in real time and routes each request to the one best able to serve it — with caching, hedging, retries, rate-limiting, and quorum verification layered in.
 
-nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It speaks JSON-RPC, WebSocket, and REST interfaces, so it can front any blockchain API rather than only EVM JSON-RPC.
+nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It speaks JSON-RPC, WebSocket, REST, and gRPC interfaces, so it can front any blockchain API rather than only EVM JSON-RPC.
 
 ### Supported chains, methods & interfaces
 
-- **Interfaces** — `json-rpc` (over HTTP), `websocket`, `rest`, and `tendermint` upstream connectors. The set available for a given chain is declared by that chain's [method spec](docs/nodecore/11-method-specs.md).
-- **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), Cosmos SDK (CometBFT RPC + LCD REST), Polkadot/Substrate (polkadot, kusama, vara, avail, asset hubs and more), Stellar (stellar-rpc + Horizon), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
+- **Interfaces** — `json-rpc` (over HTTP), `websocket`, `rest`, `tendermint`, and `grpc` upstream connectors. The set available for a given chain is declared by that chain's [method spec](docs/nodecore/11-method-specs.md).
+- **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), Cosmos SDK (CometBFT RPC + LCD REST), Polkadot/Substrate (polkadot, kusama, vara, avail, asset hubs and more), Stellar (stellar-rpc + Horizon), Sui (native gRPC, `sui.rpc.v2`), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
 - **Methods** — per-chain RPC behavior is data-driven via [method specs](docs/nodecore/11-method-specs.md), covering standard EVM/Solana methods, subscriptions, and EVM filter methods. Methods unsupported by an upstream are automatically banned for it to avoid wasted requests.
 
 ## Key features
 
 - **Intelligent routing** — dynamically selects the most suitable upstream based on real-time performance metrics (latency, error rate, availability) for optimal speed, reliability, and fault-tolerance. See [Upstream config](docs/nodecore/05-upstream-config.md).
-- **API/protocol-agnostic** — JSON-RPC, WebSocket, and REST interfaces across EVM, Solana, Algorand, Aztec, Aptos, Bitcoin, NEAR, Starknet, TON, Cosmos SDK, Polkadot/Substrate, Stellar, and the Ethereum/Gnosis Beacon Chain, all driven by data-defined [method specs](docs/nodecore/11-method-specs.md). Cosmos chains are reachable over both shapes of the CometBFT RPC (JSON-RPC and URI calls) plus the LCD REST API. EVM filter methods (`eth_newFilter`, `eth_getFilterLogs`, etc.) are routed only to the upstream where the filter was created.
+- **API/protocol-agnostic** — JSON-RPC, WebSocket, REST, and gRPC interfaces across EVM, Solana, Algorand, Aztec, Aptos, Bitcoin, NEAR, Starknet, TON, Cosmos SDK, Polkadot/Substrate, Stellar, Sui, and the Ethereum/Gnosis Beacon Chain, all driven by data-defined [method specs](docs/nodecore/11-method-specs.md). Cosmos chains are reachable over both shapes of the CometBFT RPC (JSON-RPC and URI calls) plus the LCD REST API. EVM filter methods (`eth_newFilter`, `eth_getFilterLogs`, etc.) are routed only to the upstream where the filter was created. Sui is served over native gRPC with full server reflection — grpcurl and Postman work against nodecore as against a node. See [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md).
 - **Subscriptions** — WebSocket subscriptions are aggregated so many identical client subscriptions share one upstream stream, with optional local synthesis of EVM topics (`newHeads`, `logs`, pending transactions). See [Subscriptions](docs/nodecore/13-subscriptions.md).
 - **Caching** — minimizes redundant traffic by caching frequent requests across in-memory/Redis/Postgres backends with configurable policies. See [Cache](docs/nodecore/04-cache.md).
 - **Failsafe mechanisms** — request hedging (duplicate slow requests to multiple upstreams) and configurable automatic retries. See [Upstream config](docs/nodecore/05-upstream-config.md).
@@ -114,8 +114,9 @@ Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical conf
 | [Integration](docs/nodecore/09-integration.md) | DRPC platform integration |
 | [Quorum](docs/nodecore/10-quorum.md) | Signed-response quorum verification |
 | [Method specs](docs/nodecore/11-method-specs.md) | Per-chain method definitions and how to extend them |
-| [gRPC API](docs/nodecore/12-grpc-server.md) | Public gRPC API for upstream and chain state |
+| [gRPC API](docs/nodecore/12-grpc-server.md) | Public gRPC API for upstream and chain state (dshackle-compatible) |
 | [Subscriptions](docs/nodecore/13-subscriptions.md) | Subscription aggregation and local synthesis |
+| [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md) | Native gRPC chain traffic: metadata contract, auth, reflection |
 
 ## Integrations
 

@@ -4,3 +4,6 @@
 [submodule "emerald-grpc"]
 	path = emerald-grpc
 	url = https://github.com/drpcorg/emerald-grpc
+[submodule "chain-apis/sui"]
+	path = chain-apis/sui
+	url = https://github.com/MystenLabs/sui-apis

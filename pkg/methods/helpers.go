@@ -2,6 +2,8 @@ package specs
 
 import (
 	"maps"
+	"slices"
+	"strings"
 
 	mapset "github.com/deckarep/golang-set/v2"
 )
@@ -161,4 +163,30 @@ func overlayMethodGroups(dst, src *methodGroups, selectedMethods map[string]stru
 			}
 		}
 	}
+}
+
+// GetGrpcServices returns the full gRPC service names
+// ("sui.rpc.v2.LedgerService") of every method declared across the loaded
+// specs for the grpc connector, sorted. The gRPC ingress serves reflection
+// from this list - it advertises exactly what the specs can route.
+func GetGrpcServices() []string {
+	services := mapset.NewThreadUnsafeSet[string]()
+	for _, spec := range resolvedSpecs {
+		if spec.connectors == nil {
+			continue
+		}
+		grpcMethods, ok := spec.connectors.byConnector[GrpcConnector]
+		if !ok || grpcMethods == nil {
+			continue
+		}
+		for name := range grpcMethods.defaultMethods() {
+			// "/sui.rpc.v2.LedgerService/GetObject" -> "sui.rpc.v2.LedgerService"
+			if service, _, found := strings.Cut(strings.TrimPrefix(name, "/"), "/"); found {
+				services.Add(service)
+			}
+		}
+	}
+	sorted := services.ToSlice()
+	slices.Sort(sorted)
+	return sorted
 }

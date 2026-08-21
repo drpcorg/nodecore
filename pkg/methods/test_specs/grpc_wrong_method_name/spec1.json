@@ -1,0 +1,13 @@
+{
+  "spec": {
+    "api-connectors": ["grpc"],
+    "name": "test",
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "getObject",
+      "params": []
+    }
+  ]
+}

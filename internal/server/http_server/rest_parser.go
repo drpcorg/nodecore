@@ -6,6 +6,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
@@ -62,27 +63,11 @@ func parseRestRequest(req *http.Request, restPath, specName string) (
 
 	requestParams = &protocol.RequestParams{
 		PathParams:  params,
-		Headers:     cloneHeaders(req.Header),
+		Headers:     server_ctx.SanitizeForwardedHeaders(req.Header),
 		QueryParams: filteredQuery(req.URL.Query()),
 	}
 
 	return methodTemplate, requestParams, nil
-}
-
-// cloneHeaders deep-copies http.Header into the protocol-level map. The
-// http.Header type is already map[string][]string under the hood; we copy
-// the slices so later mutation of either side doesn't bleed into the other.
-func cloneHeaders(src http.Header) map[string][]string {
-	if len(src) == 0 {
-		return nil
-	}
-	out := make(map[string][]string, len(src))
-	for k, vs := range src {
-		copied := make([]string, len(vs))
-		copy(copied, vs)
-		out[k] = copied
-	}
-	return out
 }
 
 // filteredQuery returns the request query with reservedQueryParams removed,

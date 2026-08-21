@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/integration"
@@ -46,22 +45,6 @@ type AuthProcessor interface {
 	PostKeyValidate(ctx context.Context, payload AuthPayload, request protocol.RequestHolder) error
 	GetKeyValue(payload AuthPayload) string
 }
-
-type AuthPayload interface {
-	payload()
-}
-
-type HttpAuthPayload struct {
-	httpRequest *http.Request
-}
-
-func NewHttpAuthPayload(httpRequest *http.Request) *HttpAuthPayload {
-	return &HttpAuthPayload{
-		httpRequest: httpRequest,
-	}
-}
-
-func (h *HttpAuthPayload) payload() {}
 
 type basicAuthProcessor struct {
 	requestStrategy AuthRequestStrategy
@@ -116,6 +99,11 @@ func getPayloadKey(payload AuthPayload) string {
 		keyStr = p.httpRequest.PathValue("key")
 		if keyStr == "" {
 			keyStr = p.httpRequest.Header.Get(XNodecoreKey)
+		}
+	case *GrpcAuthPayload:
+		values := p.md.Get(XNodecoreKey)
+		if len(values) > 0 {
+			keyStr = values[0]
 		}
 	}
 	return keyStr

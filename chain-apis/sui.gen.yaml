@@ -1,0 +1,29 @@
+# buf v2 generation template for the Sui protos (chain-apis/sui submodule,
+# pinned to a MystenLabs/sui-apis commit). Message types only, no client
+# stubs - chain families build RequestHolders, they never dial.
+# protoc-gen-go comes from go.mod (tool directive), so the generator and the
+# protobuf runtime can never drift.
+#
+# Inputs are the exact transitive closure of ledger_service.proto - the only
+# file whose messages nodecore consumes (GetServiceInfoRequest/Response for
+# the probes). Codegen is per-file, so the other RPCs in that file pull their
+# whole data model with them; the remaining v2 service files
+# (state/name/subscription/transaction_execution/signature_verification/
+# move_package + error_reason) are deliberately NOT generated. The list is
+# fail-closed on purpose: a new upstream import shows up as a compile error
+# in pkg/sui and gets added here consciously.
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      path: sui/rpc/v2
+      value: github.com/drpcorg/nodecore/pkg/sui
+plugins:
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: pkg/sui
+    opt: module=github.com/drpcorg/nodecore/pkg/sui
+inputs:
+  - directory: chain-apis/sui/proto
+    paths:
+      - chain-apis/sui/proto/sui/rpc/v2

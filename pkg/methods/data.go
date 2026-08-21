@@ -3,6 +3,7 @@ package specs
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 
 	"github.com/bytedance/sonic"
@@ -57,6 +58,22 @@ type MethodSettings struct {
 	Subscription     *Subscription  `json:"subscription"`
 	Local            bool           `json:"local"`
 	Dispatch         DispatchPolicy `json:"dispatch"`
+	Grpc             *GrpcSettings  `json:"grpc"`
+}
+
+type GrpcSettings struct {
+	CallType GrpcCallType `json:"call-type"`
+}
+
+type GrpcCallType string
+
+const (
+	GrpcCallTypeUnary        GrpcCallType = "unary"
+	GrpcCallTypeServerStream GrpcCallType = "server-stream"
+)
+
+func (m *MethodSettings) isGrpcServerStream() bool {
+	return m.Grpc != nil && m.Grpc.CallType == GrpcCallTypeServerStream
 }
 
 type DispatchPolicy string
@@ -102,11 +119,13 @@ func (m *MethodData) setDefaults() {
 		m.Enabled = new(true)
 	}
 	if m.Settings == nil {
-		m.Settings = &MethodSettings{Cacheable: new(true)}
-	} else {
-		if m.Settings.Cacheable == nil {
-			m.Settings.Cacheable = new(true)
-		}
+		m.Settings = &MethodSettings{}
+	}
+	if m.Settings.Grpc != nil && m.Settings.Grpc.CallType == "" {
+		m.Settings.Grpc.CallType = GrpcCallTypeUnary
+	}
+	if m.Settings.Cacheable == nil {
+		m.Settings.Cacheable = new(!m.Settings.isGrpcServerStream())
 	}
 }
 
@@ -131,6 +150,24 @@ func (m *MethodSpec) validate() error {
 	if m.SpecData.specType == PlainSpec {
 		if len(m.SpecData.ApiConnectors) == 0 {
 			return errors.New("plain spec api connectors must not be empty")
+		}
+	}
+	return m.validateGrpcMethods()
+}
+
+var grpcMethodNamePattern = regexp.MustCompile(`^/(?:[A-Za-z_][A-Za-z0-9_]*\.)+[A-Za-z_][A-Za-z0-9_]*/[A-Za-z_][A-Za-z0-9_]*$`)
+
+func (m *MethodSpec) validateGrpcMethods() error {
+	hasGrpcConnector := slices.Contains(m.SpecData.apiConnectors, GrpcConnector)
+	for _, method := range m.Methods {
+		if !hasGrpcConnector {
+			if method.Settings != nil && method.Settings.Grpc != nil {
+				return fmt.Errorf("method '%s' has grpc settings but the spec has no grpc api connector", method.Name)
+			}
+			continue
+		}
+		if !grpcMethodNamePattern.MatchString(method.Name) {
+			return fmt.Errorf("invalid grpc method name '%s', expected the '/package.Service/Method' shape", method.Name)
 		}
 	}
 	return nil
@@ -171,7 +208,32 @@ func (m *MethodSettings) validate() error {
 			return errors.New("both 'create-sticky' and 'send-sticky' are enabled")
 		}
 	}
+	if m.Grpc != nil {
+		if err := m.Grpc.CallType.validate(); err != nil {
+			return err
+		}
+		if m.Grpc.CallType == GrpcCallTypeServerStream {
+			if m.Cacheable != nil && *m.Cacheable {
+				return errors.New("server-stream methods cannot be cacheable")
+			}
+			if m.Dispatch != DispatchDefault {
+				return errors.New("dispatch cannot be used with server-stream methods")
+			}
+			if m.Sticky != nil && (m.Sticky.SendSticky || m.Sticky.CreateSticky) {
+				return errors.New("sticky cannot be used with server-stream methods")
+			}
+		}
+	}
 	return nil
+}
+
+func (g GrpcCallType) validate() error {
+	switch g {
+	case "", GrpcCallTypeUnary, GrpcCallTypeServerStream:
+		return nil
+	default:
+		return fmt.Errorf("unknown grpc call-type - %s", g)
+	}
 }
 
 func (d DispatchPolicy) validate() error {

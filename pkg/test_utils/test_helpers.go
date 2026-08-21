@@ -24,6 +24,7 @@ import (
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/stellar_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/sui_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
@@ -316,6 +317,12 @@ func NewStellarRpcChainSpecific(ctx context.Context, connector connectors.ApiCon
 func NewStellarHorizonChainSpecific(ctx context.Context, connector connectors.ApiConnector) *stellar_specific.StellarHorizonChainSpecificObject {
 	return stellar_specific.NewStellarHorizonChainSpecificObject(
 		ctx, chains.GetChain("stellar"), "id", connector, time.Second, newTestChainOptions(),
+	)
+}
+
+func NewSuiChainSpecific(ctx context.Context, connector connectors.ApiConnector) *sui_specific.SuiChainSpecificObject {
+	return sui_specific.NewSuiChainSpecificObject(
+		ctx, chains.GetChain("sui"), "id", connector, time.Second, newTestChainOptions(),
 	)
 }
 

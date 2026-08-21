@@ -1,0 +1,21 @@
+{
+  "spec": {
+    "api-connectors": ["grpc"],
+    "name": "test",
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "/pkg.Service/Method",
+      "params": [],
+      "settings": {
+        "sticky": {
+          "send-sticky": true
+        },
+        "grpc": {
+          "call-type": "server-stream"
+        }
+      }
+    }
+  ]
+}

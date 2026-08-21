@@ -396,3 +396,59 @@ func TestStellarSpecLoads(t *testing.T) {
 	assert.Equal(t, "GET#/paths/strict-send", template)
 	assert.Empty(t, params)
 }
+
+func TestLoadSpecGrpcDefaults(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc")).Load()
+	assert.NoError(t, err)
+
+	method := specs.GetSpecMethod("grpc_test", "/pkg.Service/UnaryNoSettings")
+	assert.NotNil(t, method)
+	assert.Equal(t, specs.GrpcCallTypeUnary, method.GrpcCallType())
+	assert.True(t, method.IsCacheable())
+
+	method = specs.GetSpecMethod("grpc_test", "/pkg.Service/UnaryExplicit")
+	assert.NotNil(t, method)
+	assert.Equal(t, specs.GrpcCallTypeUnary, method.GrpcCallType())
+
+	// server-stream methods must never default to cacheable
+	method = specs.GetSpecMethod("grpc_test", "/pkg.Service/StreamNoCacheable")
+	assert.NotNil(t, method)
+	assert.Equal(t, specs.GrpcCallTypeServerStream, method.GrpcCallType())
+	assert.False(t, method.IsCacheable())
+}
+
+func TestLoadSpecGrpcWrongCallTypeThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_wrong_call_type")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method '/pkg.Service/Method' of 'spec1.json' validation, cause: unknown grpc call-type - bidi")
+}
+
+func TestLoadSpecGrpcSettingsWithoutGrpcConnectorThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_settings_without_connector")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: file - 'spec1.json', spec validation error: method 'eth_call' has grpc settings but the spec has no grpc api connector")
+}
+
+func TestLoadSpecGrpcWrongMethodNameThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_wrong_method_name")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: file - 'spec1.json', spec validation error: invalid grpc method name 'getObject', expected the '/package.Service/Method' shape")
+}
+
+func TestLoadSpecGrpcServerStreamCacheableThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_server_stream_cacheable")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method '/pkg.Service/Method' of 'spec1.json' validation, cause: server-stream methods cannot be cacheable")
+}
+
+func TestLoadSpecGrpcServerStreamStickyThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_server_stream_sticky")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method '/pkg.Service/Method' of 'spec1.json' validation, cause: sticky cannot be used with server-stream methods")
+}
+
+func TestLoadSpecGrpcServerStreamDispatchThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_server_stream_dispatch")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method '/pkg.Service/Method' of 'spec1.json' validation, cause: dispatch cannot be used with server-stream methods")
+}
