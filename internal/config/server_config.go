@@ -22,6 +22,12 @@ type ServerConfig struct {
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
 	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
 	TorUrl          string           `yaml:"tor-url"`
+	// GrpcIngressPort runs the chain-ingress gRPC server: native gRPC clients
+	// call chain methods ("/sui.rpc.v2.../GetObject") directly, with the chain
+	// and api key in the x-nodecore-chain / x-nodecore-key metadata. It is a separate
+	// server from the dshackle one on grpc-port (different clients, auth and
+	// codec), reusing the same tls config. 0 (the default) disables it.
+	GrpcIngressPort int `yaml:"grpc-ingress-port"`
 	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies in front of
 	// nodecore. X-Forwarded-For is only honored when the direct peer matches one
 	// of these; otherwise the direct peer is used as the client IP. Empty (the
@@ -94,6 +100,9 @@ func (s *ServerConfig) validate() error {
 	if s.GrpcPort < 0 {
 		return fmt.Errorf("incorrect grpc port - %d", s.GrpcPort)
 	}
+	if s.GrpcIngressPort < 0 {
+		return fmt.Errorf("incorrect grpc ingress port - %d", s.GrpcIngressPort)
+	}
 	if s.MetricsPort < 0 {
 		return fmt.Errorf("incorrect metrics port - %d", s.MetricsPort)
 	}
@@ -109,6 +118,10 @@ func (s *ServerConfig) validate() error {
 		return fmt.Errorf("grpc port %d is already in use", s.GrpcPort)
 	}
 	ports.Add(s.GrpcPort)
+	if ports.Contains(s.GrpcIngressPort) && s.GrpcIngressPort != 0 {
+		return fmt.Errorf("grpc ingress port %d is already in use", s.GrpcIngressPort)
+	}
+	ports.Add(s.GrpcIngressPort)
 	if ports.Contains(s.MetricsPort) && s.MetricsPort != 0 {
 		return fmt.Errorf("metrics port %d is already in use", s.MetricsPort)
 	}

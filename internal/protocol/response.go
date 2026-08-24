@@ -20,6 +20,14 @@ type HasResponseHeaders interface {
 	ResponseHeaders() http.Header
 }
 
+// HasResponseTrailers is an optional capability for response holders that
+// carry upstream gRPC trailer metadata. Only the gRPC ingress consumes it -
+// a gRPC client must receive trailers *as* trailers, not folded into the
+// initial metadata. Keys follow gRPC metadata convention (lowercase).
+type HasResponseTrailers interface {
+	ResponseTrailers() map[string][]string
+}
+
 // noStreamHint is embedded by response types that never carry a streaming
 // result hint (subscriptions, ws, errors); it satisfies the GetStreamHint part
 // of ResponseHolder with a nil hint.
@@ -298,13 +306,14 @@ func (w *WsJsonRpcResponse) ResponseCode() int {
 }
 
 type GenericUpstreamResponse struct {
-	id              string
-	result          []byte
-	error           *ResponseError
-	requestType     RequestType
-	stream          io.Reader
-	responseCode    int
-	responseHeaders http.Header
+	id               string
+	result           []byte
+	error            *ResponseError
+	requestType      RequestType
+	stream           io.Reader
+	responseCode     int
+	responseHeaders  http.Header
+	responseTrailers map[string][]string
 	// streamHint carries the single-pass first-chunk analysis (see
 	// AnalyzeFirstChunk) for a streaming response, so the gRPC result-unwrap
 	// consumer can emit the "result" value without re-scanning the chunk. It is
@@ -323,6 +332,15 @@ func (h *GenericUpstreamResponse) ResponseHeaders() http.Header {
 
 func (h *GenericUpstreamResponse) WithResponseHeaders(headers http.Header) *GenericUpstreamResponse {
 	h.responseHeaders = headers
+	return h
+}
+
+func (h *GenericUpstreamResponse) ResponseTrailers() map[string][]string {
+	return h.responseTrailers
+}
+
+func (h *GenericUpstreamResponse) WithResponseTrailers(trailers map[string][]string) *GenericUpstreamResponse {
+	h.responseTrailers = trailers
 	return h
 }
 
@@ -496,6 +514,28 @@ type ReplyError struct {
 	ErrorKind     ResponseErrorKind
 	responseError *ResponseError
 	responseType  RequestType
+	// upstream response metadata may ride on error replies too - e.g. a
+	// RESOURCE_EXHAUSTED carrying rate-limit hints in its trailers
+	responseHeaders  http.Header
+	responseTrailers map[string][]string
+}
+
+func (r *ReplyError) ResponseHeaders() http.Header {
+	return r.responseHeaders
+}
+
+func (r *ReplyError) WithResponseHeaders(headers http.Header) *ReplyError {
+	r.responseHeaders = headers
+	return r
+}
+
+func (r *ReplyError) ResponseTrailers() map[string][]string {
+	return r.responseTrailers
+}
+
+func (r *ReplyError) WithResponseTrailers(trailers map[string][]string) *ReplyError {
+	r.responseTrailers = trailers
+	return r
 }
 
 func (r *ReplyError) ResponseCode() int {

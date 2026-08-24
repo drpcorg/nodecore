@@ -139,6 +139,9 @@ func createHead(
 		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
 	case specs.WebsocketConnector:
 		return NewSubHead(ctx, id, options.InternalTimeout, headConnector, specific)
+	case specs.GrpcConnector:
+		// TODO: will be fixed since grpc can work via polling and head subscription at the same time
+		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
 	default:
 		return nil
 	}

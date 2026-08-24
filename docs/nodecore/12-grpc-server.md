@@ -4,6 +4,8 @@ In addition to the HTTP JSON-RPC entrypoint described in the other docs, nodecor
 
 This API is intended for external consumption - dashboards, automation, multi-chain wallets, or any service that wants a typed, streaming view of the nodes that nodecore is fronting. It is not a control plane.
 
+> Looking for **native gRPC chain traffic** (calling a chain's own gRPC API, e.g. Sui's `sui.rpc.v2`, through nodecore)? That is a separate server on `server.grpc-ingress-port` — see [gRPC chain ingress](14-grpc-ingress.md).
+
 ## Enabling
 
 The gRPC server is off unless `server.grpc-port` is set. Optionally enable signed-session authentication via `server.grpc-auth`:

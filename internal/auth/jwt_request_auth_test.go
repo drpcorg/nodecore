@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/metadata"
 )
 
 // keyFormat enumerates how to encode the public key file for loadPubKey()
@@ -318,4 +319,42 @@ func TestJWTStrategy_ExpirationRequired_Various(t *testing.T) {
 	payload3 := auth.NewHttpAuthPayload(req3)
 	err = strat.AuthenticateRequest(context.Background(), payload3)
 	assert.ErrorContains(t, err, "unable to parse jwt token:")
+}
+
+func TestJWTStrategy_GrpcPayload_Success(t *testing.T) {
+	priv := genRSAKey(t)
+	strat := newJWTStrategy(t, writePubKeyFile(t, &priv.PublicKey, pubPKIX), "", false)
+	tokenStr := signRS256(t, jwt.MapClaims{"sub": "user1"}, priv)
+
+	// "authorization" is the conventional gRPC metadata key for bearer credentials
+	payload := auth.NewGrpcAuthPayload(metadata.Pairs("authorization", "Bearer "+tokenStr))
+
+	assert.NoError(t, strat.AuthenticateRequest(context.Background(), payload))
+}
+
+func TestJWTStrategy_GrpcPayload_MissingAuthorization(t *testing.T) {
+	priv := genRSAKey(t)
+	strat := newJWTStrategy(t, writePubKeyFile(t, &priv.PublicKey, pubPKIX), "", false)
+
+	err := strat.AuthenticateRequest(context.Background(), auth.NewGrpcAuthPayload(metadata.MD{}))
+	assert.ErrorContains(t, err, "missing Authorization header")
+}
+
+func TestJWTStrategy_GrpcPayload_InvalidFormat(t *testing.T) {
+	priv := genRSAKey(t)
+	strat := newJWTStrategy(t, writePubKeyFile(t, &priv.PublicKey, pubPKIX), "", false)
+
+	payload := auth.NewGrpcAuthPayload(metadata.Pairs("authorization", "Bearer "))
+	err := strat.AuthenticateRequest(context.Background(), payload)
+	assert.ErrorContains(t, err, "invalid Authorization header format")
+}
+
+func TestJWTStrategy_GrpcPayload_WrongSignature(t *testing.T) {
+	priv := genRSAKey(t)
+	strat := newJWTStrategy(t, writePubKeyFile(t, &priv.PublicKey, pubPKIX), "", false)
+	tokenStr := signRS256(t, jwt.MapClaims{"sub": "user1"}, genRSAKey(t)) // signed by another key
+
+	payload := auth.NewGrpcAuthPayload(metadata.Pairs("authorization", "Bearer "+tokenStr))
+	err := strat.AuthenticateRequest(context.Background(), payload)
+	assert.ErrorContains(t, err, "unable to parse jwt token")
 }

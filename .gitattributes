@@ -1,0 +1,4 @@
+pkg/sui/*.pb.go linguist-generated=true
+pkg/chains/chains_data.go linguist-generated=true
+pkg/dshackle/*.pb.go linguist-generated=true
+internal/stats/api/*.pb.go linguist-generated=true

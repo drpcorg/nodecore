@@ -50,12 +50,23 @@ func newTokenRequestStrategy(tokenAuthCfg *config.TokenRequestStrategyConfig) *t
 	}
 }
 
+var errInvalidToken = errors.New("invalid secret token")
+
 func (t *tokenRequestStrategy) AuthenticateRequest(_ context.Context, payload AuthPayload) error {
 	switch p := payload.(type) {
 	case *HttpAuthPayload:
 		requestTokenValue := p.httpRequest.Header.Get(XNodecoreToken)
 		if requestTokenValue != t.token {
-			return errors.New("invalid secret token")
+			return errInvalidToken
+		}
+		return nil
+	case *GrpcAuthPayload:
+		requestTokenValue := ""
+		if values := p.md.Get(XNodecoreToken); len(values) > 0 {
+			requestTokenValue = values[0]
+		}
+		if requestTokenValue != t.token {
+			return errInvalidToken
 		}
 		return nil
 	}

@@ -213,7 +213,7 @@ func sendUnaryRequest(
 		response = translator.TranslateResponse(request, upstreamRequest, upstream.GetCurrentHeadHeight(), response)
 	}
 
-	if response.ResponseCode() == http.StatusTooManyRequests && upstream.GetUpstreamState().AutoTuneRateLimiter != nil {
+	if (response.ResponseCode() == http.StatusTooManyRequests || protocol.IsGrpcRateLimited(response)) && upstream.GetUpstreamState().AutoTuneRateLimiter != nil {
 		upstream.GetUpstreamState().AutoTuneRateLimiter.IncErrors()
 	}
 	upstreamState := upstream.GetUpstreamState()

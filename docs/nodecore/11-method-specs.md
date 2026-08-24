@@ -71,7 +71,8 @@ Each method object:
   "local": false,
   "dispatch": "broadcast",
   "sticky": { "send-sticky": false, "create-sticky": false },
-  "subscription": { "is-subscribe": false, "method": "subscribe", "unsubscribe-method": "unsubscribe" }
+  "subscription": { "is-subscribe": false, "method": "subscribe", "unsubscribe-method": "unsubscribe" },
+  "grpc": { "call-type": "server-stream" }
 }
 ```
 
@@ -93,6 +94,10 @@ Each method object:
   - All dispatch policy toggles are disabled by default in `default` mode and enabled by default in `strict` mode.
   - Dispatch methods must not be `local`, `subscription`, or sticky methods. Fan-out policies (`broadcast`, `maximum-value`) bypass the normal cache processor path because one client request intentionally maps to multiple upstream calls. `not-null` also bypasses the cache path so a cached `null` cannot prevent retrying another upstream.
   - Dispatch increases upstream load and usually makes latency depend on the slowest selected upstream, bounded by existing connector/request timeouts.
+
+- `grpc` (object) — only in specs whose `api-connectors` include `grpc`:
+  - `call-type` (string) — `unary` (the default when the block is absent; only streaming methods carry an annotation) or `server-stream`. Arity is **not encoded on the gRPC wire**, so the spec is the only source of it — the [gRPC chain ingress](14-grpc-ingress.md) uses it to reject server-streaming methods with `UNIMPLEMENTED` in this version. Server-streaming methods are deliberately *listed* (with `cacheable: false`) so clients get an honest "not supported yet" instead of "unknown method"; client-streaming/bidi methods are never listed — absence is the rejection.
+  - In gRPC specs every method `name` is the full method string (`/sui.rpc.v2.LedgerService/GetObject`, exact-match lookup, no templates) and must match the `/package.Service/Method` shape. `server-stream` is mutually exclusive with `sticky`, `dispatch` and `cacheable: true` (and defaults to non-cacheable).
 
 ### `tag-parser`
 
@@ -231,6 +236,7 @@ nodecore embeds the specs below (see [`pkg/methods/specs/`](../../pkg/methods/sp
 | `stellar` | `stellar-json-rpc`, `stellar-horizon` |
 | `ton` | `ton-http-v2`, `ton-index-v3` |
 | `cosmos` | `cosmos-tendermint`, `cosmos-rest` |
+| `sui` | `sui-grpc` |
 | `polkadot` | `polkadot-json-rpc`, `polkadot-websocket` |
 | `astar` | `eth`, `polkadot` |
 
@@ -246,6 +252,7 @@ Grouped by the transports they declare:
 | `tendermint` | `cosmos-tendermint` |
 | `rest` | `aptos`, `cosmos-rest`, `eth-beacon-chain`, `stellar-horizon`, `ton-http-v2`, `tron-rest` |
 | `rest-indexer` | `ton-index-v3` |
+| `grpc` | `sui-grpc` |
 | `rest-additional` | `bitcoin-esplora`, `hyperliquid-rest-additional`, `tron-rest-solidity` |
 
 ## Adding a new method

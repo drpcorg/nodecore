@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +21,7 @@ func TestJsonRpcHandlerRejectsNonUtf8Method(t *testing.T) {
 	body := "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_\xffblockNumber\",\"params\":[]}"
 
 	handler, err := NewJsonRpcHandler(
-		&Request{Chain: "ethereum"},
+		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
 	)
@@ -36,7 +37,7 @@ func TestJsonRpcHandlerRejectsNonUtf8MethodInBatch(t *testing.T) {
 		"{\"id\":2,\"jsonrpc\":\"2.0\",\"method\":\"eth_\xffcall\",\"params\":[]}]"
 
 	handler, err := NewJsonRpcHandler(
-		&Request{Chain: "ethereum"},
+		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
 	)

@@ -41,7 +41,7 @@ upstream-config:
           url: https://path-to-polygon-provider.com
 ```
 
-> **Supported chains and protocols**: nodecore supports the chains defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, Fantom, Linea, Mantle, Scroll, zkSync, and others), Solana, Algorand, Aztec, and Aptos. Supported upstream protocols are `json-rpc`, `websocket`, `rest`; the exact set available for each chain is declared by the chain's method spec (see [Method specs](11-method-specs.md)).
+> **Supported chains and protocols**: nodecore supports the chains defined in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin, NEAR, Starknet, TON, Cosmos SDK, Polkadot/Substrate, Stellar, Sui, and the Ethereum/Gnosis Beacon Chain. Supported upstream protocols are `json-rpc`, `websocket`, `rest`, `tendermint`, and `grpc`; the exact set available for each chain is declared by the chain's method spec (see [Method specs](11-method-specs.md)).
 
 ## Full configuration
 
@@ -51,6 +51,7 @@ To configure all aspects of nodecore, you can use the following example, which d
 server:
   port: 9090
   grpc-port: 9091
+  grpc-ingress-port: 9095
   metrics-port: 9093
   pprof-port: 6061
   tls:

@@ -37,18 +37,26 @@ func newJwtRequestStrategy(jwtAuthCfg *config.JwtRequestStrategyConfig) (*jwtReq
 }
 
 func (j *jwtRequestStrategy) AuthenticateRequest(ctx context.Context, payload AuthPayload) error {
-	var token string
+	var authHeader string
 	switch p := payload.(type) {
 	case *HttpAuthPayload:
-		authHeader := p.httpRequest.Header.Get("Authorization")
-		if authHeader == "" {
-			return errors.New("missing Authorization header")
+		authHeader = p.httpRequest.Header.Get("Authorization")
+	case *GrpcAuthPayload:
+		// "authorization" is the conventional gRPC metadata key for bearer
+		// credentials (what grpc-go's own credentials/oauth uses)
+		if values := p.md.Get("authorization"); len(values) > 0 {
+			authHeader = values[0]
 		}
-		if !strings.HasPrefix(authHeader, Prefix) || len(authHeader) <= len(Prefix) {
-			return errors.New("invalid Authorization header format")
-		}
-		token = strings.TrimSpace(authHeader[len(Prefix):])
+	default:
+		return errors.New("invalid payload")
 	}
+	if authHeader == "" {
+		return errors.New("missing Authorization header")
+	}
+	if !strings.HasPrefix(authHeader, Prefix) || len(authHeader) <= len(Prefix) {
+		return errors.New("invalid Authorization header format")
+	}
+	token := strings.TrimSpace(authHeader[len(Prefix):])
 
 	parsedOptions := make([]jwt.ParserOption, 0)
 	if j.expirationRequired {

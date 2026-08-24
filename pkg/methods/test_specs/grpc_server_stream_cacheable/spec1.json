@@ -1,0 +1,19 @@
+{
+  "spec": {
+    "api-connectors": ["grpc"],
+    "name": "test",
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "/pkg.Service/Method",
+      "params": [],
+      "settings": {
+        "cacheable": true,
+        "grpc": {
+          "call-type": "server-stream"
+        }
+      }
+    }
+  ]
+}

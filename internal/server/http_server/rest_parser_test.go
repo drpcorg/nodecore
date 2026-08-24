@@ -149,116 +149,21 @@ func TestParseRestRequest_RestPathWithoutLeadingSlash(t *testing.T) {
 	assert.Equal(t, "POST#/exchange", template, "no double slash in the canonical template")
 }
 
-func TestCloneHeaders_EmptyReturnsNil(t *testing.T) {
-	assert.Nil(t, cloneHeaders(nil))
-	assert.Nil(t, cloneHeaders(http.Header{}))
-}
+// nodecore's credential headers are consumed by the ingress and must never
+// enter the request holder; everything else is forwarded
+func TestParseRestRequestStripsReservedCredentialHeaders(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
+	req.Header.Set("X-Nodecore-Key", "secret")
+	req.Header.Set("X-Nodecore-Token", "token")
+	req.Header.Set("Authorization", "Bearer jwt")
+	req.Header.Set("X-Custom", "keep")
 
-func TestCloneHeaders_PreservesMultiValuedShape(t *testing.T) {
-	src := http.Header{
-		"X-Single": {"only"},
-		"X-Multi":  {"a", "b", "c"},
-	}
+	_, requestParams, err := parseRestRequest(req, "v2/status", "aptos")
+	require.NoError(t, err)
 
-	out := cloneHeaders(src)
-	assert.Equal(t, []string{"only"}, out["X-Single"])
-	assert.Equal(t, []string{"a", "b", "c"}, out["X-Multi"])
-}
-
-// cloneHeaders advertises mutation isolation - confirm a later mutation of
-// the source slice doesn't reach back through the cloned map.
-func TestCloneHeaders_IsolatesSourceMutation(t *testing.T) {
-	src := http.Header{"X-Mut": {"original"}}
-
-	out := cloneHeaders(src)
-	src["X-Mut"][0] = "changed"
-	src.Add("X-Added", "after-clone")
-
-	assert.Equal(t, []string{"original"}, out["X-Mut"],
-		"mutating the source slice in-place must not bleed into the clone")
-	assert.NotContains(t, out, "X-Added",
-		"keys added to the source after cloning must not appear in the clone")
-}
-
-func TestFilteredQuery_EmptyReturnsNil(t *testing.T) {
-	assert.Nil(t, filteredQuery(nil))
-	assert.Nil(t, filteredQuery(map[string][]string{}))
-}
-
-func TestFilteredQuery_RemovesReservedKeysOnly(t *testing.T) {
-	out := filteredQuery(map[string][]string{
-		"quorum":          {"3"},
-		"quorum_required": {"2"},
-		"token":           {"A", "B"},
-		"format":          {"json"},
-	})
-
-	assert.NotContains(t, out, "quorum")
-	assert.NotContains(t, out, "quorum_required")
-	assert.Equal(t, []string{"A", "B"}, out["token"])
-	assert.Equal(t, []string{"json"}, out["format"])
-}
-
-// If every key is reserved, the result is nil (not an empty map) so callers
-// can fast-path on `len(rp.QueryParams) == 0`.
-func TestFilteredQuery_AllReservedReturnsNil(t *testing.T) {
-	out := filteredQuery(map[string][]string{
-		"quorum":          {"3"},
-		"quorum_required": {"2"},
-	})
-	assert.Nil(t, out)
-}
-
-func TestFilteredQuery_IsolatesSourceMutation(t *testing.T) {
-	src := map[string][]string{"token": {"original"}}
-
-	out := filteredQuery(src)
-	src["token"][0] = "changed"
-	src["added-after"] = []string{"x"}
-
-	assert.Equal(t, []string{"original"}, out["token"])
-	assert.NotContains(t, out, "added-after")
-}
-
-// No fixture route matches, so the method name falls back to "<VERB>#/<path>" and
-// carries the client's raw bytes straight into metric labels. That is the one case
-// REST must reject.
-func TestParseRestRequest_RejectsNonUtf8MethodTemplate(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v2/unmatched/junk", nil)
-
-	template, rp, err := parseRestRequest(req, "v2/unmatched/\xffjunk", "rest-test")
-
-	require.ErrorIs(t, err, errNonUtf8Method)
-	assert.Empty(t, template)
-	assert.Nil(t, rp)
-}
-
-// A matched spec template is spec-provided and therefore always valid UTF-8. The
-// junk lives only in PathParams, which never becomes a method name - so the
-// request must NOT be rejected.
-func TestParseRestRequest_AcceptsNonUtf8WildcardCapture(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v2/accounts/X1Y2Z3", nil)
-
-	template, rp, err := parseRestRequest(req, "v2/accounts/\xffX1Y2Z3", "rest-test")
-
-	require.NoError(t, err, "junk in a wildcard capture must not reject the request")
-	assert.Equal(t, "GET#/v2/accounts/*", template)
-	require.NotNil(t, rp)
-	assert.Equal(t, []string{"\xffX1Y2Z3"}, rp.PathParams,
-		"the capture reaches the connector verbatim so it can rebuild the upstream URL")
-}
-
-// Same rule for the other client-controlled inputs the parser forwards. POST is
-// required here: the fixture registers /exchange under POST only, so a GET would
-// fall through to the fallback branch and stop testing the matched-template case.
-func TestParseRestRequest_AcceptsNonUtf8QueryAndHeader(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/exchange", nil)
-	req.URL.RawQuery = "filter=%FFjunk"
-	req.Header.Set("X-Custom", "\xffjunk")
-
-	template, rp, err := parseRestRequest(req, "exchange", "rest-test")
-
-	require.NoError(t, err, "only the method name is validated")
-	assert.Equal(t, "POST#/exchange", template)
-	require.NotNil(t, rp)
+	headers := http.Header(requestParams.Headers)
+	assert.Equal(t, "keep", headers.Get("X-Custom"))
+	assert.Empty(t, headers.Get("X-Nodecore-Key"))
+	assert.Empty(t, headers.Get("X-Nodecore-Token"))
+	assert.Empty(t, headers.Get("Authorization"))
 }

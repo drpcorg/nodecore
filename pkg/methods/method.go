@@ -32,6 +32,7 @@ type Method struct {
 	enforceIntegrity bool
 	local            bool
 	dispatch         DispatchPolicy
+	grpcCallType     GrpcCallType
 }
 
 type jqParser struct {
@@ -130,6 +131,15 @@ func (m *Method) IsSubscribe() bool {
 	return m.Subscription.IsSubscribe
 }
 
+// GrpcCallType is meaningful only for methods of grpc specs; absent settings
+// mean a unary call.
+func (m *Method) GrpcCallType() GrpcCallType {
+	if m.grpcCallType == "" {
+		return GrpcCallTypeUnary
+	}
+	return m.grpcCallType
+}
+
 func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType) (*Method, error) {
 	var parser *jqParser
 	if methodData.TagParser != nil {
@@ -150,6 +160,7 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 	local := false
 	enforceIntegrity := false
 	dispatch := DispatchDefault
+	var grpcCallType GrpcCallType
 	if methodData.Settings != nil {
 		if methodData.Settings.Cacheable != nil {
 			cacheable = *methodData.Settings.Cacheable
@@ -160,6 +171,9 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 		enforceIntegrity = methodData.Settings.EnforceIntegrity
 		local = methodData.Settings.Local
 		dispatch = methodData.Settings.Dispatch
+		if methodData.Settings.Grpc != nil {
+			grpcCallType = methodData.Settings.Grpc.CallType
+		}
 		if methodData.Settings.Sticky != nil {
 			sticky = methodData.Settings.Sticky
 			if methodData.Settings.Sticky.SendSticky && methodData.TagParser != nil {
@@ -185,6 +199,7 @@ func fromMethodData(methodData *MethodData, apiConnectorTypes []ApiConnectorType
 		local:             local,
 		enforceIntegrity:  enforceIntegrity,
 		dispatch:          dispatch,
+		grpcCallType:      grpcCallType,
 		Name:              methodData.Name,
 		Group:             methodData.Group,
 		parser:            parser,

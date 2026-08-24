@@ -11,6 +11,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,7 @@ func newRestReq(t *testing.T, method, urlStr string, body io.Reader) *http.Reque
 // short-circuited with parse error.
 func TestRestHandlerAcceptsEmptyBody(t *testing.T) {
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", nil),
 		"exchange",
 	)
@@ -55,7 +56,7 @@ func TestRestHandlerAcceptsEmptyBody(t *testing.T) {
 
 func TestRestHandlerAcceptsValidJsonBody(t *testing.T) {
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(`{"raw":"AAA"}`)),
 		"exchange",
 	)
@@ -66,7 +67,7 @@ func TestRestHandlerAcceptsValidJsonBody(t *testing.T) {
 
 func TestRestHandlerRejectsMalformedJsonBody(t *testing.T) {
 	_, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`)),
 		"exchange",
 	)
@@ -76,7 +77,7 @@ func TestRestHandlerRejectsMalformedJsonBody(t *testing.T) {
 
 func TestRestHandlerRequestDecodePopulatesMatchedTemplate(t *testing.T) {
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", nil),
 		"exchange",
 	)
@@ -99,7 +100,7 @@ func TestRestHandlerRequestDecodePopulatesMatchedTemplate(t *testing.T) {
 func TestRestHandlerRequestDecodeForwardsBody(t *testing.T) {
 	payload := `{"raw":"AAA"}`
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(payload)),
 		"exchange",
 	)
@@ -123,7 +124,7 @@ func TestRestHandlerPromotesQueryAndHeadersIntoRequestParams(t *testing.T) {
 	httpReq.Header.Add("X-Multi", "two")
 
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		httpReq,
 		"exchange",
 	)
@@ -155,7 +156,7 @@ func TestJsonRpcHandlerAcceptsMultiByteUtf8Method(t *testing.T) {
 	body := `{"id":1,"jsonrpc":"2.0","method":"eth_日本語","params":[]}`
 
 	handler, err := http_server.NewJsonRpcHandler(
-		&http_server.Request{Chain: "ethereum"},
+		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
 	)
@@ -170,7 +171,7 @@ func TestJsonRpcHandlerAcceptsNonUtf8Params(t *testing.T) {
 	body := "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[\"\xff\"]}"
 
 	handler, err := http_server.NewJsonRpcHandler(
-		&http_server.Request{Chain: "ethereum"},
+		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
 	)
@@ -185,7 +186,7 @@ func TestRestHandlerAcceptsFormUrlencodedBody(t *testing.T) {
 	req := newRestReq(t, "POST", "/transactions", strings.NewReader("tx=AAAAAgAAAA"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	handler, err := http_server.NewRestHandler(&http_server.Request{Chain: "hyperliquid"}, req, "transactions")
+	handler, err := http_server.NewRestHandler(&server_ctx.Request{Chain: "hyperliquid"}, req, "transactions")
 
 	assert.NoError(t, err, "a declared non-JSON body must pass through opaquely")
 	assert.NotNil(t, handler)
@@ -195,7 +196,7 @@ func TestRestHandlerStillRejectsMalformedDeclaredJsonBody(t *testing.T) {
 	req := newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`))
 	req.Header.Set("Content-Type", "application/json")
 
-	_, err := http_server.NewRestHandler(&http_server.Request{Chain: "hyperliquid"}, req, "exchange")
+	_, err := http_server.NewRestHandler(&server_ctx.Request{Chain: "hyperliquid"}, req, "exchange")
 
 	assert.Error(t, err, "a body the client says is JSON must still be validated")
 }
@@ -206,7 +207,7 @@ func TestRestHandlerRejectsMalformedJsonSuffixBody(t *testing.T) {
 	req := newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`))
 	req.Header.Set("Content-Type", "application/vnd.api+json; charset=utf-8")
 
-	_, err := http_server.NewRestHandler(&http_server.Request{Chain: "hyperliquid"}, req, "exchange")
+	_, err := http_server.NewRestHandler(&server_ctx.Request{Chain: "hyperliquid"}, req, "exchange")
 
 	assert.Error(t, err)
 }
@@ -215,7 +216,7 @@ func TestRestHandlerRejectsMalformedJsonSuffixBody(t *testing.T) {
 // body is assumed to be JSON.
 func TestRestHandlerRejectsMalformedUndeclaredBody(t *testing.T) {
 	_, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`)),
 		"exchange",
 	)
