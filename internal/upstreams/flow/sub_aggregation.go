@@ -69,9 +69,9 @@ func resolveSource(
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
 ) (string, subengine.SourceBuilder, SubFilter) {
-	//if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
-	//	return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
-	//}
+	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
+	}
 	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
 		if filter, err := parseLogFilter(request); err == nil {
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
