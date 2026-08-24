@@ -59,31 +59,43 @@ func TestRPCCommandHandleDropsUnaryMessageWhenInternalChannelIsFull(t *testing.T
 	assert.Len(t, req.GetChannel(MessageInternal), cap(req.GetChannel(MessageInternal)))
 }
 
-func TestRPCCommandHandleStoresSubscriptionAndDropsMessageWhenInternalChannelIsFull(t *testing.T) {
+func TestRPCCommandHandleSwallowsSuccessfulSubscribeConfirmation(t *testing.T) {
 	loadRegistryCommandMethodSpecs(t)
 
 	registry := newTestRegistryState("eth")
 	req := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	registry.registryState.requests["request-1"] = req
-	fillInternalChannel(t, req)
 
-	response := &protocol.WsResponse{
+	newRpcCommand(&protocol.WsResponse{
 		Id:      "request-1",
 		Type:    protocol.JsonRpc,
 		Message: []byte(`"0xsub"`),
-	}
-	done := make(chan struct{})
-	go func() {
-		newRpcCommand(response).handle(registry)
-		close(done)
-	}()
+	}).handle(registry)
 
-	assertCommandCompletes(t, done)
-
+	// the confirmation's only job is the bookkeeping...
 	assert.Equal(t, "0xsub", req.SubID())
 	require.Contains(t, registry.registryState.subs, "0xsub")
 	assert.Contains(t, registry.registryState.subs["0xsub"].ops, req.Id())
-	assert.Len(t, req.GetChannel(MessageInternal), cap(req.GetChannel(MessageInternal)))
+	// ...and it must NOT be forwarded to the op
+	assert.Empty(t, req.GetChannel(MessageInternal))
+}
+
+func TestRPCCommandHandleForwardsSubscribeErrorConfirmation(t *testing.T) {
+	loadRegistryCommandMethodSpecs(t)
+
+	registry := newTestRegistryState("eth")
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	registry.registryState.requests["request-1"] = req
+
+	resp := &protocol.WsResponse{
+		Id:    "request-1",
+		Type:  protocol.JsonRpc,
+		Error: protocol.ResponseErrorWithMessage("subscribe rejected"),
+	}
+	newRpcCommand(resp).handle(registry)
+
+	require.Len(t, req.GetChannel(MessageInternal), 1)
+	assert.Same(t, resp, <-req.GetChannel(MessageInternal))
 }
 
 func TestSubscriptionCommandHandleDropsMessagesWhenInternalChannelsAreFull(t *testing.T) {

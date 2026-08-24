@@ -188,7 +188,7 @@ func publishHead(chSup upstreams.ChainSupervisor, id string, height uint64, hash
 	time.Sleep(30 * time.Millisecond)
 }
 
-func readWsResponse(t *testing.T, ch <-chan *protocol.WsResponse) *protocol.WsResponse {
+func readWsResponse(t *testing.T, ch <-chan protocol.SubResponse) protocol.SubResponse {
 	t.Helper()
 	select {
 	case r, ok := <-ch:
@@ -200,12 +200,12 @@ func readWsResponse(t *testing.T, ch <-chan *protocol.WsResponse) *protocol.WsRe
 	}
 }
 
-func assertRemoved(t *testing.T, r *protocol.WsResponse, want bool) {
+func assertRemoved(t *testing.T, r protocol.SubResponse, want bool) {
 	t.Helper()
 	require.NotNil(t, r)
-	require.Nil(t, r.Error, "unexpected terminal frame")
+	require.Nil(t, r.GetError(), "unexpected terminal frame")
 	var m map[string]any
-	require.NoError(t, sonic.Unmarshal(r.Message, &m))
+	require.NoError(t, sonic.Unmarshal(r.GetMessage(), &m))
 	removed, _ := m["removed"].(bool)
 	assert.Equal(t, want, removed)
 }
@@ -282,7 +282,7 @@ func TestLogsSourceTerminatesWhenLogsCapAbsentAtStart(t *testing.T) {
 	require.NoError(t, err)
 
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected a terminal error frame when LogsCap is absent")
+	require.NotNil(t, r.GetError(), "expected a terminal error frame when LogsCap is absent")
 }
 
 // Losing LogsCap mid-stream terminates the source on the next head update.
@@ -305,7 +305,7 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
 	publishHead(chSup, "up1", 101, "a1", "a0")
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected a terminal frame after LogsCap is lost")
+	require.NotNil(t, r.GetError(), "expected a terminal frame after LogsCap is lost")
 }
 
 // An eth_getLogs failure for one block skips it without terminating the source;

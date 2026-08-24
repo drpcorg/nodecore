@@ -110,7 +110,7 @@ func TestSubHeadSubscribe(t *testing.T) {
 		"subscription": "0x89d9f8cd1e113f4b65c1e22f3847d3672cf5761f"
 	  }
 	}`)
-	messages := make(chan *protocol.WsResponse, 10)
+	messages := make(chan protocol.SubResponse, 10)
 	messages <- protocol.ParseJsonRpcWsMessage(body)
 	response := protocol.NewJsonRpcWsUpstreamResponse(messages, "op-1")
 	connector.On("Subscribe", mock.Anything, mock.Anything).Return(response, nil)
@@ -193,7 +193,7 @@ func TestSubHeadGetLastBlock(t *testing.T) {
 	responseLastBlock := protocol.NewHttpUpstreamResponse("1", bodyLastBlock, 200, protocol.JsonRpc)
 	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
 
-	messages := make(chan *protocol.WsResponse, 10)
+	messages := make(chan protocol.SubResponse, 10)
 	response := protocol.NewJsonRpcWsUpstreamResponse(messages, "op-1")
 	connector := mocks.NewWsConnectorMock()
 	connector.On("Subscribe", mock.Anything, mock.Anything).Return(response, nil).Maybe()

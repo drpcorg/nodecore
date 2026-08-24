@@ -27,7 +27,7 @@ func newTestEngine(delay time.Duration) *genericEngine {
 func TestEngineSharesSourceAcrossSubscribers(t *testing.T) {
 	e := newTestEngine(time.Minute)
 	var builds int32
-	events := make(chan *protocol.WsResponse, 8)
+	events := make(chan protocol.SubResponse, 8)
 	build := func(_ context.Context) (*Source, error) {
 		atomic.AddInt32(&builds, 1)
 		return &Source{Events: events, Stop: func() {}}, nil
@@ -41,8 +41,8 @@ func TestEngineSharesSourceAcrossSubscribers(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&builds))
 
 	events <- &protocol.WsResponse{SubId: "x", Message: []byte("e")}
-	assert.Equal(t, []byte("e"), (<-sub1.Events).Message)
-	assert.Equal(t, []byte("e"), (<-sub2.Events).Message)
+	assert.Equal(t, []byte("e"), (<-sub1.Events).GetMessage())
+	assert.Equal(t, []byte("e"), (<-sub2.Events).GetMessage())
 
 	sub1.Unsubscribe()
 	sub2.Unsubscribe()
@@ -53,7 +53,7 @@ func TestEngineSharesSourceAcrossSubscribers(t *testing.T) {
 // delivered to the first subscriber, not dropped to an empty subscriber set.
 func TestEngineDoesNotDropEventsBeforeFirstSubscriber(t *testing.T) {
 	e := newTestEngine(time.Minute)
-	events := make(chan *protocol.WsResponse, 4)
+	events := make(chan protocol.SubResponse, 4)
 	events <- &protocol.WsResponse{Message: []byte("seed")} // queued before anyone subscribes
 	build := func(_ context.Context) (*Source, error) {
 		return &Source{Events: events, Stop: func() {}}, nil
@@ -64,7 +64,7 @@ func TestEngineDoesNotDropEventsBeforeFirstSubscriber(t *testing.T) {
 
 	select {
 	case got := <-sub.Events:
-		assert.Equal(t, []byte("seed"), got.Message)
+		assert.Equal(t, []byte("seed"), got.GetMessage())
 	case <-time.After(time.Second):
 		t.Fatal("first subscriber missed an event the source had already queued")
 	}
@@ -75,7 +75,7 @@ func TestEngineDistinctKeysBuildSeparately(t *testing.T) {
 	var builds int32
 	build := func(_ context.Context) (*Source, error) {
 		atomic.AddInt32(&builds, 1)
-		return &Source{Events: make(chan *protocol.WsResponse), Stop: func() {}}, nil
+		return &Source{Events: make(chan protocol.SubResponse), Stop: func() {}}, nil
 	}
 
 	_, err := e.Subscribe("k1", build)
@@ -110,7 +110,7 @@ func TestEngineTeardownAfterLastUnsub(t *testing.T) {
 	e := newTestEngine(30 * time.Millisecond)
 	stopped := make(chan struct{})
 	build := func(_ context.Context) (*Source, error) {
-		return &Source{Events: make(chan *protocol.WsResponse), Stop: func() { close(stopped) }}, nil
+		return &Source{Events: make(chan protocol.SubResponse), Stop: func() { close(stopped) }}, nil
 	}
 
 	sub, err := e.Subscribe("k", build)
@@ -129,7 +129,7 @@ func TestEngineTeardownAfterLastUnsub(t *testing.T) {
 // must still tear down once the grace window elapses.
 func TestEngineTeardownDespiteOngoingEvents(t *testing.T) {
 	e := newTestEngine(50 * time.Millisecond)
-	events := make(chan *protocol.WsResponse)
+	events := make(chan protocol.SubResponse)
 	stopped := make(chan struct{})
 	build := func(_ context.Context) (*Source, error) {
 		return &Source{Events: events, Stop: func() { close(stopped) }}, nil
@@ -167,7 +167,7 @@ func TestEngineTeardownDespiteOngoingEvents(t *testing.T) {
 func TestEngineResubscribeWithinWindowReusesSource(t *testing.T) {
 	e := newTestEngine(time.Second)
 	var builds int32
-	events := make(chan *protocol.WsResponse, 8)
+	events := make(chan protocol.SubResponse, 8)
 	build := func(_ context.Context) (*Source, error) {
 		atomic.AddInt32(&builds, 1)
 		return &Source{Events: events, Stop: func() {}}, nil
@@ -189,10 +189,10 @@ func TestEngineResubscribeWithinWindowReusesSource(t *testing.T) {
 func TestEngineTerminalClosesAndRemovesSource(t *testing.T) {
 	e := newTestEngine(time.Minute)
 	var builds int32
-	built := make(chan chan *protocol.WsResponse, 4)
+	built := make(chan chan protocol.SubResponse, 4)
 	build := func(_ context.Context) (*Source, error) {
 		atomic.AddInt32(&builds, 1)
-		ev := make(chan *protocol.WsResponse, 4)
+		ev := make(chan protocol.SubResponse, 4)
 		built <- ev
 		return &Source{Events: ev, Stop: func() {}}, nil
 	}
@@ -227,7 +227,7 @@ func TestEngineTerminalClosesAndRemovesSource(t *testing.T) {
 // is disconnected with a terminal error instead of silently dropping events.
 func TestEngineSlowConsumerDisconnectedDespiteFullBuffer(t *testing.T) {
 	e := newTestEngine(time.Minute)
-	events := make(chan *protocol.WsResponse)
+	events := make(chan protocol.SubResponse)
 	build := func(_ context.Context) (*Source, error) {
 		return &Source{Events: events, Stop: func() {}}, nil
 	}
@@ -241,7 +241,7 @@ func TestEngineSlowConsumerDisconnectedDespiteFullBuffer(t *testing.T) {
 	require.Eventually(t, func() bool { return sub.Err() != nil }, time.Second, 5*time.Millisecond)
 	for range sub.Events { // drain to the close
 	}
-	assert.Equal(t, protocol.WsSubscriberTooSlowError().Code, sub.Err().Code)
+	assert.Equal(t, protocol.SubscriberTooSlowError().Code, sub.Err().Code)
 }
 
 // A source may enlarge its per-subscriber fan-out buffer via Source.Buffer; a
@@ -250,7 +250,7 @@ func TestEngineSlowConsumerDisconnectedDespiteFullBuffer(t *testing.T) {
 func TestEngineSourceBufferOverride(t *testing.T) {
 	e := newTestEngine(time.Minute)
 	const big = subscriberBufferSize + 200
-	events := make(chan *protocol.WsResponse)
+	events := make(chan protocol.SubResponse)
 	build := func(_ context.Context) (*Source, error) {
 		return &Source{Events: events, Stop: func() {}, Buffer: big}, nil
 	}
@@ -276,7 +276,7 @@ func TestEngineSourceBufferOverride(t *testing.T) {
 // disconnected for lagging.
 func TestEngineSlowConsumerDoesNotAffectFastPeer(t *testing.T) {
 	e := newTestEngine(time.Minute)
-	events := make(chan *protocol.WsResponse)
+	events := make(chan protocol.SubResponse)
 	build := func(_ context.Context) (*Source, error) {
 		return &Source{Events: events, Stop: func() {}}, nil
 	}
@@ -308,10 +308,10 @@ func TestEngineBuildDoesNotBlockOtherKeys(t *testing.T) {
 	release := make(chan struct{})
 	slowBuild := func(_ context.Context) (*Source, error) {
 		<-release
-		return &Source{Events: make(chan *protocol.WsResponse), Stop: func() {}}, nil
+		return &Source{Events: make(chan protocol.SubResponse), Stop: func() {}}, nil
 	}
 	fastBuild := func(_ context.Context) (*Source, error) {
-		return &Source{Events: make(chan *protocol.WsResponse), Stop: func() {}}, nil
+		return &Source{Events: make(chan protocol.SubResponse), Stop: func() {}}, nil
 	}
 
 	go func() { _, _ = e.Subscribe("slow", slowBuild) }()

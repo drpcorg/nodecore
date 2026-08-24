@@ -98,7 +98,7 @@ func (b *GenericRequestRegistry) Start(req RequestOperation) {
 			case message, ok := <-req.GetChannel(MessageInternal):
 				if ok {
 					req.Write(message, MessageResponse)
-					if message.Error != nil {
+					if message.GetError() != nil {
 						req.Cancel()
 					}
 				}

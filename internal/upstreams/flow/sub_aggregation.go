@@ -69,9 +69,9 @@ func resolveSource(
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
 ) (string, subengine.SourceBuilder, SubFilter) {
-	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
-		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
-	}
+	//if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+	//	return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
+	//}
 	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
 		if filter, err := parseLogFilter(request); err == nil {
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
@@ -245,7 +245,7 @@ func newGenericSourceBuilder(
 			stateChan = statesSub.Events
 		}
 
-		out := make(chan *protocol.WsResponse, genericSubscriptionBufferSize)
+		out := make(chan protocol.SubResponse, genericSubscriptionBufferSize)
 		go func() {
 			defer close(out)
 			defer func() {
@@ -259,26 +259,18 @@ func newGenericSourceBuilder(
 					return
 				case state, ok := <-stateChan:
 					if ok && state == protocol.WsDisconnected {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError(), UpstreamId: upstreamId}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
 						return
 					}
 				case r, ok := <-subResp.ResponseChan():
 					if !ok {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError(), UpstreamId: upstreamId}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
 						return
 					}
-					if r.Error != nil {
-						r.UpstreamId = upstreamId
+					if r.GetError() != nil {
 						out <- r
 						return
 					}
-					// Swallow the upstream's own subscription confirmation; each
-					// client allocates its own client-facing subscription id in the
-					// processor, independent of this shared source.
-					if r.SubId == "" {
-						continue
-					}
-					r.UpstreamId = upstreamId
 					out <- r
 				}
 			}

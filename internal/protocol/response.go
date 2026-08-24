@@ -471,25 +471,8 @@ func NewHttpUpstreamResponseWithError(error *ResponseError) *GenericUpstreamResp
 	}
 }
 
-type WsResponse struct {
-	Id         string
-	SubId      string
-	Message    []byte
-	Type       RequestType
-	Error      *ResponseError
-	Event      []byte
-	UpstreamId string
-	// ParsedEvent is an optional, source-attached pre-parsed view of Message,
-	ParsedEvent ParsedEvent
-}
-
-// ParsedEvent is the pre-parsed view of a WsResponse Message. See WsResponse.ParsedEvent.
-type ParsedEvent interface {
-	Raw() []byte
-}
-
 type JsonRpcWsUpstreamResponse struct {
-	messages chan *WsResponse
+	messages chan SubResponse
 	subOpId  string
 }
 
@@ -497,11 +480,11 @@ func (j *JsonRpcWsUpstreamResponse) OpId() string {
 	return j.subOpId
 }
 
-func (j *JsonRpcWsUpstreamResponse) ResponseChan() chan *WsResponse {
+func (j *JsonRpcWsUpstreamResponse) ResponseChan() chan SubResponse {
 	return j.messages
 }
 
-func NewJsonRpcWsUpstreamResponse(messages chan *WsResponse, subOpId string) *JsonRpcWsUpstreamResponse {
+func NewJsonRpcWsUpstreamResponse(messages chan SubResponse, subOpId string) *JsonRpcWsUpstreamResponse {
 	return &JsonRpcWsUpstreamResponse{
 		messages: messages,
 		subOpId:  subOpId,

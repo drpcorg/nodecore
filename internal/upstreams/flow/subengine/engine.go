@@ -42,10 +42,10 @@ const subscriberBufferSize = 100
 
 // Source is a started, normalized subscription stream that the engine fans out.
 // Events carries upstream messages plus, on disconnect/error, a terminal
-// *protocol.WsResponse with Error set; the channel is closed when the source
+// a SubResponse with a non-nil error; the channel is closed when the source
 // ends. Stop releases the underlying resources (node unsubscribe, goroutines).
 type Source struct {
-	Events <-chan *protocol.WsResponse
+	Events <-chan protocol.SubResponse
 	Stop   func()
 	// Buffer optionally overrides the per-subscriber fan-out buffer size for this
 	// source. Zero means subscriberBufferSize. A source that bursts many events
@@ -70,7 +70,7 @@ type Engine interface {
 // source's actor goroutine.
 type subscriber struct {
 	id  int
-	ch  chan *protocol.WsResponse // data events; the actor closes it to signal terminal
+	ch  chan protocol.SubResponse // data events; the actor closes it to signal terminal
 	err *protocol.ResponseError   // set by the actor before close(ch); read by the client after
 }
 
@@ -93,7 +93,7 @@ type sourceActor struct {
 
 // Subscription is a client's handle to a shared source.
 type Subscription struct {
-	Events <-chan *protocol.WsResponse
+	Events <-chan protocol.SubResponse
 
 	actor *sourceActor
 	sub   *subscriber
@@ -208,7 +208,7 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 	var teardown *time.Timer
 	var teardownC <-chan time.Time // nil unless armed; a nil channel never fires
 
-	var srcEvents <-chan *protocol.WsResponse
+	var srcEvents <-chan protocol.SubResponse
 
 	// arm starts the teardown grace timer: once
 	// the last subscriber has left, the source is kept alive for teardownDelay so
@@ -234,7 +234,7 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 	// the actor returns and no longer accepts subscribers.
 	terminate := func(cause *protocol.ResponseError) {
 		if cause == nil {
-			cause = protocol.WsTotalFailureError()
+			cause = protocol.SubscribeTotalFailureError()
 		}
 		for _, s := range subs {
 			s.err = cause
@@ -249,7 +249,7 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 	for {
 		select {
 		case <-e.ctx.Done():
-			terminate(protocol.WsTotalFailureError())
+			terminate(protocol.SubscribeTotalFailureError())
 			return
 
 		case ev, ok := <-srcEvents:
@@ -257,8 +257,8 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 				terminate(nil)
 				return
 			}
-			if ev.Error != nil {
-				terminate(ev.Error)
+			if ev.GetError() != nil {
+				terminate(ev.GetError())
 				return
 			}
 			for id, s := range subs {
@@ -267,7 +267,7 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 				default:
 					// Slow consumer: disconnect it (no silent data gaps) rather
 					// than dropping the event. Its later Unsubscribe is a no-op.
-					s.err = protocol.WsSubscriberTooSlowError()
+					s.err = protocol.SubscriberTooSlowError()
 					close(s.ch)
 					delete(subs, id)
 					refs--
@@ -289,7 +289,7 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 			}
 			seq++
 			refs++
-			s := &subscriber{id: seq, ch: make(chan *protocol.WsResponse, bufSize)}
+			s := &subscriber{id: seq, ch: make(chan protocol.SubResponse, bufSize)}
 			subs[s.id] = s
 			cmd.reply <- e.newSubscription(a, s)
 
