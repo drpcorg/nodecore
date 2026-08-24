@@ -285,7 +285,9 @@ func (RequestUnsupportedSelector) isRequestSelector() {}
 
 // SubResponse is one event of an upstream subscription/stream: a data
 // notification (GetMessage) or a terminal error (GetError). Implementations
-// are transport-specific; consumers use only these accessors.
+// are transport-specific; consumers use only these accessors. Producers must
+// stamp every event with the originating upstream id (GetUpstreamId) - there
+// is no setter, and consumers forward events as-is.
 type SubResponse interface {
 	GetMessage() []byte
 	GetError() *ResponseError
