@@ -31,7 +31,7 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 
 ## Quick start
 
-Run with Docker, mounting your config:
+Run with Docker, mounting your config. Images are published to Docker Hub as [`drpcorg/nodecore`](https://hub.docker.com/r/drpcorg/nodecore):
 
 ```bash
 docker run -p 9090:9090 -v /path/to/config:/nodecore.yml drpcorg/nodecore
@@ -123,6 +123,8 @@ Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical conf
 nodecore can be integrated with external platforms to provide additional functionality — for example, DRPC for centralized key management and analytics. See [Integration](docs/nodecore/09-integration.md).
 
 ## Deployment
+
+Container images are on Docker Hub: [`drpcorg/nodecore`](https://hub.docker.com/r/drpcorg/nodecore).
 
 The Helm chart and deployment instructions are in [`chart/nodecore`](./chart/nodecore). It is also published as an OCI artifact to the GitHub Container Registry (GHCR).
 
