@@ -685,3 +685,11 @@ func TestEmptyLabelValueThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: label 'archive' must have a non-empty value")
 }
+
+// the grpc connector dials directly (no SOCKS5 support), so an onion endpoint
+// must be rejected at config time instead of failing at dial time
+func TestOnionEndpointGrpcConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/tor-onion-grpc.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: onion endpoints are not supported for the 'grpc' connector")
+}

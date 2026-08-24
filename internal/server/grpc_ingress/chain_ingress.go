@@ -102,7 +102,7 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 	handleResp := c.appCtx.HandleRequest(ctx, requestHandler, authPayload, flow.NewSubCtx())
 	wrapper, ok := <-handleResp.ResponseWrappers()
 	if !ok {
-		return status.FromContextError(ctx.Err()).Err()
+		return statusFromMissingResponse(ctx)
 	}
 
 	forwardResponseMetadata(stream, wrapper.Response)
@@ -110,6 +110,19 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 		return grpcStatusFromResponseError(wrapper.Response.GetError()).Err()
 	}
 	return stream.SendMsg(&rawFrame{data: wrapper.Response.ResponseResult()})
+}
+
+// statusFromMissingResponse covers the response channel closing without a
+// wrapper. In practice that only happens when the context is done (the flow
+// drops responses on cancellation), but status.FromContextError(nil) yields a
+// nil *Status whose Err() is nil - the handler would return OK with no
+// message and the client would see a bare io.EOF - so the fallback must be
+// explicit.
+func statusFromMissingResponse(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return status.FromContextError(ctx.Err()).Err()
+	}
+	return status.Error(codes.Internal, "no response from the execution flow")
 }
 
 // contextWithClientIps resolves the caller's IPs the same way the HTTP server

@@ -552,3 +552,18 @@ func TestChainIngressStripsNodecoreMetadataBeforeForwarding(t *testing.T) {
 	assert.Empty(t, md.Get("x-nodecore-chain"))
 	assert.Empty(t, md.Get("authorization"))
 }
+
+// the response channel closing without a wrapper must never yield a nil
+// status (OK with no message -> bare io.EOF at the client)
+func TestStatusFromMissingResponse(t *testing.T) {
+	err := statusFromMissingResponse(t.Context())
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+	assert.ErrorContains(t, err, "no response from the execution flow")
+
+	canceledCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err = statusFromMissingResponse(canceledCtx)
+	require.Error(t, err)
+	assert.Equal(t, codes.Canceled, status.Code(err))
+}

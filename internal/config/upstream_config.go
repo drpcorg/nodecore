@@ -697,6 +697,11 @@ func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 		return fmt.Errorf("invalid url for connector '%s' - scheme and host are required", a.Type)
 	}
 	if strings.HasSuffix(parsedUrl.Hostname(), ".onion") {
+		if a.GetApiConnectorType() == specs.GrpcConnector {
+			// the grpc connector dials directly (no SOCKS5 support); reject at
+			// config time instead of failing at dial time with no hint
+			return errors.New("onion endpoints are not supported for the 'grpc' connector")
+		}
 		if torProxyUrl == "" {
 			return errors.New("tor proxy url is required for onion endpoints")
 		}
