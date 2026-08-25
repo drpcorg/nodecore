@@ -265,6 +265,27 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 		src.Stop()
 	}
 
+	// subscriberGone is the single rule for a subscriber leaving (detach or
+	// too-slow disconnect): an exclusive source is released at once; a shared
+	// one without listeners starts its reuse grace period. It reports whether
+	// the actor must return.
+	subscriberGone := func(s *subscriber) bool {
+		delete(subs, s.id)
+		refs--
+		if refs != 0 {
+			return false
+		}
+		if src.Exclusive {
+			// nobody can ever reuse this source - release the upstream now
+			terminate(nil)
+			return true
+		}
+		if teardownC == nil {
+			arm()
+		}
+		return false
+	}
+
 	for {
 		select {
 		case <-e.ctx.Done():
@@ -288,17 +309,15 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 					// than dropping the event. Its later Unsubscribe is a no-op.
 					s.terminal = &protocol.GenericSubResponse{Error: protocol.SubscriberTooSlowError()}
 					close(s.ch)
-					delete(subs, id)
-					refs--
 					log.Warn().Msgf("disconnected lagging subscriber %s/sub-%d: buffer of %d full", a.key, id, bufSize)
+					// subscriberGone arms the grace timer only if it isn't already
+					// running: events keep arriving with no audience during the
+					// teardown window, and re-arming on each one would keep an
+					// active source alive indefinitely
+					if subscriberGone(s) {
+						return
+					}
 				}
-			}
-			if refs == 0 && teardownC == nil {
-				// Arm the grace timer only if it isn't already running. Events keep
-				// arriving with no audience during the teardown window; re-arming on
-				// each one would reset the window indefinitely and a source on an
-				// active chain (event interval < teardownDelay) would never tear down.
-				arm()
 			}
 
 		case cmd := <-a.subscribe:
@@ -313,17 +332,8 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 			cmd.reply <- e.newSubscription(a, s)
 
 		case s := <-a.unsubscribe:
-			if _, ok := subs[s.id]; ok {
-				delete(subs, s.id)
-				refs--
-				if refs == 0 && src.Exclusive {
-					// nobody can ever reuse this source - release the upstream now
-					terminate(nil)
-					return
-				}
-				if refs == 0 && teardownC == nil {
-					arm()
-				}
+			if _, ok := subs[s.id]; ok && subscriberGone(s) {
+				return
 			}
 
 		case <-teardownC:

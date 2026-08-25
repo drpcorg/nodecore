@@ -486,3 +486,24 @@ func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T)
 	assert.Contains(t, terminal.Response.GetError().Message, "eth_unsubscribe is not a subscription method")
 	strategy.AssertNotCalled(t, "SelectUpstream")
 }
+
+// A gRPC stream method is a subscription by call type but has no JSON-RPC
+// notification method; the JSON-RPC framing must refuse it instead of
+// dereferencing the missing subscription settings.
+func TestSubscriptionRequestProcessorJsonRpcFramingRefusesGrpcStreams(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	request := protocol.NewUpstreamGrpcRequest("7", "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", nil, []byte{1}, "sui")
+	respChan := make(chan protocol.SubResponse)
+	wireGrpcStream(t, upSupervisor, strategy, request, respChan)
+	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
+	engine := subengine.NewRegistry(context.Background()).Get(chains.SUI)
+	processor := flow.NewSubscriptionRequestProcessor(chains.SUI, upSupervisor, engine, flow.NewSubCtx(), nil, config.LocalSubSettings{})
+
+	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
+	terminal := <-wrappers
+
+	assert.True(t, terminal.Response.HasError())
+	assert.Contains(t, terminal.Response.GetError().Message, "has no JSON-RPC subscription info")
+}

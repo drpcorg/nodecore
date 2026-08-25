@@ -408,3 +408,32 @@ func TestTerminalFrameIsKept(t *testing.T) {
 	assert.Equal(t, protocol.SubscribeTotalFailureError(), sub.Err())
 	assert.Same(t, terminal, sub.Terminal())
 }
+
+// Dropping the only subscriber of an exclusive source as too slow releases the
+// source at once, exactly like a detach would.
+func TestExclusiveSourceIsTornDownWhenItsSubscriberIsTooSlow(t *testing.T) {
+	engine := newTestEngine(time.Hour)
+	events := make(chan protocol.SubResponse)
+	stopped := make(chan struct{})
+	sub, err := engine.Subscribe("k", func(srcCtx context.Context) (*Source, error) {
+		go func() {
+			<-srcCtx.Done()
+			close(stopped)
+		}()
+		return &Source{Events: events, Stop: func() {}, Buffer: 1, Exclusive: true}, nil
+	})
+	require.NoError(t, err)
+
+	// never read sub.Events: the second frame overflows the 1-slot buffer
+	events <- &protocol.GenericSubResponse{Message: []byte("1")}
+	events <- &protocol.GenericSubResponse{Message: []byte("2")}
+
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the exclusive source must be released once its only subscriber is gone")
+	}
+	for range sub.Events {
+	}
+	assert.Equal(t, protocol.SubscriberTooSlowError(), sub.Err())
+}

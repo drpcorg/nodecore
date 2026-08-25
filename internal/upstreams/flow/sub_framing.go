@@ -35,6 +35,11 @@ type jsonRpcFraming struct {
 }
 
 func (f *jsonRpcFraming) begin(request protocol.RequestHolder, cancel context.CancelFunc) (*protocol.ResponseHolderWrapper, error) {
+	// the notification envelope needs the JSON-RPC notification method; a gRPC
+	// stream method (IsSubscribe by call type) has none
+	if request.SpecMethod().Subscription == nil {
+		return nil, fmt.Errorf("%s has no JSON-RPC subscription info", request.Method())
+	}
 	subId, err := nextSubscriptionJson(isSolana(f.chain))
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
