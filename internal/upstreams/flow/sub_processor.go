@@ -82,7 +82,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		subId, err := nextSubscriptionJson(isSolana(s.chain))
 		if err != nil {
 			log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
-			responses <- totalFailureWrapper(request, protocol.WsTotalFailureError())
+			responses <- totalFailureWrapper(request, protocol.SubscribeTotalFailureError())
 			return
 		}
 		s.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
@@ -108,14 +108,14 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 				// Per-client logs filtering: the shared logs source carries every
 				// log of the chain; drop the ones this client did not subscribe to.
 				// Never filter terminal frames (handled above; they carry no Message).
-				if filter != nil && !filter.Matches(r.ParsedEvent) {
+				if filter != nil && !filter.Matches(r.GetParsedEvent()) {
 					continue
 				}
 				var subResponse protocol.ResponseHolder
 				if s.subCtx.IsSubscriptionResultOnly() {
-					subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.Message)
+					subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.GetMessage())
 				} else {
-					subResponse = protocol.NewSubscriptionMethodResultResponse(request.Id(), method, r.Message, subId)
+					subResponse = protocol.NewSubscriptionMethodResultResponse(request.Id(), method, r.GetMessage(), subId)
 				}
 				responses <- &protocol.ResponseHolderWrapper{
 					UpstreamId: responseUpstreamId(r),
@@ -131,9 +131,9 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	return &SubscriptionResponse{responses}
 }
 
-func responseUpstreamId(r *protocol.WsResponse) string {
-	if r.UpstreamId != "" {
-		return r.UpstreamId
+func responseUpstreamId(r protocol.SubResponse) string {
+	if id := r.GetUpstreamId(); id != "" {
+		return id
 	}
 	return NoUpstream
 }

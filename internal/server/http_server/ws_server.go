@@ -123,9 +123,9 @@ loop:
 							return
 						}
 						if replyErr, ok := response.Response.(*protocol.ReplyError); ok {
-							// close the connection if there is only WsTotalFailure error
+							// close the connection if there is only SubscribeTotalFailure error
 							// otherwise write a response to the connection
-							if replyErr.ErrorKind == protocol.TotalFailure && replyErr.GetError().Code == protocol.WsTotalFailure {
+							if replyErr.ErrorKind == protocol.TotalFailure && replyErr.GetError().Code == protocol.SubscribeTotalFailure {
 								log.Warn().Msgf("got a ws total failure signal, the connection will be closed")
 								closeFunc()
 								return

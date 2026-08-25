@@ -105,7 +105,7 @@ const (
 )
 
 type RequestOperation interface {
-	Write(message *protocol.WsResponse, messageType MessageType)
+	Write(message protocol.SubResponse, messageType MessageType)
 	SetSubID(subID []byte)
 	SetSkipDoOnClose()
 
@@ -115,7 +115,7 @@ type RequestOperation interface {
 	SubIdBytes() []byte
 	ShouldDoOnClose() bool
 	Method() string
-	GetChannel(messageType MessageType) chan *protocol.WsResponse
+	GetChannel(messageType MessageType) chan protocol.SubResponse
 	SubType() string
 
 	CtxDone() <-chan struct{}
@@ -127,8 +127,8 @@ type RequestOperation interface {
 type GenericRequestOp struct {
 	mu sync.RWMutex
 
-	responseChan     chan *protocol.WsResponse
-	internalMessages chan *protocol.WsResponse
+	responseChan     chan protocol.SubResponse
+	internalMessages chan protocol.SubResponse
 
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -146,7 +146,7 @@ func (r *GenericRequestOp) DoOnClose() {
 	r.doOnClose(r)
 }
 
-func (r *GenericRequestOp) Write(message *protocol.WsResponse, messageType MessageType) {
+func (r *GenericRequestOp) Write(message protocol.SubResponse, messageType MessageType) {
 	switch messageType {
 	case MessageInternal:
 		select {
@@ -167,7 +167,7 @@ func (r *GenericRequestOp) Write(message *protocol.WsResponse, messageType Messa
 	}
 }
 
-func (r *GenericRequestOp) GetChannel(messageType MessageType) chan *protocol.WsResponse {
+func (r *GenericRequestOp) GetChannel(messageType MessageType) chan protocol.SubResponse {
 	switch messageType {
 	case MessageInternal:
 		return r.internalMessages
@@ -250,8 +250,8 @@ func NewGenericRequestOp(ctx context.Context, id, method, subType string, doOnCl
 
 	return &GenericRequestOp{
 		id:               id,
-		responseChan:     make(chan *protocol.WsResponse, bufferSize),
-		internalMessages: make(chan *protocol.WsResponse, bufferSize),
+		responseChan:     make(chan protocol.SubResponse, bufferSize),
+		internalMessages: make(chan protocol.SubResponse, bufferSize),
 		ctx:              ctx,
 		cancel:           cancel,
 		method:           method,

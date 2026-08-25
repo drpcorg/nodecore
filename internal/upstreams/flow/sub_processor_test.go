@@ -106,7 +106,7 @@ func TestSubscriptionRequestProcessorEmitsSubIdAck(t *testing.T) {
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
-	respChan := make(chan *protocol.WsResponse)
+	respChan := make(chan protocol.SubResponse)
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
@@ -133,7 +133,7 @@ func TestSubscriptionRequestProcessorAndCancelCtxThenChannelCloses(t *testing.T)
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
-	respChan := make(chan *protocol.WsResponse)
+	respChan := make(chan protocol.SubResponse)
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
@@ -162,10 +162,10 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx := context.Background()
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
-	respChan := make(chan *protocol.WsResponse)
+	respChan := make(chan protocol.SubResponse)
 	event := []byte("event")
 	go func() {
-		respChan <- &protocol.WsResponse{Message: event, SubId: "upstream-sub"}
+		respChan <- &protocol.WsResponse{Message: event, SubId: "upstream-sub", UpstreamId: "id"}
 	}()
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
@@ -212,7 +212,7 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 
 	req1 := testEthSubscribeRequestWithId("c1")
 	req2 := testEthSubscribeRequestWithId("c2")
-	respChan := make(chan *protocol.WsResponse, 4)
+	respChan := make(chan protocol.SubResponse, 4)
 
 	// The upstream subscription must be built exactly once, regardless of the
 	// number of clients.
@@ -238,7 +238,7 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	assert.NotEqual(t, subId1, subId2, "each client must get its own subscription id")
 
 	// A single upstream event fans out to both clients.
-	respChan <- &protocol.WsResponse{SubId: "upstream-sub", Message: []byte("e")}
+	respChan <- &protocol.WsResponse{SubId: "upstream-sub", Message: []byte("e"), UpstreamId: "id"}
 	event1 := <-resp1
 	event2 := <-resp2
 	assert.Equal(t, []byte("e"), event1.Response.ResponseResult())
@@ -259,7 +259,7 @@ func TestSubscriptionRequestProcessorPropagatesUpstreamDisconnect(t *testing.T) 
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
-	respChan := make(chan *protocol.WsResponse)
+	respChan := make(chan protocol.SubResponse)
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
@@ -275,7 +275,7 @@ func TestSubscriptionRequestProcessorPropagatesUpstreamDisconnect(t *testing.T) 
 
 	terminal := <-subRespWrappers
 	assert.True(t, terminal.Response.HasError())
-	assert.Equal(t, protocol.WsTotalFailureError(), terminal.Response.GetError())
+	assert.Equal(t, protocol.SubscribeTotalFailureError(), terminal.Response.GetError())
 }
 
 func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *testing.T) {
@@ -286,10 +286,10 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx := context.Background()
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx().WithSubscriptionResultOnly(true))
-	respChan := make(chan *protocol.WsResponse)
+	respChan := make(chan protocol.SubResponse)
 	result := []byte(`{"foo":"bar"}`)
 	go func() {
-		respChan <- &protocol.WsResponse{Message: result, SubId: "upstream-sub"}
+		respChan <- &protocol.WsResponse{Message: result, SubId: "upstream-sub", UpstreamId: "id"}
 	}()
 
 	strategy.On("SelectUpstream", request).Return("id", nil)

@@ -180,19 +180,17 @@ func (w *SubscriptionHead) Start() {
 					if !ok {
 						return
 					}
-					if message.Error != nil {
-						log.Error().Err(message.Error).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
+					if message.GetError() != nil {
+						log.Error().Err(message.GetError()).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
 						return
 					}
-					if message.Type == protocol.Ws {
-						block, err := w.chainSpecific.ParseSubscriptionBlock(message.Message)
-						if err != nil {
-							log.Error().Err(err).Msgf("couldn't parse a message from heads subscription of upstream %s", w.upstreamId)
-							return
-						}
-						w.block.Store(block)
-						w.headsChan <- block
+					block, err := w.chainSpecific.ParseSubscriptionBlock(message.GetMessage())
+					if err != nil {
+						log.Error().Err(err).Msgf("couldn't parse a message from heads subscription of upstream %s", w.upstreamId)
+						return
 					}
+					w.block.Store(block)
+					w.headsChan <- block
 				case <-ctx.Done():
 					return
 				}

@@ -80,6 +80,9 @@ func (c *rpcCommand) handle(registry *GenericRequestRegistry) {
 			}
 			sub.ops[req.Id()] = req
 		}
+		// the confirmation's only job is the bookkeeping above; nothing
+		// upstream waits for it, so it never reaches consumers
+		return
 	}
 
 	req.Write(c.response, MessageInternal)

@@ -31,7 +31,7 @@ func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain)
 		}
 
 		sub := chainSup.SubscribeState(fmt.Sprintf("subengine_newheads_%s_%s", chain, uuid.NewString()))
-		out := make(chan *protocol.WsResponse, 100)
+		out := make(chan protocol.SubResponse, 100)
 
 		go func() {
 			defer close(out)
@@ -43,7 +43,7 @@ func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain)
 			}
 
 			if newHeadsLost() {
-				out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+				out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 				return
 			}
 
@@ -56,7 +56,7 @@ func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain)
 						return
 					}
 					if newHeadsLost() {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 						return
 					}
 					for _, wrapper := range event.Wrappers {
@@ -64,7 +64,7 @@ func NewHeadsSourceBuilder(sup upstreams.UpstreamSupervisor, chain chains.Chain)
 						if !ok || len(head.Head.RawData) == 0 {
 							continue // not a subscription block - nothing to forward
 						}
-						out <- &protocol.WsResponse{Message: head.Head.RawData, UpstreamId: head.UpstreamId}
+						out <- &protocol.GenericSubResponse{Message: head.Head.RawData, UpstreamId: head.UpstreamId}
 					}
 				}
 			}

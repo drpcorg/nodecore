@@ -14,8 +14,8 @@ import (
 type WsProcessor interface {
 	utils.Lifecycle
 
-	SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error)
-	SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error)
+	SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (protocol.SubResponse, error)
+	SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan protocol.SubResponse, string, error)
 	Unsubscribe(opId string)
 
 	GetUrl() string
@@ -128,7 +128,7 @@ func (b *GenericWsProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *GenericWsProcessor) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
+func (b *GenericWsProcessor) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (protocol.SubResponse, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -151,7 +151,7 @@ func (b *GenericWsProcessor) SendRpcRequest(ctx context.Context, upstreamRequest
 	}
 }
 
-func (b *GenericWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
+func (b *GenericWsProcessor) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan protocol.SubResponse, string, error) {
 	specMethod := upstreamRequest.SpecMethod()
 	if specMethod == nil {
 		return nil, "", fmt.Errorf("no spec method found for %s", upstreamRequest.Method())
@@ -203,7 +203,7 @@ func NewGenericWsProcessor(
 	}, nil
 }
 
-func (b *GenericWsProcessor) sendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
+func (b *GenericWsProcessor) sendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan protocol.SubResponse, string, error) {
 	frame, err := b.wsProtocol.RequestFrame(upstreamRequest)
 	if err != nil {
 		return nil, "", err
@@ -325,6 +325,7 @@ func (b *GenericWsProcessor) startReader(ctx context.Context) {
 				sendEventFunc(newWsDisconnectEvent("couldn't parse ws message", err, gen))
 				return
 			}
+			wsResponse.UpstreamId = b.upstreamId
 
 			sendEventFunc(newReadEvent(wsResponse))
 		}

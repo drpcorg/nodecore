@@ -77,11 +77,11 @@ func wsUpstream(t *testing.T, subResp protocol.UpstreamSubscriptionResponse, sub
 	return conn
 }
 
-func assertNoPendingEvent(t *testing.T, ch <-chan *protocol.WsResponse) {
+func assertNoPendingEvent(t *testing.T, ch <-chan protocol.SubResponse) {
 	t.Helper()
 	select {
 	case r := <-ch:
-		t.Fatalf("unexpected extra event: %s", string(r.Message))
+		t.Fatalf("unexpected extra event: %s", string(r.GetMessage()))
 	case <-time.After(250 * time.Millisecond):
 	}
 }
@@ -94,8 +94,8 @@ func TestPendingTxSourceMergesAndDedupes(t *testing.T) {
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 	registerPendingUpstream(chSup, "up2", pendingCaps())
 
-	ch1 := make(chan *protocol.WsResponse, 10)
-	ch2 := make(chan *protocol.WsResponse, 10)
+	ch1 := make(chan protocol.SubResponse, 10)
+	ch2 := make(chan protocol.SubResponse, 10)
 	conn1 := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(ch1, "op1"), nil)
 	conn2 := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(ch2, "op2"), nil)
 	up1 := test_utils.TestEvmUpstream(conn1, pendingTestUpConfig(), pendingMethodsMock(), nil)
@@ -118,7 +118,7 @@ func TestPendingTxSourceMergesAndDedupes(t *testing.T) {
 
 	got1 := readWsResponse(t, src.Events)
 	got2 := readWsResponse(t, src.Events)
-	assert.ElementsMatch(t, []string{`"0xaaa"`, `"0xbbb"`}, []string{string(got1.Message), string(got2.Message)})
+	assert.ElementsMatch(t, []string{`"0xaaa"`, `"0xbbb"`}, []string{string(got1.GetMessage()), string(got2.GetMessage())})
 	assertNoPendingEvent(t, src.Events) // the duplicate 0xaaa was dropped
 }
 
@@ -130,7 +130,7 @@ func TestPendingTxSourceOneFeedFailsNonTerminal(t *testing.T) {
 	registerPendingUpstream(chSup, "good", pendingCaps())
 	registerPendingUpstream(chSup, "bad", pendingCaps())
 
-	chGood := make(chan *protocol.WsResponse, 10)
+	chGood := make(chan protocol.SubResponse, 10)
 	connGood := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(chGood, "opGood"), nil)
 	connBad := wsUpstream(t, nil, assert.AnError) // Subscribe errors
 	upGood := test_utils.TestEvmUpstream(connGood, pendingTestUpConfig(), pendingMethodsMock(), nil)
@@ -148,7 +148,7 @@ func TestPendingTxSourceOneFeedFailsNonTerminal(t *testing.T) {
 
 	chGood <- pendingNotif("0xabc")
 	got := readWsResponse(t, src.Events)
-	assert.Equal(t, `"0xabc"`, string(got.Message))
+	assert.Equal(t, `"0xabc"`, string(got.GetMessage()))
 }
 
 // An upstream that advertises PendingTxCap but is not Available is skipped: its
@@ -160,11 +160,11 @@ func TestPendingTxSourceSkipsUnavailableUpstream(t *testing.T) {
 	registerPendingUpstream(chSup, "up", pendingCaps())
 	registerPendingUpstreamWithStatus(chSup, "down", pendingCaps(), protocol.Unavailable)
 
-	chUp := make(chan *protocol.WsResponse, 10)
+	chUp := make(chan protocol.SubResponse, 10)
 	connUp := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(chUp, "opUp"), nil)
 	// Wired with a working Subscribe so a regressed guard would succeed (not panic);
 	// AssertNotCalled below then fails cleanly instead.
-	chDown := make(chan *protocol.WsResponse, 10)
+	chDown := make(chan protocol.SubResponse, 10)
 	connDown := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(chDown, "opDown"), nil)
 	up := test_utils.TestEvmUpstream(connUp, pendingTestUpConfig(), pendingMethodsMock(), nil)
 	down := test_utils.TestEvmUpstream(connDown, pendingTestUpConfig(), pendingMethodsMock(), nil)
@@ -181,7 +181,7 @@ func TestPendingTxSourceSkipsUnavailableUpstream(t *testing.T) {
 
 	chUp <- pendingNotif("0xabc")
 	got := readWsResponse(t, src.Events)
-	assert.Equal(t, `"0xabc"`, string(got.Message))
+	assert.Equal(t, `"0xabc"`, string(got.GetMessage()))
 
 	// The unavailable upstream's feed was never opened.
 	connDown.AssertNotCalled(t, "Subscribe", mock.Anything, mock.Anything)
@@ -214,7 +214,7 @@ func TestPendingTxSourceTerminatesWhenCapLost(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
-	ch1 := make(chan *protocol.WsResponse, 10)
+	ch1 := make(chan protocol.SubResponse, 10)
 	conn1 := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(ch1, "op1"), nil)
 	up1 := test_utils.TestEvmUpstream(conn1, pendingTestUpConfig(), pendingMethodsMock(), nil)
 	upSup := mocks.NewUpstreamSupervisorMock()
@@ -230,7 +230,7 @@ func TestPendingTxSourceTerminatesWhenCapLost(t *testing.T) {
 	registerPendingUpstream(chSup, "up1", mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
 
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected a terminal frame after PendingTxCap is lost")
+	require.NotNil(t, r.GetError(), "expected a terminal frame after PendingTxCap is lost")
 }
 
 // A feed dying at runtime is non-terminal while another survives, but once every
@@ -242,8 +242,8 @@ func TestPendingTxSourceTerminatesWhenAllFeedsDie(t *testing.T) {
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 	registerPendingUpstream(chSup, "up2", pendingCaps())
 
-	ch1 := make(chan *protocol.WsResponse, 10)
-	ch2 := make(chan *protocol.WsResponse, 10)
+	ch1 := make(chan protocol.SubResponse, 10)
+	ch2 := make(chan protocol.SubResponse, 10)
 	conn1 := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(ch1, "op1"), nil)
 	conn2 := wsUpstream(t, protocol.NewJsonRpcWsUpstreamResponse(ch2, "op2"), nil)
 	up1 := test_utils.TestEvmUpstream(conn1, pendingTestUpConfig(), pendingMethodsMock(), nil)
@@ -263,13 +263,13 @@ func TestPendingTxSourceTerminatesWhenAllFeedsDie(t *testing.T) {
 	close(ch1)
 	ch2 <- pendingNotif("0xabc")
 	got := readWsResponse(t, src.Events)
-	require.Nil(t, got.Error)
-	assert.Equal(t, `"0xabc"`, string(got.Message))
+	require.Nil(t, got.GetError())
+	assert.Equal(t, `"0xabc"`, string(got.GetMessage()))
 
 	// Kill feed 2 - no feeds left, so the source must terminate.
 	close(ch2)
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected a terminal frame after every feed died")
+	require.NotNil(t, r.GetError(), "expected a terminal frame after every feed died")
 }
 
 // --- enrichPendingTx (drpc_pendingTransactions enrichment) ---------------
@@ -379,7 +379,7 @@ func TestIsNullResult(t *testing.T) {
 // pendingDrpcUpstream builds an upstream with BOTH a websocket connector (for the
 // shared newPendingTransactions sub, feeding wsCh) and a json-rpc connector (for
 // the eth_getTransactionByHash enrichment, returning txResult).
-func pendingDrpcUpstream(id string, wsCh chan *protocol.WsResponse, opId string, txResult protocol.ResponseHolder) *upstreams.GenericUpstream {
+func pendingDrpcUpstream(id string, wsCh chan protocol.SubResponse, opId string, txResult protocol.ResponseHolder) *upstreams.GenericUpstream {
 	wsConn := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 	wsConn.On("Subscribe", mock.Anything, mock.Anything).Return(protocol.NewJsonRpcWsUpstreamResponse(wsCh, opId), nil)
 	wsConn.On("Unsubscribe", mock.Anything).Maybe()
@@ -410,7 +410,7 @@ func TestDrpcPendingTxSourceEnrichesHashToTransaction(t *testing.T) {
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
 	txJSON := []byte(`{"hash":"0xaaa","from":"0x1","nonce":"0x2"}`)
-	wsCh := make(chan *protocol.WsResponse, 10)
+	wsCh := make(chan protocol.SubResponse, 10)
 	up1 := pendingDrpcUpstream("up1", wsCh, "op1", protocol.NewSimpleHttpUpstreamResponse("1", txJSON, protocol.JsonRpc))
 
 	upSup := mocks.NewUpstreamSupervisorMock()
@@ -428,9 +428,9 @@ func TestDrpcPendingTxSourceEnrichesHashToTransaction(t *testing.T) {
 	wsCh <- pendingNotif("0xaaa") // shared source emits the hash -> drpc enriches it
 
 	got := readWsResponse(t, src.Events)
-	require.Nil(t, got.Error)
-	assert.JSONEq(t, string(txJSON), string(got.Message))
-	assert.Equal(t, "up1", got.UpstreamId)
+	require.Nil(t, got.GetError())
+	assert.JSONEq(t, string(txJSON), string(got.GetMessage()))
+	assert.Equal(t, "up1", got.GetUpstreamId())
 }
 
 // When the shared hash source terminates (PendingTxCap lost), the drpc source
@@ -440,7 +440,7 @@ func TestDrpcPendingTxSourcePropagatesTerminal(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
-	wsCh := make(chan *protocol.WsResponse, 10)
+	wsCh := make(chan protocol.SubResponse, 10)
 	up1 := pendingDrpcUpstream("up1", wsCh, "op1", protocol.NewSimpleHttpUpstreamResponse("1", []byte("null"), protocol.JsonRpc))
 
 	upSup := mocks.NewUpstreamSupervisorMock()
@@ -458,7 +458,7 @@ func TestDrpcPendingTxSourcePropagatesTerminal(t *testing.T) {
 	registerPendingUpstream(chSup, "up1", mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
 
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected drpc source to propagate the shared source's terminal frame")
+	require.NotNil(t, r.GetError(), "expected drpc source to propagate the shared source's terminal frame")
 }
 
 // Enrichment must run with bounded concurrency, not serially: a slow
@@ -478,7 +478,7 @@ func TestDrpcPendingTxSourceEnrichesConcurrently(t *testing.T) {
 	var inflight, maxInflight atomic.Int32
 	release := make(chan struct{})
 
-	wsCh := make(chan *protocol.WsResponse, n)
+	wsCh := make(chan protocol.SubResponse, n)
 	wsConn := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 	wsConn.On("Subscribe", mock.Anything, mock.Anything).Return(protocol.NewJsonRpcWsUpstreamResponse(wsCh, "op1"), nil)
 	wsConn.On("Unsubscribe", mock.Anything).Maybe()
@@ -536,8 +536,8 @@ func TestDrpcPendingTxSourceEnrichesConcurrently(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		got := readWsResponse(t, src.Events)
-		require.Nil(t, got.Error)
-		assert.JSONEq(t, string(txJSON), string(got.Message))
+		require.Nil(t, got.GetError())
+		assert.JSONEq(t, string(txJSON), string(got.GetMessage()))
 	}
 	assert.GreaterOrEqual(t, maxInflight.Load(), int32(n), "enrichment did not run concurrently")
 }

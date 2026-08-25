@@ -211,10 +211,11 @@ func selectorKey(selectors []protocol.RequestSelector) string {
 
 // newGenericSourceBuilder builds the default node-backed source: it selects an
 // upstream via the strategy, opens a single ws subscription, and normalizes the
-// upstream stream - swallowing the upstream's own confirmation frame, surfacing
-// errors/disconnects as a terminal frame, and forwarding actual events. Works
-// for any chain family since it is spec-driven (the connector is chosen from
-// the method's api-connector types).
+// upstream stream - surfacing errors/disconnects as a terminal frame and
+// forwarding actual events (the connector's own service frames, e.g. the ws
+// subscribe confirmation, never leave the transport layer). Works for any
+// chain family since it is spec-driven (the connector is chosen from the
+// method's api-connector types).
 func newGenericSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	request protocol.RequestHolder,
@@ -245,7 +246,7 @@ func newGenericSourceBuilder(
 			stateChan = statesSub.Events
 		}
 
-		out := make(chan *protocol.WsResponse, genericSubscriptionBufferSize)
+		out := make(chan protocol.SubResponse, genericSubscriptionBufferSize)
 		go func() {
 			defer close(out)
 			defer func() {
@@ -259,27 +260,18 @@ func newGenericSourceBuilder(
 					return
 				case state, ok := <-stateChan:
 					if ok && state == protocol.WsDisconnected {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError(), UpstreamId: upstreamId}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
 						return
 					}
 				case r, ok := <-subResp.ResponseChan():
 					if !ok {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError(), UpstreamId: upstreamId}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
 						return
 					}
-					if r.Error != nil {
-						r.UpstreamId = upstreamId
-						out <- r
-						return
-					}
-					// Swallow the upstream's own subscription confirmation; each
-					// client allocates its own client-facing subscription id in the
-					// processor, independent of this shared source.
-					if r.SubId == "" {
-						continue
-					}
-					r.UpstreamId = upstreamId
 					out <- r
+					if r.GetError() != nil {
+						return
+					}
 				}
 			}
 		}()

@@ -276,6 +276,8 @@ func TestGenericWsProcessorStartPublishesConnectedAndRoutesRpcMessages(t *testin
 	case <-time.After(time.Second):
 		t.Fatal("expected rpc message to be routed")
 	}
+
+	assert.Equal(t, "upstream-1", expectedResponse.UpstreamId)
 }
 
 func TestGenericWsProcessorStartPublishesDisconnectedOnReadError(t *testing.T) {

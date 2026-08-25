@@ -72,7 +72,7 @@ func TestWsConnectorSendSubThenError(t *testing.T) {
 	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
 	err := errors.New("sub error")
 
-	wsProcessor.On("SendWsRequest", ctx, request).Return((chan *protocol.WsResponse)(nil), "", err)
+	wsProcessor.On("SendWsRequest", ctx, request).Return((chan protocol.SubResponse)(nil), "", err)
 
 	subResp, subErr := wsConnector.Subscribe(ctx, request)
 
@@ -87,7 +87,7 @@ func TestWsConnectorSendSubThenResponseChan(t *testing.T) {
 	ctx := context.Background()
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: nil}
 	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
-	responseChan := make(chan *protocol.WsResponse)
+	responseChan := make(chan protocol.SubResponse)
 	wsResponse := &protocol.WsResponse{Message: []byte("result")}
 	go func() {
 		responseChan <- wsResponse
