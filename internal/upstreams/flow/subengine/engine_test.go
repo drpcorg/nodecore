@@ -330,3 +330,81 @@ func TestEngineBuildDoesNotBlockOtherKeys(t *testing.T) {
 	}
 	close(release)
 }
+
+// An end frame completes the source cleanly (Err() nil, Terminal() the frame);
+// a close without any terminal frame is a total failure.
+func TestSourceEndFrameVsSilentClose(t *testing.T) {
+	t.Run("end frame", func(t *testing.T) {
+		engine := newTestEngine(time.Second)
+		events := make(chan protocol.SubResponse)
+		sub, err := engine.Subscribe("k", func(context.Context) (*Source, error) {
+			return &Source{Events: events, Stop: func() {}}, nil
+		})
+		require.NoError(t, err)
+		end := &protocol.GrpcSubResponse{End: true, Trailers: map[string][]string{"x-t": {"v"}}}
+
+		events <- end
+
+		for range sub.Events {
+		}
+		assert.Nil(t, sub.Err())
+		assert.Same(t, end, sub.Terminal())
+	})
+	t.Run("silent close", func(t *testing.T) {
+		engine := newTestEngine(time.Second)
+		events := make(chan protocol.SubResponse)
+		sub, err := engine.Subscribe("k", func(context.Context) (*Source, error) {
+			return &Source{Events: events, Stop: func() {}}, nil
+		})
+		require.NoError(t, err)
+
+		close(events)
+
+		for range sub.Events {
+		}
+		assert.Equal(t, protocol.SubscribeTotalFailureError(), sub.Err())
+	})
+}
+
+// An exclusive source is released as soon as its subscriber leaves - no reuse
+// grace period, since its per-request key can never be hit again.
+func TestExclusiveSourceIsTornDownOnUnsubscribe(t *testing.T) {
+	engine := newTestEngine(time.Hour)
+	stopped := make(chan struct{})
+	sub, err := engine.Subscribe("k", func(srcCtx context.Context) (*Source, error) {
+		go func() {
+			<-srcCtx.Done()
+			close(stopped)
+		}()
+		return &Source{Events: make(chan protocol.SubResponse), Stop: func() {}, Exclusive: true}, nil
+	})
+	require.NoError(t, err)
+
+	sub.Unsubscribe()
+
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the exclusive source must be torn down right after its subscriber left")
+	}
+	assert.Nil(t, sub.Err())
+}
+
+// The frame that ended a source is kept whole, so its transport metadata
+// (gRPC trailers on an error frame) is available next to the cause.
+func TestTerminalFrameIsKept(t *testing.T) {
+	engine := newTestEngine(time.Second)
+	events := make(chan protocol.SubResponse)
+	sub, err := engine.Subscribe("k", func(context.Context) (*Source, error) {
+		return &Source{Events: events, Stop: func() {}}, nil
+	})
+	require.NoError(t, err)
+	terminal := &protocol.GrpcSubResponse{Error: protocol.SubscribeTotalFailureError(), Trailers: map[string][]string{"x-t": {"v"}}}
+
+	events <- terminal
+
+	for range sub.Events {
+	}
+	assert.Equal(t, protocol.SubscribeTotalFailureError(), sub.Err())
+	assert.Same(t, terminal, sub.Terminal())
+}

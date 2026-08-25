@@ -72,7 +72,7 @@ Each method object:
   "dispatch": "broadcast",
   "sticky": { "send-sticky": false, "create-sticky": false },
   "subscription": { "is-subscribe": false, "method": "subscribe", "unsubscribe-method": "unsubscribe" },
-  "grpc": { "call-type": "server-stream" }
+  "grpc": { "call-type": "server-stream-finite" }
 }
 ```
 
@@ -96,8 +96,9 @@ Each method object:
   - Dispatch increases upstream load and usually makes latency depend on the slowest selected upstream, bounded by existing connector/request timeouts.
 
 - `grpc` (object) — only in specs whose `api-connectors` include `grpc`:
-  - `call-type` (string) — `unary` (the default when the block is absent; only streaming methods carry an annotation) or `server-stream`. Arity is **not encoded on the gRPC wire**, so the spec is the only source of it — the [gRPC chain ingress](14-grpc-ingress.md) uses it to reject server-streaming methods with `UNIMPLEMENTED` in this version. Server-streaming methods are deliberately *listed* (with `cacheable: false`) so clients get an honest "not supported yet" instead of "unknown method"; client-streaming/bidi methods are never listed — absence is the rejection.
-  - In gRPC specs every method `name` is the full method string (`/sui.rpc.v2.LedgerService/GetObject`, exact-match lookup, no templates) and must match the `/package.Service/Method` shape. `server-stream` is mutually exclusive with `sticky`, `dispatch` and `cacheable: true` (and defaults to non-cacheable).
+  - `call-type` (string) — `unary` (the default when the block is absent; only streaming methods carry an annotation), `server-stream-subscription` (an unbounded live stream such as Sui's `SubscribeCheckpoints`; the node ending it is a failure, reported as `UNAVAILABLE`) or `server-stream-finite` (a bounded stream such as `ListCheckpoints`; the node ending it is normal completion, `OK`). Arity is **not encoded on the gRPC wire**, so the spec is the only source of it. Both streaming types are treated as subscriptions by the router: one upstream stream per client, no retries, hedges, caching or quorum, and no sharing between clients in this version. Client-streaming/bidi methods are never listed — absence is the rejection.
+  - `subscription` settings are rejected on gRPC methods: `grpc.call-type` carries that information.
+  - In gRPC specs every method `name` is the full method string (`/sui.rpc.v2.LedgerService/GetObject`, exact-match lookup, no templates) and must match the `/package.Service/Method` shape. the streaming call types are mutually exclusive with `sticky`, `dispatch` and `cacheable: true` (and default to non-cacheable).
 
 ### `tag-parser`
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
@@ -48,13 +49,13 @@ func jsonRpcEnvelope(result string) []byte {
 func TestBitcoinSubscribeHeadRequestUnsupported(t *testing.T) {
 	req, err := test_utils.NewBitcoinChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "bitcoin: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestBitcoinParseSubscriptionBlock(t *testing.T) {
 	block, err := test_utils.NewBitcoinChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "bitcoin: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestBitcoinParseBlockHeader(t *testing.T) {

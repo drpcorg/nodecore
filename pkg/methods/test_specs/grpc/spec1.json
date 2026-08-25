@@ -23,7 +23,16 @@
       "params": [],
       "settings": {
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-subscription"
+        }
+      }
+    },
+    {
+      "name": "/pkg.Service/FiniteStream",
+      "params": [],
+      "settings": {
+        "grpc": {
+          "call-type": "server-stream-finite"
         }
       }
     }

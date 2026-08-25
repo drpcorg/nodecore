@@ -24,8 +24,6 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
-var errUnsupportedHeadSubscriptions = errors.New("cosmos rest: head subscriptions are not supported")
-
 type CosmosRestSpecific struct {
 	ctx          context.Context
 	upstreamId   string
@@ -91,11 +89,11 @@ func (c *CosmosRestSpecific) ParseBlock(blockBytes []byte) (protocol.Block, erro
 }
 
 func (c *CosmosRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (c *CosmosRestSpecific) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (c *CosmosRestSpecific) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

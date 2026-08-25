@@ -68,12 +68,23 @@ type GrpcSettings struct {
 type GrpcCallType string
 
 const (
-	GrpcCallTypeUnary        GrpcCallType = "unary"
-	GrpcCallTypeServerStream GrpcCallType = "server-stream"
+	GrpcCallTypeUnary GrpcCallType = "unary"
+	// GrpcCallTypeServerStreamSubscription is an unbounded live stream; a clean
+	// end from the node is a failure.
+	GrpcCallTypeServerStreamSubscription GrpcCallType = "server-stream-subscription"
+	// GrpcCallTypeServerStreamFinite is a bounded stream (a result delivered as
+	// several messages); a clean end from the node is normal completion.
+	GrpcCallTypeServerStreamFinite GrpcCallType = "server-stream-finite"
 )
 
+// IsServerStream reports whether the call type is one of the two
+// server-streaming shapes.
+func (g GrpcCallType) IsServerStream() bool {
+	return g == GrpcCallTypeServerStreamSubscription || g == GrpcCallTypeServerStreamFinite
+}
+
 func (m *MethodSettings) isGrpcServerStream() bool {
-	return m.Grpc != nil && m.Grpc.CallType == GrpcCallTypeServerStream
+	return m.Grpc != nil && m.Grpc.CallType.IsServerStream()
 }
 
 type DispatchPolicy string
@@ -212,7 +223,10 @@ func (m *MethodSettings) validate() error {
 		if err := m.Grpc.CallType.validate(); err != nil {
 			return err
 		}
-		if m.Grpc.CallType == GrpcCallTypeServerStream {
+		if m.Subscription != nil {
+			return errors.New("subscription settings cannot be used with grpc methods, use grpc.call-type instead")
+		}
+		if m.Grpc.CallType.IsServerStream() {
 			if m.Cacheable != nil && *m.Cacheable {
 				return errors.New("server-stream methods cannot be cacheable")
 			}
@@ -229,7 +243,7 @@ func (m *MethodSettings) validate() error {
 
 func (g GrpcCallType) validate() error {
 	switch g {
-	case "", GrpcCallTypeUnary, GrpcCallTypeServerStream:
+	case "", GrpcCallTypeUnary, GrpcCallTypeServerStreamSubscription, GrpcCallTypeServerStreamFinite:
 		return nil
 	default:
 		return fmt.Errorf("unknown grpc call-type - %s", g)

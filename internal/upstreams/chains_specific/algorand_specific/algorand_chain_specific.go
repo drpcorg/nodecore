@@ -166,11 +166,11 @@ func (a *AlgorandChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 }
 
 func (a *AlgorandChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("algorand does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AlgorandChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("algorand does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AlgorandChainSpecificObject) fetchBlockHeader(ctx context.Context, round uint64) (*algorandBlockHeader, error) {

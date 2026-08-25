@@ -41,9 +41,10 @@ const defaultTeardownDelay = 10 * time.Second
 const subscriberBufferSize = 100
 
 // Source is a started, normalized subscription stream that the engine fans out.
-// Events carries upstream messages plus, on disconnect/error, a terminal
-// a SubResponse with a non-nil error; the channel is closed when the source
-// ends. Stop releases the underlying resources (node unsubscribe, goroutines).
+// Events carries upstream messages plus a terminal frame - a SubResponse with a
+// non-nil error on disconnect/failure, or an end frame (IsEnd) when a bounded
+// stream completes; the channel is closed when the source ends. A close with
+// no terminal frame is reported as a total failure. Stop releases the underlying resources (node unsubscribe, goroutines).
 type Source struct {
 	Events <-chan protocol.SubResponse
 	Stop   func()
@@ -52,6 +53,10 @@ type Source struct {
 	// per upstream message (e.g. all logs of one block) sets a larger value so a
 	// momentarily-busy client is not disconnected as "too slow".
 	Buffer int
+	// Exclusive marks a source that is never shared (its key is unique per
+	// request, e.g. a pass-through gRPC stream): the engine tears it down as soon
+	// as its subscriber leaves instead of keeping it for the reuse grace period.
+	Exclusive bool
 }
 
 // SourceBuilder starts a Source bound to srcCtx. srcCtx is cancelled by the
@@ -69,9 +74,13 @@ type Engine interface {
 // subscriber is a single client's view of a shared source, owned entirely by the
 // source's actor goroutine.
 type subscriber struct {
-	id  int
-	ch  chan protocol.SubResponse // data events; the actor closes it to signal terminal
-	err *protocol.ResponseError   // set by the actor before close(ch); read by the client after
+	id int
+	ch chan protocol.SubResponse // data events; the actor closes it to signal terminal
+	// terminal is the frame that ended the subscription (nil for a clean end),
+	// set by the actor before close(ch) and read by the client after. It keeps
+	// the whole frame, not just the error, so transport metadata riding on an
+	// upstream error frame (gRPC trailers) survives the fan-out.
+	terminal protocol.SubResponse
 }
 
 // subscribeCmd asks the actor to attach a new subscriber and reply with its
@@ -110,12 +119,23 @@ func (s *Subscription) Unsubscribe() {
 }
 
 // Err returns the terminal cause after Events has been closed. It returns nil
-// for a clean detach and a *protocol.ResponseError when the source died or this
-// subscriber was disconnected for lagging. Reading is safe without a lock: the
-// actor writes sub.err before closing the channel, and the client reads it only
+// for a clean detach or a clean end (see Terminal) and a *protocol.ResponseError
+// when the source died or this subscriber was disconnected for lagging. Reading is safe without a lock: the
+// actor writes sub.terminal before closing the channel, and the client reads it only
 // after observing the close (which establishes the happens-before edge).
 func (s *Subscription) Err() *protocol.ResponseError {
-	return s.sub.err
+	if s.sub.terminal == nil {
+		return nil
+	}
+	return s.sub.terminal.GetError()
+}
+
+// Terminal returns the frame that ended the subscription - an error frame, or
+// an end frame (IsEnd) when a bounded stream completed - so consumers can
+// forward the metadata it carries. nil after a plain detach. Same reading rules
+// as Err.
+func (s *Subscription) Terminal() protocol.SubResponse {
+	return s.sub.terminal
 }
 
 // genericEngine is the default Engine implementation.
@@ -231,13 +251,12 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 
 	// terminate closes every subscriber out of band (cause first, then close so
 	// the client reads it), removes the source, and releases it. After it runs
-	// the actor returns and no longer accepts subscribers.
-	terminate := func(cause *protocol.ResponseError) {
-		if cause == nil {
-			cause = protocol.SubscribeTotalFailureError()
-		}
+	// the actor returns and no longer accepts subscribers. terminal is the
+	// frame that ended the source (error or end frame); nil means the source was
+	// released with nobody listening.
+	terminate := func(terminal protocol.SubResponse) {
 		for _, s := range subs {
-			s.err = cause
+			s.terminal = terminal
 			close(s.ch)
 		}
 		e.sources.CompareAndDelete(a.key, a)
@@ -249,16 +268,16 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 	for {
 		select {
 		case <-e.ctx.Done():
-			terminate(protocol.SubscribeTotalFailureError())
+			terminate(totalFailureFrame())
 			return
 
 		case ev, ok := <-srcEvents:
 			if !ok {
-				terminate(nil)
+				terminate(totalFailureFrame())
 				return
 			}
-			if ev.GetError() != nil {
-				terminate(ev.GetError())
+			if ev.GetError() != nil || ev.IsEnd() {
+				terminate(ev)
 				return
 			}
 			for id, s := range subs {
@@ -267,7 +286,7 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 				default:
 					// Slow consumer: disconnect it (no silent data gaps) rather
 					// than dropping the event. Its later Unsubscribe is a no-op.
-					s.err = protocol.SubscriberTooSlowError()
+					s.terminal = &protocol.GenericSubResponse{Error: protocol.SubscriberTooSlowError()}
 					close(s.ch)
 					delete(subs, id)
 					refs--
@@ -297,6 +316,11 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 			if _, ok := subs[s.id]; ok {
 				delete(subs, s.id)
 				refs--
+				if refs == 0 && src.Exclusive {
+					// nobody can ever reuse this source - release the upstream now
+					terminate(nil)
+					return
+				}
 				if refs == 0 && teardownC == nil {
 					arm()
 				}
@@ -309,4 +333,10 @@ func (e *genericEngine) run(a *sourceActor, build SourceBuilder) {
 			}
 		}
 	}
+}
+
+// totalFailureFrame is the synthetic terminal frame for a source that ended
+// without saying why (node disconnect, engine shutdown).
+func totalFailureFrame() protocol.SubResponse {
+	return &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 }

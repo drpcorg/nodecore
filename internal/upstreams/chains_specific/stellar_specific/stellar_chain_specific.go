@@ -2,7 +2,6 @@ package stellar_specific
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -41,11 +40,6 @@ func NewStellarChainSpecificObject(
 	}
 	return NewStellarRpcChainSpecificObject(ctx, configuredChain, upstreamId, connector, pollInterval, options)
 }
-
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: stellar-rpc is HTTP POST JSON-RPC only, and Horizon's
-// SSE streaming is out of scope, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = errors.New("stellar: head subscriptions are not supported")
 
 // stellarBaseChainSpecificObject holds the state and behavior shared by the
 // stellar-rpc and Horizon objects; API-specific requests, parsing and
@@ -95,11 +89,11 @@ func (s *stellarBaseChainSpecificObject) MethodsProcessor() methods.MethodsProce
 }
 
 func (s *stellarBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (s *stellarBaseChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 // newStellarBlockProcessor polls the finalized head with the generic block

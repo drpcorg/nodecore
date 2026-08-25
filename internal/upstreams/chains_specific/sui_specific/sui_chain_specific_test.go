@@ -47,21 +47,57 @@ func fullServiceInfo() *sui.GetServiceInfoResponse {
 	}
 }
 
-func TestSuiSubscriptionsUnsupported(t *testing.T) {
+func TestSuiSubscribeHeadRequest(t *testing.T) {
 	specific := test_utils.NewSuiChainSpecific(context.Background(), nil)
 
 	req, err := specific.SubscribeHeadRequest()
-	assert.Nil(t, req)
-	assert.EqualError(t, err, "sui: head subscriptions are not supported")
+	require.NoError(t, err)
+	assert.Equal(t, "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", req.Method())
+	assert.Equal(t, protocol.Grpc, req.RequestType())
 
-	block, err := specific.ParseSubscriptionBlock([]byte{})
-	assert.Equal(t, protocol.ZeroBlock{}, block)
-	assert.EqualError(t, err, "sui: head subscriptions are not supported")
+	body, err := req.Body()
+	require.NoError(t, err)
+	var request sui.SubscribeCheckpointsRequest
+	require.NoError(t, proto.Unmarshal(body, &request))
+	assert.Equal(t, []string{"sequence_number"}, request.GetReadMask().GetPaths())
+	assert.Nil(t, request.Filter, "the head stream is unfiltered: every frame carries a checkpoint")
 }
 
-// GetServiceInfo is the single probe source; it exposes no checkpoint digest,
-// so the head block carries the checkpoint height, synthetic height-derived
-// hashes (parent-linkable), and the raw response bytes.
+func TestSuiParseSubscriptionBlockUsesTheCursor(t *testing.T) {
+	specific := test_utils.NewSuiChainSpecific(context.Background(), nil)
+	frame, err := proto.Marshal(&sui.SubscribeCheckpointsResponse{
+		Cursor:     new(uint64(120000000)),
+		Checkpoint: &sui.Checkpoint{SequenceNumber: new(uint64(120000000))},
+	})
+	require.NoError(t, err)
+
+	block, err := specific.ParseSubscriptionBlock(frame)
+	require.NoError(t, err)
+
+	hash, parentHash := specific_helpers.SyntheticHashes(120000000, 119999999)
+	assert.Equal(t, uint64(120000000), block.Height)
+	assert.Equal(t, hash, block.Hash)
+	assert.Equal(t, parentHash, block.ParentHash)
+	assert.Equal(t, frame, block.RawData)
+}
+
+func TestSuiParseSubscriptionBlockWithoutCursorIsAnError(t *testing.T) {
+	specific := test_utils.NewSuiChainSpecific(context.Background(), nil)
+	frame, err := proto.Marshal(&sui.SubscribeCheckpointsResponse{})
+	require.NoError(t, err)
+
+	block, err := specific.ParseSubscriptionBlock(frame)
+	assert.Equal(t, protocol.ZeroBlock{}, block)
+	assert.EqualError(t, err, "sui SubscribeCheckpoints frame carries no cursor")
+}
+
+func TestSuiParseSubscriptionBlockGarbageIsAnError(t *testing.T) {
+	specific := test_utils.NewSuiChainSpecific(context.Background(), nil)
+
+	_, err := specific.ParseSubscriptionBlock([]byte{0xff, 0xff, 0xff})
+	assert.ErrorContains(t, err, "couldn't parse the sui SubscribeCheckpoints frame")
+}
+
 func TestSuiGetLatestBlockPollsGetServiceInfo(t *testing.T) {
 	ctx := context.Background()
 	conn := mocks.NewConnectorMock()

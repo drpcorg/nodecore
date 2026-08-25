@@ -117,11 +117,23 @@ func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
 	return options
 }
 
+// HeadMode selects how a gRPC head connector tracks the head: a head
+// subscription (the node pushes checkpoints/blocks) or polling. It is
+// consulted only when the head connector is grpc; every other connector type
+// implies its mode (websocket subscribes, json-rpc/rest/tendermint poll).
+type HeadMode string
+
+const (
+	HeadModeSubscribe HeadMode = "subscribe"
+	HeadModePoll      HeadMode = "poll"
+)
+
 type Upstream struct {
 	Id                string                   `yaml:"id"`
 	ChainName         string                   `yaml:"chain"`
 	Connectors        []*ApiConnectorConfig    `yaml:"connectors"`
 	HeadConnector     string                   `yaml:"head-connector"`
+	HeadMode          HeadMode                 `yaml:"head-mode"`
 	PollInterval      time.Duration            `yaml:"poll-interval"`
 	Methods           *MethodsConfig           `yaml:"methods"`
 	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config"`
@@ -590,6 +602,9 @@ func (u *Upstream) validate(torProxyUrl string) error {
 	if err := u.validateHeadConnector(); err != nil {
 		return err
 	}
+	if err := u.validateHeadMode(); err != nil {
+		return err
+	}
 
 	if !connectorTypeSet.Contains(u.GetHeadApiConnectorType()) {
 		return fmt.Errorf("there is no '%s' connector for head", u.HeadConnector)
@@ -632,6 +647,15 @@ func (u *Upstream) validateLabels() error {
 		}
 	}
 	return nil
+}
+
+func (u *Upstream) validateHeadMode() error {
+	switch u.HeadMode {
+	case HeadModeSubscribe, HeadModePoll:
+		return nil
+	default:
+		return fmt.Errorf("invalid head-mode '%s', expected 'subscribe' or 'poll'", u.HeadMode)
+	}
 }
 
 func (u *Upstream) validateHeadConnector() error {

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
@@ -26,10 +28,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// GrpcConnector sends unary gRPC calls to an upstream over one long-lived
-// ClientConn (HTTP/2 multiplexing + keepalives). The traffic path is
-// bytes-only: request and response messages pass through a raw codec and are
-// never parsed. Streaming calls are a follow-up task.
+// GrpcConnector sends unary and server-streaming gRPC calls to an upstream over
+// one long-lived ClientConn (HTTP/2 multiplexing + keepalives). The traffic
+// path is bytes-only: request and response messages pass through a raw codec
+// and are never parsed.
 type GrpcConnector struct {
 	endpoint       string
 	upstreamId     string
@@ -74,6 +76,9 @@ const (
 	// not impose a lower response-size ceiling than the node itself allows
 	// (large checkpoints/objects easily exceed 4MB).
 	grpcMaxRecvMsgSize = 32 << 20
+	// grpcStreamBufferSize absorbs short consumer hiccups; the send is blocking
+	// beyond it (see Subscribe).
+	grpcStreamBufferSize = 16
 )
 
 // rawGrpcMessage is the private carrier type the raw codec dispatches on.
@@ -189,12 +194,7 @@ func (g *GrpcConnector) SendRequest(ctx context.Context, request protocol.Reques
 				protocol.ServerErrorWithCause(fmt.Errorf("upstream %s request failed", g.upstreamId)),
 			)
 		}
-		grpcStatus := &protocol.GrpcStatus{Code: st.Code(), Message: st.Message()}
-		if len(st.Details()) > 0 {
-			if statusProto, marshalErr := proto.Marshal(st.Proto()); marshalErr == nil {
-				grpcStatus.StatusProto = statusProto
-			}
-		}
+		grpcStatus := grpcStatusOf(st)
 		// error replies carry the upstream metadata too - RESOURCE_EXHAUSTED
 		// trailers (rate-limit hints) are exactly the ones a client needs
 		response := protocol.NewGrpcUpstreamErrorResponse(request, grpcStatus)
@@ -214,10 +214,43 @@ func (g *GrpcConnector) SendRequest(ctx context.Context, request protocol.Reques
 		WithResponseTrailers(g.filterResponseMetadata(trailerMD))
 }
 
-func (g *GrpcConnector) Subscribe(_ context.Context, _ protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
-	return nil, errors.New("subscriptions are not supported by the grpc connector")
+// Subscribe opens a server-streaming call: one request message, then a stream
+// of frames delivered on the returned channel. The stream lives exactly as long
+// as ctx - cancelling it is the only way to end a stream, so Unsubscribe is a
+// no-op. The unary requestTimeout does not apply. Frames are pushed blocking
+// (never dropped): HTTP/2 flow control pauses the node while the consumer is
+// busy, and both consumers (the subengine fan-out, the subscription head) drain
+// continuously.
+func (g *GrpcConnector) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
+	body, err := request.Body()
+	if err != nil {
+		return nil, fmt.Errorf("error parsing a request body: %v", err)
+	}
+	streamCtx := g.outgoingMetadataContext(ctx, request)
+	stream, err := g.conn.NewStream(streamCtx, &grpc.StreamDesc{ServerStreams: true}, request.Method(),
+		grpc.ForceCodec(rawGrpcCodec{}),
+		grpc.MaxCallRecvMsgSize(grpcMaxRecvMsgSize),
+	)
+	if err != nil {
+		return nil, g.streamOpenError(ctx, err)
+	}
+	// io.EOF from SendMsg/CloseSend means the server already ended the stream;
+	// its status is read by RecvMsg in the receive loop, so only other errors
+	// fail the subscribe itself.
+	if err := stream.SendMsg(&rawGrpcMessage{data: body}); err != nil && !errors.Is(err, io.EOF) {
+		return nil, g.streamOpenError(ctx, err)
+	}
+	if err := stream.CloseSend(); err != nil && !errors.Is(err, io.EOF) {
+		return nil, g.streamOpenError(ctx, err)
+	}
+
+	out := make(chan protocol.SubResponse, grpcStreamBufferSize)
+	go g.receiveStream(ctx, stream, out)
+	return protocol.NewGrpcUpstreamSubscriptionResponse(out, uuid.NewString()), nil
 }
 
+// Unsubscribe is a no-op: a gRPC stream ends when the ctx passed to Subscribe
+// is cancelled, which every caller does on teardown.
 func (g *GrpcConnector) Unsubscribe(_ string) {
 }
 
@@ -247,6 +280,85 @@ func (g *GrpcConnector) Stop() {
 
 func (g *GrpcConnector) Running() bool {
 	return true
+}
+
+// receiveStream forwards every frame as it arrives. Headers ride on the first
+// frame; the stream's end is a terminal frame carrying the trailers - an error
+// frame for a status, an end frame for a clean EOF. A caller-cancelled ctx ends
+// the stream silently.
+func (g *GrpcConnector) receiveStream(ctx context.Context, stream grpc.ClientStream, out chan<- protocol.SubResponse) {
+	defer close(out)
+	first := true
+	for {
+		var msg rawGrpcMessage
+		err := stream.RecvMsg(&msg)
+		if err != nil && ctx.Err() != nil {
+			return
+		}
+		var frame *protocol.GrpcSubResponse
+		switch {
+		case err == nil:
+			frame = &protocol.GrpcSubResponse{Message: msg.data, UpstreamId: g.upstreamId}
+		case errors.Is(err, io.EOF):
+			frame = &protocol.GrpcSubResponse{End: true, UpstreamId: g.upstreamId, Trailers: g.filterResponseMetadata(stream.Trailer())}
+		default:
+			frame = &protocol.GrpcSubResponse{Error: g.streamStatusError(ctx, err), UpstreamId: g.upstreamId, Trailers: g.filterResponseMetadata(stream.Trailer())}
+		}
+		if first {
+			frame.Headers = g.streamHeaders(stream)
+			first = false
+		}
+		select {
+		case out <- frame:
+		case <-ctx.Done():
+			return
+		}
+		if err != nil {
+			return
+		}
+	}
+}
+
+// streamHeaders reads the initial metadata (available once the first frame or
+// the status has arrived) filtered like unary response metadata.
+func (g *GrpcConnector) streamHeaders(stream grpc.ClientStream) http.Header {
+	headers, err := stream.Header()
+	if err != nil {
+		return nil
+	}
+	return g.filterResponseMetadata(headers)
+}
+
+// streamOpenError maps a failure to open/send the stream onto the error
+// Subscribe returns: the caller giving up is a ctx error, a gRPC status rides
+// through verbatim as a *ResponseError, anything else is a server error that
+// names only the upstream id.
+func (g *GrpcConnector) streamOpenError(parentCtx context.Context, err error) error {
+	if parentCtx.Err() != nil {
+		return protocol.CtxError(fmt.Errorf("upstream %s: %v", g.upstreamId, parentCtx.Err()))
+	}
+	return g.streamStatusError(parentCtx, err)
+}
+
+func (g *GrpcConnector) streamStatusError(ctx context.Context, err error) *protocol.ResponseError {
+	st, ok := status.FromError(err)
+	if !ok {
+		zerolog.Ctx(ctx).Warn().Err(err).Str("upstream", g.upstreamId).Msg("upstream grpc stream failed")
+		return protocol.ServerErrorWithCause(fmt.Errorf("upstream %s stream failed", g.upstreamId))
+	}
+	return protocol.NewGrpcStatusResponseError(grpcStatusOf(st))
+}
+
+// grpcStatusOf copies a grpc-go status into the protocol's verbatim carrier,
+// serializing typed details when present.
+func grpcStatusOf(st *status.Status) *protocol.GrpcStatus {
+	grpcStatus := &protocol.GrpcStatus{Code: st.Code(), Message: st.Message()}
+	if len(st.Details()) > 0 {
+		if statusProto, err := proto.Marshal(st.Proto()); err == nil {
+			grpcStatus.StatusProto = statusProto
+		}
+	}
+	return grpcStatus
 }
 
 // grpcTransportCredentials picks transport security from the URL scheme:

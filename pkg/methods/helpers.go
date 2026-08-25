@@ -88,12 +88,11 @@ func GetSubMethods(specName string) mapset.Set[string] {
 	return subMethods
 }
 
+// IsSubscribeMethod reports Method.IsSubscribe for a spec method by name -
+// the single definition of "is a subscription" (JSON-RPC subs and gRPC streams).
 func IsSubscribeMethod(specName, methodName string) bool {
-	subSettings := subscribeSettings(specName, methodName)
-	if subSettings == nil {
-		return false
-	}
-	return subSettings.IsSubscribe
+	method := GetSpecMethod(specName, methodName)
+	return method != nil && method.IsSubscribe()
 }
 
 func GetUnsubscribeMethod(specName, methodName string) (string, bool) {

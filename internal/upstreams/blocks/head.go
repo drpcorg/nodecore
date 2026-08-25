@@ -2,6 +2,7 @@ package blocks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -11,6 +12,12 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
+
+// ErrUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
+// ParseSubscriptionBlock of every chain that cannot push heads. createHead
+// recognizes it (errors.Is) to fall back to polling; any other error is a real
+// failure.
+var ErrUnsupportedHeadSubscriptions = errors.New("head subscriptions are not supported")
 
 type BlockChainSpecific interface {
 	GetLatestBlock(ctx context.Context) (protocol.Block, error)
@@ -182,6 +189,10 @@ func (w *SubscriptionHead) Start() {
 					}
 					if message.GetError() != nil {
 						log.Error().Err(message.GetError()).Msgf("got an error from heads subscription of upstream %s", w.upstreamId)
+						return
+					}
+					if message.IsEnd() {
+						log.Warn().Msgf("heads subscription of upstream %s ended", w.upstreamId)
 						return
 					}
 					block, err := w.chainSpecific.ParseSubscriptionBlock(message.GetMessage())

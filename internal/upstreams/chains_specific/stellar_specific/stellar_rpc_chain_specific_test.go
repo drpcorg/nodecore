@@ -2,6 +2,7 @@ package stellar_specific_test
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -25,11 +26,11 @@ func TestStellarRpcSubscriptionsUnsupported(t *testing.T) {
 
 	req, err := specific.SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "stellar: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
 	block, err := specific.ParseSubscriptionBlock([]byte(`{}`))
 	assert.Equal(t, protocol.ZeroBlock{}, block)
-	assert.EqualError(t, err, "stellar: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 // getHealth is the head source: it is small, and it is the same document the

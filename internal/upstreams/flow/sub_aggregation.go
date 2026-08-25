@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/google/uuid"
 )
 
@@ -85,7 +86,30 @@ func resolveSource(
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
 	}
+	if isGrpcStream(request) {
+		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix
+		// makes the key unique per request so the engine never shares one
+		// upstream stream between clients (a late joiner of a finite List*
+		// stream would miss its first messages), while its fan-out and
+		// slow-consumer handling stay in force. Delete this branch when
+		// aggregation of gRPC streams is implemented: subscriptions then fall
+		// through to the shared subscriptionKey below (finite streams must
+		// still never be shared).
+		return fmt.Sprintf("%s|%s", subscriptionKey(request), uuid.NewString()), newGenericSourceBuilder(supervisor, request, strategy), nil
+	}
 	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
+}
+
+// isGrpcStream reports whether request is a gRPC server-streaming call of
+// either kind.
+func isGrpcStream(request protocol.RequestHolder) bool {
+	return request.SpecMethod() != nil && request.SpecMethod().GrpcCallType().IsServerStream()
+}
+
+// isFiniteGrpcStream reports a bounded gRPC stream: a clean upstream close is
+// completion, not a failure.
+func isFiniteGrpcStream(request protocol.RequestHolder) bool {
+	return request.SpecMethod() != nil && request.SpecMethod().GrpcCallType() == specs.GrpcCallTypeServerStreamFinite
 }
 
 func hasEffectiveSelectors(selectors []protocol.RequestSelector) bool {
@@ -210,17 +234,20 @@ func selectorKey(selectors []protocol.RequestSelector) string {
 }
 
 // newGenericSourceBuilder builds the default node-backed source: it selects an
-// upstream via the strategy, opens a single ws subscription, and normalizes the
-// upstream stream - surfacing errors/disconnects as a terminal frame and
-// forwarding actual events (the connector's own service frames, e.g. the ws
-// subscribe confirmation, never leave the transport layer). Works for any
-// chain family since it is spec-driven (the connector is chosen from the
-// method's api-connector types).
+// upstream via the strategy, opens a single upstream subscription/stream via the
+// method's connector, and normalizes the upstream stream - surfacing
+// errors/disconnects as a terminal frame and forwarding actual events (the
+// connector's own service frames, e.g. the ws subscribe confirmation, never
+// leave the transport layer). An end frame completes a finite gRPC stream but
+// fails a subscription. Works for any chain family since it is
+// spec-driven (the connector is chosen from the method's api-connector types).
 func newGenericSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	request protocol.RequestHolder,
 	strategy UpstreamStrategy,
 ) subengine.SourceBuilder {
+	finite := isFiniteGrpcStream(request)
+	exclusive := isGrpcStream(request) // per-request key, see resolveSource
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		upstreamId, err := strategy.SelectUpstream(request)
 		if err != nil {
@@ -268,8 +295,14 @@ func newGenericSourceBuilder(
 						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
 						return
 					}
+					if r.IsEnd() && !finite {
+						// a node ending a live subscription is a failure; only a
+						// bounded stream completes
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
+						return
+					}
 					out <- r
-					if r.GetError() != nil {
+					if r.GetError() != nil || r.IsEnd() {
 						return
 					}
 				}
@@ -279,6 +312,6 @@ func newGenericSourceBuilder(
 		stop := func() {
 			wsConn.Unsubscribe(subResp.OpId())
 		}
-		return &subengine.Source{Events: out, Stop: stop, Buffer: genericSubscriptionBufferSize}, nil
+		return &subengine.Source{Events: out, Stop: stop, Buffer: genericSubscriptionBufferSize, Exclusive: exclusive}, nil
 	}
 }

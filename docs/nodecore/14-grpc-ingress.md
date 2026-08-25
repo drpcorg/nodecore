@@ -80,6 +80,13 @@ advertised set does not depend on `x-nodecore-chain`), matching how a node prese
   (UNAVAILABLE, INTERNAL, DEADLINE_EXCEEDED, RESOURCE_EXHAUSTED, ...) are retried on other
   upstreams first, per the chain's failsafe config; UNIMPLEMENTED additionally bans the method on
   that upstream.
+- **Server streaming.** Both streaming call types (`server-stream-subscription`,
+  `server-stream-finite`, see [method specs](11-method-specs.md)) are served: the request message
+  is forwarded, every upstream frame is relayed as it arrives (headers with the first frame,
+  trailers with the status), and the call ends with the upstream's status — `OK` for a completed
+  finite stream, the node's own status when it aborts, `UNAVAILABLE` when a node ends a
+  subscription without a status. A client that cancels tears down the upstream stream. Streams
+  are never retried or hedged.
 - **nodecore-origin errors** use the closed gRPC code model:
 
 | Condition | Status |
@@ -90,10 +97,11 @@ advertised set does not depend on `x-nodecore-chain`), matching how a node prese
 | key missing/unknown/out of scope | `PERMISSION_DENIED` |
 | method not in the chain's spec | `UNIMPLEMENTED` |
 | rate limit exceeded | `RESOURCE_EXHAUSTED` |
+| subscription ended by the node without a status, or client too slow | `UNAVAILABLE` |
 
 ## Current limitations
 
-- **Unary methods only.** Server-streaming methods (e.g. Sui's `SubscribeCheckpoints`,
-  `ListCheckpoints`) are declared in the specs and answer `UNIMPLEMENTED` — an honest "not
-  supported yet" rather than "unknown method". Client-streaming and bidi are not part of any spec.
+- Client-streaming and bidi methods are not part of any spec (absence is the rejection).
+- gRPC streams are **pass-through**: identical subscriptions from several clients open several
+  upstream streams (no aggregation yet).
 - Responses are **not cached** and **quorum** is not available for gRPC methods yet.

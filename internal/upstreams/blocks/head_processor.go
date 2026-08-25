@@ -2,6 +2,7 @@ package blocks
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,7 +45,7 @@ func NewGenericHeadProcessor(
 	specific BlockChainSpecific,
 ) *GenericHeadProcessor {
 	configuredChain := chains.GetChain(upConfig.ChainName)
-	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, headConnector, specific, upConfig.Options)
+	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, upConfig.HeadMode, headConnector, specific, upConfig.Options)
 
 	headNoUpdatesTimeout := 1 * time.Minute
 	switch head.(type) {
@@ -130,6 +131,7 @@ func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {
 func createHead(
 	ctx context.Context,
 	id string, pollInterval time.Duration,
+	headMode config.HeadMode,
 	headConnector connectors.ApiConnector,
 	specific BlockChainSpecific,
 	options *chains.Options,
@@ -140,11 +142,32 @@ func createHead(
 	case specs.WebsocketConnector:
 		return NewSubHead(ctx, id, options.InternalTimeout, headConnector, specific)
 	case specs.GrpcConnector:
-		// TODO: will be fixed since grpc can work via polling and head subscription at the same time
-		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
+		return createGrpcHead(ctx, id, pollInterval, headMode, headConnector, specific, options)
 	default:
 		return nil
 	}
+}
+
+// createGrpcHead honours head-mode: a gRPC upstream can either poll or hold a
+// head subscription. A chain that cannot push heads (the sentinel) is polled
+// with a warning; any other error from SubscribeHeadRequest is a real failure
+// and is left to the subscription head, which fails loudly on Start.
+func createGrpcHead(
+	ctx context.Context,
+	id string, pollInterval time.Duration,
+	headMode config.HeadMode,
+	headConnector connectors.ApiConnector,
+	specific BlockChainSpecific,
+	options *chains.Options,
+) Head {
+	if headMode == config.HeadModePoll {
+		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
+	}
+	if _, err := specific.SubscribeHeadRequest(); errors.Is(err, ErrUnsupportedHeadSubscriptions) {
+		log.Warn().Msgf("upstream %s: the chain does not support head subscriptions, falling back to head polling", id)
+		return NewRpcHead(ctx, id, options.InternalTimeout, pollInterval, specific)
+	}
+	return NewSubHead(ctx, id, options.InternalTimeout, headConnector, specific)
 }
 
 var _ HeadProcessor = (*GenericHeadProcessor)(nil)

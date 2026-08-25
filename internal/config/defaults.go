@@ -331,6 +331,9 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 			u.HeadConnector = headConnector.String()
 		}
 	}
+	if u.HeadMode == "" {
+		u.HeadMode = HeadModeSubscribe
+	}
 	if u.RateLimitAutoTune != nil {
 		u.RateLimitAutoTune.setDefaults()
 	}

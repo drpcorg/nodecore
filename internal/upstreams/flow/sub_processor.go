@@ -2,12 +2,8 @@ package flow
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -15,7 +11,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/rs/zerolog/log"
 )
 
 type SubscriptionRequestProcessor struct {
@@ -55,22 +50,24 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	go func() {
 		defer close(responses)
 
-		if request.SpecMethod() == nil || request.SpecMethod().Subscription == nil {
-			responses <- totalFailureWrapper(request, errors.New("no subscription info"))
+		// Only subscription methods are served here: unsubscribe calls and
+		// plain methods can arrive flagged as subscriptions (the emerald server
+		// flags every native-subscribe request), and must be refused.
+		if request.SpecMethod() == nil || !request.SpecMethod().IsSubscribe() {
+			responses <- totalFailureWrapper(request, fmt.Errorf("%s is not a subscription method", request.Method()))
 			return
 		}
-
-		method := request.SpecMethod().Subscription.Method
+		framing := s.framing()
 
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
 		// All subscriptions route through the per-chain aggregation engine so
 		// identical (method+params+selector) subscriptions share a single
-		// upstream source instead of opening one node subscription per client.
-		// The shared source emits events only - each client allocates its own
-		// client-facing subscription id below, independent of the single
-		// upstream subscription id.
+		// upstream source instead of opening one node subscription per client
+		// (gRPC streams opt out via a per-request key, see resolveSource).
+		// The shared source emits events only - each client's framing decides
+		// how (and whether) the subscription is announced to the client.
 		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
 		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
@@ -79,29 +76,27 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		}
 		defer sub.Unsubscribe()
 
-		subId, err := nextSubscriptionJson(isSolana(s.chain))
+		ack, err := framing.begin(request, cancel)
 		if err != nil {
-			log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
-			responses <- totalFailureWrapper(request, protocol.SubscribeTotalFailureError())
+			responses <- totalFailureWrapper(request, err)
 			return
 		}
-		s.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
-		responses <- &protocol.ResponseHolderWrapper{
-			UpstreamId: NoUpstream,
-			RequestId:  request.Id(),
-			Response:   protocol.NewSubscriptionMessageEventResponse(request.Id(), subId),
+		if ack != nil {
+			responses <- ack
 		}
 
 		for {
 			select {
 			case r, ok := <-sub.Events:
 				if !ok {
-					// The shared source ended. A non-nil cause is a terminal
-					// failure (node disconnect, param reject, slow consumer);
-					// nil means this client detached cleanly. The real cause is
-					// preserved rather than collapsed into a generic error.
-					if cause := sub.Err(); cause != nil {
-						responses <- totalFailureWrapper(request, cause)
+					// The shared source ended. An error frame is a terminal failure
+					// (node disconnect, param reject, slow consumer) - the real
+					// cause is preserved rather than collapsed into a generic
+					// error. An end frame is the clean completion of a bounded
+					// stream, announced with its trailers. No frame at all means
+					// this client detached.
+					if terminal := sub.Terminal(); terminal != nil {
+						responses <- terminalWrapper(request, terminal)
 					}
 					return
 				}
@@ -111,16 +106,10 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 				if filter != nil && !filter.Matches(r.GetParsedEvent()) {
 					continue
 				}
-				var subResponse protocol.ResponseHolder
-				if s.subCtx.IsSubscriptionResultOnly() {
-					subResponse = protocol.NewSubscriptionResultEventResponse(request.Id(), r.GetMessage())
-				} else {
-					subResponse = protocol.NewSubscriptionMethodResultResponse(request.Id(), method, r.GetMessage(), subId)
-				}
 				responses <- &protocol.ResponseHolderWrapper{
 					UpstreamId: responseUpstreamId(r),
 					RequestId:  request.Id(),
-					Response:   subResponse,
+					Response:   framing.event(request, r),
 				}
 			case <-execCtx.Done():
 				return
@@ -131,6 +120,16 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	return &SubscriptionResponse{responses}
 }
 
+// framing picks how this client sees the subscription: bare event payloads
+// for result-only consumers (the gRPC ingress, the emerald server), the
+// JSON-RPC ack + notification envelope otherwise (the WS server).
+func (s *SubscriptionRequestProcessor) framing() subFraming {
+	if s.subCtx.IsSubscriptionResultOnly() {
+		return resultOnlyFraming{}
+	}
+	return &jsonRpcFraming{chain: s.chain, subCtx: s.subCtx}
+}
+
 func responseUpstreamId(r protocol.SubResponse) string {
 	if id := r.GetUpstreamId(); id != "" {
 		return id
@@ -138,31 +137,34 @@ func responseUpstreamId(r protocol.SubResponse) string {
 	return NoUpstream
 }
 
-func isSolana(chain chains.Chain) bool {
-	return chain == chains.SOLANA || chain == chains.SOLANA_DEVNET || chain == chains.SOLANA_TESTNET
-}
-
-func nextSubscriptionJson(isNumber bool) (json.RawMessage, error) {
-	if isNumber {
-		subscriptionId, err := nextSubscriptionId(6)
-		if err != nil {
-			return nil, err
+// terminalWrapper turns the frame that ended a subscription into the client's
+// final response - the terminal error, or a non-event end frame for a clean
+// completion - keeping the transport metadata it carried (gRPC trailers).
+func terminalWrapper(request protocol.RequestHolder, terminal protocol.SubResponse) *protocol.ResponseHolderWrapper {
+	headers, trailers := subResponseMetadata(terminal)
+	if terminal.GetError() == nil {
+		return &protocol.ResponseHolderWrapper{
+			UpstreamId: responseUpstreamId(terminal),
+			RequestId:  request.Id(),
+			Response:   protocol.NewSubscriptionEndResponse(request.Id()).WithResponseHeaders(headers).WithResponseTrailers(trailers),
 		}
-		subId := json.RawMessage(fmt.Sprintf("%d", binary.BigEndian.Uint64(append(subscriptionId, byte(0), byte(0)))))
-		return subId, nil
 	}
-	subscriptionId, err := nextSubscriptionId(20)
-	if err != nil {
-		return nil, err
+	wrapper := totalFailureWrapper(request, terminal.GetError())
+	if replyErr, ok := wrapper.Response.(*protocol.ReplyError); ok {
+		replyErr.WithResponseHeaders(headers).WithResponseTrailers(trailers)
 	}
-	subId := json.RawMessage(fmt.Sprintf("\"0x%s\"", hex.EncodeToString(subscriptionId)))
-	return subId, nil
+	return wrapper
 }
 
-func nextSubscriptionId(n int) ([]byte, error) {
-	bytes := make([]byte, n)
-	if _, err := rand.Read(bytes); err != nil {
-		return nil, err
+// subResponseMetadata reads the optional transport metadata of a frame.
+func subResponseMetadata(r protocol.SubResponse) (http.Header, map[string][]string) {
+	var headers http.Header
+	var trailers map[string][]string
+	if headerBearer, ok := r.(protocol.HasResponseHeaders); ok {
+		headers = headerBearer.ResponseHeaders()
 	}
-	return bytes, nil
+	if trailerBearer, ok := r.(protocol.HasResponseTrailers); ok {
+		trailers = trailerBearer.ResponseTrailers()
+	}
+	return headers, trailers
 }
