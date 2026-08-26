@@ -50,11 +50,22 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	go func() {
 		defer close(responses)
 
+		// send never parks the goroutine on a consumer that stopped reading:
+		// once the request ctx is gone, so is every reader of responses.
+		send := func(wrapper *protocol.ResponseHolderWrapper) bool {
+			select {
+			case responses <- wrapper:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		// Only subscription methods are served here: unsubscribe calls and
 		// plain methods can arrive flagged as subscriptions (the emerald server
 		// flags every native-subscribe request), and must be refused.
 		if request.SpecMethod() == nil || !request.SpecMethod().IsSubscribe() {
-			responses <- totalFailureWrapper(request, fmt.Errorf("%s is not a subscription method", request.Method()))
+			send(totalFailureWrapper(request, fmt.Errorf("%s is not a subscription method", request.Method())))
 			return
 		}
 		framing := s.framing()
@@ -71,18 +82,18 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
 		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
-			responses <- totalFailureWrapper(request, err)
+			send(totalFailureWrapper(request, err))
 			return
 		}
 		defer sub.Unsubscribe()
 
 		ack, err := framing.begin(request, cancel)
 		if err != nil {
-			responses <- totalFailureWrapper(request, err)
+			send(totalFailureWrapper(request, err))
 			return
 		}
-		if ack != nil {
-			responses <- ack
+		if ack != nil && !send(ack) {
+			return
 		}
 
 		for {
@@ -96,7 +107,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 					// stream, announced with its trailers. No frame at all means
 					// this client detached.
 					if terminal := sub.Terminal(); terminal != nil {
-						responses <- terminalWrapper(request, terminal)
+						send(terminalWrapper(request, terminal))
 					}
 					return
 				}
@@ -106,10 +117,13 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 				if filter != nil && !filter.Matches(r.GetParsedEvent()) {
 					continue
 				}
-				responses <- &protocol.ResponseHolderWrapper{
+				wrapper := &protocol.ResponseHolderWrapper{
 					UpstreamId: responseUpstreamId(r),
 					RequestId:  request.Id(),
 					Response:   framing.event(request, r),
+				}
+				if !send(wrapper) {
+					return
 				}
 			case <-execCtx.Done():
 				return

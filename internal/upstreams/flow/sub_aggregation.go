@@ -274,6 +274,19 @@ func newGenericSourceBuilder(
 		}
 
 		out := make(chan protocol.SubResponse, genericSubscriptionBufferSize)
+		// emit never parks on a full buffer once the engine has stopped reading
+		// (after terminate nothing drains out; srcCtx is cancelled instead)
+		emit := func(r protocol.SubResponse) bool {
+			select {
+			case out <- r:
+				return true
+			case <-srcCtx.Done():
+				return false
+			}
+		}
+		failure := func() {
+			emit(&protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId})
+		}
 		go func() {
 			defer close(out)
 			defer func() {
@@ -287,22 +300,21 @@ func newGenericSourceBuilder(
 					return
 				case state, ok := <-stateChan:
 					if ok && state == protocol.WsDisconnected {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
+						failure()
 						return
 					}
 				case r, ok := <-subResp.ResponseChan():
 					if !ok {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
+						failure()
 						return
 					}
 					if r.IsEnd() && !finite {
 						// a node ending a live subscription is a failure; only a
 						// bounded stream completes
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
+						failure()
 						return
 					}
-					out <- r
-					if r.GetError() != nil || r.IsEnd() {
+					if !emit(r) || r.GetError() != nil || r.IsEnd() {
 						return
 					}
 				}
