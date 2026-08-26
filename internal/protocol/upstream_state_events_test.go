@@ -42,6 +42,29 @@ func TestLowerBoundUpstreamStateEvent(t *testing.T) {
 	assert.True(t, event.Same(nextState))
 }
 
+// A periodic detector publish must not undo a live correction; only the archive reset (1) may lower.
+func TestLowerBoundUpstreamStateEventNeverLowersExceptArchiveReset(t *testing.T) {
+	state := newUpstreamState()
+	state = (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(93637370, 100, protocol.StateBound)}).ProcessEvent(state)
+
+	stale := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(93569024, 101, protocol.StateBound)}).ProcessEvent(state)
+	bound, _ := stale.LowerBoundsInfo.GetLowerBound(protocol.StateBound)
+	assert.Equal(t, int64(93637370), bound.Bound, "lower republish is ignored")
+
+	higher := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(93637400, 102, protocol.StateBound)}).ProcessEvent(state)
+	bound, _ = higher.LowerBoundsInfo.GetLowerBound(protocol.StateBound)
+	assert.Equal(t, int64(93637400), bound.Bound, "higher bound is accepted")
+
+	reset := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(1, 103, protocol.StateBound)}).ProcessEvent(state)
+	bound, _ = reset.LowerBoundsInfo.GetLowerBound(protocol.StateBound)
+	assert.Equal(t, int64(1), bound.Bound, "archive reset is accepted")
+
+	other := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(5, 104, protocol.BlockBound)}).ProcessEvent(state)
+	bound, ok := other.LowerBoundsInfo.GetLowerBound(protocol.BlockBound)
+	assert.True(t, ok)
+	assert.Equal(t, int64(5), bound.Bound, "other types are independent")
+}
+
 func TestStatusUpstreamStateEvent(t *testing.T) {
 	state := newUpstreamState()
 	event := &protocol.StatusUpstreamStateEvent{Status: protocol.Syncing}

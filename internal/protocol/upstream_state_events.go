@@ -34,6 +34,12 @@ func (l *LowerBoundUpstreamStateEvent) Same(state UpstreamState) bool {
 }
 
 func (l *LowerBoundUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
+	// Bounds only move up (or reset to 1 for a fully archival node) — same rule the periodic
+	// detector applies. Without it the detector's next publish would undo a live correction made
+	// from a pruned-history error (request_processor.liveLowerBoundFromPrunedError).
+	if existing, ok := state.LowerBoundsInfo.GetLowerBound(l.Data.Type); ok && l.Data.Bound != 1 && l.Data.Bound < existing.Bound {
+		return state
+	}
 	copyLowerBoundInfo := state.LowerBoundsInfo.Copy()
 	copyLowerBoundInfo.AddLowerBound(l.Data)
 
