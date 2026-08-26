@@ -5,7 +5,9 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewUpstreamGrpcRequestStoresMethodAndBodyVerbatim(t *testing.T) {
@@ -61,4 +63,18 @@ func TestNewInternalUpstreamGrpcRequest(t *testing.T) {
 	body, err := req.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{7}, body)
+}
+
+func TestUpstreamGrpcRequestIsSubscribeFollowsTheSpec(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	unary := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	finite := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/ListCheckpoints", nil, nil, "sui")
+	sub := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", nil, nil, "sui")
+	unknown := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/Bogus", nil, nil, "sui")
+
+	assert.False(t, unary.IsSubscribe())
+	assert.True(t, finite.IsSubscribe())
+	assert.True(t, sub.IsSubscribe())
+	assert.False(t, unknown.IsSubscribe())
 }

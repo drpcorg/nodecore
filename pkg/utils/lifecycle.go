@@ -38,6 +38,10 @@ func (l *GenericLifecycle) Start(f func(ctx context.Context) error) {
 		err := f(newCtx)
 		if err != nil {
 			log.Error().Err(err).Msgf("failed to start lifecycle '%s'", l.name)
+			// release whatever the failed start left bound to the context (an
+			// opened stream, goroutines) - Stop() will not run for a lifecycle
+			// that never became running
+			cancel()
 			l.running.Store(false)
 		}
 	} else {

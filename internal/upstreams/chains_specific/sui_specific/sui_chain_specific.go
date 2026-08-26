@@ -21,14 +21,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/sui_validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/sui"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-// errUnsupportedHeadSubscriptions - v1 has no head subscription (pushing
-// heads via SubscribeCheckpoints belongs to the server-streaming follow-up),
-// so head tracking is poll-only, the pattern Stellar/Aptos use today.
-var errUnsupportedHeadSubscriptions = errors.New("sui: head subscriptions are not supported")
-
 var errSuiNoCheckpointHeight = errors.New("sui node reported no checkpoint_height")
+
+var errSuiNoCheckpointCursor = errors.New("sui SubscribeCheckpoints frame carries no cursor")
 
 // SuiChainSpecificObject drives an upstream through the sui.rpc.v2 gRPC API -
 // the upstream's only connector. All probes are unary gRPC calls reading the
@@ -89,12 +88,33 @@ func (s *SuiChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, 
 	return newSuiBlock(serviceInfo, blockBytes)
 }
 
-func (s *SuiChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+// ParseSubscriptionBlock reads a SubscribeCheckpoints frame. The height is the
+// cursor - present on every frame, monotonic, and on an unfiltered stream equal
+// to the delivered checkpoint's sequence number - so the checkpoint payload is
+// never inspected and progress-only frames (filtered streams only) need no
+// special handling. Hashes stay synthetic, matching the polled head.
+func (s *SuiChainSpecificObject) ParseSubscriptionBlock(data []byte) (protocol.Block, error) {
+	var frame sui.SubscribeCheckpointsResponse
+	if err := proto.Unmarshal(data, &frame); err != nil {
+		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the sui SubscribeCheckpoints frame, reason - %s", err.Error())
+	}
+	if frame.Cursor == nil {
+		return protocol.ZeroBlock{}, errSuiNoCheckpointCursor
+	}
+	return newSuiBlockFromHeight(frame.GetCursor(), data)
 }
 
+// SubscribeHeadRequest opens an unfiltered SubscribeCheckpoints stream with the
+// read mask cut down to the sequence number - the cursor is what the head
+// reads, the mask only keeps frames small.
 func (s *SuiChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	body, err := proto.Marshal(&sui.SubscribeCheckpointsRequest{
+		ReadMask: &fieldmaskpb.FieldMask{Paths: []string{"sequence_number"}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("couldn't marshal the sui SubscribeCheckpoints request: %w", err)
+	}
+	return protocol.NewInternalUpstreamGrpcRequest("/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", body, s.configuredChain.Chain), nil
 }
 
 func (s *SuiChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
@@ -115,8 +135,7 @@ func (s *SuiChainSpecificObject) SettingsValidators() []validations.Validator[va
 	}
 }
 
-// CapDetectors returns nil: v1 has no streaming transport, so no cap can be
-// asserted.
+// CapDetectors returns nil: Sui has no EVM-style local-synthesis caps.
 func (s *SuiChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
 	return nil
 }
@@ -144,9 +163,10 @@ func (s *SuiChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
 }
 
-// BlockProcessor is the standard poll-based head processor. Checkpoints are
-// final on execution, so there is no separate "safe" pointer - safe block
-// detection is disabled unconditionally.
+// BlockProcessor is the standard block processor (the head itself is chosen
+// by head-mode, see blocks.createHead). Checkpoints are final on execution, so
+// there is no separate "safe" pointer - safe block detection is disabled
+// unconditionally.
 func (s *SuiChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 	return blocks.NewGenericBlockProcessor(
 		s.ctx,
@@ -166,13 +186,16 @@ func (s *SuiChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
-// newSuiBlock builds a head block from the checkpoint height. GetServiceInfo
-// exposes no checkpoint digest, so the hashes are synthetic - deterministic
-// height encodings that keep block(N).ParentHash == block(N-1).Hash, so the
-// parent-linkage checks in head-stream consumers hold. Checkpoints are
-// BFT-final on execution (no reorgs), so height-derived ids are safe.
 func newSuiBlock(serviceInfo *sui.GetServiceInfoResponse, rawData []byte) (protocol.Block, error) {
-	height := serviceInfo.GetCheckpointHeight()
+	return newSuiBlockFromHeight(serviceInfo.GetCheckpointHeight(), rawData)
+}
+
+// newSuiBlockFromHeight builds a head block from a checkpoint height. Neither
+// GetServiceInfo nor the cursor exposes a digest, so the hashes are synthetic -
+// deterministic height encodings that keep block(N).ParentHash == block(N-1).Hash,
+// so the parent-linkage checks in head-stream consumers hold. Checkpoints are
+// BFT-final on execution (no reorgs), so height-derived ids are safe.
+func newSuiBlockFromHeight(height uint64, rawData []byte) (protocol.Block, error) {
 	if height == 0 {
 		return protocol.ZeroBlock{}, errSuiNoCheckpointHeight
 	}

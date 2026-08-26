@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"strings"
 	"testing"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubChainSupervisor exposes a fixed ChainSupervisorState for gating tests.
@@ -379,4 +381,33 @@ func TestSubscriptionKeyDependsOnMethodParamsAndSelectors(t *testing.T) {
 	assert.NotEqual(t, subscriptionKey(newHeads), subscriptionKey(logs))
 	// same method+params (different client id) collapse onto the same source
 	assert.Equal(t, subscriptionKey(newHeads), subscriptionKey(newHeadsAgain))
+}
+
+func grpcStreamRequest(t *testing.T, method string) protocol.RequestHolder {
+	t.Helper()
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	return protocol.NewUpstreamGrpcRequest("1", method, nil, []byte{1, 2}, "sui")
+}
+
+// gRPC streams are pass-through: identical requests must never share a source.
+func TestResolveSourceGrpcStreamKeyIsUniquePerRequest(t *testing.T) {
+	request := grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/ListCheckpoints")
+	supervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+
+	key1, _, _ := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+	key2, _, _ := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+
+	prefix := subscriptionKey(request) + "|"
+	assert.True(t, strings.HasPrefix(key1, prefix))
+	assert.True(t, strings.HasPrefix(key2, prefix))
+	assert.NotEqual(t, key1, key2)
+}
+
+func TestIsFiniteGrpcStream(t *testing.T) {
+	assert.True(t, isFiniteGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/ListCheckpoints")))
+	assert.False(t, isFiniteGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints")))
+	assert.False(t, isFiniteGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/GetObject")))
+	assert.True(t, isGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints")))
+	assert.False(t, isGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/GetObject")))
 }

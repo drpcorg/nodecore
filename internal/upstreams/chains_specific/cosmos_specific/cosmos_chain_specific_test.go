@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"strconv"
 	"strings"
 	"testing"
@@ -230,11 +231,11 @@ func TestCosmosRestHeadSubscriptionsUnsupported(t *testing.T) {
 
 	req, err := cs.SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.ErrorContains(t, err, "head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
 	block, err := cs.ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.ErrorContains(t, err, "head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 // ---------- validators ----------

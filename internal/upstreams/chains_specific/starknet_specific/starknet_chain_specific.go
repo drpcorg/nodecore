@@ -22,11 +22,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: spec-v0.8 starknet subscriptions are WS-only and
-// out of v1 scope, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("starknet: head subscriptions are not supported")
-
 type StarknetChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
@@ -186,11 +181,11 @@ func (s *StarknetChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 }
 
 func (s *StarknetChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (s *StarknetChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type starknetBlockHeader struct {

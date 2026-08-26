@@ -65,9 +65,10 @@ func NewServer(appCtx *server_ctx.ApplicationServerContext, baseOptions ...grpc.
 }
 
 // chainIngress is the catch-all handler of the chain-ingress gRPC server: a
-// native gRPC call ("/sui.rpc.v2.LedgerService/GetObject") is routed through
-// the same execution flow as JSON-RPC and REST, bytes-only. It fires for
-// every service no registered handler owns - on this server only reflection
+// native gRPC call ("/sui.rpc.v2.LedgerService/GetObject"), unary or
+// server-streaming, is routed through the same execution flow as JSON-RPC and
+// REST, bytes-only. It fires for every service no registered handler owns - on
+// this server only reflection
 // is registered. The dshackle services live on their own server (grpc-port)
 // and never pass through here.
 type chainIngress struct {
@@ -98,18 +99,11 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 		return status.Errorf(codes.Unauthenticated, "auth error - %s", err.Error())
 	}
 
-	requestHandler := &grpcRequestHandler{stream: stream, md: md, method: fullMethod}
-	handleResp := c.appCtx.HandleRequest(ctx, requestHandler, authPayload, flow.NewSubCtx())
-	wrapper, ok := <-handleResp.ResponseWrappers()
-	if !ok {
-		return statusFromMissingResponse(ctx)
-	}
-
-	forwardResponseMetadata(stream, wrapper.Response)
-	if wrapper.Response.HasError() {
-		return grpcStatusFromResponseError(wrapper.Response.GetError()).Err()
-	}
-	return stream.SendMsg(&rawFrame{data: wrapper.Response.ResponseResult()})
+	call := newGrpcCall(stream, md, fullMethod)
+	// result-only: subscription frames are bare payloads (no JSON-RPC envelope,
+	// no client subscription id); irrelevant for unary calls
+	handleResp := c.appCtx.HandleRequest(ctx, call, authPayload, flow.NewSubCtx().WithSubscriptionResultOnly(true))
+	return call.serve(stream, handleResp)
 }
 
 // statusFromMissingResponse covers the response channel closing without a
@@ -140,12 +134,13 @@ func (c *chainIngress) contextWithClientIps(ctx context.Context, md metadata.MD)
 	return utils.ContextWithResolvedIps(ctx, remoteAddr, md.Get("x-forwarded-for"), trustedProxies)
 }
 
-// grpcRequestHandler decodes one unary gRPC call for the shared ingress
-// pipeline: the chain from metadata, the call type from the method spec
-// (arity is not on the gRPC wire), and exactly ONE request message - never
-// waiting for the client's half-close (grpc-go's own processUnaryRPC does
-// the same; extra frames from rogue clients are never read, HTTP/2 flow
-// control bounds them).
+// grpcRequestHandler decodes one gRPC call for the shared ingress pipeline:
+// the chain from metadata, the method from the spec (arity is not on the gRPC
+// wire), and exactly ONE request message - every routable call (unary and
+// server-streaming) has one; client-streaming/bidi are rejected by the spec
+// lookup. It never waits for the client's half-close (grpc-go's own
+// processUnaryRPC does the same; extra frames from rogue clients are never
+// read, HTTP/2 flow control bounds them).
 type grpcRequestHandler struct {
 	stream grpc.ServerStream
 	md     metadata.MD
@@ -168,10 +163,6 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 	if specMethod == nil {
 		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, fmt.Sprintf("unknown method %s", h.method), nil)
 	}
-	if specMethod.GrpcCallType() == specs.GrpcCallTypeServerStream {
-		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, "server-streaming methods are not supported yet", nil)
-	}
-
 	requestFrame, err := h.receiveRequestFrame()
 	if err != nil {
 		return nil, err
@@ -192,8 +183,8 @@ func (h *grpcRequestHandler) GetRequestType() protocol.RequestType {
 }
 
 // receiveRequestFrame reads the one request message every routable method has
-// (unary now, server-stream later; client-streaming/bidi are rejected by the
-// spec lookup before this point), bounded by firstMessageDeadline: keepalives
+// (client-streaming/bidi are rejected by the spec lookup before this point),
+// bounded by firstMessageDeadline: keepalives
 // only detect dead peers, so without this a live client that opens a call and
 // never sends would hold the stream and its goroutine forever. Receive errors
 // keep their gRPC identity (client cancel, oversized message) instead of
@@ -265,6 +256,10 @@ func grpcStatusFromResponseError(respError *protocol.ResponseError) *status.Stat
 		code = codes.ResourceExhausted
 	case protocol.NoSupportedMethod:
 		code = codes.Unimplemented
+	case protocol.SubscribeTotalFailure:
+		// the node ended a subscription without a status, or the client fell
+		// too far behind
+		code = codes.Unavailable
 	default:
 		code = codes.Internal
 	}

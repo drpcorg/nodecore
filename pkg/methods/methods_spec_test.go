@@ -410,11 +410,38 @@ func TestLoadSpecGrpcDefaults(t *testing.T) {
 	assert.NotNil(t, method)
 	assert.Equal(t, specs.GrpcCallTypeUnary, method.GrpcCallType())
 
-	// server-stream methods must never default to cacheable
+	// server-stream methods must never default to cacheable and count as subscriptions
 	method = specs.GetSpecMethod("grpc_test", "/pkg.Service/StreamNoCacheable")
 	assert.NotNil(t, method)
-	assert.Equal(t, specs.GrpcCallTypeServerStream, method.GrpcCallType())
+	assert.Equal(t, specs.GrpcCallTypeServerStreamSubscription, method.GrpcCallType())
 	assert.False(t, method.IsCacheable())
+	assert.True(t, method.IsSubscribe())
+
+	method = specs.GetSpecMethod("grpc_test", "/pkg.Service/FiniteStream")
+	assert.NotNil(t, method)
+	assert.Equal(t, specs.GrpcCallTypeServerStreamFinite, method.GrpcCallType())
+	assert.False(t, method.IsCacheable())
+	assert.True(t, method.IsSubscribe(), "a finite stream is routed like a subscription")
+
+	method = specs.GetSpecMethod("grpc_test", "/pkg.Service/UnaryNoSettings")
+	assert.False(t, method.IsSubscribe())
+}
+
+// IsSubscribeMethod must agree with Method.IsSubscribe - one source of truth.
+func TestIsSubscribeMethodCoversGrpcStreams(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc")).Load()
+	assert.NoError(t, err)
+
+	assert.True(t, specs.IsSubscribeMethod("grpc_test", "/pkg.Service/StreamNoCacheable"))
+	assert.True(t, specs.IsSubscribeMethod("grpc_test", "/pkg.Service/FiniteStream"))
+	assert.False(t, specs.IsSubscribeMethod("grpc_test", "/pkg.Service/UnaryNoSettings"))
+	assert.False(t, specs.IsSubscribeMethod("grpc_test", "/pkg.Service/Unknown"))
+}
+
+func TestLoadSpecGrpcSubscriptionSettingsThenError(t *testing.T) {
+	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs/grpc_subscription_settings")).Load()
+
+	assert.ErrorContains(t, err, "couldn't read method specs: error during method '/pkg.Service/Method' of 'spec1.json' validation, cause: subscription settings cannot be used with grpc methods, use grpc.call-type instead")
 }
 
 func TestLoadSpecGrpcWrongCallTypeThenError(t *testing.T) {

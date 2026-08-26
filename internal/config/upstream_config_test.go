@@ -82,6 +82,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			BanDuration: 5 * time.Minute,
 		},
 		HeadConnector:  specs.JsonRpcConnector.String(),
+		HeadMode:       config.HeadModeSubscribe,
 		PollInterval:   1 * time.Minute,
 		ChainName:      "ethereum",
 		FailsafeConfig: &config.FailsafeConfig{},
@@ -129,6 +130,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
 		HeadConnector: specs.JsonRpcConnector.String(),
+		HeadMode:      config.HeadModeSubscribe,
 		PollInterval:  1 * time.Minute,
 		ChainName:     "ethereum",
 		Methods: &config.MethodsConfig{
@@ -179,6 +181,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
 		HeadConnector: specs.RestConnector.String(),
+		HeadMode:      config.HeadModeSubscribe,
 		PollInterval:  1 * time.Minute,
 		ChainName:     "ethereum",
 		Methods: &config.MethodsConfig{
@@ -439,6 +442,7 @@ func TestSetChainsDefault(t *testing.T) {
 						BanDuration: 5 * time.Minute,
 					},
 					HeadConnector:  specs.JsonRpcConnector.String(),
+					HeadMode:       config.HeadModeSubscribe,
 					PollInterval:   10 * time.Minute,
 					ChainName:      "ethereum",
 					FailsafeConfig: &config.FailsafeConfig{},
@@ -692,4 +696,26 @@ func TestOnionEndpointGrpcConnectorThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/tor-onion-grpc.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: onion endpoints are not supported for the 'grpc' connector")
+}
+
+func TestHeadModeDefaultsToSubscribe(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-head-connector.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, config.HeadModeSubscribe, appConfig.UpstreamConfig.Upstreams[0].HeadMode)
+}
+
+func TestHeadModePoll(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/head-mode-poll.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, config.HeadModePoll, appConfig.UpstreamConfig.Upstreams[0].HeadMode)
+}
+
+func TestInvalidHeadModeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-head-mode.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: invalid head-mode 'sometimes', expected 'subscribe' or 'poll'")
 }

@@ -2,6 +2,7 @@ package stellar_specific_test
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -107,5 +108,5 @@ func TestStellarHorizonProcessorsAndValidators(t *testing.T) {
 
 	req, err := specific.SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "stellar: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }

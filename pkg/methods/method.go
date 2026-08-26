@@ -124,7 +124,15 @@ func (m *Method) IsStickyCreate() bool {
 	return m.sticky.CreateSticky
 }
 
+// IsSubscribe reports whether the method is answered by a stream of frames
+// from one upstream: a JSON-RPC subscription, or either gRPC server-stream
+// shape. Both gRPC shapes take the subscription path through the flow (no
+// retries/hedges, SubscriptionRequestProcessor); only a clean EOF is read
+// differently, by GrpcCallType.
 func (m *Method) IsSubscribe() bool {
+	if m.grpcCallType.IsServerStream() {
+		return true
+	}
 	if m.Subscription == nil {
 		return false
 	}

@@ -32,13 +32,20 @@ var suiUnaryMethods = []string{
 	"/sui.rpc.v2.NameService/ReverseLookupName",
 }
 
-var suiServerStreamMethods = []string{
+var suiFiniteStreamMethods = []string{
 	"/sui.rpc.v2.LedgerService/ListCheckpoints",
 	"/sui.rpc.v2.LedgerService/ListTransactions",
 	"/sui.rpc.v2.LedgerService/ListEvents",
+}
+
+var suiSubscriptionMethods = []string{
 	"/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints",
 	"/sui.rpc.v2.SubscriptionService/SubscribeTransactions",
 	"/sui.rpc.v2.SubscriptionService/SubscribeEvents",
+}
+
+func suiServerStreamMethods() []string {
+	return append(append([]string{}, suiFiniteStreamMethods...), suiSubscriptionMethods...)
 }
 
 func TestSuiBundleIsGrpcOnly(t *testing.T) {
@@ -48,7 +55,7 @@ func TestSuiBundleIsGrpcOnly(t *testing.T) {
 
 	methods := specs.GetSpecMethodsByConnectors("sui", []specs.ApiConnectorType{specs.GrpcConnector})
 	require.NotNil(t, methods)
-	assert.Len(t, methods[specs.DefaultMethodGroup], len(suiUnaryMethods)+len(suiServerStreamMethods))
+	assert.Len(t, methods[specs.DefaultMethodGroup], len(suiUnaryMethods)+len(suiServerStreamMethods()))
 }
 
 func TestSuiMethodCallTypes(t *testing.T) {
@@ -59,10 +66,17 @@ func TestSuiMethodCallTypes(t *testing.T) {
 		require.NotNil(t, method, name)
 		assert.Equal(t, specs.GrpcCallTypeUnary, method.GrpcCallType(), name)
 	}
-	for _, name := range suiServerStreamMethods {
+	for _, name := range suiFiniteStreamMethods {
 		method := specs.GetSpecMethod("sui", name)
 		require.NotNil(t, method, name)
-		assert.Equal(t, specs.GrpcCallTypeServerStream, method.GrpcCallType(), name)
+		assert.Equal(t, specs.GrpcCallTypeServerStreamFinite, method.GrpcCallType(), name)
+		assert.True(t, method.IsSubscribe(), name)
+	}
+	for _, name := range suiSubscriptionMethods {
+		method := specs.GetSpecMethod("sui", name)
+		require.NotNil(t, method, name)
+		assert.Equal(t, specs.GrpcCallTypeServerStreamSubscription, method.GrpcCallType(), name)
+		assert.True(t, method.IsSubscribe(), name)
 	}
 }
 
@@ -70,7 +84,7 @@ func TestSuiMethodCallTypes(t *testing.T) {
 func TestSuiMethodsAreNotCacheable(t *testing.T) {
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
-	for _, name := range append(append([]string{}, suiUnaryMethods...), suiServerStreamMethods...) {
+	for _, name := range append(append([]string{}, suiUnaryMethods...), suiServerStreamMethods()...) {
 		method := specs.GetSpecMethod("sui", name)
 		require.NotNil(t, method, name)
 		assert.False(t, method.IsCacheable(), "%s must not be cacheable", name)

@@ -9,8 +9,8 @@
       "name": "/pkg.Service/Method",
       "params": [],
       "settings": {
-        "sticky": {
-          "send-sticky": true
+        "subscription": {
+          "is-subscribe": true
         },
         "grpc": {
           "call-type": "server-stream-subscription"
