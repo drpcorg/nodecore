@@ -1,4 +1,4 @@
-package celestia_validations
+package specific_helpers
 
 import (
 	"fmt"
@@ -7,9 +7,10 @@ import (
 	"github.com/bytedance/sonic"
 )
 
-// ExtendedHeader models the celestia-node header.* responses (CometBFT encoding:
-// height is a decimal string, hashes are bare hex strings).
-type ExtendedHeader struct {
+// CelestiaExtendedHeader models the celestia-node header.* responses (CometBFT
+// encoding: height is a decimal string, hashes are bare hex strings). Head polling,
+// chain validation and lower-bound detection all read it.
+type CelestiaExtendedHeader struct {
 	Header struct {
 		ChainId     string `json:"chain_id"`
 		Height      string `json:"height"`
@@ -24,12 +25,12 @@ type ExtendedHeader struct {
 	} `json:"commit"`
 }
 
-func (e *ExtendedHeader) Height() (uint64, error) {
+func (e *CelestiaExtendedHeader) Height() (uint64, error) {
 	return strconv.ParseUint(e.Header.Height, 10, 64)
 }
 
-func ParseExtendedHeader(data []byte) (*ExtendedHeader, error) {
-	header := ExtendedHeader{}
+func ParseCelestiaExtendedHeader(data []byte) (*CelestiaExtendedHeader, error) {
+	header := CelestiaExtendedHeader{}
 	if err := sonic.Unmarshal(data, &header); err != nil {
 		return nil, fmt.Errorf("couldn't parse the celestia extended header, reason - %s", err.Error())
 	}

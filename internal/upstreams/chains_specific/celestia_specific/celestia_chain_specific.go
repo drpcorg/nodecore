@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
@@ -140,12 +141,14 @@ func (c *CelestiaChainSpecificObject) GetLatestBlock(ctx context.Context) (proto
 	return c.ParseBlock(response.ResponseResult())
 }
 
+// CometBFT commits are final: a header the node has stored can't be reorged out, so
+// the finalized pointer is the head itself.
 func (c *CelestiaChainSpecificObject) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
 	return c.GetLatestBlock(ctx)
 }
 
 func (c *CelestiaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, error) {
-	header, err := celestia_validations.ParseExtendedHeader(blockBytes)
+	header, err := specific_helpers.ParseCelestiaExtendedHeader(blockBytes)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}

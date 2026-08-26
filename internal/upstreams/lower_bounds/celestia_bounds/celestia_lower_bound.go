@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
-	"github.com/drpcorg/nodecore/internal/upstreams/validations/celestia_validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
@@ -92,7 +92,7 @@ func (c *CelestiaLowerBoundDetector) fetchTailHeight(ctx context.Context) (int64
 		return 0, response.GetError()
 	}
 
-	header, err := celestia_validations.ParseExtendedHeader(response.ResponseResult())
+	header, err := specific_helpers.ParseCelestiaExtendedHeader(response.ResponseResult())
 	if err != nil {
 		return 0, err
 	}

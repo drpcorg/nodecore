@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -39,10 +40,6 @@ func (c *CelestiaChainValidator) Validate() validations.ValidationSettingResult 
 		log.Error().Err(err).Msgf("failed to get chainId of chain %s upstream '%s'", c.chain.Chain, c.upstreamId)
 		return validations.SettingsError
 	}
-	if chainId == "" {
-		log.Error().Msgf("celestia upstream '%s' returned empty chain id", c.upstreamId)
-		return validations.SettingsError
-	}
 	if !strings.EqualFold(chainId, c.chain.ChainId) {
 		log.Error().Msgf(
 			"'%s' is specified for upstream '%s' with chainId '%s', but the node reports chainId '%s'",
@@ -72,7 +69,7 @@ func (c *CelestiaChainValidator) getChainId() (string, error) {
 		return "", response.GetError()
 	}
 
-	header, err := ParseExtendedHeader(response.ResponseResult())
+	header, err := specific_helpers.ParseCelestiaExtendedHeader(response.ResponseResult())
 	if err != nil {
 		return "", err
 	}

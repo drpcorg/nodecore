@@ -158,6 +158,11 @@ func TestCelestiaChainValidator(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse(mocha)).Once()
 	assert.Equal(t, validations.FatalSettingError, validators[0].Validate())
 
+	// an empty chain id is a mismatch too, not a transient error
+	empty := strings.Replace(extendedHeader, `"chain_id": "celestia"`, `"chain_id": ""`, 1)
+	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse(empty)).Once()
+	assert.Equal(t, validations.FatalSettingError, validators[0].Validate())
+
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "rpc error", nil))).Once()
 	assert.Equal(t, validations.SettingsError, validators[0].Validate())
