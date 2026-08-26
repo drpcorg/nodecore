@@ -4,14 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/storages"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 )
 
 const (
@@ -80,7 +80,7 @@ func (p *PostgresConnector) Store(ctx context.Context, key string, object string
 
 	var expiresAt *time.Time
 	if ttl > 0 {
-		expiresAt = lo.ToPtr(time.Now().UTC().Add(ttl))
+		expiresAt = new(time.Now().UTC().Add(ttl))
 	}
 
 	_, err := p.pool.Exec(ctx, fmt.Sprintf(storeItem, p.table), key, object, expiresAt)

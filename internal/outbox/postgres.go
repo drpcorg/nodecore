@@ -3,11 +3,11 @@ package outbox
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/samber/lo"
-	"time"
 )
 
 const (
@@ -84,7 +84,7 @@ func (p *postgresClient) rollupSchema(ctx context.Context) error {
 func (p *postgresClient) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	var expiresAt *time.Time
 	if ttl > 0 {
-		expiresAt = lo.ToPtr(time.Now().UTC().Add(ttl))
+		expiresAt = new(time.Now().UTC().Add(ttl))
 	}
 
 	_, err := p.pool.Exec(ctx, storeOutboxItem, key, value, expiresAt)

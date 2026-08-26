@@ -10,9 +10,9 @@
 package sui
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -121,7 +121,7 @@ type CheckpointSummary struct {
 	// Timestamp of the checkpoint - number of milliseconds from the Unix epoch
 	// Checkpoint timestamps are monotonic, but not strongly monotonic - subsequent
 	// checkpoints can have the same timestamp if they originate from the same underlining consensus commit.
-	Timestamp *timestamp.Timestamp `protobuf:"bytes,9,opt,name=timestamp,proto3,oneof" json:"timestamp,omitempty"`
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=timestamp,proto3,oneof" json:"timestamp,omitempty"`
 	// Commitments to checkpoint-specific state.
 	Commitments []*CheckpointCommitment `protobuf:"bytes,10,rep,name=commitments,proto3" json:"commitments,omitempty"`
 	// Extra data only present in the final checkpoint of an epoch.
@@ -221,7 +221,7 @@ func (x *CheckpointSummary) GetEpochRollingGasCostSummary() *GasCostSummary {
 	return nil
 }
 
-func (x *CheckpointSummary) GetTimestamp() *timestamp.Timestamp {
+func (x *CheckpointSummary) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -438,7 +438,7 @@ var file_sui_rpc_v2_checkpoint_summary_proto_goTypes = []any{
 	(*CheckpointCommitment)(nil),                       // 3: sui.rpc.v2.CheckpointCommitment
 	(*Bcs)(nil),                                        // 4: sui.rpc.v2.Bcs
 	(*GasCostSummary)(nil),                             // 5: sui.rpc.v2.GasCostSummary
-	(*timestamp.Timestamp)(nil),                        // 6: google.protobuf.Timestamp
+	(*timestamppb.Timestamp)(nil),                      // 6: google.protobuf.Timestamp
 	(*ValidatorCommitteeMember)(nil),                   // 7: sui.rpc.v2.ValidatorCommitteeMember
 }
 var file_sui_rpc_v2_checkpoint_summary_proto_depIdxs = []int32{

@@ -10,11 +10,11 @@
 package sui
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -79,7 +79,7 @@ type GetServiceInfoResponse struct {
 	// Checkpoint height of the most recently executed checkpoint.
 	CheckpointHeight *uint64 `protobuf:"varint,4,opt,name=checkpoint_height,json=checkpointHeight,proto3,oneof" json:"checkpoint_height,omitempty"`
 	// Unix timestamp of the most recently executed checkpoint.
-	Timestamp *timestamp.Timestamp `protobuf:"bytes,5,opt,name=timestamp,proto3,oneof" json:"timestamp,omitempty"`
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=timestamp,proto3,oneof" json:"timestamp,omitempty"`
 	// The lowest checkpoint for which checkpoints and transaction data are available.
 	LowestAvailableCheckpoint *uint64 `protobuf:"varint,6,opt,name=lowest_available_checkpoint,json=lowestAvailableCheckpoint,proto3,oneof" json:"lowest_available_checkpoint,omitempty"`
 	// The lowest checkpoint for which object data is available.
@@ -148,7 +148,7 @@ func (x *GetServiceInfoResponse) GetCheckpointHeight() uint64 {
 	return 0
 }
 
-func (x *GetServiceInfoResponse) GetTimestamp() *timestamp.Timestamp {
+func (x *GetServiceInfoResponse) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -1692,7 +1692,7 @@ var file_sui_rpc_v2_ledger_service_proto_goTypes = []any{
 	(*ListTransactionsResponse)(nil),     // 19: sui.rpc.v2.ListTransactionsResponse
 	(*ListEventsRequest)(nil),            // 20: sui.rpc.v2.ListEventsRequest
 	(*ListEventsResponse)(nil),           // 21: sui.rpc.v2.ListEventsResponse
-	(*timestamp.Timestamp)(nil),          // 22: google.protobuf.Timestamp
+	(*timestamppb.Timestamp)(nil),        // 22: google.protobuf.Timestamp
 	(*fieldmaskpb.FieldMask)(nil),        // 23: google.protobuf.FieldMask
 	(*Object)(nil),                       // 24: sui.rpc.v2.Object
 	(*status.Status)(nil),                // 25: google.rpc.Status

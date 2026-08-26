@@ -10,10 +10,10 @@
 package sui
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -532,11 +532,11 @@ type TransactionExpiration struct {
 	// Minimal UNIX timestamp in which a transaction can be executed. The
 	// provided minimal timestamp must be less than or equal to the current
 	// clock.
-	MinTimestamp *timestamp.Timestamp `protobuf:"bytes,4,opt,name=min_timestamp,json=minTimestamp,proto3,oneof" json:"min_timestamp,omitempty"`
+	MinTimestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=min_timestamp,json=minTimestamp,proto3,oneof" json:"min_timestamp,omitempty"`
 	// Maximum UNIX timestamp in which a transaction can be executed. The
 	// provided maximal timestamp must be greater than or equal to the current
 	// clock.
-	MaxTimestamp *timestamp.Timestamp `protobuf:"bytes,5,opt,name=max_timestamp,json=maxTimestamp,proto3,oneof" json:"max_timestamp,omitempty"`
+	MaxTimestamp *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=max_timestamp,json=maxTimestamp,proto3,oneof" json:"max_timestamp,omitempty"`
 	// ChainId of the network this transaction is intended for in order to prevent cross-chain replay
 	Chain *string `protobuf:"bytes,6,opt,name=chain,proto3,oneof" json:"chain,omitempty"`
 	// User-provided uniqueness identifier to differentiate otherwise identical transactions
@@ -599,14 +599,14 @@ func (x *TransactionExpiration) GetMinEpoch() uint64 {
 	return 0
 }
 
-func (x *TransactionExpiration) GetMinTimestamp() *timestamp.Timestamp {
+func (x *TransactionExpiration) GetMinTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.MinTimestamp
 	}
 	return nil
 }
 
-func (x *TransactionExpiration) GetMaxTimestamp() *timestamp.Timestamp {
+func (x *TransactionExpiration) GetMaxTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.MaxTimestamp
 	}
@@ -1103,11 +1103,11 @@ type Command_MakeMoveVector struct {
 type Command_Upgrade struct {
 	// Upgrades a Move package.
 	// Takes (in order):
-	//  1. A vector of serialized modules for the package.
-	//  2. A vector of object ids for the transitive dependencies of the new package.
-	//  3. The object ID of the package being upgraded.
-	//  4. An argument holding the `UpgradeTicket` that must have been produced from an earlier command in the same
-	//     programmable transaction.
+	// 1. A vector of serialized modules for the package.
+	// 2. A vector of object ids for the transitive dependencies of the new package.
+	// 3. The object ID of the package being upgraded.
+	// 4. An argument holding the `UpgradeTicket` that must have been produced from an earlier command in the same
+	//    programmable transaction.
 	Upgrade *Upgrade `protobuf:"bytes,7,opt,name=upgrade,proto3,oneof"`
 }
 
@@ -1652,7 +1652,7 @@ type ChangeEpoch struct {
 	// The non-refundable storage fee.
 	NonRefundableStorageFee *uint64 `protobuf:"varint,6,opt,name=non_refundable_storage_fee,json=nonRefundableStorageFee,proto3,oneof" json:"non_refundable_storage_fee,omitempty"`
 	// Unix timestamp when epoch started.
-	EpochStartTimestamp *timestamp.Timestamp `protobuf:"bytes,7,opt,name=epoch_start_timestamp,json=epochStartTimestamp,proto3,oneof" json:"epoch_start_timestamp,omitempty"`
+	EpochStartTimestamp *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=epoch_start_timestamp,json=epochStartTimestamp,proto3,oneof" json:"epoch_start_timestamp,omitempty"`
 	// System packages (specifically framework and Move stdlib) that are written before the new
 	// epoch starts. This tracks framework upgrades on chain. When executing the `ChangeEpoch` txn,
 	// the validator must write out the following modules.  Modules are provided with the version they
@@ -1735,7 +1735,7 @@ func (x *ChangeEpoch) GetNonRefundableStorageFee() uint64 {
 	return 0
 }
 
-func (x *ChangeEpoch) GetEpochStartTimestamp() *timestamp.Timestamp {
+func (x *ChangeEpoch) GetEpochStartTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.EpochStartTimestamp
 	}
@@ -1875,7 +1875,7 @@ type ConsensusCommitPrologue struct {
 	// Unix timestamp from consensus.
 	//
 	// Present in V1, V2, V3, V4.
-	CommitTimestamp *timestamp.Timestamp `protobuf:"bytes,3,opt,name=commit_timestamp,json=commitTimestamp,proto3,oneof" json:"commit_timestamp,omitempty"`
+	CommitTimestamp *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=commit_timestamp,json=commitTimestamp,proto3,oneof" json:"commit_timestamp,omitempty"`
 	// Digest of consensus output.
 	//
 	// Present in V2, V3, V4.
@@ -1942,7 +1942,7 @@ func (x *ConsensusCommitPrologue) GetRound() uint64 {
 	return 0
 }
 
-func (x *ConsensusCommitPrologue) GetCommitTimestamp() *timestamp.Timestamp {
+func (x *ConsensusCommitPrologue) GetCommitTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CommitTimestamp
 	}
@@ -3055,7 +3055,7 @@ var file_sui_rpc_v2_transaction_proto_goTypes = []any{
 	(*ValidatorExecutionTimeObservation)(nil),                  // 33: sui.rpc.v2.ValidatorExecutionTimeObservation
 	(*Bcs)(nil),                                                // 34: sui.rpc.v2.Bcs
 	(*ObjectReference)(nil),                                    // 35: sui.rpc.v2.ObjectReference
-	(*timestamp.Timestamp)(nil),                                // 36: google.protobuf.Timestamp
+	(*timestamppb.Timestamp)(nil),                              // 36: google.protobuf.Timestamp
 	(*Input)(nil),                                              // 37: sui.rpc.v2.Input
 	(*Argument)(nil),                                           // 38: sui.rpc.v2.Argument
 	(*Object)(nil),                                             // 39: sui.rpc.v2.Object
