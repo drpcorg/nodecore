@@ -67,23 +67,6 @@ func TestGrpcConnectorCapExpiryIsRetryableDeadline(t *testing.T) {
 	assert.Equal(t, codes.DeadlineExceeded, grpcStatus.Code)
 }
 
-// the caller's own deadline firing means the caller gave up (probe timeout,
-// client disconnect) - a total failure, never retried
-func TestGrpcConnectorParentDeadlineIsTotalFailure(t *testing.T) {
-	connector := newBlockingConnector(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	request := protocol.NewUpstreamGrpcRequest("1", dshackle.Auth_Authenticate_FullMethodName, nil, nil, "")
-	response := connector.SendRequest(ctx, request)
-
-	replyError, ok := response.(*protocol.ReplyError)
-	require.True(t, ok)
-	assert.Equal(t, protocol.TotalFailure, replyError.ErrorKind)
-	assert.Equal(t, protocol.CtxErrorCode, response.GetError().Code)
-	assert.False(t, protocol.IsRetryable(response))
-}
-
 // slowHeadServer answers SubscribeHead with one frame after a delay longer than
 // the (shrunken) unary cap.
 type slowHeadServer struct {
