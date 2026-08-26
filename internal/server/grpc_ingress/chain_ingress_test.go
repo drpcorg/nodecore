@@ -2,6 +2,8 @@ package grpc_ingress
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
@@ -82,7 +85,7 @@ func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authPro
 	require.NoError(t, specs.NewMethodSpecLoader().Load())
 
 	methodsMock := mocks.NewMethodsMock()
-	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string](suiGetServiceInfo))
+	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string](suiGetServiceInfo, suiListCheckpoints, suiSubscribeCheckpoints))
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
 
 	upstream := test_utils.TestEvmUpstream(connector, &config.Upstream{
@@ -130,7 +133,7 @@ func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authPro
 		stats.NewStatsService(t.Context(), nil, nil),
 		dimensions.NewGenericDimensionTracker(),
 		nil,
-		nil,
+		subengine.NewRegistry(t.Context()),
 	)
 }
 
@@ -221,16 +224,144 @@ func TestChainIngressUnknownMethod(t *testing.T) {
 	assert.ErrorContains(t, err, "unknown method /sui.rpc.v2.LedgerService/Bogus")
 }
 
-// server-streaming methods ARE in the spec, so the answer is "not supported
-// yet", not "unknown method"
-func TestChainIngressServerStreamMethodUnimplemented(t *testing.T) {
+const suiListCheckpoints = "/sui.rpc.v2.LedgerService/ListCheckpoints"
+const suiSubscribeCheckpoints = "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints"
+
+var serverStreamDesc = &grpc.StreamDesc{StreamName: "stream", ServerStreams: true}
+
+// openStream issues a server-streaming call the way a generated client would.
+func openStream(t *testing.T, conn *grpc.ClientConn, ctx context.Context, method string, request proto.Message) grpc.ClientStream {
+	t.Helper()
+	stream, err := conn.NewStream(ctx, serverStreamDesc, method)
+	require.NoError(t, err)
+	require.NoError(t, stream.SendMsg(request))
+	require.NoError(t, stream.CloseSend())
+	return stream
+}
+
+func checkpointFrame(t *testing.T, height uint64) []byte {
+	t.Helper()
+	data, err := proto.Marshal(&sui.ListCheckpointsResponse{Checkpoint: &sui.Checkpoint{SequenceNumber: new(height)}})
+	require.NoError(t, err)
+	return data
+}
+
+// streamingConnector returns a grpc connector mock whose Subscribe hands out
+// frames and, when subscribeCtx is non-nil, publishes the ctx it was called with
+// (buffer the channel with 1).
+func streamingConnector(t *testing.T, frames chan protocol.SubResponse, subscribeCtx chan context.Context) *mocks.ConnectorMock {
+	t.Helper()
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	connector.On("Subscribe", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		if subscribeCtx != nil {
+			subscribeCtx <- args.Get(0).(context.Context)
+		}
+	}).Return(protocol.NewGrpcUpstreamSubscriptionResponse(frames, "op-1"), nil)
+	connector.On("SubscribeStates", mock.Anything).Return(nil)
+	connector.On("Unsubscribe", mock.Anything).Return().Maybe()
+	return connector
+}
+
+func TestChainIngressFiniteStreamCompletesWithOkAndTrailers(t *testing.T) {
+	frames := make(chan protocol.SubResponse)
+	connector := streamingConnector(t, frames, nil)
+	conn := startIngressServer(t, ingressAppCtx(t, connector), nil)
+	go func() {
+		frames <- &protocol.GrpcSubResponse{Message: checkpointFrame(t, 1), UpstreamId: "id", Headers: http.Header{"x-up-meta": {"h"}}}
+		frames <- &protocol.GrpcSubResponse{Message: checkpointFrame(t, 2), UpstreamId: "id"}
+		frames <- &protocol.GrpcSubResponse{End: true, UpstreamId: "id", Trailers: map[string][]string{"x-up-trailer": {"t"}}}
+		close(frames)
+	}()
+
+	stream := openStream(t, conn, suiIngressContext(t), suiListCheckpoints, &sui.ListCheckpointsRequest{})
+
+	var heights []uint64
+	for {
+		var reply sui.ListCheckpointsResponse
+		err := stream.RecvMsg(&reply)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		heights = append(heights, reply.GetCheckpoint().GetSequenceNumber())
+	}
+	assert.Equal(t, []uint64{1, 2}, heights)
+	header, err := stream.Header()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"h"}, header.Get("x-up-meta"))
+	assert.Equal(t, []string{"t"}, stream.Trailer().Get("x-up-trailer"))
+	connector.AssertCalled(t, "Subscribe", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		return r.Method() == suiListCheckpoints && r.IsSubscribe()
+	}))
+}
+
+func TestChainIngressSubscriptionClosedByNodeIsUnavailable(t *testing.T) {
+	frames := make(chan protocol.SubResponse)
+	conn := startIngressServer(t, ingressAppCtx(t, streamingConnector(t, frames, nil)), nil)
+	go func() {
+		frames <- &protocol.GrpcSubResponse{Message: checkpointFrame(t, 1), UpstreamId: "id"}
+		frames <- &protocol.GrpcSubResponse{End: true, UpstreamId: "id"}
+		close(frames)
+	}()
+
+	stream := openStream(t, conn, suiIngressContext(t), suiSubscribeCheckpoints, &sui.SubscribeCheckpointsRequest{})
+
+	require.NoError(t, stream.RecvMsg(&sui.SubscribeCheckpointsResponse{}))
+	err := stream.RecvMsg(&sui.SubscribeCheckpointsResponse{})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestChainIngressStreamUpstreamStatusRidesVerbatim(t *testing.T) {
+	frames := make(chan protocol.SubResponse)
+	conn := startIngressServer(t, ingressAppCtx(t, streamingConnector(t, frames, nil)), nil)
+	go func() {
+		frames <- &protocol.GrpcSubResponse{
+			Error:      protocol.NewGrpcStatusResponseError(&protocol.GrpcStatus{Code: codes.ResourceExhausted, Message: "slow down"}),
+			UpstreamId: "id",
+			Trailers:   map[string][]string{"x-rate-limit": {"0"}},
+		}
+		close(frames)
+	}()
+
+	stream := openStream(t, conn, suiIngressContext(t), suiListCheckpoints, &sui.ListCheckpointsRequest{})
+
+	err := stream.RecvMsg(&sui.ListCheckpointsResponse{})
+	require.Error(t, err)
+	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
+	assert.ErrorContains(t, err, "slow down")
+	assert.Equal(t, []string{"0"}, stream.Trailer().Get("x-rate-limit"))
+}
+
+func TestChainIngressClientCancelStopsTheUpstreamStream(t *testing.T) {
+	frames := make(chan protocol.SubResponse)
+	subscribeCtxs := make(chan context.Context, 1)
+	conn := startIngressServer(t, ingressAppCtx(t, streamingConnector(t, frames, subscribeCtxs)), nil)
+	ctx, cancel := context.WithCancel(suiIngressContext(t))
+	go func() { frames <- &protocol.GrpcSubResponse{Message: checkpointFrame(t, 1), UpstreamId: "id"} }()
+
+	stream := openStream(t, conn, ctx, suiSubscribeCheckpoints, &sui.SubscribeCheckpointsRequest{})
+	require.NoError(t, stream.RecvMsg(&sui.SubscribeCheckpointsResponse{}))
+	subscribeCtx := <-subscribeCtxs
+
+	cancel()
+
+	select {
+	case <-subscribeCtx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the upstream stream ctx must be cancelled when the client goes away")
+	}
+}
+
+// The unary path must be untouched by the split: an unknown method is still
+// UNIMPLEMENTED even when issued as a stream.
+func TestChainIngressUnknownMethodAsStream(t *testing.T) {
 	conn := startIngressServer(t, ingressAppCtx(t, mocks.NewConnectorMockWithType(specs.GrpcConnector)), nil)
 
-	err := conn.Invoke(suiIngressContext(t), "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints",
-		&sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+	stream := openStream(t, conn, suiIngressContext(t), "/sui.rpc.v2.LedgerService/Bogus", &sui.ListCheckpointsRequest{})
+	err := stream.RecvMsg(&sui.ListCheckpointsResponse{})
 
 	assert.Equal(t, codes.Unimplemented, status.Code(err))
-	assert.ErrorContains(t, err, "server-streaming methods are not supported yet")
 }
 
 func TestChainIngressRequiresChainMetadata(t *testing.T) {

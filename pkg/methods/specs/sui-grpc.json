@@ -65,7 +65,7 @@
       "settings": {
         "cacheable": false,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-finite"
         }
       }
     },
@@ -75,7 +75,7 @@
       "settings": {
         "cacheable": false,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-finite"
         }
       }
     },
@@ -85,7 +85,7 @@
       "settings": {
         "cacheable": false,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-finite"
         }
       }
     },
@@ -193,7 +193,7 @@
       "settings": {
         "cacheable": false,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-subscription"
         }
       }
     },
@@ -203,7 +203,7 @@
       "settings": {
         "cacheable": false,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-subscription"
         }
       }
     },
@@ -213,7 +213,7 @@
       "settings": {
         "cacheable": false,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-subscription"
         }
       }
     }

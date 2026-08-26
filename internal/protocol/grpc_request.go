@@ -8,7 +8,8 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
-// UpstreamGrpcRequest is a unary gRPC call as the proxy sees it: the full
+// UpstreamGrpcRequest is a gRPC call (unary or server-streaming - the spec
+// decides, see IsSubscribe) as the proxy sees it: the full
 // method string ("/sui.rpc.v2.LedgerService/GetObject"), the serialized
 // request message exactly as the client produced it (the 5-byte gRPC wire
 // frame prefix never appears at this layer - grpc-go adds and strips it below
@@ -83,8 +84,10 @@ func (u *UpstreamGrpcRequest) IsStream() bool {
 	return false
 }
 
+// IsSubscribe follows the spec: both gRPC server-stream call types are routed
+// as subscriptions.
 func (u *UpstreamGrpcRequest) IsSubscribe() bool {
-	return false
+	return u.specMethod != nil && u.specMethod.IsSubscribe()
 }
 
 func (u *UpstreamGrpcRequest) RequestType() RequestType {

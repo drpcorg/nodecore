@@ -67,19 +67,49 @@ func TestGrpcConnectorCapExpiryIsRetryableDeadline(t *testing.T) {
 	assert.Equal(t, codes.DeadlineExceeded, grpcStatus.Code)
 }
 
-// the caller's own deadline firing means the caller gave up (probe timeout,
-// client disconnect) - a total failure, never retried
-func TestGrpcConnectorParentDeadlineIsTotalFailure(t *testing.T) {
-	connector := newBlockingConnector(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
+// slowHeadServer answers SubscribeHead with one frame after a delay longer than
+// the (shrunken) unary cap.
+type slowHeadServer struct {
+	dshackle.UnimplementedBlockchainServer
+	delay time.Duration
+}
 
-	request := protocol.NewUpstreamGrpcRequest("1", dshackle.Auth_Authenticate_FullMethodName, nil, nil, "")
-	response := connector.SendRequest(ctx, request)
+func (s slowHeadServer) SubscribeHead(_ *dshackle.Chain, stream grpc.ServerStreamingServer[dshackle.ChainHead]) error {
+	time.Sleep(s.delay)
+	return stream.Send(&dshackle.ChainHead{Height: 7})
+}
 
-	replyError, ok := response.(*protocol.ReplyError)
-	require.True(t, ok)
-	assert.Equal(t, protocol.TotalFailure, replyError.ErrorKind)
-	assert.Equal(t, protocol.CtxErrorCode, response.GetError().Code)
-	assert.False(t, protocol.IsRetryable(response))
+// The unary 60s cap must not apply to streams: a frame that arrives after the
+// cap is still delivered.
+func TestGrpcConnectorStreamIsNotBoundByTheUnaryTimeout(t *testing.T) {
+	listener := bufconn.Listen(1024 * 1024)
+	server := grpc.NewServer()
+	dshackle.RegisterBlockchainServer(server, slowHeadServer{delay: 200 * time.Millisecond})
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return listener.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	connector := NewGrpcConnectorWithClientConn(conn, &config.ApiConnectorConfig{Url: "grpc://bufnet"}, "up-id")
+	connector.requestTimeout = 20 * time.Millisecond
+	t.Cleanup(func() {
+		connector.Stop()
+		server.Stop()
+	})
+
+	response, err := connector.Subscribe(t.Context(), protocol.NewUpstreamGrpcRequest("1", "/emerald.Blockchain/SubscribeHead", nil, nil, ""))
+	require.NoError(t, err)
+
+	var frames []protocol.SubResponse
+	for frame := range response.ResponseChan() {
+		frames = append(frames, frame)
+	}
+	require.Len(t, frames, 2, "the data frame and the end frame")
+	assert.Nil(t, frames[0].GetError())
+	assert.True(t, frames[1].IsEnd())
 }

@@ -11,7 +11,7 @@
       "settings": {
         "cacheable": true,
         "grpc": {
-          "call-type": "server-stream"
+          "call-type": "server-stream-subscription"
         }
       }
     }

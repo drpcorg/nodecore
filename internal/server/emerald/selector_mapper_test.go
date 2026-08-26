@@ -65,10 +65,10 @@ func TestMapDshackleHeightSelectorFailsClosedForUnsupportedValues(t *testing.T) 
 }
 
 func TestMapDshackleHeightSelectorFailsClosedForNegativeDeprecatedHeight(t *testing.T) {
-	legacyLatest := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{Height: -1}}})
+	legacyLatest := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{Height: -1}}}) //nolint:staticcheck // legacy Height field is exercised on purpose
 	assert.Equal(t, protocol.RequestBlockTagSelector{Tag: protocol.BlockTagLatest}, legacyLatest)
 
-	negative := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{Height: -2}}})
+	negative := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{Height: -2}}}) //nolint:staticcheck // legacy Height field is exercised on purpose
 	unsupported := negative.(protocol.RequestUnsupportedSelector)
 	assert.Contains(t, unsupported.Reason, "-2")
 }

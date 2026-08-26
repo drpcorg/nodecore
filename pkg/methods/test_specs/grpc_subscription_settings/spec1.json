@@ -1,0 +1,21 @@
+{
+  "spec": {
+    "api-connectors": ["grpc"],
+    "name": "test",
+    "type": "plain"
+  },
+  "methods": [
+    {
+      "name": "/pkg.Service/Method",
+      "params": [],
+      "settings": {
+        "subscription": {
+          "is-subscribe": true
+        },
+        "grpc": {
+          "call-type": "server-stream-subscription"
+        }
+      }
+    }
+  ]
+}

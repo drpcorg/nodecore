@@ -53,8 +53,7 @@ const (
 	ExecutionError_SUI_MOVE_VERIFICATION_ERROR ExecutionError_ExecutionErrorKind = 11
 	// Error from a non-abort instruction.
 	// Possible causes:
-	//
-	//	Arithmetic error, stack overflow, max value depth, or similar.
+	//     Arithmetic error, stack overflow, max value depth, or similar.
 	ExecutionError_MOVE_PRIMITIVE_RUNTIME_ERROR ExecutionError_ExecutionErrorKind = 12
 	// Move runtime abort.
 	ExecutionError_MOVE_ABORT ExecutionError_ExecutionErrorKind = 13
@@ -279,9 +278,9 @@ const (
 	// The gas coin can only be used by-value with a `TransferObject` command.
 	CommandArgumentError_INVALID_GAS_COIN_USAGE CommandArgumentError_CommandArgumentErrorKind = 8
 	// Invalid usage of Move value.
-	//   - Mutably borrowed values require unique usage.
-	//   - Immutably borrowed values cannot be taken or borrowed mutably.
-	//   - Taken values cannot be used again.
+	//    - Mutably borrowed values require unique usage.
+	//    - Immutably borrowed values cannot be taken or borrowed mutably.
+	//    - Taken values cannot be used again.
 	CommandArgumentError_INVALID_VALUE_USAGE CommandArgumentError_CommandArgumentErrorKind = 9
 	// Immutable objects cannot be passed by-value.
 	CommandArgumentError_INVALID_OBJECT_BY_VALUE CommandArgumentError_CommandArgumentErrorKind = 10

@@ -10,9 +10,9 @@
 package sui
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -228,7 +228,7 @@ type NameRecord struct {
 	//
 	// This is either the expiration of the record itself or the expiration of
 	// this record's parent if this is a leaf record.
-	ExpirationTimestamp *timestamp.Timestamp `protobuf:"bytes,4,opt,name=expiration_timestamp,json=expirationTimestamp,proto3,oneof" json:"expiration_timestamp,omitempty"`
+	ExpirationTimestamp *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expiration_timestamp,json=expirationTimestamp,proto3,oneof" json:"expiration_timestamp,omitempty"`
 	// The target address that this name points to
 	TargetAddress *string `protobuf:"bytes,5,opt,name=target_address,json=targetAddress,proto3,oneof" json:"target_address,omitempty"`
 	// Additional data which may be stored in a record
@@ -288,7 +288,7 @@ func (x *NameRecord) GetRegistrationNftId() string {
 	return ""
 }
 
-func (x *NameRecord) GetExpirationTimestamp() *timestamp.Timestamp {
+func (x *NameRecord) GetExpirationTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpirationTimestamp
 	}
@@ -372,7 +372,7 @@ var file_sui_rpc_v2_name_service_proto_goTypes = []any{
 	(*ReverseLookupNameResponse)(nil), // 3: sui.rpc.v2.ReverseLookupNameResponse
 	(*NameRecord)(nil),                // 4: sui.rpc.v2.NameRecord
 	nil,                               // 5: sui.rpc.v2.NameRecord.DataEntry
-	(*timestamp.Timestamp)(nil),       // 6: google.protobuf.Timestamp
+	(*timestamppb.Timestamp)(nil),     // 6: google.protobuf.Timestamp
 }
 var file_sui_rpc_v2_name_service_proto_depIdxs = []int32{
 	4, // 0: sui.rpc.v2.LookupNameResponse.record:type_name -> sui.rpc.v2.NameRecord

@@ -33,6 +33,11 @@ func (w *WsResponse) GetParsedEvent() ParsedEvent {
 	return w.ParsedEvent
 }
 
+// IsEnd is false: a websocket subscription never ends cleanly on its own.
+func (w *WsResponse) IsEnd() bool {
+	return false
+}
+
 var _ SubResponse = (*WsResponse)(nil)
 
 // GenericSubResponse is the transport-neutral subscription event synthesized
@@ -59,6 +64,11 @@ func (g *GenericSubResponse) GetUpstreamId() string {
 
 func (g *GenericSubResponse) GetParsedEvent() ParsedEvent {
 	return g.ParsedEvent
+}
+
+// IsEnd is false: synthesized sources end by closing their channel.
+func (g *GenericSubResponse) IsEnd() bool {
+	return false
 }
 
 var _ SubResponse = (*GenericSubResponse)(nil)

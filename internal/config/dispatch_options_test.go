@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -29,7 +28,7 @@ func TestGetDispatchOptionsUsesChainDefaults(t *testing.T) {
 	cfg := &UpstreamConfig{
 		Mode: DefaultMode,
 		ChainDefaults: map[string]*ChainDefaults{
-			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{Broadcast: lo.ToPtr(true), MaximumValue: lo.ToPtr(true), NotNull: lo.ToPtr(true)}},
+			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{Broadcast: new(true), MaximumValue: new(true), NotNull: new(true)}},
 		},
 	}
 
@@ -48,7 +47,7 @@ func TestGetDispatchOptionsChainDefaultsOverrideStrictFallback(t *testing.T) {
 	cfg := &UpstreamConfig{
 		Mode: StrictMode,
 		ChainDefaults: map[string]*ChainDefaults{
-			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{Broadcast: lo.ToPtr(false), MaximumValue: lo.ToPtr(false), NotNull: lo.ToPtr(false)}},
+			chains.ETHEREUM.String(): {Dispatch: &DispatchOptions{Broadcast: new(false), MaximumValue: new(false), NotNull: new(false)}},
 		},
 	}
 

@@ -22,11 +22,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: bitcoind has no push-style head notification we can
-// consume (no ZMQ/WS in scope), so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("bitcoin: head subscriptions are not supported")
-
 type BitcoinChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
@@ -182,11 +177,11 @@ func (b *BitcoinChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Blo
 }
 
 func (b *BitcoinChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (b *BitcoinChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type bitcoinBlockHeader struct {

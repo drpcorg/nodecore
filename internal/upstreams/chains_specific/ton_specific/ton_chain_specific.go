@@ -2,7 +2,6 @@ package ton_specific
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -17,11 +16,6 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
-
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: neither the v2 HTTP API nor the v3 indexer has any
-// subscription transport, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("ton: head subscriptions are not supported")
 
 // NewTonChainSpecificObject picks the specific object from the PRIMARY
 // (internal-request) connector: rest-indexer means the v3 API drives all
@@ -121,11 +115,11 @@ func (t *tonBaseChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBou
 }
 
 func (t *tonBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *tonBaseChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type tonBlockIdExt struct {

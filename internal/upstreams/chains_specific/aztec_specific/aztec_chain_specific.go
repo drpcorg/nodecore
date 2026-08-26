@@ -186,11 +186,11 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 }
 
 func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("aztec does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AztecChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("aztec does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 var _ chains_specific.ChainSpecific = (*AztecChainSpecificObject)(nil)

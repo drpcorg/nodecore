@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
@@ -16,13 +17,13 @@ import (
 func TestAztecSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewAztecChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "aztec does not support websocket subscriptions")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestAztecParseSubscriptionBlock(t *testing.T) {
 	block, err := test_utils.NewAztecChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "aztec does not support websocket subscriptions")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestAztecParseBlock(t *testing.T) {

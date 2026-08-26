@@ -36,6 +36,7 @@ stats-proto-gen:
 # future chain adds its submodule + yaml and its target already works.
 %-proto-gen:
 	buf generate --template chain-apis/$*.gen.yaml
+	gofmt -w pkg/$*
 
 .PHONY: generate-networks
 generate-networks:

@@ -36,7 +36,10 @@ func GrpcStatusFromError(respError *ResponseError) (*GrpcStatus, bool) {
 // client-facing status is reconstructed from it, never from this int.
 const GrpcErrorCodeBase = 10000
 
-func grpcResponseError(grpcStatus *GrpcStatus) *ResponseError {
+// NewGrpcStatusResponseError builds the ResponseError that carries an upstream
+// gRPC status verbatim. The int code is informational; routing and rendering
+// read the typed GrpcStatus in Data.
+func NewGrpcStatusResponseError(grpcStatus *GrpcStatus) *ResponseError {
 	return &ResponseError{
 		Code:    GrpcErrorCodeBase + int(grpcStatus.Code),
 		Message: grpcStatus.Message,
@@ -49,7 +52,7 @@ func grpcResponseError(grpcStatus *GrpcStatus) *ResponseError {
 // of degrading it to INTERNAL (e.g. receive-side errors: client cancel,
 // oversized request message).
 func NewGrpcStatusError(code codes.Code, message string) *ResponseError {
-	return grpcResponseError(&GrpcStatus{Code: code, Message: message})
+	return NewGrpcStatusResponseError(&GrpcStatus{Code: code, Message: message})
 }
 
 // NewGrpcUpstreamResponse frames a successful unary gRPC reply: the response
@@ -76,7 +79,7 @@ func NewGrpcUpstreamResponse(id string, body []byte) *GenericUpstreamResponse {
 //   - UNIMPLEMENTED is a partial failure too, and additionally bans the
 //     method on the upstream via ClassifyMethodAvailability.
 func NewGrpcUpstreamErrorResponse(request RequestHolder, grpcStatus *GrpcStatus) ResponseHolder {
-	respError := grpcResponseError(grpcStatus)
+	respError := NewGrpcStatusResponseError(grpcStatus)
 	switch grpcStatus.Code {
 	case codes.Unknown, codes.Internal, codes.DataLoss, codes.Unavailable, codes.Aborted,
 		codes.DeadlineExceeded, codes.ResourceExhausted, codes.Unimplemented:

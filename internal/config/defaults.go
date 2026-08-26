@@ -8,7 +8,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 )
 
 const (
@@ -181,7 +180,7 @@ func (p *PostgresCacheConnectorConfig) setDefaults() {
 		p.ExpiredRemoveInterval = 30 * time.Second
 	}
 	if p.QueryTimeout == nil {
-		p.QueryTimeout = lo.ToPtr(300 * time.Millisecond)
+		p.QueryTimeout = new(300 * time.Millisecond)
 	}
 	if p.CacheTable == "" {
 		p.CacheTable = "cache_rpc"
@@ -190,7 +189,7 @@ func (p *PostgresCacheConnectorConfig) setDefaults() {
 
 func (r *RedisStorageConfig) setDefaults() {
 	if r.DB == nil {
-		r.DB = lo.ToPtr(0)
+		r.DB = new(0)
 	}
 	if r.Timeouts == nil {
 		r.Timeouts = &RedisStorageTimeoutsConfig{}
@@ -207,25 +206,25 @@ func (p *RedisStoragePoolConfig) setDefaults(timeouts *RedisStorageTimeoutsConfi
 		p.Size = 10 * runtime.GOMAXPROCS(0)
 	}
 	if p.PoolTimeout == nil {
-		p.PoolTimeout = lo.ToPtr((*timeouts.ReadTimeout) + (1 * time.Second))
+		p.PoolTimeout = new((*timeouts.ReadTimeout) + (1 * time.Second))
 	}
 	if p.ConnMaxIdleTime == nil {
-		p.ConnMaxIdleTime = lo.ToPtr(30 * time.Minute)
+		p.ConnMaxIdleTime = new(30 * time.Minute)
 	}
 	if p.ConnMaxLifeTime == nil {
-		p.ConnMaxLifeTime = lo.ToPtr(time.Duration(0))
+		p.ConnMaxLifeTime = new(time.Duration(0))
 	}
 }
 
 func (r *RedisStorageTimeoutsConfig) setDefaults() {
 	if r.ConnectTimeout == nil {
-		r.ConnectTimeout = lo.ToPtr(500 * time.Millisecond)
+		r.ConnectTimeout = new(500 * time.Millisecond)
 	}
 	if r.ReadTimeout == nil {
-		r.ReadTimeout = lo.ToPtr(200 * time.Millisecond)
+		r.ReadTimeout = new(200 * time.Millisecond)
 	}
 	if r.WriteTimeout == nil {
-		r.WriteTimeout = lo.ToPtr(200 * time.Millisecond)
+		r.WriteTimeout = new(200 * time.Millisecond)
 	}
 }
 
@@ -331,6 +330,9 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		if headConnector := u.GetBestConnector(upstreamMode); headConnector != specs.UnknownType {
 			u.HeadConnector = headConnector.String()
 		}
+	}
+	if u.HeadMode == "" {
+		u.HeadMode = HeadModeSubscribe
 	}
 	if u.RateLimitAutoTune != nil {
 		u.RateLimitAutoTune.setDefaults()

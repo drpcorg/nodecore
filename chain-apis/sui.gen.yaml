@@ -22,7 +22,13 @@ managed:
 plugins:
   - local: ["go", "tool", "protoc-gen-go"]
     out: pkg/sui
-    opt: module=github.com/drpcorg/nodecore/pkg/sui
+    opt:
+      - module=github.com/drpcorg/nodecore/pkg/sui
+      # sui vendors google/protobuf/timestamp.proto with a stale go_package
+      # (github.com/golang/protobuf/ptypes/timestamp, deprecated); its siblings
+      # already point at types/known. Managed mode never touches WKT files, so
+      # remap the import here instead - keeps the legacy module out of go.mod.
+      - Mgoogle/protobuf/timestamp.proto=google.golang.org/protobuf/types/known/timestamppb
 inputs:
   - directory: chain-apis/sui/proto
     paths:
