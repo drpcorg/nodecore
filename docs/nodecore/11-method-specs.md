@@ -247,7 +247,7 @@ Grouped by the transports they declare:
 | `api-connectors` | Specs |
 | --- | --- |
 | `json-rpc`, `websocket` | `arbitrum`, `avail`, `cronos_zkevm`, `eth-json-rpc`, `fantom`, `filecoin`, `harmony_0`, `harmony_1`, `hyperliquid-eth`, `klaytn-json-rpc`, `linea`, `mantle`, `optimism`, `polkadot-json-rpc`, `polygon`, `polygon_zkevm`, `rootstock`, `scroll`, `sei`, `solana-json-rpc`, `viction`, `zk` |
-| `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `near-json-rpc`, `starknet-json-rpc`, `stellar-json-rpc`, `tron-json-rpc` |
+| `json-rpc` | `algorand`, `aztec`, `bitcoin-json-rpc`, `celestia`, `near-json-rpc`, `starknet-json-rpc`, `stellar-json-rpc`, `tron-json-rpc` |
 | `websocket` | `eth-websocket`, `klaytn-websocket`, `polkadot-websocket`, `solana-websocket` |
 | `tendermint` | `cosmos-tendermint` |
 | `rest` | `aptos`, `cosmos-rest`, `eth-beacon-chain`, `stellar-horizon`, `ton-http-v2`, `tron-rest` |
