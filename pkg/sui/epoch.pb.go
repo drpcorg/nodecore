@@ -10,9 +10,9 @@
 package sui
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -33,11 +33,11 @@ type Epoch struct {
 	// Snapshot of Sui's SystemState (`0x3::sui_system::SystemState`) at the
 	// beginning of the epoch, for past epochs, or the current state for the
 	// current epoch.
-	SystemState     *SystemState         `protobuf:"bytes,3,opt,name=system_state,json=systemState,proto3,oneof" json:"system_state,omitempty"`
-	FirstCheckpoint *uint64              `protobuf:"varint,4,opt,name=first_checkpoint,json=firstCheckpoint,proto3,oneof" json:"first_checkpoint,omitempty"`
-	LastCheckpoint  *uint64              `protobuf:"varint,5,opt,name=last_checkpoint,json=lastCheckpoint,proto3,oneof" json:"last_checkpoint,omitempty"`
-	Start           *timestamp.Timestamp `protobuf:"bytes,6,opt,name=start,proto3,oneof" json:"start,omitempty"`
-	End             *timestamp.Timestamp `protobuf:"bytes,7,opt,name=end,proto3,oneof" json:"end,omitempty"`
+	SystemState     *SystemState           `protobuf:"bytes,3,opt,name=system_state,json=systemState,proto3,oneof" json:"system_state,omitempty"`
+	FirstCheckpoint *uint64                `protobuf:"varint,4,opt,name=first_checkpoint,json=firstCheckpoint,proto3,oneof" json:"first_checkpoint,omitempty"`
+	LastCheckpoint  *uint64                `protobuf:"varint,5,opt,name=last_checkpoint,json=lastCheckpoint,proto3,oneof" json:"last_checkpoint,omitempty"`
+	Start           *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=start,proto3,oneof" json:"start,omitempty"`
+	End             *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=end,proto3,oneof" json:"end,omitempty"`
 	// Reference gas price denominated in MIST
 	ReferenceGasPrice *uint64         `protobuf:"varint,8,opt,name=reference_gas_price,json=referenceGasPrice,proto3,oneof" json:"reference_gas_price,omitempty"`
 	ProtocolConfig    *ProtocolConfig `protobuf:"bytes,9,opt,name=protocol_config,json=protocolConfig,proto3,oneof" json:"protocol_config,omitempty"`
@@ -110,14 +110,14 @@ func (x *Epoch) GetLastCheckpoint() uint64 {
 	return 0
 }
 
-func (x *Epoch) GetStart() *timestamp.Timestamp {
+func (x *Epoch) GetStart() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Start
 	}
 	return nil
 }
 
-func (x *Epoch) GetEnd() *timestamp.Timestamp {
+func (x *Epoch) GetEnd() *timestamppb.Timestamp {
 	if x != nil {
 		return x.End
 	}
@@ -183,11 +183,11 @@ func file_sui_rpc_v2_epoch_proto_rawDescGZIP() []byte {
 
 var file_sui_rpc_v2_epoch_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_sui_rpc_v2_epoch_proto_goTypes = []any{
-	(*Epoch)(nil),               // 0: sui.rpc.v2.Epoch
-	(*ValidatorCommittee)(nil),  // 1: sui.rpc.v2.ValidatorCommittee
-	(*SystemState)(nil),         // 2: sui.rpc.v2.SystemState
-	(*timestamp.Timestamp)(nil), // 3: google.protobuf.Timestamp
-	(*ProtocolConfig)(nil),      // 4: sui.rpc.v2.ProtocolConfig
+	(*Epoch)(nil),                 // 0: sui.rpc.v2.Epoch
+	(*ValidatorCommittee)(nil),    // 1: sui.rpc.v2.ValidatorCommittee
+	(*SystemState)(nil),           // 2: sui.rpc.v2.SystemState
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*ProtocolConfig)(nil),        // 4: sui.rpc.v2.ProtocolConfig
 }
 var file_sui_rpc_v2_epoch_proto_depIdxs = []int32{
 	1, // 0: sui.rpc.v2.Epoch.committee:type_name -> sui.rpc.v2.ValidatorCommittee

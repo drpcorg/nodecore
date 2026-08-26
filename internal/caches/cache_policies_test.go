@@ -18,7 +18,6 @@ import (
 	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -26,7 +25,7 @@ import (
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
-	specMethod := specs.MethodWithSettings("eth_superTest", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(false)}, nil)
+	specMethod := specs.MethodWithSettings("eth_superTest", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: new(false)}, nil)
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
 	go chainSupervisor.Start()
@@ -337,7 +336,7 @@ func TestCachePolicyMultipleChainsThenReceiveAndStoreResultForAllOfThem(t *testi
 
 func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	tagParser := specs.TagParser{ReturnType: specs.BlockNumberType, Path: ".[1]"}
-	_ = specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: lo.ToPtr(true)}, &tagParser)
+	_ = specs.MethodWithSettings("eth_call", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Cacheable: new(true)}, &tagParser)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()

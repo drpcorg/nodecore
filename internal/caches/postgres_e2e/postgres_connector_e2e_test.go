@@ -11,7 +11,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/pkg/test_utils/e2e"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -61,7 +60,7 @@ func TestPostgresConnectorInitialize(t *testing.T) {
 		"id",
 		&config.PostgresCacheConnectorConfig{
 			StorageName:           "test-postgres",
-			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			QueryTimeout:          new(1 * time.Second),
 			CacheTable:            "cache",
 			ExpiredRemoveInterval: 1 * time.Hour,
 		},
@@ -77,7 +76,7 @@ func TestPostgresConnectorNoItemThenErrCacheNotFound(t *testing.T) {
 		"id",
 		&config.PostgresCacheConnectorConfig{
 			StorageName:           "test-postgres",
-			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			QueryTimeout:          new(1 * time.Second),
 			CacheTable:            "cache",
 			ExpiredRemoveInterval: 1 * time.Hour,
 		},
@@ -93,7 +92,7 @@ func TestPostgresConnectorStoreThenReceive(t *testing.T) {
 		"id",
 		&config.PostgresCacheConnectorConfig{
 			StorageName:           "test-postgres",
-			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			QueryTimeout:          new(1 * time.Second),
 			CacheTable:            "cache",
 			ExpiredRemoveInterval: 1 * time.Hour,
 		},
@@ -109,7 +108,7 @@ func TestPostgresConnectorStoreAndRemoveExpired(t *testing.T) {
 		"id",
 		&config.PostgresCacheConnectorConfig{
 			StorageName:           "test-postgres",
-			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			QueryTimeout:          new(1 * time.Second),
 			CacheTable:            "cache",
 			ExpiredRemoveInterval: 1 * time.Hour,
 		},

@@ -10,9 +10,9 @@
 package sui
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -46,8 +46,8 @@ type ExecutedTransaction struct {
 	// The sequence number for the checkpoint that includes this transaction.
 	Checkpoint *uint64 `protobuf:"varint,6,opt,name=checkpoint,proto3,oneof" json:"checkpoint,omitempty"`
 	// The Unix timestamp of the checkpoint that includes this transaction.
-	Timestamp      *timestamp.Timestamp `protobuf:"bytes,7,opt,name=timestamp,proto3,oneof" json:"timestamp,omitempty"`
-	BalanceChanges []*BalanceChange     `protobuf:"bytes,8,rep,name=balance_changes,json=balanceChanges,proto3" json:"balance_changes,omitempty"`
+	Timestamp      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=timestamp,proto3,oneof" json:"timestamp,omitempty"`
+	BalanceChanges []*BalanceChange       `protobuf:"bytes,8,rep,name=balance_changes,json=balanceChanges,proto3" json:"balance_changes,omitempty"`
 	// Set of objects either referenced as inputs or produced as
 	// outputs from this Transaction.
 	Objects *ObjectSet `protobuf:"bytes,9,opt,name=objects,proto3,oneof" json:"objects,omitempty"`
@@ -130,7 +130,7 @@ func (x *ExecutedTransaction) GetCheckpoint() uint64 {
 	return 0
 }
 
-func (x *ExecutedTransaction) GetTimestamp() *timestamp.Timestamp {
+func (x *ExecutedTransaction) GetTimestamp() *timestamppb.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -209,14 +209,14 @@ func file_sui_rpc_v2_executed_transaction_proto_rawDescGZIP() []byte {
 
 var file_sui_rpc_v2_executed_transaction_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_sui_rpc_v2_executed_transaction_proto_goTypes = []any{
-	(*ExecutedTransaction)(nil), // 0: sui.rpc.v2.ExecutedTransaction
-	(*Transaction)(nil),         // 1: sui.rpc.v2.Transaction
-	(*UserSignature)(nil),       // 2: sui.rpc.v2.UserSignature
-	(*TransactionEffects)(nil),  // 3: sui.rpc.v2.TransactionEffects
-	(*TransactionEvents)(nil),   // 4: sui.rpc.v2.TransactionEvents
-	(*timestamp.Timestamp)(nil), // 5: google.protobuf.Timestamp
-	(*BalanceChange)(nil),       // 6: sui.rpc.v2.BalanceChange
-	(*ObjectSet)(nil),           // 7: sui.rpc.v2.ObjectSet
+	(*ExecutedTransaction)(nil),   // 0: sui.rpc.v2.ExecutedTransaction
+	(*Transaction)(nil),           // 1: sui.rpc.v2.Transaction
+	(*UserSignature)(nil),         // 2: sui.rpc.v2.UserSignature
+	(*TransactionEffects)(nil),    // 3: sui.rpc.v2.TransactionEffects
+	(*TransactionEvents)(nil),     // 4: sui.rpc.v2.TransactionEvents
+	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*BalanceChange)(nil),         // 6: sui.rpc.v2.BalanceChange
+	(*ObjectSet)(nil),             // 7: sui.rpc.v2.ObjectSet
 }
 var file_sui_rpc_v2_executed_transaction_proto_depIdxs = []int32{
 	1, // 0: sui.rpc.v2.ExecutedTransaction.transaction:type_name -> sui.rpc.v2.Transaction

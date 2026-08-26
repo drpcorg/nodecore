@@ -94,9 +94,9 @@ func (u UpstreamMode) Validate() error {
 func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
 	defaultEnabled := u != nil && u.Mode == StrictMode
 	options := DispatchOptions{
-		Broadcast:    lo.ToPtr(defaultEnabled),
-		MaximumValue: lo.ToPtr(defaultEnabled),
-		NotNull:      lo.ToPtr(defaultEnabled),
+		Broadcast:    new(defaultEnabled),
+		MaximumValue: new(defaultEnabled),
+		NotNull:      new(defaultEnabled),
 	}
 	if u == nil || u.ChainDefaults == nil {
 		return options

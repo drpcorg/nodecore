@@ -9,7 +9,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 )
 
 var ErrCacheNotFound = errors.New("not found in cache")
@@ -60,7 +59,7 @@ func (i *InMemoryConnector) Id() string {
 func (i *InMemoryConnector) Store(_ context.Context, key string, object string, ttl time.Duration) error {
 	var expiredAt *time.Time
 	if ttl > 0 {
-		expiredAt = lo.ToPtr(time.Now().Add(ttl))
+		expiredAt = new(time.Now().Add(ttl))
 	}
 
 	i.cache.Add(key, cacheItem{object: object, expireAt: expiredAt})

@@ -8,14 +8,14 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: "1.26.5"
+        default: "1.27.0"
   pull_request: null
   push:
     branches:
       - main
 
 env:
-  GO_VERSION: ${{ inputs.go-version || '1.26.5' }}
+  GO_VERSION: ${{ inputs.go-version || '1.27.0' }}
 
 jobs:
   # The go version is intentionally NOT part of the matrix: it would end up in
