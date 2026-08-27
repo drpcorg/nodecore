@@ -342,8 +342,11 @@ func lowerBoundRequestBlock(param specs.MethodParam) (int64, bool) {
 
 func isPrunedHistoryError(message string) bool {
 	message = strings.ToLower(message)
+	// A revert reason is arbitrary contract text and may embed any marker below.
+	if strings.Contains(message, "execution reverted") {
+		return false
+	}
 	prunedMarkers := []string{
-		"missing trie node",
 		"missing trie node",
 		"state is not available",
 		"required historical state unavailable",

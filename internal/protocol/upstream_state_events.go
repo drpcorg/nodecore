@@ -25,21 +25,27 @@ type LowerBoundUpstreamStateEvent struct {
 	Data LowerBoundData
 }
 
+// Same also filters out updates that must not be applied (the event loop skips ProcessEvent when
+// Same is true): a bound above the upstream head, or a value lower than the current one unless it
+// is the archive reset (1). These are the LowerBoundProcessor.processBounds rules duplicated for
+// live corrections (request_processor.liveLowerBoundFromPrunedError), which bypass the processor;
+// otherwise the detector's next publish would undo them.
+// TODO: route live corrections through LowerBoundProcessor and drop this duplication.
 func (l *LowerBoundUpstreamStateEvent) Same(state UpstreamState) bool {
+	if head := state.HeadData.Height; head > 0 && l.Data.Bound > int64(head) {
+		return true
+	}
 	lowerBound, ok := state.LowerBoundsInfo.GetLowerBound(l.Data.Type)
 	if !ok {
 		return false
 	}
-	return lowerBound == l.Data
+	if lowerBound == l.Data {
+		return true
+	}
+	return l.Data.Bound != 1 && l.Data.Bound < lowerBound.Bound
 }
 
 func (l *LowerBoundUpstreamStateEvent) ProcessEvent(state UpstreamState) UpstreamState {
-	// Bounds only move up (or reset to 1 for a fully archival node) — same rule the periodic
-	// detector applies. Without it the detector's next publish would undo a live correction made
-	// from a pruned-history error (request_processor.liveLowerBoundFromPrunedError).
-	if existing, ok := state.LowerBoundsInfo.GetLowerBound(l.Data.Type); ok && l.Data.Bound != 1 && l.Data.Bound < existing.Bound {
-		return state
-	}
 	copyLowerBoundInfo := state.LowerBoundsInfo.Copy()
 	copyLowerBoundInfo.AddLowerBound(l.Data)
 

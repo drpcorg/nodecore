@@ -80,6 +80,20 @@ func TestLiveLowerBoundFromPrunedErrorSkipsEthCallWithLatestTag(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// A revert reason is contract-controlled text; even if it embeds a pruned marker it is not a pruned error.
+func TestLiveLowerBoundFromPrunedErrorSkipsRevertsEmbeddingMarkers(t *testing.T) {
+	request := requestWithBlockRefParam(t, "eth_call", []any{map[string]any{"to": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"}, "0xCB5A0A8"}, ".[1]")
+	for _, msg := range []string{
+		"execution reverted: state is not available",
+		"execution reverted: block #1 pruned",
+		"Execution Reverted: missing trie node abc",
+	} {
+		response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage(msg))
+		_, ok := liveLowerBoundFromPrunedError(request.Method(), request.ParseParams(context.Background()), response, 300_000_000)
+		assert.False(t, ok, msg)
+	}
+}
+
 func TestLiveLowerBoundFromPrunedErrorSkipsNonPrunedErrorsBeforeParsingParams(t *testing.T) {
 	request := requestWithBlockNumberParam(t, "eth_getProof", []any{"0x343", []string{}, "not-a-block"}, ".[2]")
 	response := protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("execution reverted: Fallback not supported"))

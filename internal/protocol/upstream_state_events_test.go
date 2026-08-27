@@ -42,27 +42,46 @@ func TestLowerBoundUpstreamStateEvent(t *testing.T) {
 	assert.True(t, event.Same(nextState))
 }
 
-// A periodic detector publish must not undo a live correction; only the archive reset (1) may lower.
+// Same() rejects (event loop skips) a lower republish and a bound above head; only the archive
+// reset (1) may lower. Applied the way the event loop does: ProcessEvent only when !Same.
 func TestLowerBoundUpstreamStateEventNeverLowersExceptArchiveReset(t *testing.T) {
+	apply := func(state protocol.UpstreamState, data protocol.LowerBoundData) protocol.UpstreamState {
+		event := &protocol.LowerBoundUpstreamStateEvent{Data: data}
+		if event.Same(state) {
+			return state
+		}
+		return event.ProcessEvent(state)
+	}
+	boundOf := func(state protocol.UpstreamState, tp protocol.LowerBoundType) int64 {
+		bound, _ := state.LowerBoundsInfo.GetLowerBound(tp)
+		return bound.Bound
+	}
 	state := newUpstreamState()
-	state = (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(93637370, 100, protocol.StateBound)}).ProcessEvent(state)
+	state.HeadData = protocol.NewBlockWithHeight(93637984)
+	state = apply(state, protocol.NewLowerBoundData(93637370, 100, protocol.StateBound))
+	assert.Equal(t, int64(93637370), boundOf(state, protocol.StateBound))
 
-	stale := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(93569024, 101, protocol.StateBound)}).ProcessEvent(state)
-	bound, _ := stale.LowerBoundsInfo.GetLowerBound(protocol.StateBound)
-	assert.Equal(t, int64(93637370), bound.Bound, "lower republish is ignored")
+	state = apply(state, protocol.NewLowerBoundData(93569024, 101, protocol.StateBound))
+	assert.Equal(t, int64(93637370), boundOf(state, protocol.StateBound), "lower republish is ignored")
 
-	higher := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(93637400, 102, protocol.StateBound)}).ProcessEvent(state)
-	bound, _ = higher.LowerBoundsInfo.GetLowerBound(protocol.StateBound)
-	assert.Equal(t, int64(93637400), bound.Bound, "higher bound is accepted")
+	state = apply(state, protocol.NewLowerBoundData(93637400, 102, protocol.StateBound))
+	assert.Equal(t, int64(93637400), boundOf(state, protocol.StateBound), "higher bound is accepted")
 
-	reset := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(1, 103, protocol.StateBound)}).ProcessEvent(state)
-	bound, _ = reset.LowerBoundsInfo.GetLowerBound(protocol.StateBound)
-	assert.Equal(t, int64(1), bound.Bound, "archive reset is accepted")
+	state = apply(state, protocol.NewLowerBoundData(93637985, 103, protocol.StateBound))
+	assert.Equal(t, int64(93637400), boundOf(state, protocol.StateBound), "bound above head is ignored")
 
-	other := (&protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(5, 104, protocol.BlockBound)}).ProcessEvent(state)
-	bound, ok := other.LowerBoundsInfo.GetLowerBound(protocol.BlockBound)
-	assert.True(t, ok)
-	assert.Equal(t, int64(5), bound.Bound, "other types are independent")
+	state = apply(state, protocol.NewLowerBoundData(93637984, 104, protocol.StateBound))
+	assert.Equal(t, int64(93637984), boundOf(state, protocol.StateBound), "bound equal to head is accepted")
+
+	state = apply(state, protocol.NewLowerBoundData(1, 105, protocol.StateBound))
+	assert.Equal(t, int64(1), boundOf(state, protocol.StateBound), "archive reset is accepted")
+
+	state = apply(state, protocol.NewLowerBoundData(5, 106, protocol.BlockBound))
+	assert.Equal(t, int64(5), boundOf(state, protocol.BlockBound), "other types are independent")
+
+	noHead := newUpstreamState()
+	noHead = apply(noHead, protocol.NewLowerBoundData(42, 107, protocol.StateBound))
+	assert.Equal(t, int64(42), boundOf(noHead, protocol.StateBound), "unknown head (0) does not block updates")
 }
 
 func TestStatusUpstreamStateEvent(t *testing.T) {
