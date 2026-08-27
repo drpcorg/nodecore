@@ -4,7 +4,7 @@ import (
 	"context"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 )
 
 // MethodsDetector reports which methods an upstream does not support. It returns the

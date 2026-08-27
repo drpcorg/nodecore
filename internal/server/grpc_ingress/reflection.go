@@ -1,7 +1,7 @@
 package grpc_ingress
 
 import (
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	v1reflectiongrpc "google.golang.org/grpc/reflection/grpc_reflection_v1"

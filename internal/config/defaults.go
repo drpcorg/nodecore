@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 

@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"sync"
 
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
 type UpstreamRestRequest struct {

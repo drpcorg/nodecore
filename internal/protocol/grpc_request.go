@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
 // UpstreamGrpcRequest is a gRPC call (unary or server-streaming - the spec
