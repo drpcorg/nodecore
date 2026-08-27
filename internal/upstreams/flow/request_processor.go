@@ -300,7 +300,20 @@ func liveLowerBoundFromPrunedError(method string, param specs.MethodParam, respo
 	return protocol.NewLowerBoundDataNow(block+1, boundType), true
 }
 
+// stateMethods carry a block tag whose state the upstream must hold (dshackle's
+// EthereumStateLowerBoundErrorHandler covers the same set). eth_estimateGas and
+// eth_getTransactionCount have no tag parser in the spec, so they can't be used.
+var stateMethods = map[string]struct{}{
+	"eth_call":         {},
+	"eth_getBalance":   {},
+	"eth_getStorageAt": {},
+	"eth_getCode":      {},
+}
+
 func lowerBoundTypeForMethod(method string) (protocol.LowerBoundType, bool) {
+	if _, ok := stateMethods[method]; ok {
+		return protocol.StateBound, true
+	}
 	if method == "eth_getProof" {
 		return protocol.ProofBound, true
 	}
@@ -329,8 +342,11 @@ func lowerBoundRequestBlock(param specs.MethodParam) (int64, bool) {
 
 func isPrunedHistoryError(message string) bool {
 	message = strings.ToLower(message)
+	// A revert reason is arbitrary contract text and may embed any marker below.
+	if strings.Contains(message, "execution reverted") {
+		return false
+	}
 	prunedMarkers := []string{
-		"missing trie node",
 		"missing trie node",
 		"state is not available",
 		"required historical state unavailable",
