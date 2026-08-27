@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/rs/zerolog"
 )
 

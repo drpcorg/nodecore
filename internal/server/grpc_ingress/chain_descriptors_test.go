@@ -3,7 +3,7 @@ package grpc_ingress
 import (
 	"testing"
 
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"

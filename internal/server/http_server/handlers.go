@@ -12,10 +12,10 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/decoder"
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 )

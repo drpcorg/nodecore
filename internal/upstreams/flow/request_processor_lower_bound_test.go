@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

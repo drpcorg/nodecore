@@ -11,6 +11,8 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	specs "github.com/drpcorg/method-specs/pkg/methods"
+	"github.com/drpcorg/method-specs/pkg/sui"
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
@@ -23,8 +25,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/dshackle"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
-	"github.com/drpcorg/nodecore/pkg/sui"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"

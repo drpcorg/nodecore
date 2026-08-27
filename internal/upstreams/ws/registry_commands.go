@@ -1,8 +1,8 @@
 package ws
 
 import (
+	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 )
 
 type registryCommand interface {
