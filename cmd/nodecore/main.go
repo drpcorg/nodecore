@@ -8,12 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/app"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	_ "github.com/drpcorg/nodecore/pkg/errors_config"
 	_ "github.com/drpcorg/nodecore/pkg/logger"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	_ "go.uber.org/automaxprocs"
 )
@@ -24,7 +24,7 @@ const (
 	// embedded registry at startup. Empty/unset = embedded only.
 	envExtraChainsPath = "NODECORE_EXTRA_CHAINS_PATH"
 	// specPathVar points at a directory of JSON method specs that extend the
-	// embedded ones shipped by github.com/drpcorg/method-specs.
+	// embedded ones shipped by github.com/drpcorg/public.
 	specPathVar = "NODECORE_SPECS_PATH"
 )
 

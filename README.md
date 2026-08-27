@@ -14,7 +14,7 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 
 - **Interfaces** — `json-rpc` (over HTTP), `websocket`, `rest`, `tendermint`, and `grpc` upstream connectors. The set available for a given chain is declared by that chain's [method spec](docs/nodecore/11-method-specs.md).
 - **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), Cosmos SDK (CometBFT RPC + LCD REST), Polkadot/Substrate (polkadot, kusama, vara, avail, asset hubs and more), Stellar (stellar-rpc + Horizon), Sui (native gRPC, `sui.rpc.v2`), Celestia (DA node JSON-RPC: `header.*`, `blob.*`, `share.*`), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
-- **Methods** — per-chain RPC behavior is data-driven via [method specs](docs/nodecore/11-method-specs.md), covering standard EVM/Solana methods, subscriptions, and EVM filter methods. The specs themselves (and the generated Sui protobuf types) are maintained in the separate [`drpcorg/method-specs`](https://github.com/drpcorg/method-specs) module, shared across drpc services and pinned in `go.mod`; to add or change a method, contribute there and bump the dependency. Methods unsupported by an upstream are automatically banned for it to avoid wasted requests.
+- **Methods** — per-chain RPC behavior is data-driven via [method specs](docs/nodecore/11-method-specs.md), covering standard EVM/Solana methods, subscriptions, and EVM filter methods. The specs themselves (and the generated Sui protobuf types) are maintained in the separate [`drpcorg/public`](https://github.com/drpcorg/public) module, shared across drpc services and pinned in `go.mod`; to add or change a method, contribute there and bump the dependency. Methods unsupported by an upstream are automatically banned for it to avoid wasted requests.
 
 ## Key features
 
@@ -72,13 +72,11 @@ curl --location 'http://localhost:9090/queries/ethereum' \
 
 ## Build from source
 
-1. Clone the repository **with submodules** (required — builds fail without them):
+1. Clone the repository:
 
    ```bash
-   git clone --recursive https://github.com/drpcorg/nodecore.git
+   git clone https://github.com/drpcorg/nodecore.git
    ```
-
-   If you already cloned without `--recursive`, run `git submodule update --init --recursive`.
 
 2. Build the binary (this runs `make generate-networks` automatically):
 

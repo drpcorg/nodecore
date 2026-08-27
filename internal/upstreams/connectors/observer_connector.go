@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 )
 

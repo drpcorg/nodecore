@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -9,12 +9,12 @@ import (
 	"math"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/errors_config"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type ResponseReceivedHook interface {

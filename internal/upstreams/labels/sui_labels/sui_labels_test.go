@@ -3,9 +3,9 @@ package sui_labels_test
 import (
 	"testing"
 
-	"github.com/drpcorg/method-specs/pkg/sui"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/sui_labels"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/public/pkg/sui"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"

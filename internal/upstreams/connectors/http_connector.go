@@ -16,11 +16,11 @@ import (
 
 	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
 )

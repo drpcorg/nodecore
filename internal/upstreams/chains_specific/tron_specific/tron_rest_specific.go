@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
-	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
@@ -24,6 +23,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tron_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type TronRestSpecific struct {

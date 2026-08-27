@@ -12,5 +12,5 @@ package grpc_ingress
 // dependencies transitively. TestChainDescriptorsCoverSpecServices fails
 // with the missing service name whenever a spec and this list diverge.
 import (
-	_ "github.com/drpcorg/method-specs/pkg/sui"
+	_ "github.com/drpcorg/public/pkg/sui"
 )

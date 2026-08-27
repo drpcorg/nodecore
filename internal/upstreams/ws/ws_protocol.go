@@ -11,9 +11,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
-	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 

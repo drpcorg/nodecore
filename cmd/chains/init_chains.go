@@ -6,6 +6,7 @@ import (
 	"text/template"
 	"unicode"
 
+	"github.com/drpcorg/public"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 )
@@ -72,12 +73,8 @@ func (c Chain) String() string {
 `
 
 func main() {
-	chainsFile, err := os.ReadFile("pkg/chains/public/chains.yaml")
-	if err != nil {
-		log.Panic().Err(err).Msg("couldn't read chains.yaml")
-	}
 	var config ChainConfig
-	if err := yaml.Unmarshal(chainsFile, &config); err != nil {
+	if err := yaml.Unmarshal(public.GetChainConfig(), &config); err != nil {
 		log.Panic().Err(err).Msg("Failed to parse YAML")
 	}
 

@@ -13,7 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/rs/zerolog/log"
 )
 

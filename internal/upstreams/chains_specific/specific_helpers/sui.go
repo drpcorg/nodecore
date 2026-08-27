@@ -3,10 +3,10 @@ package specific_helpers
 import (
 	"context"
 
-	"github.com/drpcorg/method-specs/pkg/sui"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/public/pkg/sui"
 	"google.golang.org/protobuf/proto"
 )
 
