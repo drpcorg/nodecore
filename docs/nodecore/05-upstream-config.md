@@ -178,7 +178,7 @@ forking:
 | Env var | Purpose |
 |---------|---------|
 | `NODECORE_EXTRA_CHAINS_PATH` | Path to a YAML file using the same schema as `chains.yaml`. Its entries are merged on top of the embedded registry. |
-| `NODECORE_SPECS_PATH` | Directory of JSON method-spec files (same schema as the specs in [`drpcorg/method-specs`](https://github.com/drpcorg/method-specs)). The specs found here **extend** the embedded specs — they are loaded *in addition to* the built-in ones. A spec whose `name` already exists in the embedded set is rejected, so extras can only add new method specs, not silently replace built-ins. |
+| `NODECORE_SPECS_PATH` | Directory of JSON method-spec files (same schema as the specs in [`drpcorg/public`](https://github.com/drpcorg/public)). The specs found here **extend** the embedded specs — they are loaded *in addition to* the built-in ones. A spec whose `name` already exists in the embedded set is rejected, so extras can only add new method specs, not silently replace built-ins. |
 
 A minimal extra-chains file for a single Besu network:
 
@@ -357,7 +357,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
 * `<chain>.dispatch` - Per-chain dispatch policy toggles. These options affect routing for the whole chain, not individual upstreams:
   * `broadcast` - Enables fan-out broadcast for method specs with `dispatch: broadcast` (for example transaction propagation). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.
   * `maximum-value` - Enables fan-out maximum-value aggregation for method specs with `dispatch: maximum-value` (for example nonce-like reads). In `default` mode this falls back to `false`; in `strict` mode it falls back to `true`.
-  * `not-null` - Enables sequential retry for method specs with `dispatch: not-null`. In `default` mode this falls back to `false` to avoid extra upstream requests; in `strict` mode it falls back to `true`. See [Method specs](https://github.com/drpcorg/method-specs/blob/main/docs/method-specs.md#settings) for dispatch semantics
+  * `not-null` - Enables sequential retry for method specs with `dispatch: not-null`. In `default` mode this falls back to `false` to avoid extra upstream requests; in `strict` mode it falls back to `true`. See [Method specs](https://github.com/drpcorg/public/blob/main/docs/method-specs.md#settings) for dispatch semantics
 * `<chain>.poll-interval` - How often nodecore polls upstreams of that chain for new head / finality information
   * Example: `ethereum.poll-interval: 45s` means all Ethereum upstreams are polled every 45 seconds unless overridden. The **_default_** is `1m` in `mode: default`, and the chain's expected block time in `mode: strict`
 * `<chain>.label-balancing` - Per-chain override of the global [label-balancing](#label-balancing) block. When set it fully replaces the global block for this chain

@@ -5,23 +5,6 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || true)
 LDFLAGS := -X github.com/drpcorg/nodecore/internal/buildinfo.Version=$(VERSION) -X github.com/drpcorg/nodecore/internal/buildinfo.GitSHA=$(GIT_SHA)
 
-.PHONY: dshackle-proto-gen
-dshackle-proto-gen:
-	mkdir -p pkg/dshackle
-	protoc -I ./emerald-grpc/proto \
-		--proto_path=emerald-grpc/proto \
-		--go_out=pkg/dshackle \
-		--go-grpc_out=pkg/dshackle \
-		--go_opt=paths=source_relative \
-		--go_opt=Mblockchain.proto=github.com/drpcorg/nodecore/pkg/dshackle \
-		--go_opt=Mcommon.proto=github.com/drpcorg/nodecore/pkg/dshackle \
-		--go_opt=Mauth.proto=github.com/drpcorg/nodecore/pkg/dshackle \
-		--go-grpc_opt=paths=source_relative \
-		--go-grpc_opt=Mblockchain.proto=github.com/drpcorg/nodecore/pkg/dshackle \
-		--go-grpc_opt=Mcommon.proto=github.com/drpcorg/nodecore/pkg/dshackle \
-		--go-grpc_opt=Mauth.proto=github.com/drpcorg/nodecore/pkg/dshackle \
-		blockchain.proto common.proto auth.proto
-
 .PHONY: stats-proto-gen
 stats-proto-gen:
 	protoc -I internal/stats/protobuf \

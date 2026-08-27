@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/stats/hook"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/algorand_specific"
@@ -23,6 +22,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/sui_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
+	"github.com/drpcorg/public/pkg/methods"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"

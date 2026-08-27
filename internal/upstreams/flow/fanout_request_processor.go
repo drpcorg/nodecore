@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	specs "github.com/drpcorg/method-specs/pkg/methods"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog"
 )
 

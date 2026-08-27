@@ -1,7 +1,6 @@
 package chains
 
 import (
-	_ "embed"
 	"fmt"
 	"maps"
 	"math"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/drpcorg/public"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
@@ -44,9 +44,6 @@ func IsValidBlockchainType(t string) bool {
 		return false
 	}
 }
-
-//go:embed public/chains.yaml
-var chainsCfg []byte
 
 type ChainConfig struct {
 	ChainSettings ChainSettings `yaml:"chain-settings"`
@@ -144,7 +141,7 @@ var extraChainsMu sync.Mutex
 var extraChainsLoadedFlag bool
 
 func init() {
-	result, grpcResult, err := configureChainsFromBytes(chainsCfg)
+	result, grpcResult, err := configureChainsFromBytes(public.GetChainConfig())
 	if err != nil {
 		panic(err)
 	}

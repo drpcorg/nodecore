@@ -212,5 +212,5 @@ Subscription activity is exposed on the metrics port (see [Prometheus metrics](0
 
 - [Upstream config — `chain-defaults`](05-upstream-config.md#chain-defaults) — the canonical
   `local-subscriptions` schema reference.
-- [Method specs](https://github.com/drpcorg/method-specs/blob/main/docs/method-specs.md#settings) — the `subscription` (`is-subscribe`,
+- [Method specs](https://github.com/drpcorg/public/blob/main/docs/method-specs.md#settings) — the `subscription` (`is-subscribe`,
   `unsubscribe-method`) and `group: "sub"` fields that mark a method as a subscription.
