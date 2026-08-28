@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -71,18 +70,18 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		return err
 	}
 	if request == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil")), flow.NoUpstream, nil, nil))
+		return stream.Send(noUpstreamErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil"))))
 	}
 	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
+		return stream.Send(noUpstreamErrorItem(0, protocol.NoAvailableUpstreamsError()))
 	}
 
 	configuredChain, chainSupervisor := s.resolveChain(request.GetChain())
 	if configuredChain == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.WrongChainError(strconv.Itoa(int(request.GetChain()))), flow.NoUpstream, nil, nil))
+		return stream.Send(noUpstreamErrorItem(0, protocol.WrongChainError(strconv.Itoa(int(request.GetChain())))))
 	}
 	if chainSupervisor == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
+		return stream.Send(noUpstreamErrorItem(0, protocol.NoAvailableUpstreamsError()))
 	}
 
 	requests, items, preResponses := s.buildNativeCallRequests(configuredChain, request)
@@ -118,7 +117,9 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 			// Without the originating item we don't know its nonce, so a success
 			// here could silently drop a signature the client asked for.
 			log.Warn().Msgf("no request found for id %s, cannot build a reply", wrapper.RequestId)
-			if err := stream.Send(nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerError(), wrapper.UpstreamId, nil, nil)); err != nil {
+			replyItem := nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerError(), nil)
+			replyItem.UpstreamId = wrapper.UpstreamId
+			if err := stream.Send(replyItem); err != nil {
 				return err
 			}
 			continue
@@ -261,12 +262,12 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 	preResponses := make([]*dshackle.NativeCallReplyItem, 0)
 
 	for _, item := range request.GetItems() {
+		adapter := adapterFor(item)
 		if err := signingUnavailable(item.GetNonce(), s.signer); err != nil {
 			log.Warn().Msgf("item %d requested a signature but response signing is not configured", item.GetId())
-			preResponses = append(preResponses, nativeCallErrorItem(item.GetId(), protocol.ServerErrorWithCause(err), flow.NoUpstream, nil, nil))
+			preResponses = append(preResponses, adapter.ErrorItem(item.GetId(), protocol.ServerErrorWithCause(err)))
 			continue
 		}
-		adapter := adapterFor(item)
 		builtRequest, failure := adapter.BuildRequest(configuredChain, item, request.GetSelector(), request.GetChunkSize())
 		if failure != nil {
 			preResponses = append(preResponses, failure)
@@ -283,18 +284,11 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 // buffered response is always a single unchunked item however large: chunk_size
 // selects a streaming request, it is not a framing size for in-memory payloads.
 // Chunked replies come from streamNativeCallBody instead.
-func nativeCallSuccessItem(
-	requestID uint32,
-	upstreamID string,
-	payload []byte,
-	headers http.Header,
-) *dshackle.NativeCallReplyItem {
+func nativeCallSuccessItem(requestID uint32, payload []byte) *dshackle.NativeCallReplyItem {
 	return &dshackle.NativeCallReplyItem{
-		Id:              requestID,
-		Succeed:         true,
-		Payload:         payload,
-		UpstreamId:      upstreamID,
-		ResponseHeaders: mapHeaders(headers),
+		Id:      requestID,
+		Succeed: true,
+		Payload: payload,
 	}
 }
 
@@ -361,24 +355,16 @@ func (e *nativeCallChunkEmitter) Finish() error {
 	return e.WriteChunk(nil, true)
 }
 
-func nativeCallErrorItem(
-	requestID uint32,
-	responseError *protocol.ResponseError,
-	upstreamID string,
-	errorAsIs []byte,
-	headers http.Header,
-) *dshackle.NativeCallReplyItem {
+func nativeCallErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem {
 	if responseError == nil {
 		responseError = protocol.ServerError()
 	}
 
 	replyItem := &dshackle.NativeCallReplyItem{
-		Id:              requestID,
-		Succeed:         false,
-		ErrorMessage:    responseError.Message,
-		ItemErrorCode:   int32(responseError.Code),
-		UpstreamId:      upstreamID,
-		ResponseHeaders: mapHeaders(headers),
+		Id:            requestID,
+		Succeed:       false,
+		ErrorMessage:  responseError.Message,
+		ItemErrorCode: int32(responseError.Code),
 	}
 	if responseError.Data != nil {
 		replyItem.ErrorData = nativeCallErrorData(responseError.Data)
@@ -390,7 +376,14 @@ func nativeCallErrorItem(
 	return replyItem
 }
 
-func mapHeaders(headers http.Header) []*dshackle.KeyValue {
+// noUpstreamErrorItem is a failure raised before any upstream was involved.
+func noUpstreamErrorItem(requestID uint32, responseError *protocol.ResponseError) *dshackle.NativeCallReplyItem {
+	replyItem := nativeCallErrorItem(requestID, responseError, nil)
+	replyItem.UpstreamId = flow.NoUpstream
+	return replyItem
+}
+
+func mapHeaders[M ~map[string][]string](headers M) []*dshackle.KeyValue {
 	keyValueHeaders := make([]*dshackle.KeyValue, 0, len(headers))
 	for key, values := range headers {
 		for _, value := range values {

@@ -1,7 +1,10 @@
 package protocol
 
 import (
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // GrpcStatus is the upstream's verbatim gRPC status. It rides through the
@@ -111,4 +114,46 @@ func IsGrpcRateLimited(response ResponseHolder) bool {
 	}
 	grpcStatus, ok := GrpcStatusFromError(response.GetError())
 	return ok && grpcStatus.Code == codes.ResourceExhausted
+}
+
+// GrpcStatusOf turns a flow error into the *status.Status a gRPC client
+// receives. An upstream gRPC status rides through verbatim - typed details
+// included; nodecore's own error codes are mapped onto the closed 17-code
+// model. Shared by every gRPC-facing ingress so no client needs its own table.
+func GrpcStatusOf(respError *ResponseError) *status.Status {
+	if respError == nil {
+		return status.New(codes.Internal, "internal server error")
+	}
+	if grpcStatus, ok := GrpcStatusFromError(respError); ok {
+		if len(grpcStatus.StatusProto) > 0 {
+			var statusProto spb.Status
+			if err := proto.Unmarshal(grpcStatus.StatusProto, &statusProto); err == nil {
+				return status.FromProto(&statusProto)
+			}
+		}
+		return status.New(grpcStatus.Code, grpcStatus.Message)
+	}
+
+	var code codes.Code
+	switch respError.Code {
+	case NoAvailableUpstreams, NoApiConnectors:
+		code = codes.Unavailable
+	case AuthErrorCode:
+		code = codes.PermissionDenied
+	case ClientErrorCode, WrongChain:
+		code = codes.InvalidArgument
+	case RequestTimeout, CtxErrorCode:
+		code = codes.DeadlineExceeded
+	case RateLimitExceeded:
+		code = codes.ResourceExhausted
+	case NoSupportedMethod:
+		code = codes.Unimplemented
+	case SubscribeTotalFailure:
+		// the node ended a subscription without a status, or the client fell
+		// too far behind
+		code = codes.Unavailable
+	default:
+		code = codes.Internal
+	}
+	return status.New(code, respError.Message)
 }

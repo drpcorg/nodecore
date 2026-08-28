@@ -14,14 +14,12 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
-	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // xNodecoreChain selects the target chain, sent as call metadata: the chain
@@ -226,44 +224,6 @@ func forwardResponseMetadata(stream grpc.ServerStream, response protocol.Respons
 			stream.SetTrailer(trailers)
 		}
 	}
-}
-
-// grpcStatusFromResponseError turns a flow error back into a *status.Status.
-// An upstream gRPC status rides through verbatim - typed details included;
-// nodecore's own error codes are mapped onto the closed 17-code model.
-func grpcStatusFromResponseError(respError *protocol.ResponseError) *status.Status {
-	if grpcStatus, ok := protocol.GrpcStatusFromError(respError); ok {
-		if len(grpcStatus.StatusProto) > 0 {
-			var statusProto spb.Status
-			if err := proto.Unmarshal(grpcStatus.StatusProto, &statusProto); err == nil {
-				return status.FromProto(&statusProto)
-			}
-		}
-		return status.New(grpcStatus.Code, grpcStatus.Message)
-	}
-
-	var code codes.Code
-	switch respError.Code {
-	case protocol.NoAvailableUpstreams, protocol.NoApiConnectors:
-		code = codes.Unavailable
-	case protocol.AuthErrorCode:
-		code = codes.PermissionDenied
-	case protocol.ClientErrorCode, protocol.WrongChain:
-		code = codes.InvalidArgument
-	case protocol.RequestTimeout, protocol.CtxErrorCode:
-		code = codes.DeadlineExceeded
-	case protocol.RateLimitExceeded:
-		code = codes.ResourceExhausted
-	case protocol.NoSupportedMethod:
-		code = codes.Unimplemented
-	case protocol.SubscribeTotalFailure:
-		// the node ended a subscription without a status, or the client fell
-		// too far behind
-		code = codes.Unavailable
-	default:
-		code = codes.Internal
-	}
-	return status.New(code, respError.Message)
 }
 
 func firstMetadataValue(md metadata.MD, key string) string {
