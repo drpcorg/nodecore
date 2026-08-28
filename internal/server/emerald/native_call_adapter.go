@@ -92,7 +92,11 @@ func sendReply(
 	}
 
 	if response.HasStream() {
-		hint, _ := response.GetStreamHint().(protocol.JsonRpcResultStreamHint)
+		// a missing hint must fail the unwrap, not read as "result at offset 0"
+		hint := protocol.NoJsonRpcResultStreamHint
+		if h, ok := response.GetStreamHint().(protocol.JsonRpcResultStreamHint); ok {
+			hint = h
+		}
 		if err := streamNativeCallBody(stream, response.EncodeResponse([]byte("0")), mode, hint, meta); err != nil {
 			return stream.Send(meta.stamp(renderError(meta.requestID, protocol.ServerErrorWithCause(err), nil)))
 		}

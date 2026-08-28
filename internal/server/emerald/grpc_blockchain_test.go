@@ -237,7 +237,7 @@ func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	reader := strings.NewReader(`{"hello":"world"}`)
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallBody(stream, reader, passThroughStream, protocol.JsonRpcResultStreamHint{ResultStart: -1}, replyMeta{requestID: 7, upstreamID: "upstream-1"})
+	err := streamNativeCallBody(stream, reader, passThroughStream, protocol.NoJsonRpcResultStreamHint, replyMeta{requestID: 7, upstreamID: "upstream-1"})
 	require.NoError(t, err)
 	// The whole body is forwarded as a single frame plus the terminal empty frame.
 	require.Len(t, stream.sent, 2)
@@ -881,4 +881,32 @@ func TestJsonRpcSendReplyKeepsNodecoreErrorCodes(t *testing.T) {
 	require.NoError(t, jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
 	require.Len(t, stream.sent, 1)
 	assert.Equal(t, int32(protocol.NoAvailableUpstreams), stream.sent[0].GetItemErrorCode())
+}
+
+// A grpc_data item naming a method the chain serves over JSON-RPC must be
+// rejected at the edge: routed on, its proto bytes would reach the HTTP
+// connector, which cannot build a response of type Grpc.
+func TestBuildNativeCallRequestsGrpcItemForJsonRpcMethodIsUnimplemented(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(8, "eth_chainId", []byte{0x0a})}}
+
+	requests, _, failures := service.buildNativeCallRequests(&chains.ConfiguredChain{MethodSpec: "eth"}, request)
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, int32(codes.Unimplemented), failures[0].GetItemErrorCode())
+	assert.Contains(t, failures[0].GetErrorMessage(), "eth_chainId")
+}
+
+// A streamed JSON-RPC response without an unwrap hint must surface as an
+// error item, never as a truncated success.
+func TestSendReplyStreamWithoutHintIsAnError(t *testing.T) {
+	resp := protocol.NewHttpUpstreamResponseStream("1", strings.NewReader(`{"jsonrpc":"2.0","id":1,"result":[1,2,3]}`), protocol.JsonRpc)
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "upstream-1", RequestId: "1", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.False(t, stream.sent[0].GetSucceed())
+	assert.Contains(t, stream.sent[0].GetErrorMessage(), "result field is missing")
 }

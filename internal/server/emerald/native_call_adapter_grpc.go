@@ -2,6 +2,7 @@ package emerald
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -34,8 +35,10 @@ func (a grpcNativeCallAdapter) BuildRequest(
 	// Unknown methods answer precisely here instead of "no available upstreams",
 	// and server streams belong to NativeSubscribe (the flow would route them
 	// as subscriptions).
+	// A method without the grpc connector is not a gRPC method on this chain:
+	// letting it through would route proto bytes to an HTTP connector.
 	specMethod := specs.GetSpecMethod(chain.MethodSpec, item.GetMethod())
-	if specMethod == nil {
+	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
 		return nil, a.ErrorItem(item.GetId(), protocol.NotSupportedMethodError(item.GetMethod()))
 	}
 	if specMethod.GrpcCallType().IsServerStream() {
