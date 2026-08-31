@@ -698,3 +698,21 @@ func TestStatusFromMissingResponse(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, codes.Canceled, status.Code(err))
 }
+
+// A spec-known method without the grpc connector must answer "unknown method":
+// today no JSON-RPC or REST method name fits the /Service/Method path shape,
+// but the invariant must not depend on naming conventions.
+func TestGrpcRequestHandlerRejectsNonGrpcMethod(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	handler := &grpcRequestHandler{
+		md:     metadata.New(map[string]string{strings.ToLower(xNodecoreChain): "ethereum"}),
+		method: "eth_chainId",
+	}
+
+	_, err := handler.RequestDecode(context.Background())
+	require.Error(t, err)
+	respErr, ok := errors.AsType[*protocol.ResponseError](err)
+	require.True(t, ok)
+	assert.Equal(t, protocol.NoSupportedMethod, respErr.Code)
+	assert.Contains(t, respErr.Message, "eth_chainId")
+}

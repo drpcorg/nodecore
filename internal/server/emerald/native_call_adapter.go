@@ -1,13 +1,9 @@
 package emerald
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"strconv"
-	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/signature"
@@ -36,11 +32,27 @@ type nativeCallAdapter interface {
 		nonce uint64,
 		signer signature.ResponseSigner,
 	) error
+
+	// ErrorItem renders a failure in the item's own error vocabulary: JSON-RPC
+	// and REST items carry nodecore error codes and error_data, gRPC items a
+	// canonical gRPC status. Neither response-level metadata nor the upstream
+	// id are its business - sendReply stamps them via replyMeta, pre-dispatch
+	// callers mark flow.NoUpstream via withNoUpstreamId.
+	ErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem
+}
+
+// withNoUpstreamId marks a failure raised before any upstream was involved.
+func withNoUpstreamId(item *dshackle.NativeCallReplyItem) *dshackle.NativeCallReplyItem {
+	item.UpstreamId = flow.NoUpstream
+	return item
 }
 
 func adapterFor(item *dshackle.NativeCallItem) nativeCallAdapter {
 	if item.GetRestData() != nil {
 		return restNativeCallAdapter{}
+	}
+	if item.GetGrpcData() != nil {
+		return grpcNativeCallAdapter{}
 	}
 	return jsonRpcNativeCallAdapter{}
 }
@@ -52,109 +64,6 @@ func mapNativeCallSelectors(requestSelector *dshackle.Selector, itemSelectors []
 	}
 	selectors = append(selectors, mapDshackleSelectors(itemSelectors)...)
 	return rejectConflictingSortSelectors(selectors)
-}
-
-type jsonRpcNativeCallAdapter struct{}
-
-func (jsonRpcNativeCallAdapter) BuildRequest(
-	chain *chains.ConfiguredChain,
-	item *dshackle.NativeCallItem,
-	requestSelector *dshackle.Selector,
-	chunkSize uint32,
-) (protocol.RequestHolder, *dshackle.NativeCallReplyItem) {
-	payload := item.GetPayload()
-	if len(payload) == 0 {
-		payload = []byte("[]")
-	}
-	if !json.Valid(payload) {
-		return nil, nativeCallErrorItem(
-			item.GetId(),
-			protocol.ClientError(fmt.Errorf("payload is not a valid JSON value")),
-			flow.NoUpstream,
-			nil,
-			nil,
-		)
-	}
-
-	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
-	body := protocol.JsonRpcRequestBody{Id: []byte(requestID), Method: item.GetMethod(), Params: payload}
-	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
-	if err != nil {
-		return nil, nativeCallErrorItem(item.GetId(), protocol.ClientError(err), flow.NoUpstream, nil, nil)
-	}
-	if chunkSize > 0 {
-		return protocol.NewStreamUpstreamJsonRpcRequest(requestID, body, chain.MethodSpec, selectors...), nil
-	}
-	return protocol.NewUpstreamJsonRpcRequest(requestID, body, false, chain.MethodSpec, selectors...), nil
-}
-
-func (jsonRpcNativeCallAdapter) SendReply(
-	stream dshackle.Blockchain_NativeCallServer,
-	wrapper *protocol.ResponseHolderWrapper,
-	nonce uint64,
-	signer signature.ResponseSigner,
-) error {
-	return sendReply(stream, wrapper, nonce, signer, unwrapJsonRpcResultStream)
-}
-
-type restNativeCallAdapter struct{}
-
-func (restNativeCallAdapter) BuildRequest(
-	chain *chains.ConfiguredChain,
-	item *dshackle.NativeCallItem,
-	requestSelector *dshackle.Selector,
-	chunkSize uint32,
-) (protocol.RequestHolder, *dshackle.NativeCallReplyItem) {
-	restData := item.GetRestData()
-	if restData == nil {
-		return nil, nativeCallErrorItem(
-			item.GetId(),
-			protocol.ClientError(fmt.Errorf("rest_data is missing")),
-			flow.NoUpstream,
-			nil,
-			nil,
-		)
-	}
-
-	if err := validateRestMethodTemplate(item.GetMethod()); err != nil {
-		return nil, nativeCallErrorItem(
-			item.GetId(),
-			protocol.ClientError(err),
-			flow.NoUpstream,
-			nil,
-			nil,
-		)
-	}
-
-	// gRPC clients already deliver path/headers/query params pre-structured,
-	// so we plumb them straight into RequestParams instead of recomputing
-	// anything. item.GetMethod() is taken as authoritative for the canonical
-	// method template; the HTTP connector will expand it at send time using
-	// PathParams to fill in any "*" wildcards.
-	requestParams := &protocol.RequestParams{
-		PathParams:  append([]string(nil), restData.GetPathParams()...),
-		Headers:     keyValueListToMap(restData.GetHeaders()),
-		QueryParams: keyValueListToMap(restData.GetQueryParams()),
-	}
-
-	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
-	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
-	if err != nil {
-		return nil, nativeCallErrorItem(item.GetId(), protocol.ClientError(err), flow.NoUpstream, nil, nil)
-	}
-	if chunkSize > 0 {
-		return protocol.NewStreamUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec, selectors...), nil
-	}
-	return protocol.NewUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec, selectors...), nil
-}
-
-func (restNativeCallAdapter) SendReply(
-	stream dshackle.Blockchain_NativeCallServer,
-	wrapper *protocol.ResponseHolderWrapper,
-	nonce uint64,
-	signer signature.ResponseSigner,
-) error {
-	return sendReply(stream, wrapper, nonce, signer, passThroughStream)
 }
 
 type streamMode int
@@ -173,42 +82,31 @@ func sendReply(
 	nonce uint64,
 	signer signature.ResponseSigner,
 	mode streamMode,
+	renderError func(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem,
 ) error {
 	if wrapper == nil || wrapper.Response == nil {
 		return fmt.Errorf("response wrapper is empty")
 	}
-	var headers http.Header
-	if resp, ok := wrapper.Response.(*protocol.GenericUpstreamResponse); ok {
-		headers = resp.ResponseHeaders()
-	}
-	resultStart := -1
-	var resultCounter protocol.ResultCounter
-	if hint, ok := wrapper.Response.GetStreamHint().(protocol.JsonRpcResultStreamHint); ok {
-		resultStart = hint.ResultStart
-		resultCounter = hint.Counter
-	}
-	requestID := parseCallItemID(wrapper.RequestId)
-	finalizationData := nativeCallFinalizationData(wrapper)
+	meta := newReplyMeta(wrapper)
+	response := wrapper.Response
 
-	if wrapper.Response.HasError() {
-		replyItem := nativeCallErrorItem(requestID, wrapper.Response.GetError(), wrapper.UpstreamId, wrapper.Response.ResponseResult(), headers)
-		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-		replyItem.Finalization = finalizationData
-		return stream.Send(replyItem)
+	if response.HasError() {
+		return stream.Send(meta.stamp(renderError(meta.requestID, response.GetError(), response.ResponseResult())))
 	}
 
-	if wrapper.Response.HasStream() {
-		reader := wrapper.Response.EncodeResponse([]byte("0"))
-		if err := streamNativeCallBody(requestID, wrapper.UpstreamId, wrapper.UpstreamNodeVersion, finalizationData, reader, mode, resultStart, resultCounter, headers, stream); err != nil {
-			replyItem := nativeCallErrorItem(requestID, protocol.ServerErrorWithCause(err), wrapper.UpstreamId, nil, headers)
-			replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-			replyItem.Finalization = finalizationData
-			return stream.Send(replyItem)
+	if response.HasStream() {
+		// a missing hint must fail the unwrap, not read as "result at offset 0"
+		hint := protocol.NoJsonRpcResultStreamHint
+		if h, ok := response.GetStreamHint().(protocol.JsonRpcResultStreamHint); ok {
+			hint = h
+		}
+		if err := streamNativeCallBody(stream, response.EncodeResponse([]byte("0")), mode, hint, meta); err != nil {
+			return stream.Send(meta.stamp(renderError(meta.requestID, protocol.ServerErrorWithCause(err), nil)))
 		}
 		return nil
 	}
 
-	payload := append([]byte(nil), wrapper.Response.ResponseResult()...)
+	payload := append([]byte(nil), response.ResponseResult()...)
 	replySignature, err := buildReplySignature(signer, nonce, payload, wrapper.UpstreamId)
 	if err != nil {
 		log.Warn().Err(err).Msgf("unable to sign a response of request %s", wrapper.RequestId)
@@ -219,17 +117,45 @@ func sendReply(
 		if errors.Is(err, signature.ErrSigningNotConfigured) {
 			responseError = protocol.ServerErrorWithCause(err)
 		}
-		replyItem := nativeCallErrorItem(requestID, responseError, wrapper.UpstreamId, nil, headers)
-		replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-		replyItem.Finalization = finalizationData
-		return stream.Send(replyItem)
+		return stream.Send(meta.stamp(renderError(meta.requestID, responseError, nil)))
 	}
 
-	replyItem := nativeCallSuccessItem(requestID, wrapper.UpstreamId, payload, headers)
-	replyItem.UpstreamNodeVersion = wrapper.UpstreamNodeVersion
-	replyItem.Finalization = finalizationData
+	replyItem := meta.stamp(nativeCallSuccessItem(meta.requestID, payload))
 	replyItem.Signature = replySignature
 	return stream.Send(replyItem)
+}
+
+// replyMeta is the response-level metadata every reply item of one request
+// carries: who served it and what the upstream said around the body. It is
+// stamped on a buffered item, or on the first chunk of a streamed one.
+type replyMeta struct {
+	requestID           uint32
+	upstreamID          string
+	upstreamNodeVersion string
+	finalization        *dshackle.FinalizationData
+	headers             []*dshackle.KeyValue
+	trailers            []*dshackle.KeyValue
+}
+
+func newReplyMeta(wrapper *protocol.ResponseHolderWrapper) replyMeta {
+	headers, trailers := protocol.ResponseMetadata(wrapper.Response)
+	return replyMeta{
+		requestID:           parseCallItemID(wrapper.RequestId),
+		upstreamID:          wrapper.UpstreamId,
+		upstreamNodeVersion: wrapper.UpstreamNodeVersion,
+		finalization:        nativeCallFinalizationData(wrapper),
+		headers:             mapHeaders(headers),
+		trailers:            mapHeaders(trailers),
+	}
+}
+
+func (m replyMeta) stamp(item *dshackle.NativeCallReplyItem) *dshackle.NativeCallReplyItem {
+	item.UpstreamId = m.upstreamID
+	item.UpstreamNodeVersion = m.upstreamNodeVersion
+	item.Finalization = m.finalization
+	item.ResponseHeaders = m.headers
+	item.ResponseTrailers = m.trailers
+	return item
 }
 
 func nativeCallFinalizationData(wrapper *protocol.ResponseHolderWrapper) *dshackle.FinalizationData {
@@ -246,32 +172,26 @@ func nativeCallFinalizationData(wrapper *protocol.ResponseHolderWrapper) *dshack
 }
 
 func streamNativeCallBody(
-	requestID uint32,
-	upstreamID string,
-	upstreamNodeVersion string,
-	finalization *dshackle.FinalizationData,
+	stream dshackle.Blockchain_NativeCallServer,
 	reader io.Reader,
 	mode streamMode,
-	resultStart int,
-	resultCounter protocol.ResultCounter,
-	header http.Header,
-	stream dshackle.Blockchain_NativeCallServer,
+	hint protocol.JsonRpcResultStreamHint,
+	meta replyMeta,
 ) error {
-	headerKVs := mapHeaders(header)
 	emitter := newNativeCallChunkEmitter(func(chunk []byte, first, final bool) error {
 		item := &dshackle.NativeCallReplyItem{
-			Id:         requestID,
+			Id:         meta.requestID,
 			Succeed:    true,
 			Payload:    chunk,
 			Chunked:    true,
 			FinalChunk: final,
 		}
-		// Response-level metadata travels on the first chunk only.
+		// Response-level metadata travels on the first chunk only. That holds
+		// for trailers too: streamed responses are HTTP-only (a gRPC reply is
+		// always buffered) and HTTP responses carry no trailers here, so
+		// nothing arrives after the body that this could miss.
 		if first {
-			item.UpstreamId = upstreamID
-			item.UpstreamNodeVersion = upstreamNodeVersion
-			item.Finalization = finalization
-			item.ResponseHeaders = headerKVs
+			meta.stamp(item)
 		}
 		return stream.Send(item)
 	})
@@ -279,7 +199,7 @@ func streamNativeCallBody(
 	ctx := stream.Context()
 	switch mode {
 	case unwrapJsonRpcResultStream:
-		if err := streamJsonRPCResult(ctx, reader, emitter, resultStart, resultCounter); err != nil {
+		if err := streamJsonRPCResult(ctx, reader, emitter, hint.ResultStart, hint.Counter); err != nil {
 			return err
 		}
 	case passThroughStream:
@@ -295,17 +215,6 @@ func streamNativeCallBody(
 		return fmt.Errorf("unknown stream mode %d", mode)
 	}
 	return emitter.Finish()
-}
-
-// validateRestMethodTemplate checks that a gRPC-supplied method string is
-// well-formed: "VERB#/path", both halves non-empty. The actual verb/path
-// split happens inside the HTTP connector when the request is sent.
-func validateRestMethodTemplate(method string) error {
-	parts := strings.SplitN(method, protocol.MethodSeparator, 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return fmt.Errorf("rest method must be in form VERB%spath, got %q", protocol.MethodSeparator, method)
-	}
-	return nil
 }
 
 // keyValueListToMap collapses a dshackle KeyValue repeated field into the

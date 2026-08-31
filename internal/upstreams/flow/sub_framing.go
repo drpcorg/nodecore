@@ -69,7 +69,7 @@ func (resultOnlyFraming) begin(protocol.RequestHolder, context.CancelFunc) (*pro
 }
 
 func (resultOnlyFraming) event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder {
-	headers, trailers := subResponseMetadata(r)
+	headers, trailers := protocol.ResponseMetadata(r)
 	return protocol.NewSubscriptionResultEventResponse(request.Id(), r.GetMessage()).WithResponseHeaders(headers).WithResponseTrailers(trailers)
 }
 

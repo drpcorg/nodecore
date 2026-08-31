@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,14 +15,12 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
-	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // xNodecoreChain selects the target chain, sent as call metadata: the chain
@@ -159,8 +158,12 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 	}
 
 	specName := chains.GetMethodSpecNameByChainName(chainName)
+	// The grpc connector requirement makes the "only gRPC methods are served
+	// here" invariant local: today it also follows from the :path shape
+	// (grpc-go only accepts /Service/Method and no JSON-RPC or REST method is
+	// named that way), but that is a naming convention, not a guarantee.
 	specMethod := specs.GetSpecMethod(specName, h.method)
-	if specMethod == nil {
+	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
 		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, fmt.Sprintf("unknown method %s", h.method), nil)
 	}
 	requestFrame, err := h.receiveRequestFrame()
@@ -216,54 +219,13 @@ func (h *grpcRequestHandler) receiveRequestFrame() (*rawFrame, error) {
 // headers via SetHeader (flushed with the first message or the status),
 // trailers via SetTrailer - a gRPC client must receive trailers as trailers.
 func forwardResponseMetadata(stream grpc.ServerStream, response protocol.ResponseHolder) {
-	if headerBearer, ok := response.(protocol.HasResponseHeaders); ok {
-		if headers := headerBearer.ResponseHeaders(); len(headers) > 0 {
-			_ = stream.SetHeader(metadata.MD(headers))
-		}
+	headers, trailers := protocol.ResponseMetadata(response)
+	if len(headers) > 0 {
+		_ = stream.SetHeader(metadata.MD(headers))
 	}
-	if trailerBearer, ok := response.(protocol.HasResponseTrailers); ok {
-		if trailers := trailerBearer.ResponseTrailers(); len(trailers) > 0 {
-			stream.SetTrailer(trailers)
-		}
+	if len(trailers) > 0 {
+		stream.SetTrailer(trailers)
 	}
-}
-
-// grpcStatusFromResponseError turns a flow error back into a *status.Status.
-// An upstream gRPC status rides through verbatim - typed details included;
-// nodecore's own error codes are mapped onto the closed 17-code model.
-func grpcStatusFromResponseError(respError *protocol.ResponseError) *status.Status {
-	if grpcStatus, ok := protocol.GrpcStatusFromError(respError); ok {
-		if len(grpcStatus.StatusProto) > 0 {
-			var statusProto spb.Status
-			if err := proto.Unmarshal(grpcStatus.StatusProto, &statusProto); err == nil {
-				return status.FromProto(&statusProto)
-			}
-		}
-		return status.New(grpcStatus.Code, grpcStatus.Message)
-	}
-
-	var code codes.Code
-	switch respError.Code {
-	case protocol.NoAvailableUpstreams, protocol.NoApiConnectors:
-		code = codes.Unavailable
-	case protocol.AuthErrorCode:
-		code = codes.PermissionDenied
-	case protocol.ClientErrorCode, protocol.WrongChain:
-		code = codes.InvalidArgument
-	case protocol.RequestTimeout, protocol.CtxErrorCode:
-		code = codes.DeadlineExceeded
-	case protocol.RateLimitExceeded:
-		code = codes.ResourceExhausted
-	case protocol.NoSupportedMethod:
-		code = codes.Unimplemented
-	case protocol.SubscribeTotalFailure:
-		// the node ended a subscription without a status, or the client fell
-		// too far behind
-		code = codes.Unavailable
-	default:
-		code = codes.Internal
-	}
-	return status.New(code, respError.Message)
 }
 
 func firstMetadataValue(md metadata.MD, key string) string {
