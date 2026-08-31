@@ -120,18 +120,23 @@ func IsGrpcRateLimited(response ResponseHolder) bool {
 // receives. An upstream gRPC status rides through verbatim - typed details
 // included; nodecore's own error codes are mapped onto the closed 17-code
 // model. Shared by every gRPC-facing ingress so no client needs its own table.
-func GrpcStatusOf(respError *ResponseError) *status.Status {
+//
+// fromStatusProto reports that the status was reconstructed from the carried
+// google.rpc.Status bytes, i.e. those bytes are valid and may go on the wire
+// verbatim; false covers nodecore errors, statuses without proto bytes, and
+// bytes that failed to unmarshal (the code/message fallback).
+func GrpcStatusOf(respError *ResponseError) (grpcStatus *status.Status, fromStatusProto bool) {
 	if respError == nil {
-		return status.New(codes.Internal, "internal server error")
+		return status.New(codes.Internal, "internal server error"), false
 	}
-	if grpcStatus, ok := GrpcStatusFromError(respError); ok {
-		if len(grpcStatus.StatusProto) > 0 {
+	if upstreamStatus, ok := GrpcStatusFromError(respError); ok {
+		if len(upstreamStatus.StatusProto) > 0 {
 			var statusProto spb.Status
-			if err := proto.Unmarshal(grpcStatus.StatusProto, &statusProto); err == nil {
-				return status.FromProto(&statusProto)
+			if err := proto.Unmarshal(upstreamStatus.StatusProto, &statusProto); err == nil {
+				return status.FromProto(&statusProto), true
 			}
 		}
-		return status.New(grpcStatus.Code, grpcStatus.Message)
+		return status.New(upstreamStatus.Code, upstreamStatus.Message), false
 	}
 
 	var code codes.Code
@@ -155,5 +160,5 @@ func GrpcStatusOf(respError *ResponseError) *status.Status {
 	default:
 		code = codes.Internal
 	}
-	return status.New(code, respError.Message)
+	return status.New(code, respError.Message), false
 }

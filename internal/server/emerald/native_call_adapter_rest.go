@@ -21,11 +21,11 @@ func (a restNativeCallAdapter) BuildRequest(
 ) (protocol.RequestHolder, *dshackle.NativeCallReplyItem) {
 	restData := item.GetRestData()
 	if restData == nil {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(fmt.Errorf("rest_data is missing")))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(fmt.Errorf("rest_data is missing")), nil))
 	}
 
 	if err := validateRestMethodTemplate(item.GetMethod()); err != nil {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(err))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(err), nil))
 	}
 
 	// gRPC clients already deliver path/headers/query params pre-structured,
@@ -42,7 +42,7 @@ func (a restNativeCallAdapter) BuildRequest(
 	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
 	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
 	if err != nil {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(err))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(err), nil))
 	}
 	if chunkSize > 0 {
 		return protocol.NewStreamUpstreamRestRequest(requestID, item.GetMethod(), requestParams, restData.GetPayload(), chain.MethodSpec, selectors...), nil
@@ -56,11 +56,11 @@ func (restNativeCallAdapter) SendReply(
 	nonce uint64,
 	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, nonce, signer, passThroughStream, nativeCallErrorItem)
+	return sendReply(stream, wrapper, nonce, signer, passThroughStream, restNativeCallAdapter{}.ErrorItem)
 }
 
-func (restNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol.ResponseError) *dshackle.NativeCallReplyItem {
-	return noUpstreamErrorItem(requestID, responseError)
+func (restNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem {
+	return nativeCallErrorItem(requestID, responseError, errorAsIs)
 }
 
 // validateRestMethodTemplate checks that a gRPC-supplied method string is

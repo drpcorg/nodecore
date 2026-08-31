@@ -18,8 +18,9 @@ func TestGrpcStatusOfReplaysUpstreamStatusWithDetails(t *testing.T) {
 	statusProto, err := proto.Marshal(upstream.Proto())
 	require.NoError(t, err)
 
-	got := GrpcStatusOf(NewGrpcStatusResponseError(&GrpcStatus{Code: codes.NotFound, Message: "object not found", StatusProto: statusProto}))
+	got, fromStatusProto := GrpcStatusOf(NewGrpcStatusResponseError(&GrpcStatus{Code: codes.NotFound, Message: "object not found", StatusProto: statusProto}))
 
+	assert.True(t, fromStatusProto)
 	assert.Equal(t, codes.NotFound, got.Code())
 	assert.Equal(t, "object not found", got.Message())
 	require.Len(t, got.Details(), 1)
@@ -27,7 +28,8 @@ func TestGrpcStatusOfReplaysUpstreamStatusWithDetails(t *testing.T) {
 }
 
 func TestGrpcStatusOfReplaysUpstreamStatusWithoutDetails(t *testing.T) {
-	got := GrpcStatusOf(NewGrpcStatusError(codes.ResourceExhausted, "slow down"))
+	got, fromStatusProto := GrpcStatusOf(NewGrpcStatusError(codes.ResourceExhausted, "slow down"))
+	assert.False(t, fromStatusProto)
 	assert.Equal(t, codes.ResourceExhausted, got.Code())
 	assert.Equal(t, "slow down", got.Message())
 	assert.Empty(t, got.Details())
@@ -49,7 +51,8 @@ func TestGrpcStatusOfMapsNodecoreErrors(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := GrpcStatusOf(tc.err)
+			got, fromStatusProto := GrpcStatusOf(tc.err)
+			assert.False(t, fromStatusProto)
 			assert.Equal(t, tc.code, got.Code())
 			assert.Equal(t, tc.err.Message, got.Message())
 		})
@@ -57,6 +60,16 @@ func TestGrpcStatusOfMapsNodecoreErrors(t *testing.T) {
 }
 
 func TestGrpcStatusOfNilIsInternal(t *testing.T) {
-	got := GrpcStatusOf(nil)
+	got, fromStatusProto := GrpcStatusOf(nil)
+	assert.False(t, fromStatusProto)
 	assert.Equal(t, codes.Internal, got.Code())
+}
+
+func TestGrpcStatusOfCorruptStatusProtoFallsBackToCodeAndMessage(t *testing.T) {
+	got, fromStatusProto := GrpcStatusOf(NewGrpcStatusResponseError(
+		&GrpcStatus{Code: codes.NotFound, Message: "object not found", StatusProto: []byte{0xff}}))
+
+	assert.False(t, fromStatusProto)
+	assert.Equal(t, codes.NotFound, got.Code())
+	assert.Equal(t, "object not found", got.Message())
 }

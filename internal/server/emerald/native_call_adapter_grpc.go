@@ -8,7 +8,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/signature"
-	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
@@ -28,7 +27,7 @@ func (a grpcNativeCallAdapter) BuildRequest(
 ) (protocol.RequestHolder, *dshackle.NativeCallReplyItem) {
 	grpcData := item.GetGrpcData()
 	if grpcData == nil {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(fmt.Errorf("grpc_data is missing")))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(fmt.Errorf("grpc_data is missing")), nil))
 	}
 
 	// arity is not on the gRPC wire - only the spec knows a method's shape.
@@ -39,16 +38,16 @@ func (a grpcNativeCallAdapter) BuildRequest(
 	// letting it through would route proto bytes to an HTTP connector.
 	specMethod := specs.GetSpecMethod(chain.MethodSpec, item.GetMethod())
 	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
-		return nil, a.ErrorItem(item.GetId(), protocol.NotSupportedMethodError(item.GetMethod()))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.NotSupportedMethodError(item.GetMethod()), nil))
 	}
 	if specMethod.GrpcCallType().IsServerStream() {
-		return nil, a.ErrorItem(item.GetId(),
-			protocol.ClientError(fmt.Errorf("server-stream method %s must be called via NativeSubscribe", item.GetMethod())))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(),
+			protocol.ClientError(fmt.Errorf("server-stream method %s must be called via NativeSubscribe", item.GetMethod())), nil))
 	}
 
 	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
 	if err != nil {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(err))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(err), nil))
 	}
 
 	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
@@ -64,13 +63,11 @@ func (grpcNativeCallAdapter) SendReply(
 	nonce uint64,
 	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, nonce, signer, passThroughStream, grpcNativeCallErrorItem)
+	return sendReply(stream, wrapper, nonce, signer, passThroughStream, grpcNativeCallAdapter{}.ErrorItem)
 }
 
-func (grpcNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol.ResponseError) *dshackle.NativeCallReplyItem {
-	replyItem := grpcNativeCallErrorItem(requestID, responseError, nil)
-	replyItem.UpstreamId = flow.NoUpstream
-	return replyItem
+func (grpcNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem {
+	return grpcNativeCallErrorItem(requestID, responseError, errorAsIs)
 }
 
 // grpcNativeCallErrorItem renders an error for a gRPC item: item_error_code is
@@ -79,15 +76,21 @@ func (grpcNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol
 // error_data is never used for gRPC items, and the "as is" body of other API
 // kinds has no gRPC counterpart.
 func grpcNativeCallErrorItem(requestID uint32, responseError *protocol.ResponseError, _ []byte) *dshackle.NativeCallReplyItem {
-	grpcStatus := protocol.GrpcStatusOf(responseError)
+	grpcStatus, fromStatusProto := protocol.GrpcStatusOf(responseError)
 	replyItem := &dshackle.NativeCallReplyItem{
 		Id:            requestID,
 		Succeed:       false,
 		ErrorMessage:  grpcStatus.Message(),
 		ItemErrorCode: int32(grpcStatus.Code()),
 	}
-	if upstreamStatus, ok := protocol.GrpcStatusFromError(responseError); ok && len(upstreamStatus.StatusProto) > 0 {
-		replyItem.ErrorAsIs = append([]byte(nil), upstreamStatus.StatusProto...)
+	// The contract tells the client to prefer status.FromProto(error_as_is),
+	// so the status proto goes on the wire only when GrpcStatusOf actually
+	// reconstructed the status from it - corrupt bytes (never produced by our
+	// connector, purely defensive) stay off the wire.
+	if fromStatusProto {
+		if upstreamStatus, ok := protocol.GrpcStatusFromError(responseError); ok {
+			replyItem.ErrorAsIs = append([]byte(nil), upstreamStatus.StatusProto...)
+		}
 	}
 	return replyItem
 }

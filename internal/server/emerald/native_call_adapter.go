@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/signature"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/rs/zerolog/log"
@@ -33,16 +33,19 @@ type nativeCallAdapter interface {
 		signer signature.ResponseSigner,
 	) error
 
-	// ErrorItem renders a failure that happened before or outside the flow
-	// (no upstream) in the item's own error vocabulary.
-	ErrorItem(requestID uint32, responseError *protocol.ResponseError) *dshackle.NativeCallReplyItem
+	// ErrorItem renders a failure in the item's own error vocabulary: JSON-RPC
+	// and REST items carry nodecore error codes and error_data, gRPC items a
+	// canonical gRPC status. Neither response-level metadata nor the upstream
+	// id are its business - sendReply stamps them via replyMeta, pre-dispatch
+	// callers mark flow.NoUpstream via withNoUpstreamId.
+	ErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem
 }
 
-// errorItemRenderer builds the error reply item in the vocabulary of the item's
-// API kind: JSON-RPC and REST items carry nodecore error codes and error_data,
-// gRPC items carry a canonical gRPC status. Response-level metadata is not the
-// renderer's business - sendReply stamps it via replyMeta.
-type errorItemRenderer func(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem
+// withNoUpstreamId marks a failure raised before any upstream was involved.
+func withNoUpstreamId(item *dshackle.NativeCallReplyItem) *dshackle.NativeCallReplyItem {
+	item.UpstreamId = flow.NoUpstream
+	return item
+}
 
 func adapterFor(item *dshackle.NativeCallItem) nativeCallAdapter {
 	if item.GetRestData() != nil {
@@ -79,7 +82,7 @@ func sendReply(
 	nonce uint64,
 	signer signature.ResponseSigner,
 	mode streamMode,
-	renderError errorItemRenderer,
+	renderError func(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem,
 ) error {
 	if wrapper == nil || wrapper.Response == nil {
 		return fmt.Errorf("response wrapper is empty")
@@ -135,7 +138,7 @@ type replyMeta struct {
 }
 
 func newReplyMeta(wrapper *protocol.ResponseHolderWrapper) replyMeta {
-	headers, trailers := responseMetadata(wrapper.Response)
+	headers, trailers := protocol.ResponseMetadata(wrapper.Response)
 	return replyMeta{
 		requestID:           parseCallItemID(wrapper.RequestId),
 		upstreamID:          wrapper.UpstreamId,
@@ -153,21 +156,6 @@ func (m replyMeta) stamp(item *dshackle.NativeCallReplyItem) *dshackle.NativeCal
 	item.ResponseHeaders = m.headers
 	item.ResponseTrailers = m.trailers
 	return item
-}
-
-// responseMetadata reads the upstream's response metadata through the optional
-// capabilities, so success responses and error replies (a RESOURCE_EXHAUSTED
-// with rate-limit hints in its trailers is a *ReplyError) are treated alike.
-func responseMetadata(response protocol.ResponseHolder) (http.Header, map[string][]string) {
-	var headers http.Header
-	var trailers map[string][]string
-	if headerBearer, ok := response.(protocol.HasResponseHeaders); ok {
-		headers = headerBearer.ResponseHeaders()
-	}
-	if trailerBearer, ok := response.(protocol.HasResponseTrailers); ok {
-		trailers = trailerBearer.ResponseTrailers()
-	}
-	return headers, trailers
 }
 
 func nativeCallFinalizationData(wrapper *protocol.ResponseHolderWrapper) *dshackle.FinalizationData {
@@ -198,7 +186,10 @@ func streamNativeCallBody(
 			Chunked:    true,
 			FinalChunk: final,
 		}
-		// Response-level metadata travels on the first chunk only.
+		// Response-level metadata travels on the first chunk only. That holds
+		// for trailers too: streamed responses are HTTP-only (a gRPC reply is
+		// always buffered) and HTTP responses carry no trailers here, so
+		// nothing arrives after the body that this could miss.
 		if first {
 			meta.stamp(item)
 		}

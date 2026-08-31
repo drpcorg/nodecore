@@ -3,7 +3,6 @@ package flow
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -155,7 +154,7 @@ func responseUpstreamId(r protocol.SubResponse) string {
 // final response - the terminal error, or a non-event end frame for a clean
 // completion - keeping the transport metadata it carried (gRPC trailers).
 func terminalWrapper(request protocol.RequestHolder, terminal protocol.SubResponse) *protocol.ResponseHolderWrapper {
-	headers, trailers := subResponseMetadata(terminal)
+	headers, trailers := protocol.ResponseMetadata(terminal)
 	if terminal.GetError() == nil {
 		return &protocol.ResponseHolderWrapper{
 			UpstreamId: responseUpstreamId(terminal),
@@ -168,17 +167,4 @@ func terminalWrapper(request protocol.RequestHolder, terminal protocol.SubRespon
 		replyErr.WithResponseHeaders(headers).WithResponseTrailers(trailers)
 	}
 	return wrapper
-}
-
-// subResponseMetadata reads the optional transport metadata of a frame.
-func subResponseMetadata(r protocol.SubResponse) (http.Header, map[string][]string) {
-	var headers http.Header
-	var trailers map[string][]string
-	if headerBearer, ok := r.(protocol.HasResponseHeaders); ok {
-		headers = headerBearer.ResponseHeaders()
-	}
-	if trailerBearer, ok := r.(protocol.HasResponseTrailers); ok {
-		trailers = trailerBearer.ResponseTrailers()
-	}
-	return headers, trailers
 }

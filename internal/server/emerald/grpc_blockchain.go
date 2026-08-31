@@ -70,18 +70,20 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		return err
 	}
 	if request == nil {
-		return stream.Send(noUpstreamErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil"))))
+		// no items to correlate with or to pick a vocabulary from: this is the
+		// one failure a client can only observe as id 0 with a nodecore code
+		return stream.Send(withNoUpstreamId(nativeCallErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil")), nil)))
 	}
 	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
-		return stream.Send(noUpstreamErrorItem(0, protocol.NoAvailableUpstreamsError()))
+		return sendRequestFailure(stream, request, protocol.NoAvailableUpstreamsError())
 	}
 
 	configuredChain, chainSupervisor := s.resolveChain(request.GetChain())
 	if configuredChain == nil {
-		return stream.Send(noUpstreamErrorItem(0, protocol.WrongChainError(strconv.Itoa(int(request.GetChain())))))
+		return sendRequestFailure(stream, request, protocol.WrongChainError(strconv.Itoa(int(request.GetChain()))))
 	}
 	if chainSupervisor == nil {
-		return stream.Send(noUpstreamErrorItem(0, protocol.NoAvailableUpstreamsError()))
+		return sendRequestFailure(stream, request, protocol.NoAvailableUpstreamsError())
 	}
 
 	requests, items, preResponses := s.buildNativeCallRequests(configuredChain, request)
@@ -115,7 +117,11 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		item, ok := items[wrapper.RequestId]
 		if !ok {
 			// Without the originating item we don't know its nonce, so a success
-			// here could silently drop a signature the client asked for.
+			// here could silently drop a signature the client asked for. The item
+			// kind is unknown too (this lookup is what failed), so - as a
+			// documented exception to the per-kind error vocabulary - the failure
+			// is rendered with the nodecore code 500. Defensive: the flow only
+			// answers ids this loop built.
 			log.Warn().Msgf("no request found for id %s, cannot build a reply", wrapper.RequestId)
 			replyItem := nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerError(), nil)
 			replyItem.UpstreamId = wrapper.UpstreamId
@@ -265,7 +271,7 @@ func (s *GrpcBlockchainService) buildNativeCallRequests(
 		adapter := adapterFor(item)
 		if err := signingUnavailable(item.GetNonce(), s.signer); err != nil {
 			log.Warn().Msgf("item %d requested a signature but response signing is not configured", item.GetId())
-			preResponses = append(preResponses, adapter.ErrorItem(item.GetId(), protocol.ServerErrorWithCause(err)))
+			preResponses = append(preResponses, withNoUpstreamId(adapter.ErrorItem(item.GetId(), protocol.ServerErrorWithCause(err), nil)))
 			continue
 		}
 		builtRequest, failure := adapter.BuildRequest(configuredChain, item, request.GetSelector(), request.GetChunkSize())
@@ -376,11 +382,21 @@ func nativeCallErrorItem(requestID uint32, responseError *protocol.ResponseError
 	return replyItem
 }
 
-// noUpstreamErrorItem is a failure raised before any upstream was involved.
-func noUpstreamErrorItem(requestID uint32, responseError *protocol.ResponseError) *dshackle.NativeCallReplyItem {
-	replyItem := nativeCallErrorItem(requestID, responseError, nil)
-	replyItem.UpstreamId = flow.NoUpstream
-	return replyItem
+// sendRequestFailure answers a request-level failure (unknown chain, no
+// upstreams) once per item, each in its own kind's error vocabulary and under
+// its own id - a gRPC item must see a canonical code, and id 0 would match
+// nothing the client sent.
+func sendRequestFailure(
+	stream dshackle.Blockchain_NativeCallServer,
+	request *dshackle.NativeCallRequest,
+	responseError *protocol.ResponseError,
+) error {
+	for _, item := range request.GetItems() {
+		if err := stream.Send(withNoUpstreamId(adapterFor(item).ErrorItem(item.GetId(), responseError, nil))); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func mapHeaders[M ~map[string][]string](headers M) []*dshackle.KeyValue {

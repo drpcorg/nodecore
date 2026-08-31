@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -157,8 +158,12 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 	}
 
 	specName := chains.GetMethodSpecNameByChainName(chainName)
+	// The grpc connector requirement makes the "only gRPC methods are served
+	// here" invariant local: today it also follows from the :path shape
+	// (grpc-go only accepts /Service/Method and no JSON-RPC or REST method is
+	// named that way), but that is a naming convention, not a guarantee.
 	specMethod := specs.GetSpecMethod(specName, h.method)
-	if specMethod == nil {
+	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
 		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, fmt.Sprintf("unknown method %s", h.method), nil)
 	}
 	requestFrame, err := h.receiveRequestFrame()
@@ -214,15 +219,12 @@ func (h *grpcRequestHandler) receiveRequestFrame() (*rawFrame, error) {
 // headers via SetHeader (flushed with the first message or the status),
 // trailers via SetTrailer - a gRPC client must receive trailers as trailers.
 func forwardResponseMetadata(stream grpc.ServerStream, response protocol.ResponseHolder) {
-	if headerBearer, ok := response.(protocol.HasResponseHeaders); ok {
-		if headers := headerBearer.ResponseHeaders(); len(headers) > 0 {
-			_ = stream.SetHeader(metadata.MD(headers))
-		}
+	headers, trailers := protocol.ResponseMetadata(response)
+	if len(headers) > 0 {
+		_ = stream.SetHeader(metadata.MD(headers))
 	}
-	if trailerBearer, ok := response.(protocol.HasResponseTrailers); ok {
-		if trailers := trailerBearer.ResponseTrailers(); len(trailers) > 0 {
-			stream.SetTrailer(trailers)
-		}
+	if len(trailers) > 0 {
+		stream.SetTrailer(trailers)
 	}
 }
 

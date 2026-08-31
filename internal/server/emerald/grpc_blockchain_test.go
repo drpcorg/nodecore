@@ -910,3 +910,51 @@ func TestSendReplyStreamWithoutHintIsAnError(t *testing.T) {
 	assert.False(t, stream.sent[0].GetSucceed())
 	assert.Contains(t, stream.sent[0].GetErrorMessage(), "result field is missing")
 }
+
+// A request-level failure (here: no upstream supervisor) must answer every
+// item under its own id and in its own kind's error vocabulary - a gRPC item
+// with a canonical code, a JSON-RPC item with a nodecore code.
+func TestNativeCallRequestFailureIsRenderedPerItem(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	err := service.NativeCall(&dshackle.NativeCallRequest{
+		Chain: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET,
+		Items: []*dshackle.NativeCallItem{
+			grpcItem(3, "/sui.rpc.v2.LedgerService/GetObject", nil),
+			{Id: 7, Method: "eth_chainId", Data: &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)}},
+		},
+	}, stream)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 2)
+
+	grpcFailure, jsonRpcFailure := stream.sent[0], stream.sent[1]
+	assert.Equal(t, uint32(3), grpcFailure.GetId())
+	assert.Equal(t, int32(codes.Unavailable), grpcFailure.GetItemErrorCode())
+	assert.Equal(t, uint32(7), jsonRpcFailure.GetId())
+	assert.Equal(t, int32(protocol.NoAvailableUpstreams), jsonRpcFailure.GetItemErrorCode())
+	for _, failure := range stream.sent {
+		assert.False(t, failure.GetSucceed())
+		assert.Equal(t, flow.NoUpstream, failure.GetUpstreamId())
+	}
+}
+
+// StatusProto bytes that do not unmarshal must not reach the wire: the
+// contract tells the client to prefer status.FromProto(error_as_is).
+func TestGrpcSendReplyDropsUnparseableStatusProto(t *testing.T) {
+	request := protocol.NewUpstreamGrpcRequest("5", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	resp := protocol.NewGrpcUpstreamErrorResponse(request, &protocol.GrpcStatus{
+		Code:        codes.NotFound,
+		Message:     "object not found",
+		StatusProto: []byte{0xff}, // invalid wire tag
+	})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "5", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, grpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.Empty(t, stream.sent[0].GetErrorAsIs())
+	assert.Equal(t, int32(codes.NotFound), stream.sent[0].GetItemErrorCode())
+	assert.Equal(t, "object not found", stream.sent[0].GetErrorMessage())
+}

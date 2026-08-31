@@ -24,14 +24,14 @@ func (a jsonRpcNativeCallAdapter) BuildRequest(
 		payload = []byte("[]")
 	}
 	if !json.Valid(payload) {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(fmt.Errorf("payload is not a valid JSON value")))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(fmt.Errorf("payload is not a valid JSON value")), nil))
 	}
 
 	requestID := strconv.FormatUint(uint64(item.GetId()), 10)
 	body := protocol.JsonRpcRequestBody{Id: []byte(requestID), Method: item.GetMethod(), Params: payload}
 	selectors, err := mapNativeCallSelectors(requestSelector, item.GetSelectors())
 	if err != nil {
-		return nil, a.ErrorItem(item.GetId(), protocol.ClientError(err))
+		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.ClientError(err), nil))
 	}
 	if chunkSize > 0 {
 		return protocol.NewStreamUpstreamJsonRpcRequest(requestID, body, chain.MethodSpec, selectors...), nil
@@ -45,9 +45,9 @@ func (jsonRpcNativeCallAdapter) SendReply(
 	nonce uint64,
 	signer signature.ResponseSigner,
 ) error {
-	return sendReply(stream, wrapper, nonce, signer, unwrapJsonRpcResultStream, nativeCallErrorItem)
+	return sendReply(stream, wrapper, nonce, signer, unwrapJsonRpcResultStream, jsonRpcNativeCallAdapter{}.ErrorItem)
 }
 
-func (jsonRpcNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol.ResponseError) *dshackle.NativeCallReplyItem {
-	return noUpstreamErrorItem(requestID, responseError)
+func (jsonRpcNativeCallAdapter) ErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem {
+	return nativeCallErrorItem(requestID, responseError, errorAsIs)
 }

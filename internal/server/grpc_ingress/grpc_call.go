@@ -54,7 +54,8 @@ func (u *unaryCall) serve(stream grpc.ServerStream, handleResp *server_ctx.Handl
 	}
 	forwardResponseMetadata(stream, wrapper.Response)
 	if wrapper.Response.HasError() {
-		return protocol.GrpcStatusOf(wrapper.Response.GetError()).Err()
+		grpcStatus, _ := protocol.GrpcStatusOf(wrapper.Response.GetError())
+		return grpcStatus.Err()
 	}
 	return stream.SendMsg(&rawFrame{data: wrapper.Response.ResponseResult()})
 }
@@ -80,7 +81,8 @@ func (s *serverStreamCall) serve(stream grpc.ServerStream, handleResp *server_ct
 			// handler returns, so a trailer seen on any frame is delivered.
 			forwardResponseMetadata(stream, response)
 			if response.HasError() {
-				return protocol.GrpcStatusOf(response.GetError()).Err()
+				grpcStatus, _ := protocol.GrpcStatusOf(response.GetError())
+				return grpcStatus.Err()
 			}
 			if eventResponse, ok := response.(protocol.SubscriptionResponseHolder); ok && !eventResponse.IsEventFrame() {
 				continue

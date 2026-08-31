@@ -27,6 +27,21 @@ type HasResponseTrailers interface {
 	ResponseTrailers() map[string][]string
 }
 
+// ResponseMetadata reads the optional transport metadata of a response through
+// the two capabilities above. It takes any because callers hold values behind
+// different interfaces (ResponseHolder, SubResponse).
+func ResponseMetadata(response any) (http.Header, map[string][]string) {
+	var headers http.Header
+	var trailers map[string][]string
+	if headerBearer, ok := response.(HasResponseHeaders); ok {
+		headers = headerBearer.ResponseHeaders()
+	}
+	if trailerBearer, ok := response.(HasResponseTrailers); ok {
+		trailers = trailerBearer.ResponseTrailers()
+	}
+	return headers, trailers
+}
+
 // noStreamHint is embedded by response types that never carry a streaming
 // result hint (subscriptions, ws, errors); it satisfies the GetStreamHint part
 // of ResponseHolder with a nil hint.
