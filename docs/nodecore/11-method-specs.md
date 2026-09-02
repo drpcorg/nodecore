@@ -13,6 +13,7 @@ Specs no longer live in this repository. They are maintained in
 | --- | --- |
 | `github.com/drpcorg/public/pkg/methods` | the spec JSON files (embedded), the loader (`NewMethodSpecLoader().Load()`) and the lookup helpers (`GetSpecMethod`, `IsSubscribeMethod`, ...) |
 | `github.com/drpcorg/public/pkg/sui` | generated `sui.rpc.v2` protobuf types used by the Sui gRPC connector and the [gRPC chain ingress](14-grpc-ingress.md) |
+| `github.com/drpcorg/public/pkg/cosmos` | descriptor registration for the Cosmos SDK / IBC / CosmWasm gRPC services - a blank import is what lets the [gRPC chain ingress](14-grpc-ingress.md) answer reflection for the `cosmos-grpc` spec (the package doc records where each descriptor set comes from) |
 
 The complete spec set shipped by the pinned module version is embedded into the nodecore binary; there is no need to copy or distribute the files separately.
 
