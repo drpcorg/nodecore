@@ -361,3 +361,19 @@ func TestUpdateDifferentBounds(t *testing.T) {
 	assertLastBound(t, lb, protocol.BlockBound, block3)
 	assert.Equal(t, []protocol.LowerBoundData{block1, block2, block3}, lb.GetAllBounds(protocol.BlockBound))
 }
+
+func TestUpperBoundPredictsAtChainSpeedFromLastValue(t *testing.T) {
+	lb := lower_bounds.NewLowerBounds(0.5)
+	base := mustParseUTC(t, "28.08.2025 11:00:00").Unix()
+	// the store catches up faster than the chain (resync): 1000 blocks per minute
+	lb.UpdateBound(protocol.NewLowerBoundData(10_000, base, protocol.UpperProofBound))
+	lb.UpdateBound(protocol.NewLowerBoundData(11_000, base+60, protocol.UpperProofBound))
+	lb.UpdateBound(protocol.NewLowerBoundData(12_000, base+120, protocol.UpperProofBound))
+
+	// 100s later: 12000 + 0.5*100, not the value the regression would extrapolate
+	assert.Equal(t, int64(12_050), lb.PredictNextBoundAtSpecificTime(protocol.UpperProofBound, base+220))
+
+	// unwind: the line restarts from the new, lower value
+	lb.UpdateBound(protocol.NewLowerBoundData(9_000, base+180, protocol.UpperProofBound))
+	assert.Equal(t, int64(9_020), lb.PredictNextBoundAtSpecificTime(protocol.UpperProofBound, base+220))
+}

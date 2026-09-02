@@ -186,6 +186,12 @@ func (u *GenericUpstream) PredictLowerBound(boundType protocol.LowerBoundType, t
 			predicted = bound.Bound
 		}
 	}
+	// an upper edge cannot be ahead of the node itself
+	if boundType.IsUpperBound() && predicted > 0 {
+		if head := int64(state.HeadData.Height); head > 0 && predicted > head {
+			predicted = head
+		}
+	}
 	return predicted
 }
 

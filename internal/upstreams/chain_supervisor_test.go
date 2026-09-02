@@ -1064,6 +1064,33 @@ func TestChainSupervisorLowerBoundsRecomputeWhenUpstreamRemoved(t *testing.T) {
 	})
 }
 
+// The chain-wide window is the widest one: the lowest lower edge, the highest upper edge.
+func TestChainSupervisorLowerBoundsTakeMaxOfUpperProofBound(t *testing.T) {
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+
+	go chainSupervisor.Start()
+
+	proofBound1 := protocol.NewLowerBoundData(100, 1000, protocol.ProofBound)
+	upperBound1 := protocol.NewLowerBoundData(5000, 1000, protocol.UpperProofBound)
+	proofBound2 := protocol.NewLowerBoundData(4900, 1010, protocol.ProofBound)
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithLowerBounds("id1", protocol.Available, 6000, methods, proofBound1, upperBound1))
+	chainSupervisor.PublishUpstreamEvent(createEventWithLowerBounds("id2", protocol.Available, 6000, methods, proofBound2))
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.ProofBound:      proofBound1,
+		protocol.UpperProofBound: upperBound1,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
+
+	upperBound3 := protocol.NewLowerBoundData(6000, 1020, protocol.UpperProofBound)
+	chainSupervisor.PublishUpstreamEvent(createEventWithLowerBounds("id3", protocol.Available, 6000, methods, upperBound3))
+	assertEventuallyEqual(t, map[protocol.LowerBoundType]protocol.LowerBoundData{
+		protocol.ProofBound:      proofBound1,
+		protocol.UpperProofBound: upperBound3,
+	}, func() any { return chainSupervisor.GetChainState().LowerBounds })
+}
+
 func TestChainSupervisorLabelsInitialStateIsEmpty(t *testing.T) {
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 

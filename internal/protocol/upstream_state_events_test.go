@@ -23,6 +23,21 @@ func newUpstreamState() protocol.UpstreamState {
 	)
 }
 
+// applyLowerBound applies data the way the upstream event loop does: ProcessEvent only when
+// the event is not Same.
+func applyLowerBound(state protocol.UpstreamState, data protocol.LowerBoundData) protocol.UpstreamState {
+	event := &protocol.LowerBoundUpstreamStateEvent{Data: data}
+	if event.Same(state) {
+		return state
+	}
+	return event.ProcessEvent(state)
+}
+
+func lowerBoundOf(state protocol.UpstreamState, tp protocol.LowerBoundType) int64 {
+	bound, _ := state.LowerBoundsInfo.GetLowerBound(tp)
+	return bound.Bound
+}
+
 func TestLowerBoundUpstreamStateEvent(t *testing.T) {
 	state := newUpstreamState()
 	event := &protocol.LowerBoundUpstreamStateEvent{
@@ -45,17 +60,7 @@ func TestLowerBoundUpstreamStateEvent(t *testing.T) {
 // Same() rejects (event loop skips) a lower republish and a bound above head; only the archive
 // reset (1) may lower. Applied the way the event loop does: ProcessEvent only when !Same.
 func TestLowerBoundUpstreamStateEventNeverLowersExceptArchiveReset(t *testing.T) {
-	apply := func(state protocol.UpstreamState, data protocol.LowerBoundData) protocol.UpstreamState {
-		event := &protocol.LowerBoundUpstreamStateEvent{Data: data}
-		if event.Same(state) {
-			return state
-		}
-		return event.ProcessEvent(state)
-	}
-	boundOf := func(state protocol.UpstreamState, tp protocol.LowerBoundType) int64 {
-		bound, _ := state.LowerBoundsInfo.GetLowerBound(tp)
-		return bound.Bound
-	}
+	apply, boundOf := applyLowerBound, lowerBoundOf
 	state := newUpstreamState()
 	state.HeadData = protocol.NewBlockWithHeight(93637984)
 	state = apply(state, protocol.NewLowerBoundData(93637370, 100, protocol.StateBound))
@@ -82,6 +87,20 @@ func TestLowerBoundUpstreamStateEventNeverLowersExceptArchiveReset(t *testing.T)
 	noHead := newUpstreamState()
 	noHead = apply(noHead, protocol.NewLowerBoundData(42, 107, protocol.StateBound))
 	assert.Equal(t, int64(42), boundOf(noHead, protocol.StateBound), "unknown head (0) does not block updates")
+}
+
+func TestLowerBoundUpstreamStateEventAppliesUpperEdgeAsReported(t *testing.T) {
+	apply, boundOf := applyLowerBound, lowerBoundOf
+	state := newUpstreamState()
+	state.HeadData = protocol.NewBlockWithHeight(1000)
+	state = apply(state, protocol.NewLowerBoundData(900, 100, protocol.UpperProofBound))
+	assert.Equal(t, int64(900), boundOf(state, protocol.UpperProofBound))
+	state = apply(state, protocol.NewLowerBoundData(800, 101, protocol.UpperProofBound))
+	assert.Equal(t, int64(800), boundOf(state, protocol.UpperProofBound), "upper edge may move backwards")
+	state = apply(state, protocol.NewLowerBoundData(1002, 102, protocol.UpperProofBound))
+	assert.Equal(t, int64(1002), boundOf(state, protocol.UpperProofBound), "upper edge may run ahead of the polled head")
+	event := &protocol.LowerBoundUpstreamStateEvent{Data: protocol.NewLowerBoundData(1002, 102, protocol.UpperProofBound)}
+	assert.True(t, event.Same(state), "identical republish is a no-op")
 }
 
 func TestStatusUpstreamStateEvent(t *testing.T) {

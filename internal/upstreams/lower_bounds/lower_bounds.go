@@ -41,6 +41,12 @@ func (lb *LowerBounds) UpdateBound(newBound protocol.LowerBoundData) {
 	}
 
 	switch {
+	case newBound.Type.IsUpperBound():
+		// An upper edge follows the chain tip: a straight line at chain speed through the
+		// newest observation. No regression - a store catching up after init moves faster
+		// than the chain and would over-predict; decreases are taken as-is.
+		lb.resetBound(coeffs, newBound, lb.averageSpeed, lb.calculateB(newBound))
+
 	case newBound.Bound == 1:
 		lb.resetBound(coeffs, newBound, 0.0, 1.0)
 
@@ -61,7 +67,7 @@ func (lb *LowerBounds) initBound(newBound protocol.LowerBoundData) {
 	coeffs := NewLowerBoundCoeffs()
 	coeffs.addBound(newBound)
 
-	if newBound.Bound == 1 {
+	if newBound.Bound == 1 && !newBound.Type.IsUpperBound() {
 		coeffs.updateCoeffs(0.0, 1.0)
 	} else {
 		coeffs.updateCoeffs(lb.averageSpeed, lb.calculateB(newBound))

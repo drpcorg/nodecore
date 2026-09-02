@@ -154,7 +154,8 @@ func (b *GenericLowerBoundProcessor) processBounds(
 			bound = lastBound.Bound
 		}
 
-		if data.Bound >= bound || data.Bound == 1 {
+		// an upper edge is taken as reported: decreases (proofs unwind, resync) are real
+		if data.Type.IsUpperBound() || data.Bound >= bound || data.Bound == 1 {
 			b.publishBound(data, boundsChan)
 		}
 	}

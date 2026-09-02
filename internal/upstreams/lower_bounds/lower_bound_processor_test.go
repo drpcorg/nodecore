@@ -318,3 +318,52 @@ func TestGenericLowerBoundServiceSecondStartDoesNotDuplicatePublishing(t *testin
 	assertNoLowerBound(t, sub.Events, 100*time.Millisecond)
 	detector.AssertExpectations(t)
 }
+
+func TestGenericLowerBoundServicePublishesUpperBoundDecrease(t *testing.T) {
+	detector := mocks.NewLowerBoundDetectorMock()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
+		protocol.NewLowerBoundData(200, 1000, protocol.UpperProofBound),
+	}, nil).Once()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
+		protocol.NewLowerBoundData(150, 1001, protocol.UpperProofBound),
+	}, nil).Once()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData(nil), nil).Maybe()
+	detector.On("Period").Return(20 * time.Millisecond).Maybe()
+
+	service := lower_bounds.NewGenericLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	sub := service.Subscribe("sub-1")
+	defer sub.Unsubscribe()
+	done := startService(t, service)
+	defer stopService(t, service, done)
+
+	first := waitForLowerBound(t, sub.Events, 200*time.Millisecond)
+	second := waitForLowerBound(t, sub.Events, 200*time.Millisecond)
+
+	assert.Equal(t, int64(200), first.Bound)
+	assert.Equal(t, int64(150), second.Bound, "an upper edge moving backwards (proofs unwind) is published")
+	assert.Equal(t, int64(150), service.PredictLowerBound(protocol.UpperProofBound, 0))
+	detector.AssertExpectations(t)
+}
+
+// Value 1 is a real block for an upper edge, not the archive marker: the prediction keeps
+// moving at chain speed instead of being pinned to 1.
+func TestGenericLowerBoundServiceUpperBoundOneIsNotArchive(t *testing.T) {
+	detector := mocks.NewLowerBoundDetectorMock()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
+		protocol.NewLowerBoundDataNow(1, protocol.UpperProofBound),
+	}, nil).Once()
+	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData(nil), nil).Maybe()
+	detector.On("Period").Return(20 * time.Millisecond).Maybe()
+
+	service := lower_bounds.NewGenericLowerBoundProcessorWithDelay(context.Background(), "up-1", 0.5, time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+	sub := service.Subscribe("sub-1")
+	defer sub.Unsubscribe()
+	done := startService(t, service)
+	defer stopService(t, service, done)
+
+	waitForLowerBound(t, sub.Events, 200*time.Millisecond)
+	predicted := service.PredictLowerBound(protocol.UpperProofBound, 100)
+	assert.GreaterOrEqual(t, predicted, int64(50))
+	assert.LessOrEqual(t, predicted, int64(52))
+	detector.AssertExpectations(t)
+}
