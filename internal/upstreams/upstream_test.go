@@ -697,6 +697,64 @@ func TestGenericUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *t
 	assert.Equal(t, protocol.Unavailable, upstream.GetUpstreamState().Status)
 }
 
+func TestGenericUpstreamPredictLowerBound_CapsUpperEdgeAtHead(t *testing.T) {
+	lowerBoundProcessor := mocks.NewLowerBoundProcessorMock()
+	lowerBoundProcessor.On("PredictLowerBound", protocol.UpperProofBound, int64(0)).Return(int64(1010))
+	lowerBoundProcessor.On("PredictLowerBound", protocol.StateBound, int64(0)).Return(int64(1010))
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{
+		event_processors.NewGenericLowerBoundEventProcessor(context.Background(), "id", lowerBoundProcessor),
+	})
+	upstream := newTestGenericUpstreamWithHead(t, aggregator, 1000)
+
+	assert.Equal(t, int64(1000), upstream.PredictLowerBound(protocol.UpperProofBound, 0), "an upper edge cannot be ahead of the node itself")
+	assert.Equal(t, int64(1010), upstream.PredictLowerBound(protocol.StateBound, 0), "a lower edge is not capped by the head")
+	lowerBoundProcessor.AssertExpectations(t)
+}
+
+// newTestGenericUpstreamWithHead builds an upstream whose stored state already has a head,
+// without starting the event loop: PredictLowerBound reads the stored state directly.
+func newTestGenericUpstreamWithHead(
+	t *testing.T,
+	aggregator *event_processors.UpstreamProcessorAggregator,
+	head uint64,
+) *upstreams.GenericUpstream {
+	t.Helper()
+	loadMethodSpecs(t)
+
+	upConfig := newUpstreamConfig(nil)
+	upstreamMethods, err := methods.NewUpstreamMethods("eth", upConfig.Methods, nil)
+	require.NoError(t, err)
+
+	upstreamState := protocol.DefaultUpstreamState(
+		upstreamMethods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	upstreamState.HeadData = protocol.NewBlockWithHeight(head)
+	state := utils.NewAtomic[protocol.UpstreamState]()
+	state.Store(upstreamState)
+
+	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 100)
+	emitter := func(event protocol.AbstractUpstreamStateEvent) {
+		stateChan <- event
+	}
+	var stateEmitter event_processors.Emitter = emitter
+
+	return upstreams.NewGenericUpstreamWithParams(
+		"id",
+		chains.ETHEREUM,
+		nil,
+		upConfig,
+		"00012",
+		state,
+		aggregator,
+		&stateChan,
+		&stateEmitter,
+	)
+}
+
 func newTestGenericUpstream(
 	t *testing.T,
 	upConfig *config.Upstream,

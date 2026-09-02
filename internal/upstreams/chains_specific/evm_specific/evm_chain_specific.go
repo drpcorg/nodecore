@@ -81,6 +81,12 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		)
 	}
+	if e.hasMethod("debug_proofsSyncStatus") {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthHistoricalProofsLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
+	}
 
 	return labelsDetectors
 }
@@ -146,7 +152,11 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities),
 	}
 	if e.hasMethod("eth_getProof") {
-		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities))
+		proofDetector := evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities)
+		if e.hasMethod("debug_proofsSyncStatus") {
+			proofDetector = proofDetector.WithProofsSyncStatus(evm_bounds.NewEvmProofsSyncStatus(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector))
+		}
+		detectors = append(detectors, proofDetector)
 	}
 	return lower_bounds.NewGenericLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }

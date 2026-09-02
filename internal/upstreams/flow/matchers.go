@@ -222,6 +222,16 @@ func (l LowerHeightResponse) Cause() string {
 	return fmt.Sprintf("Upstream lower height %d of type %s is greater than %d", l.predictedHeight, l.boundType.String(), l.lowerHeight)
 }
 
+type UpperHeightResponse struct {
+	height, predictedHeight int64
+	boundType               protocol.LowerBoundType
+}
+
+func (u UpperHeightResponse) Type() MatchResponseType { return SelectorType }
+func (u UpperHeightResponse) Cause() string {
+	return fmt.Sprintf("Upstream upper height %d of type %s is less than %d", u.predictedHeight, u.boundType.String(), u.height)
+}
+
 type SelectorUnsupportedResponse struct{ reason string }
 
 func (s SelectorUnsupportedResponse) Type() MatchResponseType { return SelectorType }
@@ -357,6 +367,31 @@ func (l *LowerHeightMatcher) Match(upId string, _ *protocol.UpstreamState) Match
 		return SuccessResponse{}
 	}
 	return LowerHeightResponse{l.height, predicted, l.boundType}
+}
+
+// UpperHeightMatcher admits upstreams whose predicted upper edge of boundType reaches
+// height. An upstream without that bound is admitted: it is not a windowed node, and the
+// lower-bound selectors accompanying the request decide for it.
+type UpperHeightMatcher struct {
+	height     int64
+	boundType  protocol.LowerBoundType
+	timeOffset int64
+	predict    LowerHeightPredictor
+}
+
+func NewUpperHeightMatcher(height int64, boundType protocol.LowerBoundType, timeOffset int64, predict LowerHeightPredictor) *UpperHeightMatcher {
+	return &UpperHeightMatcher{height: height, boundType: boundType, timeOffset: timeOffset, predict: predict}
+}
+
+func (u *UpperHeightMatcher) Match(upId string, _ *protocol.UpstreamState) MatchResponse {
+	predicted := int64(0)
+	if u.predict != nil {
+		predicted = u.predict(upId, u.boundType, u.timeOffset)
+	}
+	if predicted == 0 || predicted >= u.height {
+		return SuccessResponse{}
+	}
+	return UpperHeightResponse{u.height, predicted, u.boundType}
 }
 
 type SelectorAndMatcher struct{ matchers []Matcher }

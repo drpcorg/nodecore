@@ -30,8 +30,16 @@ type LowerBoundUpstreamStateEvent struct {
 // is the archive reset (1). These are the LowerBoundProcessor.processBounds rules duplicated for
 // live corrections (request_processor.liveLowerBoundFromPrunedError), which bypass the processor;
 // otherwise the detector's next publish would undo them.
+// An upper edge (LowerBoundType.IsUpperBound) is exempt from both rules: it tracks the newest
+// block of a data window, so it may move backwards and may exceed the head nodecore polled last.
 // TODO: route live corrections through LowerBoundProcessor and drop this duplication.
 func (l *LowerBoundUpstreamStateEvent) Same(state UpstreamState) bool {
+	if l.Data.Type.IsUpperBound() {
+		// an upper edge is applied as reported: it may move backwards (proofs unwind,
+		// resync) and may run ahead of the head nodecore polled last
+		current, ok := state.LowerBoundsInfo.GetLowerBound(l.Data.Type)
+		return ok && current == l.Data
+	}
 	if head := state.HeadData.Height; head > 0 && l.Data.Bound > int64(head) {
 		return true
 	}

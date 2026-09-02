@@ -130,6 +130,27 @@ func TestLiveLowerBoundFromPrunedErrorSkipsUnknownHead(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// fixedUpper is an upstream whose predicted upper proof bound is a constant.
+type fixedUpper int64
+
+func (f fixedUpper) PredictLowerBound(protocol.LowerBoundType, int64) int64 {
+	return int64(f)
+}
+
+func TestAboveUpperProofWindow(t *testing.T) {
+	// bound.Bound is block+1 (liveLowerBoundFromPrunedError)
+	assert.True(t, aboveUpperProofWindow(fixedUpper(5000), protocol.NewLowerBoundDataNow(6001, protocol.ProofBound)),
+		"a failure above the proof window says nothing about its lower edge")
+	assert.False(t, aboveUpperProofWindow(fixedUpper(5000), protocol.NewLowerBoundDataNow(4001, protocol.ProofBound)),
+		"a failure inside the window still raises the lower edge")
+	assert.False(t, aboveUpperProofWindow(fixedUpper(5000), protocol.NewLowerBoundDataNow(5001, protocol.ProofBound)),
+		"the window's own upper edge is inside it")
+	assert.False(t, aboveUpperProofWindow(fixedUpper(0), protocol.NewLowerBoundDataNow(6001, protocol.ProofBound)),
+		"an upstream without an upper proof bound keeps the default behaviour")
+	assert.False(t, aboveUpperProofWindow(fixedUpper(5000), protocol.NewLowerBoundDataNow(6001, protocol.StateBound)),
+		"only the proof bound has an upper edge")
+}
+
 func requestWithBlockNumberParam(t *testing.T, methodName string, params []any, path string) protocol.RequestHolder {
 	t.Helper()
 	method := specs.MethodWithSettings(methodName, []specs.ApiConnectorType{specs.JsonRpcConnector}, nil, &specs.TagParser{ReturnType: specs.BlockNumberType, Path: path})

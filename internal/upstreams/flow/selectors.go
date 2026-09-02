@@ -122,6 +122,13 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	case protocol.RequestSlotHeightSelector:
 		return NewSlotHeightMatcher(s.SlotHeight), nil
 	case protocol.RequestLowerHeightSelector:
+		if s.LowerBoundType.IsUpperBound() {
+			// HeightDelta is a lower-edge tolerance; the upper-edge contract defines height only.
+			if s.Height == 0 {
+				return unsupported(fmt.Sprintf("lower height selector of type %s requires a height", s.LowerBoundType.String()))
+			}
+			return NewUpperHeightMatcher(s.Height, s.LowerBoundType, s.TimeOffset, predict), nil
+		}
 		if s.Height == 0 {
 			return sortOnly(sortSpec{kind: sortPredictedLowerBoundAsc, lowerBoundType: s.LowerBoundType, timeOffset: s.TimeOffset})
 		}

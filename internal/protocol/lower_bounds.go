@@ -19,7 +19,18 @@ const (
 	ProofBound
 	EpochBound
 	BlobBound
+	// UpperProofBound is the newest block whose eth_getProof is served from a historical
+	// proof store (op-reth debug_proofsSyncStatus "latest"). It is the only upper edge
+	// among the bounds: it may move backwards, value 1 is not an archive marker, and
+	// routing admits an upstream when the predicted value is >= the requested height.
+	UpperProofBound
 )
+
+// IsUpperBound reports whether the type is the upper edge of a data window rather than
+// a lower one. Processor, prediction, state and routing rules invert for it.
+func (t LowerBoundType) IsUpperBound() bool {
+	return t == UpperProofBound
+}
 
 func (t LowerBoundType) String() string {
 	switch t {
@@ -45,6 +56,8 @@ func (t LowerBoundType) String() string {
 		return "EPOCH"
 	case BlobBound:
 		return "BLOB"
+	case UpperProofBound:
+		return "UPPER_PROOF"
 	}
 	panic(fmt.Sprintf("unknown lower bound type %d", t))
 }

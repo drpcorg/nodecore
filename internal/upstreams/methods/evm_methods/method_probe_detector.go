@@ -28,6 +28,7 @@ var probedMethods = []string{
 	"debug_storageRangeAt",
 	"eth_getTdByNumber",
 	"eth_callBundle",
+	"debug_proofsSyncStatus",
 }
 
 // MethodProbeDetector calls each method it knows about and keeps the ones the node answers

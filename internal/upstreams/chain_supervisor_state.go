@@ -170,13 +170,22 @@ func processLowerBounds(availableStates []*protocol.UpstreamState) map[protocol.
 		upBounds := upsState.LowerBoundsInfo.GetAllBounds()
 		for _, bound := range upBounds {
 			currentBound, ok := bounds[bound.Type]
-			if !ok || bound.Bound < currentBound.Bound {
+			if !ok || widensChainWindow(bound, currentBound) {
 				bounds[bound.Type] = bound
 			}
 		}
 	}
 
 	return bounds
+}
+
+// widensChainWindow reports whether candidate extends the chain-wide data window over
+// current: the lowest lower edge, the highest upper edge.
+func widensChainWindow(candidate, current protocol.LowerBoundData) bool {
+	if candidate.Type.IsUpperBound() {
+		return candidate.Bound > current.Bound
+	}
+	return candidate.Bound < current.Bound
 }
 
 func processUpstreamBlocks(availableStates []*protocol.UpstreamState) map[protocol.BlockType]protocol.Block {
