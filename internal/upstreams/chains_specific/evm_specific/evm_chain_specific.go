@@ -81,6 +81,12 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		)
 	}
+	if e.hasMethod("debug_proofsSyncStatus") {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthHistoricalProofsLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
+	}
 
 	return labelsDetectors
 }
