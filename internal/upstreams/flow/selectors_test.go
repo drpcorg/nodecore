@@ -93,3 +93,13 @@ func publishStateWithBlocks(chainSupervisor upstreams.ChainSupervisor, upId stri
 	chainSupervisor.PublishUpstreamEvent(protocol.UpstreamEvent{Id: upId, EventType: &protocol.StateUpstreamEvent{State: &state}})
 	time.Sleep(10 * time.Millisecond)
 }
+
+func TestCompileUpperBoundSelector(t *testing.T) {
+	matcher, sort := compileSelector(protocol.RequestLowerHeightSelector{Height: 500, LowerBoundType: protocol.UpperProofBound}, nil)
+	assert.IsType(t, &UpperHeightMatcher{}, matcher)
+	assert.Nil(t, sort)
+
+	matcher, sort = compileSelector(protocol.RequestLowerHeightSelector{Height: 0, LowerBoundType: protocol.UpperProofBound}, nil)
+	assert.IsType(t, &UnsupportedSelectorMatcher{}, matcher)
+	assert.Nil(t, sort)
+}

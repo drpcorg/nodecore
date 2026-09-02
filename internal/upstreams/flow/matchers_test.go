@@ -147,6 +147,23 @@ func TestSelectorLabelExistsHeightSlotAndLowerMatchers(t *testing.T) {
 	assert.Contains(t, NewLowerHeightMatcher(90, protocol.StateBound, 0, 0, nil).Match("up", &state).Cause(), "cannot be predicted")
 }
 
+func TestUpperHeightMatcher(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	predict := func(v int64) LowerHeightPredictor {
+		return func(upstreamId string, boundType protocol.LowerBoundType, timeOffset int64) int64 {
+			assert.Equal(t, protocol.UpperProofBound, boundType)
+			return v
+		}
+	}
+	assert.Equal(t, SuccessType, NewUpperHeightMatcher(500, protocol.UpperProofBound, 0, predict(600)).Match("up", &state).Type())
+	assert.Equal(t, SuccessType, NewUpperHeightMatcher(500, protocol.UpperProofBound, 0, predict(500)).Match("up", &state).Type())
+	assert.Equal(t, SuccessType, NewUpperHeightMatcher(500, protocol.UpperProofBound, 0, predict(0)).Match("up", &state).Type(), "no upper bound published: not a windowed node, admitted")
+	resp := NewUpperHeightMatcher(500, protocol.UpperProofBound, 0, predict(400)).Match("up", &state)
+	assert.Equal(t, SelectorType, resp.Type())
+	assert.Equal(t, "Upstream upper height 400 of type UPPER_PROOF is less than 500", resp.Cause())
+}
+
 func TestSelectorCompositionAndCause(t *testing.T) {
 	methodsMock := mocks.NewMethodsMock()
 	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
