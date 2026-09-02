@@ -14,9 +14,10 @@ import (
 )
 
 // NewCosmosSpecific picks the flavor from the primary (internal-request)
-// connector. A cosmos node exposes two independent APIs - the CometBFT RPC on
-// 26657 and the SDK LCD on 1317 - and either one can carry the full set of
-// probes nodecore needs, so an upstream may be configured with one or both.
+// connector. A cosmos node exposes three independent APIs - the CometBFT RPC
+// on 26657, the SDK LCD on 1317 and the SDK gRPC on 9090 - and any one of
+// them can carry the full set of probes nodecore needs, so an upstream may be
+// configured with one or several of them.
 func NewCosmosSpecific(
 	ctx context.Context,
 	upstreamId string,
@@ -33,9 +34,11 @@ func NewCosmosSpecific(
 		return tendermint_specific.NewTendermintSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.RestConnector:
 		return newCosmosRestSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
+	case specs.GrpcConnector:
+		return NewCosmosGrpcSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	default:
 		return nil, fmt.Errorf(
-			"cosmos specific supports only tendermint or rest connector but not %s",
+			"cosmos specific supports only tendermint, rest or grpc connector but not %s",
 			connector.GetType(),
 		)
 	}

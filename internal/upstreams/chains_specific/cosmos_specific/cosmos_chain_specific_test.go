@@ -138,7 +138,7 @@ func TestNewCosmosSpecificUnsupportedConnector(t *testing.T) {
 			chains.GetChain("cosmos-hub"), time.Second, cosmosOptions(false),
 		)
 		assert.Nil(t, cs)
-		assert.ErrorContains(t, err, "cosmos specific supports only tendermint or rest connector")
+		assert.ErrorContains(t, err, "cosmos specific supports only tendermint, rest or grpc connector")
 	}
 }
 
