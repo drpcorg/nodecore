@@ -150,6 +150,8 @@ func lowerBoundTypeToApi(lowerBoundType protocol.LowerBoundType) dshackle.LowerB
 		return dshackle.LowerBoundType_LOWER_BOUND_EPOCH
 	case protocol.BlobBound:
 		return dshackle.LowerBoundType_LOWER_BOUND_BLOB
+	case protocol.UpperProofBound:
+		return dshackle.LowerBoundType_LOWER_BOUND_PROOF_UPPER
 	default:
 		return dshackle.LowerBoundType_LOWER_BOUND_UNSPECIFIED
 	}

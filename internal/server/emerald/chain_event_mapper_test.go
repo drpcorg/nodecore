@@ -82,6 +82,7 @@ func TestLowerBoundsToApi(t *testing.T) {
 		protocol.NewLowerBoundData(80, 800, protocol.ProofBound),
 		protocol.NewLowerBoundData(90, 900, protocol.EpochBound),
 		protocol.NewLowerBoundData(100, 1000, protocol.BlobBound),
+		protocol.NewLowerBoundData(120, 1200, protocol.UpperProofBound),
 		protocol.NewLowerBoundData(110, 1100, protocol.UnknownBound),
 	})
 
@@ -98,6 +99,7 @@ func TestLowerBoundsToApi(t *testing.T) {
 		{LowerBoundTimestamp: 800, LowerBoundValue: 80, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_PROOF},
 		{LowerBoundTimestamp: 900, LowerBoundValue: 90, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_EPOCH},
 		{LowerBoundTimestamp: 1000, LowerBoundValue: 100, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_BLOB},
+		{LowerBoundTimestamp: 1200, LowerBoundValue: 120, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_PROOF_UPPER},
 		{LowerBoundTimestamp: 1100, LowerBoundValue: 110, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_UNSPECIFIED},
 	}, lowerBoundsEvent.LowerBounds)
 }

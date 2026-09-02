@@ -143,6 +143,8 @@ func mapDshackleLowerBoundType(boundType dshackle.LowerBoundType) (protocol.Lowe
 		return protocol.BlobBound, true
 	case dshackle.LowerBoundType_LOWER_BOUND_EPOCH:
 		return protocol.EpochBound, true
+	case dshackle.LowerBoundType_LOWER_BOUND_PROOF_UPPER:
+		return protocol.UpperProofBound, true
 	default:
 		return protocol.UnknownBound, false
 	}

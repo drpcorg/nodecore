@@ -108,6 +108,7 @@ func TestMapDshackleLowerBoundTypeRoundTrip(t *testing.T) {
 		{name: "proof", apiType: dshackle.LowerBoundType_LOWER_BOUND_PROOF, expected: protocol.ProofBound},
 		{name: "epoch", apiType: dshackle.LowerBoundType_LOWER_BOUND_EPOCH, expected: protocol.EpochBound},
 		{name: "blob", apiType: dshackle.LowerBoundType_LOWER_BOUND_BLOB, expected: protocol.BlobBound},
+		{name: "proof upper", apiType: dshackle.LowerBoundType_LOWER_BOUND_PROOF_UPPER, expected: protocol.UpperProofBound},
 	}
 
 	for _, tt := range tests {
