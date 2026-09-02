@@ -225,7 +225,7 @@ func sendUnaryRequest(
 	}
 
 	finalizationBlockType, finalizationBlock := responseFinalizationMetadata(upstreamState, requestBlockTagMetadata(parsedParam))
-	if lowerBound, ok := liveLowerBoundFromPrunedError(request.Method(), parsedParam, response, upstream.GetCurrentHeadHeight()); ok {
+	if lowerBound, ok := liveLowerBoundFromPrunedError(request.Method(), parsedParam, response, upstream.GetCurrentHeadHeight()); ok && !aboveUpperProofWindow(upstream, lowerBound) {
 		upstream.UpdateLowerBound(lowerBound)
 	}
 	return &protocol.ResponseHolderWrapper{
@@ -298,6 +298,24 @@ func liveLowerBoundFromPrunedError(method string, param specs.MethodParam, respo
 		return protocol.LowerBoundData{}, false
 	}
 	return protocol.NewLowerBoundDataNow(block+1, boundType), true
+}
+
+// upperBoundPredictor is the slice of upstreams.Upstream the guard below needs.
+type upperBoundPredictor interface {
+	PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64
+}
+
+// aboveUpperProofWindow reports whether a live proof-bound correction was derived from a
+// block beyond the upstream's historical proof window. Such a failure says nothing about
+// the window's lower edge and must not raise it - Same() would then refuse the detector's
+// next, lower and correct, value. An upstream that publishes no upper bound (predicted 0)
+// keeps the default behaviour.
+func aboveUpperProofWindow(upstream upperBoundPredictor, bound protocol.LowerBoundData) bool {
+	if bound.Type != protocol.ProofBound {
+		return false
+	}
+	upper := upstream.PredictLowerBound(protocol.UpperProofBound, 0)
+	return upper != 0 && bound.Bound-1 > upper
 }
 
 // stateMethods carry a block tag whose state the upstream must hold (dshackle's
