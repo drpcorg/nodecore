@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	cosmossdk.io/api v1.0.0
 	github.com/DataDog/sketches-go v1.4.8
-	github.com/bytedance/sonic v1.15.3-0.20260730064818-2a36d6da63e2 // TODO: switch to the v1.15.3 tag once released; go1.27 support only landed on main (last tag v1.15.2 is gated `!go1.27` and silently falls back to encoding/json)
+	github.com/bytedance/sonic v1.15.3 // TODO: switch to the v1.15.3 tag once released; go1.27 support only landed on main (last tag v1.15.2 is gated `!go1.27` and silently falls back to encoding/json)
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
