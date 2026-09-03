@@ -390,6 +390,12 @@ func TestEncodeJsonRpcRequest(t *testing.T) {
 			expected: []byte(`{"id":"test","jsonrpc":"2.0","result":true}`),
 		},
 		{
+			name:     "omitted id",
+			body:     []byte(`{"id":"1","jsonrpc":"2.0","result":true}`),
+			id:       nil,
+			expected: []byte(`{"id":null,"jsonrpc":"2.0","result":true}`),
+		},
+		{
 			name:     "number result",
 			body:     []byte(`{"id":"1","jsonrpc":"2.0","result":12234}`),
 			id:       []byte(`"23r23"`),
@@ -445,6 +451,15 @@ func TestEncodeReplyErrorJsonRpc(t *testing.T) {
 	assert.Nil(t, replyError.ResponseResult())
 	assert.Equal(t, protocol.ServerErrorWithCause(errors.New("err cause")), replyError.GetError())
 	assert.Equal(t, []byte(`{"id":55,"jsonrpc":"2.0","error":{"message":"internal server error: err cause","code":500}}`), respBytes)
+}
+
+func TestEncodeReplyErrorJsonRpcWithOmittedId(t *testing.T) {
+	replyError := protocol.NewReplyError("1", protocol.ServerError(), protocol.JsonRpc, protocol.TotalFailure)
+
+	respBytes, err := io.ReadAll(replyError.EncodeResponse(nil))
+
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"id":null,"jsonrpc":"2.0","error":{"message":"internal server error","code":500}}`, string(respBytes))
 }
 
 func TestEncodeReplyErrorRest(t *testing.T) {
