@@ -168,35 +168,54 @@ func TestCosmosRestGetLatestBlock(t *testing.T) {
 	connector.AssertExpectations(t)
 }
 
-// The two connectors report the same block hash in different encodings -
-// uppercase hex over the CometBFT RPC, base64 over the LCD. Both must reduce
-// to the same HashId, otherwise two upstreams of one chain would appear to
-// disagree about the head.
+// The three connectors report the same block hash in different encodings -
+// uppercase hex over the CometBFT RPC, base64 over the LCD, raw bytes over
+// gRPC. All of them must reduce to the same HashId, otherwise two upstreams
+// of one chain would appear to disagree about the head. The byte patterns are
+// adversarial on purpose: a raw hash starting with the ASCII characters "0x"
+// must not be mistaken for a hex-text prefix and truncated.
 func TestCosmosHashEncodingsAgreeAcrossConnectors(t *testing.T) {
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = byte(i * 7)
+	pattern := func(prefix ...byte) []byte {
+		raw := make([]byte, 32)
+		for i := range raw {
+			raw[i] = byte(i * 7)
+		}
+		copy(raw, prefix)
+		return raw
 	}
-	hexHash := strings.ToUpper(hex.EncodeToString(raw))
-	base64Hash := base64.StdEncoding.EncodeToString(raw)
-	require.NotEqual(t, hexHash, base64Hash)
+	cases := map[string][]byte{
+		"random":          pattern(),
+		"leading zeros":   pattern(0, 0, 0, 0),
+		"ascii 0x prefix": pattern('0', 'x'),
+		"ascii 0X prefix": pattern('0', 'X'),
+	}
 
-	tendermintConnector := mocks.NewConnectorMockWithType(specs.TendermintConnector)
 	tendermintSpecific, err := tendermint_specific.NewTendermintSpecific(
-		context.Background(), "id", tendermintConnector,
+		context.Background(), "id", mocks.NewConnectorMockWithType(specs.TendermintConnector),
 		chains.GetChain("cosmos-hub"), time.Second, cosmosOptions(false),
 	)
 	require.NoError(t, err)
+	restSpecific := freshCosmosRest(t, mocks.NewConnectorMockWithType(specs.RestConnector), nil)
+	grpcSpecific := freshCosmosGrpc(t, mocks.NewConnectorMockWithType(specs.GrpcConnector), nil)
 
-	fromRpc, err := tendermintSpecific.ParseBlock([]byte(cosmosBlockJSON(100, hexHash, hexHash)))
-	require.NoError(t, err)
-	fromLcd, err := freshCosmosRest(t, mocks.NewConnectorMockWithType(specs.RestConnector), nil).
-		ParseBlock([]byte(cosmosBlockJSON(100, base64Hash, base64Hash)))
-	require.NoError(t, err)
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			hexHash := strings.ToUpper(hex.EncodeToString(raw))
+			base64Hash := base64.StdEncoding.EncodeToString(raw)
+			require.NotEqual(t, hexHash, base64Hash)
 
-	assert.Equal(t, fromRpc.Hash, fromLcd.Hash)
-	assert.Equal(t, blockchain.NewHashIdFromBytes(raw), fromLcd.Hash)
-	assert.Equal(t, fromRpc, fromLcd)
+			fromRpc, err := tendermintSpecific.ParseBlock([]byte(cosmosBlockJSON(100, hexHash, hexHash)))
+			require.NoError(t, err)
+			fromLcd, err := restSpecific.ParseBlock([]byte(cosmosBlockJSON(100, base64Hash, base64Hash)))
+			require.NoError(t, err)
+			fromGrpc, err := grpcSpecific.ParseBlock(cosmosGrpcBlockBytes(t, 100, raw, raw))
+			require.NoError(t, err)
+
+			assert.Equal(t, blockchain.HashId(raw), fromRpc.Hash)
+			assert.Equal(t, fromRpc, fromLcd)
+			assert.Equal(t, fromRpc, fromGrpc)
+		})
+	}
 }
 
 func TestCosmosRestGetFinalizedBlockIsTheHead(t *testing.T) {

@@ -73,6 +73,13 @@ func (c *CosmosGrpcLowerBoundDetector) fetchLatestHeight(ctx context.Context) (i
 // DEADLINE_EXCEEDED, transport failure) is returned as an error so the
 // calculator retries instead of treating an outage as pruning.
 func (c *CosmosGrpcLowerBoundDetector) probe(ctx context.Context, height int64) (bool, error) {
+	// CometBFT chains have no block 0 (initial_height >= 1), and a node
+	// answers a height-0 probe with codes.Unknown ("height must be greater
+	// than 0") - unclassifiable as pruned, so without this guard the search's
+	// genesis-floor probe would burn the whole retry budget as an outage.
+	if height < 1 {
+		return false, nil
+	}
 	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 

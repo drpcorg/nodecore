@@ -18,7 +18,9 @@ Sui — this task adds only the chain-specific layer.
   `ApiConnectorType` enum): `tendermint < rest < grpc`. **Unchanged.** The
   gRPC specific is chosen only when gRPC is the upstream's sole non-additional
   connector; mixed upstreams keep tendermint/rest probes and serve gRPC
-  traffic alongside.
+  traffic alongside. That invariant holds for `default` mode; in `strict` mode
+  the ranking inverts (most capable first), so a mixed tendermint/rest + grpc
+  upstream runs its probes over gRPC there.
 - `drpcorg/public` v1.2.0 is already bumped in `go.mod` (working tree). It
   brings `cosmossdk.io/api` transitively (typed request/response messages)
   and `pkg/cosmos` — the descriptor-registration package for ingress

@@ -147,3 +147,32 @@ func TestCosmosGrpcLowerBoundPrunedByCodeAlone(t *testing.T) {
 	assert.Equal(t, int64(retainedFrom), bounds[0].Bound)
 	assert.Equal(t, protocol.StateBound, bounds[0].Type)
 }
+
+// On an archive node the binary search narrows all the way down to height 0.
+// There is no block 0 on a CometBFT chain, and a real node answers that probe
+// with codes.Unknown ("height must be greater than 0, but got 0") - a status
+// that is neither pruned-classified nor transient, so without a guard the
+// probe would burn the full retry budget (~24 minutes in production) before
+// the first bound is published. The detector must not send a probe below
+// height 1 at all: the mock deliberately carries no expectation for height 0,
+// so such a request fails the test.
+func TestCosmosGrpcLowerBoundArchiveNodeNeverProbesHeightZero(t *testing.T) {
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchCosmosGrpc("/cosmos.base.tendermint.v1beta1.Service/GetLatestBlock"))).
+		Return(protocol.NewGrpcUpstreamResponse("1", cosmosGrpcLatestBlockBytes(t, 8)))
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(grpcProbedHeightMatches(func(h int64) bool { return h >= 1 }))).
+		Return(protocol.NewGrpcUpstreamResponse("1", cosmosGrpcBlockByHeightBytes(t, 1)))
+
+	detector := cosmos_bounds.NewCosmosGrpcLowerBoundDetector(
+		"id", chains.GetChain("cosmos-hub").Chain, time.Second, connector,
+	)
+	detector.SetSearchRetryPolicy(1, time.Millisecond, time.Millisecond)
+
+	bounds, err := detector.DetectLowerBound(context.Background())
+
+	require.NoError(t, err)
+	require.NotEmpty(t, bounds)
+	assert.Equal(t, int64(1), bounds[0].Bound)
+}

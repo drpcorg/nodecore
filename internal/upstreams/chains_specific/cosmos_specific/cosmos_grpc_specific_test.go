@@ -2,7 +2,6 @@ package cosmos_specific_test
 
 import (
 	"context"
-	"encoding/base64"
 	"testing"
 	"time"
 
@@ -124,28 +123,6 @@ func TestCosmosGrpcGetLatestBlock(t *testing.T) {
 	assert.Equal(t, blockchain.NewHashIdFromBytes(hash), block.Hash)
 	assert.Equal(t, blockchain.NewHashIdFromBytes(parentHash), block.ParentHash)
 	connector.AssertExpectations(t)
-}
-
-// The gRPC API reports the same block hash the LCD does, only as raw bytes
-// instead of base64. Both must reduce to the same HashId, otherwise two
-// upstreams of one chain would appear to disagree about the head.
-func TestCosmosGrpcHashEncodingAgreesWithRest(t *testing.T) {
-	raw := make([]byte, 32)
-	for i := range raw {
-		raw[i] = byte(i * 7)
-	}
-
-	fromGrpc, err := freshCosmosGrpc(t, mocks.NewConnectorMockWithType(specs.GrpcConnector), nil).
-		ParseBlock(cosmosGrpcBlockBytes(t, 100, raw, raw))
-	require.NoError(t, err)
-	fromLcd, err := freshCosmosRest(t, mocks.NewConnectorMockWithType(specs.RestConnector), nil).
-		ParseBlock([]byte(cosmosBlockJSON(100, base64.StdEncoding.EncodeToString(raw), base64.StdEncoding.EncodeToString(raw))))
-	require.NoError(t, err)
-
-	assert.Equal(t, blockchain.NewHashIdFromBytes(raw), fromGrpc.Hash)
-	assert.Equal(t, fromLcd.Hash, fromGrpc.Hash)
-	assert.Equal(t, fromLcd.ParentHash, fromGrpc.ParentHash)
-	assert.Equal(t, fromLcd.Height, fromGrpc.Height)
 }
 
 func TestCosmosGrpcGetFinalizedBlockIsTheHead(t *testing.T) {
