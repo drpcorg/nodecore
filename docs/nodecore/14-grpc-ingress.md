@@ -5,8 +5,11 @@ published protos (or grpcurl/Postman) calls nodecore exactly as it would call a 
 request is routed through the same upstream-selection, scoring, retry, and hedging machinery as
 HTTP traffic — then forwarded to an upstream over the [`grpc` connector](05-upstream-config.md#connectors).
 
-The first gRPC-native chain is **Sui** (`sui.rpc.v2`, mainnet and testnet). The full method surface
-lives in the [method specs](11-method-specs.md) (`sui-grpc` spec, 27 methods across 7 services).
+The first gRPC-native chain is **Sui** (`sui.rpc.v2`, mainnet and testnet). The **Cosmos SDK
+family** is served over gRPC too: every cosmos chain shares the SDK, IBC and CosmWasm query
+services (`cosmos.*`, `ibc.*`, `cosmwasm.*`). The full method surfaces live in the
+[method specs](11-method-specs.md): the `sui-grpc` spec (27 methods across 7 services) and the
+`cosmos-grpc` spec (157 methods across 21 services), each imported by its chains' spec bundles.
 
 This is a **different server** from the [gRPC API](12-grpc-server.md) on `grpc-port`: that one
 speaks the dshackle-compatible `emerald.*` protocol for querying upstream/chain state; this one
@@ -34,7 +37,7 @@ Metadata keys are case-insensitive.
 
 | Metadata key | Meaning |
 | --- | --- |
-| `x-nodecore-chain` | **Required.** The target chain, by any of its short names (`sui`, `sui-testnet`) |
+| `x-nodecore-chain` | **Required.** The target chain, by any of its short names (`sui`, `cosmos-hub`, `osmosis`, ...) |
 | `x-nodecore-key` | Access key, when [key management](03-auth.md) is enabled — the metadata twin of the `X-Nodecore-Key` header |
 | `x-nodecore-token` | Static token, when the `token` [request strategy](03-auth.md#request-strategy) is enabled |
 | `authorization` | `Bearer <jwt>`, when the `jwt` request strategy is enabled |
@@ -48,6 +51,7 @@ With grpcurl:
 grpcurl -H 'x-nodecore-chain: sui' localhost:9095 list
 grpcurl -H 'x-nodecore-chain: sui' localhost:9095 describe sui.rpc.v2.LedgerService
 grpcurl -H 'x-nodecore-chain: sui' -d '{}' localhost:9095 sui.rpc.v2.LedgerService/GetServiceInfo
+grpcurl -H 'x-nodecore-chain: cosmos-hub' -d '{}' localhost:9095 cosmos.base.tendermint.v1beta1.Service/GetLatestBlock
 ```
 
 (add `-plaintext` when TLS is off, and `-H 'x-nodecore-key: ...'` when key auth is on)
@@ -65,8 +69,11 @@ resp, err := ledgerClient.GetServiceInfo(ctx, &v2.GetServiceInfoRequest{})
 The ingress serves standard gRPC **server reflection** (v1 and v1alpha) covering every chain
 service the method specs declare, so schema-driven tools work without local proto files: `grpcurl
 list`/`describe`, Postman's service browser, grpcui. Requests and responses are encoded against the
-chains' real descriptors, exactly as a node would serve them. Reflection is endpoint-global (the
-advertised set does not depend on `x-nodecore-chain`), matching how a node presents itself.
+chains' real descriptors, exactly as a node would serve them, and every file in each service's
+transitive import closure is resolvable by filename - so clients that fetch imports one
+`file_by_filename` at a time (Postman does) load the schema cleanly too. Reflection is
+endpoint-global (the advertised set does not depend on `x-nodecore-chain`), matching how a node
+presents itself.
 
 ## Semantics
 

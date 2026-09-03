@@ -258,3 +258,44 @@ func encodeRound(round uint64) []byte {
 	}
 	return out
 }
+
+// A raw 32-byte hash that happens to start with the ASCII characters "0x"
+// must not be truncated into a 30-byte id - bytes are bytes, the "0x"
+// convention belongs to hex text (regression test for NewHashIdFromBytes'
+// former prefix strip).
+func TestAlgorandKeepsHashStartingWithAsciiZeroX(t *testing.T) {
+	ctx := context.Background()
+	connector := mocks.NewConnectorMock()
+
+	seedBytes := bytes32(0xAA)
+	seedBytes[0], seedBytes[1] = '0', 'x'
+	prevBytes := bytes32(0xBB)
+	prevBytes[0], prevBytes[1] = '0', 'X'
+
+	statusBody := []byte(`{
+		"last-round": 99999,
+		"catchup-time": 0,
+		"stopped-at-unsupported-round": false
+	}`)
+	blockBody := []byte(`{
+		"block": {
+			"rnd": 99999,
+			"seed": "` + base64.StdEncoding.EncodeToString(seedBytes) + `",
+			"prev": "` + base64.StdEncoding.EncodeToString(prevBytes) + `"
+		}
+	}`)
+
+	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		return r.Method() == "GET#/v2/status"
+	})).Return(protocol.NewHttpUpstreamResponse("1", statusBody, 200, protocol.Rest)).Once()
+	connector.On("SendRequest", ctx, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		return isBlockRound(r, "99999") && hasHeaderOnly(r)
+	})).Return(protocol.NewHttpUpstreamResponse("1", blockBody, 200, protocol.Rest)).Once()
+
+	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), connector).GetLatestBlock(ctx)
+	assert.Nil(t, err)
+	connector.AssertExpectations(t)
+
+	assert.Equal(t, blockchain.HashId(seedBytes), block.Hash)
+	assert.Equal(t, blockchain.HashId(prevBytes), block.ParentHash)
+}

@@ -26,3 +26,38 @@ func TestChainDescriptorsCoverSpecServices(t *testing.T) {
 		)
 	}
 }
+
+// Reflection clients (Postman among them) resolve imports one at a time via
+// file_by_filename, which the server answers from GlobalFiles.FindFileByPath.
+// file_containing_symbol silently skips unresolvable imports, so only this
+// walk catches a dependency whose descriptors are not linked - the client
+// then fails the whole reflection load with "proto: not found".
+func TestChainDescriptorsResolveEveryImportByFilename(t *testing.T) {
+	require.NoError(t, specs.NewMethodSpecLoader().Load())
+
+	services := specs.GetGrpcServices()
+	require.NotEmpty(t, services)
+
+	checked := map[string]bool{}
+	var walk func(path, importer string)
+	walk = func(path, importer string) {
+		if checked[path] {
+			return
+		}
+		checked[path] = true
+		file, err := protoregistry.GlobalFiles.FindFileByPath(path)
+		if !assert.NoError(t, err, "%s (imported by %s) is not resolvable by filename - reflection clients fail the whole load on it", path, importer) {
+			return
+		}
+		imports := file.Imports()
+		for i := 0; i < imports.Len(); i++ {
+			walk(imports.Get(i).Path(), path)
+		}
+	}
+
+	for _, service := range services {
+		descriptor, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(service))
+		require.NoError(t, err, service)
+		walk(descriptor.ParentFile().Path(), service)
+	}
+}
