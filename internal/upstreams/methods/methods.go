@@ -115,6 +115,9 @@ func (c *ChainMethods) HasMethod(method string) bool {
 }
 
 func (c *ChainMethods) GetMethod(methodName string) *specs.Method {
+	if !c.availableMethods.ContainsOne(methodName) {
+		return nil
+	}
 	for _, delegate := range c.delegates {
 		if delegate.HasMethod(methodName) {
 			return delegate.GetMethod(methodName)

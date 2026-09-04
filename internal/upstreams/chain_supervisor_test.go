@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -18,6 +19,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -28,8 +30,6 @@ const (
 	eventuallyWait = time.Second
 	eventuallyTick = 10 * time.Millisecond
 )
-
-var loadChainSupervisorMethodSpecsOnce sync.Once
 
 func assertEventuallyEqual(t *testing.T, expected any, actual func() any) {
 	t.Helper()
@@ -148,10 +148,19 @@ func publishHeadEvent(
 func loadChainSupervisorMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	loadChainSupervisorMethodSpecsOnce.Do(func() {
-		err := specs.NewMethodSpecLoader().Load()
-		require.NoError(t, err)
-	})
+	specs_utils.LoadMethodSpecs()
+}
+
+// newChainMethods builds real upstream methods for the chain's spec (all
+// connectors), so sub-method tests exercise the actual method set - including
+// eth_subscribe and the gRPC streams - instead of a placeholder mock.
+func newChainMethods(t *testing.T, chain chains.Chain, methodsConfig *config.MethodsConfig) upmethods.Methods {
+	t.Helper()
+	loadChainSupervisorMethodSpecs(t)
+
+	chainMethods, err := upmethods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(chain), methodsConfig, nil)
+	require.NoError(t, err)
+	return chainMethods
 }
 
 func createEventWithCaps(
@@ -694,8 +703,7 @@ func TestChainSupervisorProcessSubMethods(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.ETHEREUM, nil)
 
 	go chainSupervisor.Start()
 
@@ -748,8 +756,7 @@ func TestChainSupervisorSubMethodsEvmWithoutTopicCapsIsEmpty(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.ETHEREUM, nil)
 
 	go chainSupervisor.Start()
 
@@ -775,8 +782,7 @@ func TestChainSupervisorSubMethodsEvmNewHeadsOnly(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.ETHEREUM, nil)
 
 	go chainSupervisor.Start()
 
@@ -798,8 +804,7 @@ func TestChainSupervisorSubMethodsEvmPendingTx(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.ETHEREUM, nil)
 
 	go chainSupervisor.Start()
 
@@ -823,12 +828,12 @@ func TestChainSupervisorSubMethodsEmptyWithoutWsCap(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.ETHEREUM, nil)
 
 	go chainSupervisor.Start()
 
-	// No ws capability at all -> no sub methods regardless of chain.
+	// No ws capability at all -> no JSON-RPC sub methods (gRPC streams are
+	// gated on chain methods instead, see the SUI tests below).
 	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
 		"id1",
 		protocol.Available,
@@ -847,8 +852,7 @@ func TestChainSupervisorSubMethodsSolanaUsesNativeMethods(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.SOLANA, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.SOLANA, nil)
 
 	go chainSupervisor.Start()
 
@@ -874,8 +878,7 @@ func TestChainSupervisorCapsAggregatedAcrossUpstreams(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
-	methods := mocks.NewMethodsMock()
-	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("method"))
+	methods := newChainMethods(t, chains.ETHEREUM, nil)
 
 	go chainSupervisor.Start()
 
@@ -1211,4 +1214,89 @@ func TestChainSupervisorLabelsRecomputeWhenUpstreamRemoved(t *testing.T) {
 	assertEventuallyElementsMatch(t, []upstreams.AggregatedLabels{}, func() []upstreams.AggregatedLabels {
 		return chainSupervisor.GetChainState().ChainLabels
 	})
+}
+
+func TestChainSupervisorSubMethodsGrpcStreamsFollowChainMethods(t *testing.T) {
+
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.SUI, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	methods := newChainMethods(t, chains.SUI, nil)
+
+	go chainSupervisor.Start()
+
+	// A gRPC stream rides the grpc connector the spec binds it to, so it is
+	// advertised as soon as an available upstream supports it - no WsCap needed.
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Equal(specs.GetSubMethods(chains.GetMethodSpecNameByChain(chains.SUI)))
+	}, eventuallyWait, eventuallyTick)
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Unavailable,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Cardinality() == 0
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorSubMethodsGrpcStreamsEmptyWithoutSupportingUpstream(t *testing.T) {
+
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.SUI, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	// every stream method is disabled on the only upstream
+	methods := newChainMethods(t, chains.SUI, &config.MethodsConfig{
+		DisableMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chains.SUI)).ToSlice(),
+	})
+
+	go chainSupervisor.Start()
+
+	// The upstream is available but supports no stream method, so nothing is
+	// advertised - even with WsCap present.
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetChainState()
+		return state.Methods.HasMethod("/sui.rpc.v2.LedgerService/GetServiceInfo") && state.SubMethods.Cardinality() == 0
+	}, eventuallyWait, eventuallyTick)
+}
+
+func TestChainSupervisorSubMethodsRequireSupportedSubscribeMethod(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	// eth_subscribe is disabled on the only upstream: the operator said "no
+	// subscriptions from here", so no topic is advertised even though the
+	// caps would allow local synthesis.
+	methods := newChainMethods(t, chains.ETHEREUM, &config.MethodsConfig{DisableMethods: []string{"eth_subscribe"}})
+
+	go chainSupervisor.Start()
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		state := chainSupervisor.GetChainState()
+		return state.Caps.Contains(protocol.NewHeadsCap) && !state.Methods.HasMethod("eth_subscribe") && state.SubMethods.Cardinality() == 0
+	}, eventuallyWait, eventuallyTick)
 }
