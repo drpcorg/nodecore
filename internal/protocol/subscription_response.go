@@ -13,29 +13,102 @@ import (
 // Client-facing frames of a subscription/stream. They are produced by the
 // SubscriptionRequestProcessor and consumed by the WS server, the emerald
 // server and the gRPC chain ingress:
-//   - SubscriptionMessageResponse: the JSON-RPC subscribe ack carrying the
-//     client subscription id (not an event frame);
-//   - SubscriptionMethodResultResponse: a JSON-RPC notification envelope;
-//   - SubscriptionResultResponse / SubscriptionEventResponse: bare event
-//     payloads (result-only consumers);
-//   - SubscriptionEndResponse: the clean end of a bounded stream (not an event
-//     frame; carries the upstream trailers).
+//   - SubscriptionEventResponse: one event, delivered either as the bare
+//     payload (result-only consumers) or wrapped in a JSON-RPC notification
+//     envelope (the WS server);
+//   - SubscriptionEndResponse: the clean end of a bounded stream (carries the
+//     upstream trailers, no payload).
+//
+// The JSON-RPC subscribe ack is a plain WsJsonRpcResponse, not a subscription
+// frame.
 
+// SubscriptionEventResponse is one event of a subscription/stream as the
+// client receives it. The encoder decides the presentation; the transport
+// metadata (gRPC headers/trailers) rides along for the gRPC ingress.
 type SubscriptionEventResponse struct {
 	noStreamHint
-	id    string
-	event []byte
+	id               string
+	payload          []byte
+	encoder          subEventEncoder
+	responseHeaders  http.Header
+	responseTrailers map[string][]string
 }
 
-type SubscriptionMessageResponse struct {
-	noStreamHint
-	id      string
-	message []byte
+// NewSubscriptionEventResponse is the bare-payload event (result-only
+// consumers: the gRPC ingress, the emerald server).
+func NewSubscriptionEventResponse(id string, payload []byte) *SubscriptionEventResponse {
+	return &SubscriptionEventResponse{id: id, payload: payload, encoder: rawEventEncoder{}}
 }
 
-// SubscriptionEndResponse is the final, non-event frame of a stream that
-// completed cleanly (a bounded gRPC stream). It carries no payload - only the
-// upstream trailers the ingress must deliver with the OK status.
+// NewJsonRpcSubscriptionEventResponse is the event wrapped in a JSON-RPC
+// notification envelope referencing the client subscription id (the WS server).
+func NewJsonRpcSubscriptionEventResponse(id, method string, payload []byte, subId json.RawMessage) *SubscriptionEventResponse {
+	return &SubscriptionEventResponse{
+		id:      id,
+		payload: payload,
+		encoder: jsonRpcEventEncoder{method: method, subId: subId},
+	}
+}
+
+func (s *SubscriptionEventResponse) ResponseResult() []byte {
+	return s.payload
+}
+
+func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
+	return "", nil
+}
+
+func (s *SubscriptionEventResponse) ResponseCode() int {
+	return 0
+}
+
+func (s *SubscriptionEventResponse) GetError() *ResponseError {
+	return nil
+}
+
+// EncodeResponse ignores realId: an event references the subscription id, not
+// the request id.
+func (s *SubscriptionEventResponse) EncodeResponse(_ []byte) io.Reader {
+	return s.encoder.Encode(s.payload)
+}
+
+func (s *SubscriptionEventResponse) HasError() bool {
+	return false
+}
+
+func (s *SubscriptionEventResponse) HasStream() bool {
+	return false
+}
+
+func (s *SubscriptionEventResponse) Id() string {
+	return s.id
+}
+
+func (s *SubscriptionEventResponse) IsEnd() bool {
+	return false
+}
+
+func (s *SubscriptionEventResponse) ResponseHeaders() http.Header {
+	return s.responseHeaders
+}
+
+func (s *SubscriptionEventResponse) WithResponseHeaders(headers http.Header) *SubscriptionEventResponse {
+	s.responseHeaders = headers
+	return s
+}
+
+func (s *SubscriptionEventResponse) ResponseTrailers() map[string][]string {
+	return s.responseTrailers
+}
+
+func (s *SubscriptionEventResponse) WithResponseTrailers(trailers map[string][]string) *SubscriptionEventResponse {
+	s.responseTrailers = trailers
+	return s
+}
+
+// SubscriptionEndResponse is the final frame of a stream that completed
+// cleanly (a bounded gRPC stream). It carries no payload - only the upstream
+// trailers the ingress must deliver with the OK status.
 type SubscriptionEndResponse struct {
 	noStreamHint
 	id               string
@@ -79,8 +152,8 @@ func (s *SubscriptionEndResponse) Id() string {
 	return s.id
 }
 
-func (s *SubscriptionEndResponse) IsEventFrame() bool {
-	return false
+func (s *SubscriptionEndResponse) IsEnd() bool {
+	return true
 }
 
 func (s *SubscriptionEndResponse) ResponseHeaders() http.Header {
@@ -101,65 +174,23 @@ func (s *SubscriptionEndResponse) WithResponseTrailers(trailers map[string][]str
 	return s
 }
 
-var _ SubscriptionResponseHolder = (*SubscriptionEndResponse)(nil)
-
-type SubscriptionResultResponse struct {
-	noStreamHint
-	id               string
-	result           []byte
-	responseHeaders  http.Header
-	responseTrailers map[string][]string
+// subEventEncoder turns an event payload into the bytes the client receives.
+type subEventEncoder interface {
+	Encode(payload []byte) io.Reader
 }
 
-func (s *SubscriptionResultResponse) ResponseHeaders() http.Header {
-	return s.responseHeaders
+// rawEventEncoder delivers the payload as is.
+type rawEventEncoder struct{}
+
+func (rawEventEncoder) Encode(payload []byte) io.Reader {
+	return bytes.NewReader(payload)
 }
 
-func (s *SubscriptionResultResponse) WithResponseHeaders(headers http.Header) *SubscriptionResultResponse {
-	s.responseHeaders = headers
-	return s
-}
-
-func (s *SubscriptionResultResponse) ResponseTrailers() map[string][]string {
-	return s.responseTrailers
-}
-
-func (s *SubscriptionResultResponse) WithResponseTrailers(trailers map[string][]string) *SubscriptionResultResponse {
-	s.responseTrailers = trailers
-	return s
-}
-
-type SubscriptionMethodResultResponse struct {
-	noStreamHint
-	id     string
+// jsonRpcEventEncoder wraps the payload in a JSON-RPC notification envelope:
+// {"jsonrpc":"2.0","method":<method>,"params":{"result":<payload>,"subscription":<subId>}}.
+type jsonRpcEventEncoder struct {
 	method string
-	result []byte
 	subId  json.RawMessage
-}
-
-func NewSubscriptionMethodResultResponse(id, method string, result []byte, subId json.RawMessage) *SubscriptionMethodResultResponse {
-	return &SubscriptionMethodResultResponse{
-		id:     id,
-		method: method,
-		result: result,
-		subId:  subId,
-	}
-}
-
-func (s *SubscriptionMethodResultResponse) ResponseResult() []byte {
-	return s.result
-}
-
-func (s *SubscriptionMethodResultResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (s *SubscriptionMethodResultResponse) ResponseCode() int {
-	return 0
-}
-
-func (s *SubscriptionMethodResultResponse) GetError() *ResponseError {
-	return nil
 }
 
 type jsonRpcWsSubResponse struct {
@@ -168,13 +199,13 @@ type jsonRpcWsSubResponse struct {
 	Params  jsonRpcWsParams `json:"params"`
 }
 
-func (s *SubscriptionMethodResultResponse) EncodeResponse(_ []byte) io.Reader {
+func (e jsonRpcEventEncoder) Encode(payload []byte) io.Reader {
 	resp := jsonRpcWsSubResponse{
 		JsonRpc: "2.0",
-		Method:  s.method,
+		Method:  e.method,
 		Params: jsonRpcWsParams{
-			Result:       s.result,
-			Subscription: s.subId,
+			Result:       payload,
+			Subscription: e.subId,
 		},
 	}
 	respBytes, err := sonic.Marshal(resp)
@@ -184,143 +215,7 @@ func (s *SubscriptionMethodResultResponse) EncodeResponse(_ []byte) io.Reader {
 	return bytes.NewReader(respBytes)
 }
 
-func (s *SubscriptionMethodResultResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionMethodResultResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionMethodResultResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionMethodResultResponse) IsEventFrame() bool {
-	return true
-}
-
-func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (s *SubscriptionMessageResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (s *SubscriptionResultResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionMessageResponse {
-	return &SubscriptionMessageResponse{message: message, id: id}
-}
-
-func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventResponse {
-	return &SubscriptionEventResponse{event: event, id: id}
-}
-
-func NewSubscriptionResultEventResponse(id string, result []byte) *SubscriptionResultResponse {
-	return &SubscriptionResultResponse{result: result, id: id}
-}
-
-func (s *SubscriptionEventResponse) IsEventFrame() bool {
-	return true
-}
-
-func (s *SubscriptionMessageResponse) IsEventFrame() bool {
-	return false
-}
-
-func (s *SubscriptionResultResponse) IsEventFrame() bool {
-	return true
-}
-
-func (s *SubscriptionEventResponse) ResponseResult() []byte {
-	return s.event
-}
-
-func (s *SubscriptionMessageResponse) ResponseResult() []byte {
-	return s.message
-}
-
-func (s *SubscriptionResultResponse) ResponseResult() []byte {
-	return s.result
-}
-
-func (s *SubscriptionEventResponse) GetError() *ResponseError {
-	return nil
-}
-
-func (s *SubscriptionMessageResponse) GetError() *ResponseError {
-	return nil
-}
-
-func (s *SubscriptionResultResponse) GetError() *ResponseError {
-	return nil
-}
-
-func (s *SubscriptionEventResponse) EncodeResponse(realId []byte) io.Reader {
-	return bytes.NewReader(s.event)
-}
-
-func (s *SubscriptionMessageResponse) EncodeResponse(realId []byte) io.Reader {
-	return jsonRpcResponseReader(realId, "result", s.message)
-}
-
-func (s *SubscriptionResultResponse) EncodeResponse(realId []byte) io.Reader {
-	return bytes.NewReader(s.result)
-}
-
-func (s *SubscriptionEventResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionMessageResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionResultResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionEventResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionMessageResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionResultResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionEventResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionMessageResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionResultResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionEventResponse) ResponseCode() int {
-	return 0
-}
-
-func (s *SubscriptionMessageResponse) ResponseCode() int {
-	return 0
-}
-
-func (s *SubscriptionResultResponse) ResponseCode() int {
-	return 0
-}
-
 var _ SubscriptionResponseHolder = (*SubscriptionEventResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionMessageResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionResultResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionMethodResultResponse)(nil)
+var _ SubscriptionResponseHolder = (*SubscriptionEndResponse)(nil)
+var _ subEventEncoder = rawEventEncoder{}
+var _ subEventEncoder = jsonRpcEventEncoder{}

@@ -216,8 +216,8 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 			if !ok {
 				return status.Error(codes.Internal, "unexpected subscription response type")
 			}
-			if !subscriptionResponse.IsEventFrame() {
-				continue
+			if subscriptionResponse.IsEnd() {
+				return nil
 			}
 
 			replyItem, err := nativeSubscribeReplyItem(wrapper, subscriptionResponse.ResponseResult(), nonce, s.signer)

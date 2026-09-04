@@ -84,8 +84,10 @@ func (s *serverStreamCall) serve(stream grpc.ServerStream, handleResp *server_ct
 				grpcStatus, _ := protocol.GrpcStatusOf(response.GetError())
 				return grpcStatus.Err()
 			}
-			if eventResponse, ok := response.(protocol.SubscriptionResponseHolder); ok && !eventResponse.IsEventFrame() {
-				continue
+			// the end frame carries only the trailers set above; returning nil
+			// delivers them with the OK status
+			if subResponse, ok := response.(protocol.SubscriptionResponseHolder); ok && subResponse.IsEnd() {
+				return nil
 			}
 			if err := stream.SendMsg(&rawFrame{data: response.ResponseResult()}); err != nil {
 				return err
