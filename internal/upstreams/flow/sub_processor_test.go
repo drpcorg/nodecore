@@ -15,23 +15,23 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 )
 
 func testEthSubscribeRequest() protocol.RequestHolder {
 	// Load real specs so eth_subscribe resolves to a Method with the right
 	// subscription settings; the test asserts on the production-shaped id.
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
 	return protocol.NewUpstreamJsonRpcRequest("223", body, false, "eth")
 }
 
 func testEthSubscribeRequestWithId(id string) protocol.RequestHolder {
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(id), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
 	return protocol.NewUpstreamJsonRpcRequest(id, body, false, "eth")
 }
@@ -331,7 +331,7 @@ func newGrpcSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock) *flow.Subsc
 
 func grpcStreamRequest(t *testing.T, method string) protocol.RequestHolder {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	request := protocol.NewUpstreamGrpcRequest("7", method, nil, []byte{1}, "sui")
 	// testify formats mock arguments with fmt (reflection), which would race with
 	// the lazily computed hash when two processors share one request
@@ -472,7 +472,7 @@ func TestSubscriptionRequestProcessorGrpcStreamsAreNotShared(t *testing.T) {
 // A request flagged as a subscription whose method is not a subscription (an
 // unsubscribe call, a plain method) is refused before any upstream is touched.
 func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T) {
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
@@ -491,7 +491,7 @@ func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T)
 // notification method; the JSON-RPC framing must refuse it instead of
 // dereferencing the missing subscription settings.
 func TestSubscriptionRequestProcessorJsonRpcFramingRefusesGrpcStreams(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	request := protocol.NewUpstreamGrpcRequest("7", "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", nil, []byte{1}, "sui")

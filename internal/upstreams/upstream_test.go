@@ -2,7 +2,6 @@ package upstreams_test
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,14 +17,13 @@ import (
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-var loadMethodSpecsOnce sync.Once
 
 func TestGenericUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.T) {
 	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
@@ -831,10 +829,7 @@ func assertNoUpstreamEvent(t *testing.T, sub *utils.Subscription[protocol.Upstre
 func loadMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	loadMethodSpecsOnce.Do(func() {
-		err := specs.NewMethodSpecLoader().Load()
-		require.NoError(t, err)
-	})
+	specs_utils.LoadMethodSpecs()
 }
 
 func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) methods.Methods {

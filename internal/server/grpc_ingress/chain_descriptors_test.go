@@ -3,6 +3,7 @@ package grpc_ingress
 import (
 	"testing"
 
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +14,7 @@ import (
 // The specs give reflection the service NAMES, the linked generated packages
 // give it the CONTENT; this test guarantees the two never diverge.
 func TestChainDescriptorsCoverSpecServices(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	services := specs.GetGrpcServices()
 	require.NotEmpty(t, services)
@@ -33,7 +34,7 @@ func TestChainDescriptorsCoverSpecServices(t *testing.T) {
 // walk catches a dependency whose descriptors are not linked - the client
 // then fails the whole reflection load with "proto: not found".
 func TestChainDescriptorsResolveEveryImportByFilename(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	services := specs.GetGrpcServices()
 	require.NotEmpty(t, services)

@@ -16,7 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -62,7 +62,7 @@ func newLogsTestRegistry(upSup *mocks.UpstreamSupervisorMock) *rating.RatingRegi
 // fetchBlockLogs must pick an upstream whose head is at >= the block height (not
 // the head producer): a too-low upstream is never queried.
 func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	publishLogsUpstream(chSup, "high", 100)
@@ -91,7 +91,7 @@ func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
 
 // A block with no upstream at its height is skipped (nil), not a terminal error.
 func TestFetchBlockLogsNoUpstreamAtHeight(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor()
 	publishLogsUpstream(chSup, "low", 50)
@@ -113,7 +113,7 @@ func TestFetchBlockLogsNoUpstreamAtHeight(t *testing.T) {
 // An upstream that errors on eth_getLogs causes the block to be skipped (nil)
 // after the bounded walk-down, not a terminal failure.
 func TestFetchBlockLogsErrorSkipsBlock(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor()
 	publishLogsUpstream(chSup, "high", 100)
@@ -212,7 +212,7 @@ func assertRemoved(t *testing.T, r protocol.SubResponse, want bool) {
 
 func logsSourceTestSetup(t *testing.T, sendResult protocol.ResponseHolder) (upstreams.ChainSupervisor, *mocks.UpstreamSupervisorMock, *rating.RatingRegistry) {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	conn := mocks.NewConnectorMock()
 	if sendResult != nil {
@@ -311,7 +311,7 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 // An eth_getLogs failure for one block skips it without terminating the source;
 // the next block's logs are still delivered.
 func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.Anything).
