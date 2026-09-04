@@ -151,7 +151,7 @@ func responseUpstreamId(r protocol.SubResponse) string {
 }
 
 // terminalWrapper turns the frame that ended a subscription into the client's
-// final response - the terminal error, or a non-event end frame for a clean
+// final response - the terminal error, or an end frame for a clean
 // completion - keeping the transport metadata it carried (gRPC trailers).
 func terminalWrapper(request protocol.RequestHolder, terminal protocol.SubResponse) *protocol.ResponseHolderWrapper {
 	headers, trailers := protocol.ResponseMetadata(terminal)

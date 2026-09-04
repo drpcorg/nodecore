@@ -50,12 +50,12 @@ func (f *jsonRpcFraming) begin(request protocol.RequestHolder, cancel context.Ca
 	return &protocol.ResponseHolderWrapper{
 		UpstreamId: NoUpstream,
 		RequestId:  request.Id(),
-		Response:   protocol.NewSubscriptionMessageEventResponse(request.Id(), subId),
+		Response:   protocol.NewWsJsonRpcResponse(request.Id(), subId, nil),
 	}, nil
 }
 
 func (f *jsonRpcFraming) event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder {
-	return protocol.NewSubscriptionMethodResultResponse(request.Id(), request.SpecMethod().Subscription.Method, r.GetMessage(), f.subId)
+	return protocol.NewJsonRpcSubscriptionEventResponse(request.Id(), request.SpecMethod().Subscription.Method, r.GetMessage(), f.subId)
 }
 
 // resultOnlyFraming is the presentation for consumers that carry their own
@@ -70,7 +70,7 @@ func (resultOnlyFraming) begin(protocol.RequestHolder, context.CancelFunc) (*pro
 
 func (resultOnlyFraming) event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder {
 	headers, trailers := protocol.ResponseMetadata(r)
-	return protocol.NewSubscriptionResultEventResponse(request.Id(), r.GetMessage()).WithResponseHeaders(headers).WithResponseTrailers(trailers)
+	return protocol.NewSubscriptionEventResponse(request.Id(), r.GetMessage()).WithResponseHeaders(headers).WithResponseTrailers(trailers)
 }
 
 func isSolana(chain chains.Chain) bool {
