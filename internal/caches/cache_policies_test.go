@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -167,7 +168,7 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 			policyCfg := test_utils.PolicyConfigFinalized("polygon", "*", "conn-id", "10KB", "5s", true)
 			policy := caches.NewCachePolicy(upSupervisor, connectorMock, policyCfg)
 
-			_ = specs.NewMethodSpecLoader().Load()
+			specs_utils.LoadMethodSpecs()
 			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: test.method, Params: test.params}
 			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
 
@@ -394,7 +395,7 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			_ = specs.NewMethodSpecLoader().Load()
+			specs_utils.LoadMethodSpecs()
 			body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call", Params: []byte(`[false, "0x3"]`)}
 			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
 

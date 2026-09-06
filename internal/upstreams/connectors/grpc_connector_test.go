@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -262,7 +263,7 @@ const (
 
 func startGrpcStreamConnector(t *testing.T, connectorConfig *config.ApiConnectorConfig, handler streamHandler) *connectors.GrpcConnector {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
 		return handler(stream)

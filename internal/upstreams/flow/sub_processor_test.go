@@ -15,23 +15,23 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 )
 
 func testEthSubscribeRequest() protocol.RequestHolder {
 	// Load real specs so eth_subscribe resolves to a Method with the right
 	// subscription settings; the test asserts on the production-shaped id.
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
 	return protocol.NewUpstreamJsonRpcRequest("223", body, false, "eth")
 }
 
 func testEthSubscribeRequestWithId(id string) protocol.RequestHolder {
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(id), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
 	return protocol.NewUpstreamJsonRpcRequest(id, body, false, "eth")
 }
@@ -124,7 +124,7 @@ func TestSubscriptionRequestProcessorEmitsSubIdAck(t *testing.T) {
 	subRespWrappers := response.(*flow.SubscriptionResponse).ResponseWrappers
 	ackWrapper := <-subRespWrappers
 
-	assert.IsType(t, &protocol.SubscriptionMessageResponse{}, ackWrapper.Response)
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ackWrapper.Response)
 	assert.False(t, ackWrapper.Response.HasError())
 	assert.Equal(t, "223", ackWrapper.RequestId)
 	assert.Equal(t, flow.NoUpstream, ackWrapper.UpstreamId)
@@ -190,7 +190,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	strategy.AssertExpectations(t)
 	upSupervisor.AssertExpectations(t)
 
-	assert.IsType(t, &protocol.SubscriptionMethodResultResponse{}, responseWrapper.Response)
+	assert.IsType(t, &protocol.SubscriptionEventResponse{}, responseWrapper.Response)
 	assert.Equal(t, event, responseWrapper.Response.ResponseResult())
 	assert.False(t, responseWrapper.Response.HasError())
 	assert.False(t, responseWrapper.Response.HasStream())
@@ -234,8 +234,8 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	resp2 := p2.ProcessRequest(ctx, strategy, req2).(*flow.SubscriptionResponse).ResponseWrappers
 	ack2 := <-resp2
 
-	assert.IsType(t, &protocol.SubscriptionMessageResponse{}, ack1.Response)
-	assert.IsType(t, &protocol.SubscriptionMessageResponse{}, ack2.Response)
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ack1.Response)
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ack2.Response)
 	subId1 := ack1.Response.ResponseResult()
 	subId2 := ack2.Response.ResponseResult()
 	assert.NotEmpty(t, subId1)
@@ -315,7 +315,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 
 	subscriptionResponse, ok := responseWrapper.Response.(protocol.SubscriptionResponseHolder)
 	assert.True(t, ok)
-	assert.True(t, subscriptionResponse.IsEventFrame())
+	assert.False(t, subscriptionResponse.IsEnd())
 	assert.Equal(t, result, subscriptionResponse.ResponseResult())
 	assert.False(t, subscriptionResponse.HasError())
 	assert.False(t, subscriptionResponse.HasStream())
@@ -331,7 +331,7 @@ func newGrpcSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock) *flow.Subsc
 
 func grpcStreamRequest(t *testing.T, method string) protocol.RequestHolder {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	request := protocol.NewUpstreamGrpcRequest("7", method, nil, []byte{1}, "sui")
 	// testify formats mock arguments with fmt (reflection), which would race with
 	// the lazily computed hash when two processors share one request
@@ -372,7 +372,7 @@ func TestSubscriptionRequestProcessorGrpcFiniteStreamCompletesCleanly(t *testing
 	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
 
 	first := <-wrappers
-	firstResponse := first.Response.(*protocol.SubscriptionResultResponse)
+	firstResponse := first.Response.(*protocol.SubscriptionEventResponse)
 	assert.Equal(t, []byte("f1"), firstResponse.ResponseResult())
 	assert.Equal(t, []string{"h"}, map[string][]string(firstResponse.ResponseHeaders())["x-up-meta"])
 	assert.Equal(t, "id", first.UpstreamId)
@@ -383,7 +383,7 @@ func TestSubscriptionRequestProcessorGrpcFiniteStreamCompletesCleanly(t *testing
 
 	end := <-wrappers
 	endResponse := end.Response.(*protocol.SubscriptionEndResponse)
-	assert.False(t, endResponse.IsEventFrame(), "the end frame is not an event")
+	assert.True(t, endResponse.IsEnd())
 	assert.False(t, endResponse.HasError())
 	assert.Equal(t, []string{"t"}, endResponse.ResponseTrailers()["x-up-trailer"])
 	assert.Equal(t, "id", end.UpstreamId)
@@ -472,7 +472,7 @@ func TestSubscriptionRequestProcessorGrpcStreamsAreNotShared(t *testing.T) {
 // A request flagged as a subscription whose method is not a subscription (an
 // unsubscribe call, a plain method) is refused before any upstream is touched.
 func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T) {
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
@@ -491,7 +491,7 @@ func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T)
 // notification method; the JSON-RPC framing must refuse it instead of
 // dereferencing the missing subscription settings.
 func TestSubscriptionRequestProcessorJsonRpcFramingRefusesGrpcStreams(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	request := protocol.NewUpstreamGrpcRequest("7", "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", nil, []byte{1}, "sui")

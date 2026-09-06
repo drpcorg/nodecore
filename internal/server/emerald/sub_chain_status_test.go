@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
@@ -149,7 +150,7 @@ func (s *fakeChainSupervisor) PublishStateEvent(wrappers ...upstreams.ChainSuper
 func loadMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 }
 
 func newMethodsMockWithSupported(methods ...string) *mocks.MethodsMock {

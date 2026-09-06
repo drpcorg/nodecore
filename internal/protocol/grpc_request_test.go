@@ -5,9 +5,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewUpstreamGrpcRequestStoresMethodAndBodyVerbatim(t *testing.T) {
@@ -66,7 +65,7 @@ func TestNewInternalUpstreamGrpcRequest(t *testing.T) {
 }
 
 func TestUpstreamGrpcRequestIsSubscribeFollowsTheSpec(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	unary := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
 	finite := protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/ListCheckpoints", nil, nil, "sui")

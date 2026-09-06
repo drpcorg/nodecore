@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -78,7 +79,7 @@ func TestDetectorLabelOverwritesManualLabel(t *testing.T) {
 
 func newUpstreamWithLabelsDetection(t *testing.T, labels config.UpstreamLabels, disableLabelsDetection bool) *GenericUpstream {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	disabled, enabled := false, true
 	conf := &config.Upstream{

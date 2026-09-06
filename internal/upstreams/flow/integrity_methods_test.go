@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 )
@@ -247,8 +248,7 @@ func TestEthGetBlockByNumberIntegrityHandlerLatestResponseBlockIsGreaterThanHead
 		},
 	}
 
-	err := specs.NewMethodSpecLoader().Load()
-	assert.Nil(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	spec := specs.GetSpecMethod("eth", specs.EthGetBlockByNumber)
 
@@ -314,8 +314,7 @@ func TestEthGetBlockByNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 		},
 	}
 
-	err := specs.NewMethodSpecLoader().Load()
-	assert.Nil(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	spec := specs.GetSpecMethod("eth", specs.EthGetBlockByNumber)
 
@@ -342,8 +341,7 @@ func TestEthGetBlockByNumberIntegrityHandlerShouldSentRequest(t *testing.T) {
 }
 
 func TestEthGetBlockByNumberIntegrityHandlerNumberTag(t *testing.T) {
-	err := specs.NewMethodSpecLoader().Load()
-	assert.Nil(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	spec := specs.GetSpecMethod("eth", specs.EthGetBlockByNumber)
 

@@ -9,13 +9,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
@@ -34,7 +34,7 @@ func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
 }
 
 func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
@@ -53,7 +53,7 @@ func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testi
 }
 
 func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
@@ -72,7 +72,7 @@ func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T)
 }
 
 func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", chains.ETHEREUM).Return(nil).Once()
@@ -91,7 +91,7 @@ func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
 }
 
 func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	exec := &GenericExecutionFlow{
 		chain:     chains.ETHEREUM,
@@ -107,7 +107,7 @@ func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
 }
 
 func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
@@ -126,7 +126,7 @@ func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T
 }
 
 func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,

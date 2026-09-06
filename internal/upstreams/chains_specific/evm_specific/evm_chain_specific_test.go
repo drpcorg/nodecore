@@ -16,7 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -153,7 +153,7 @@ func TestEvmLowerBoundProcessor(t *testing.T) {
 }
 
 func TestEvmLowerBoundProcessorIncludesProofDetectorWhenSpecSupportsGetProof(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	processor := newEvmChainSpecificForChain("ethereum").LowerBoundProcessor()
 
@@ -161,7 +161,7 @@ func TestEvmLowerBoundProcessorIncludesProofDetectorWhenSpecSupportsGetProof(t *
 }
 
 func TestEvmLowerBoundProcessorSkipsProofDetectorWhenSpecDisablesGetProof(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	for _, chainName := range []string{"viction", "viction-testnet", "hyperliquid", "hyperliquid-testnet"} {
 		t.Run(chainName, func(t *testing.T) {

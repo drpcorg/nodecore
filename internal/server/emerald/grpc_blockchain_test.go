@@ -15,8 +15,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/public/pkg/dshackle"
-	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -55,7 +55,7 @@ func TestSubscribeMethodSupported(t *testing.T) {
 }
 
 func TestMapNativeSubscribeMethod(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	t.Run("uses native subscribe method as is", func(te *testing.T) {
 		method, payload, err := mapNativeSubscribeMethod("eth", nil, "eth_subscribe", []byte(`["newHeads"]`))
@@ -708,7 +708,7 @@ func grpcItem(id uint32, method string, payload []byte, md ...*dshackle.KeyValue
 }
 
 func TestBuildNativeCallRequestsBuildsGrpcRequest(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "sui"}
 	request := &dshackle.NativeCallRequest{
@@ -740,7 +740,7 @@ func TestBuildNativeCallRequestsBuildsGrpcRequest(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsGrpcUnknownMethodIsUnimplemented(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(3, "/sui.rpc.v2.LedgerService/Nope", nil)}}
 
@@ -754,7 +754,7 @@ func TestBuildNativeCallRequestsGrpcUnknownMethodIsUnimplemented(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsGrpcServerStreamMethodIsRejected(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(4, "/sui.rpc.v2.LedgerService/ListTransactions", nil)}}
 
@@ -776,7 +776,7 @@ func TestBuildNativeCallRequestsGrpcMissingDataIsInvalidArgument(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsGrpcSigningUnavailableIsInternal(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	item := grpcItem(6, "/sui.rpc.v2.LedgerService/GetObject", nil)
 	item.Nonce = 42
@@ -887,7 +887,7 @@ func TestJsonRpcSendReplyKeepsNodecoreErrorCodes(t *testing.T) {
 // rejected at the edge: routed on, its proto bytes would reach the HTTP
 // connector, which cannot build a response of type Grpc.
 func TestBuildNativeCallRequestsGrpcItemForJsonRpcMethodIsUnimplemented(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(8, "eth_chainId", []byte{0x0a})}}
 
@@ -915,7 +915,7 @@ func TestSendReplyStreamWithoutHintIsAnError(t *testing.T) {
 // item under its own id and in its own kind's error vocabulary - a gRPC item
 // with a canonical code, a JSON-RPC item with a nodecore code.
 func TestNativeCallRequestFailureIsRenderedPerItem(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	stream := &testNativeCallStream{ctx: context.Background()}
 

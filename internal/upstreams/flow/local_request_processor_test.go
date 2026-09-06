@@ -4,19 +4,18 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	subCtx := flow.NewSubCtx()
 	processor := flow.NewLocalRequestProcessor(chains.ALEPHZERO, subCtx)
@@ -42,8 +41,7 @@ func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
 }
 
 func TestLocalRequestProcessorCantParseUnsubReqThenError(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	subCtx := flow.NewSubCtx()
 	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)
@@ -68,8 +66,7 @@ func TestLocalRequestProcessorCantParseUnsubReqThenError(t *testing.T) {
 }
 
 func TestLocalRequestProcessorNoLocalHandlerError(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	tests := []struct {
 		name   string
@@ -83,8 +80,8 @@ func TestLocalRequestProcessorNoLocalHandlerError(t *testing.T) {
 		},
 		{
 			name:   "no local handler",
-			method: "super_method",
-			errMsg: "there is no local handler for method 'super_method'",
+			method: "eth_unsubscribe",
+			errMsg: "there is no local handler for method 'eth_unsubscribe'",
 		},
 	}
 
@@ -112,8 +109,7 @@ func TestLocalRequestProcessorNoLocalHandlerError(t *testing.T) {
 }
 
 func TestLocalRequestProcessorChainIdAndNetVersion(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	tests := []struct {
 		name   string

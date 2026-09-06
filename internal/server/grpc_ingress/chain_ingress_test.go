@@ -24,6 +24,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/drpcorg/public/pkg/sui"
@@ -82,11 +83,14 @@ func ingressAppCtx(t *testing.T, connector *mocks.ConnectorMock) *server_ctx.App
 // ingressAppCtxWithAuth is ingressAppCtx with a caller-provided auth processor.
 func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authProc auth.AuthProcessor) *server_ctx.ApplicationServerContext {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string](suiGetServiceInfo, suiListCheckpoints, suiSubscribeCheckpoints))
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
+	suiSpec := chains.GetMethodSpecNameByChain(chains.SUI)
+	methodsMock.On("GetMethod", suiListCheckpoints).Return(specs.GetSpecMethod(suiSpec, suiListCheckpoints))
+	methodsMock.On("GetMethod", suiSubscribeCheckpoints).Return(specs.GetSpecMethod(suiSpec, suiSubscribeCheckpoints))
 
 	upstream := test_utils.TestEvmUpstream(connector, &config.Upstream{
 		Id:           "id",
@@ -703,7 +707,7 @@ func TestStatusFromMissingResponse(t *testing.T) {
 // today no JSON-RPC or REST method name fits the /Service/Method path shape,
 // but the invariant must not depend on naming conventions.
 func TestGrpcRequestHandlerRejectsNonGrpcMethod(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	handler := &grpcRequestHandler{
 		md:     metadata.New(map[string]string{strings.ToLower(xNodecoreChain): "ethereum"}),
 		method: "eth_chainId",

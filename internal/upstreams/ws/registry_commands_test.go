@@ -2,18 +2,15 @@ package ws
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-var loadRegistryCommandSpecsOnce sync.Once
 
 func TestRegisterCommandHandleStoresRequest(t *testing.T) {
 	registry := newTestRegistryState("eth")
@@ -250,7 +247,5 @@ func newTestRegistryState(methodSpec string) *GenericRequestRegistry {
 func loadRegistryCommandMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	loadRegistryCommandSpecsOnce.Do(func() {
-		require.NoError(t, specs.NewMethodSpecLoader().Load())
-	})
+	specs_utils.LoadMethodSpecs()
 }

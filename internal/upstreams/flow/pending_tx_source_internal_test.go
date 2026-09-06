@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -36,6 +37,8 @@ func pendingMethodsMock() *mocks.MethodsMock {
 	m := mocks.NewMethodsMock()
 	m.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_subscribe", "eth_getTransactionByHash"))
 	m.On("HasMethod", mock.Anything).Return(true).Maybe()
+	// the chain supervisor resolves eth_subscribe to decide whether topics are advertised
+	m.On("GetMethod", "eth_subscribe").Return(specs.GetSpecMethod("eth", "eth_subscribe")).Maybe()
 	return m
 }
 
@@ -89,7 +92,7 @@ func assertNoPendingEvent(t *testing.T, ch <-chan protocol.SubResponse) {
 // The shared source opens a sub on every capable upstream, merges them and emits
 // each tx hash once even when several upstreams report the same hash.
 func TestPendingTxSourceMergesAndDedupes(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 	registerPendingUpstream(chSup, "up2", pendingCaps())
@@ -125,7 +128,7 @@ func TestPendingTxSourceMergesAndDedupes(t *testing.T) {
 // One upstream failing to subscribe (or dropping) does not kill the merged source;
 // the surviving upstream still delivers hashes.
 func TestPendingTxSourceOneFeedFailsNonTerminal(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "good", pendingCaps())
 	registerPendingUpstream(chSup, "bad", pendingCaps())
@@ -155,7 +158,7 @@ func TestPendingTxSourceOneFeedFailsNonTerminal(t *testing.T) {
 // mempool feed is never opened, matching enrichPendingTx which only enriches via
 // available upstreams. The one available upstream still serves the source.
 func TestPendingTxSourceSkipsUnavailableUpstream(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "up", pendingCaps())
 	registerPendingUpstreamWithStatus(chSup, "down", pendingCaps(), protocol.Unavailable)
@@ -190,7 +193,7 @@ func TestPendingTxSourceSkipsUnavailableUpstream(t *testing.T) {
 // No ws-capable upstream means the source cannot be built; the engine surfaces the
 // error so the client falls back to the generic node-backed path.
 func TestPendingTxSourceNoCapableUpstreams(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	// only WsCap, no PendingTxCap → skipped by the builder
 	registerPendingUpstream(chSup, "up1", mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
@@ -210,7 +213,7 @@ func TestPendingTxSourceNoCapableUpstreams(t *testing.T) {
 // Losing PendingTxCap chain-wide terminates the source so clients fail over,
 // matching the local newHeads/logs sources.
 func TestPendingTxSourceTerminatesWhenCapLost(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
@@ -237,7 +240,7 @@ func TestPendingTxSourceTerminatesWhenCapLost(t *testing.T) {
 // feed has died the source terminates even though PendingTxCap is still present
 // (the feeds are fixed at build time and never reconnect).
 func TestPendingTxSourceTerminatesWhenAllFeedsDie(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 	registerPendingUpstream(chSup, "up2", pendingCaps())
@@ -294,7 +297,7 @@ func publishTxUpstream(chSup upstreams.ChainSupervisor, id string) {
 
 func enrichTestSetup(t *testing.T, sendResult protocol.ResponseHolder) (upstreams.ChainSupervisor, *mocks.UpstreamSupervisorMock) {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	publishTxUpstream(chSup, "up1")
 	conn := mocks.NewConnectorMock() // json-rpc connector for eth_getTransactionByHash
@@ -322,7 +325,7 @@ func TestEnrichPendingTxReturnsFullTransaction(t *testing.T) {
 // broadcast and accept the upstream that actually has the tx, not drop it because
 // the first-queried upstream returned null.
 func TestEnrichPendingTxBroadcastsAndTakesNonNull(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	publishTxUpstream(chSup, "missing") // does not have the tx -> null
 	publishTxUpstream(chSup, "has")     // has the tx
@@ -405,7 +408,7 @@ func pendingDrpcUpstream(id string, wsCh chan protocol.SubResponse, opId string,
 // A drpc client gets the shared pending hash, enriched into a full tx object. The
 // source rides the same localPendingTxKey source (one node sub set for both topics).
 func TestDrpcPendingTxSourceEnrichesHashToTransaction(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
@@ -436,7 +439,7 @@ func TestDrpcPendingTxSourceEnrichesHashToTransaction(t *testing.T) {
 // When the shared hash source terminates (PendingTxCap lost), the drpc source
 // propagates that terminal cause to its clients rather than stalling.
 func TestDrpcPendingTxSourcePropagatesTerminal(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
@@ -468,7 +471,7 @@ func TestDrpcPendingTxSourcePropagatesTerminal(t *testing.T) {
 // assert the peak concurrency reaches the number of pending hashes - a serial drain
 // would peak at 1.
 func TestDrpcPendingTxSourceEnrichesConcurrently(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	registerPendingUpstream(chSup, "up1", pendingCaps())
 
