@@ -40,15 +40,15 @@ func TestGrpcUpstreamSubscriptionResponse(t *testing.T) {
 	assert.Equal(t, messages, response.ResponseChan())
 }
 
-func TestSubscriptionResultResponseCarriesMetadata(t *testing.T) {
+func TestSubscriptionEventResponseCarriesMetadata(t *testing.T) {
 	headers := http.Header{"x-up-meta": {"h"}}
 	trailers := map[string][]string{"x-up-trailer": {"t"}}
-	response := protocol.NewSubscriptionResultEventResponse("1", []byte("r")).
+	response := protocol.NewSubscriptionEventResponse("1", []byte("r")).
 		WithResponseHeaders(headers).
 		WithResponseTrailers(trailers)
 
 	assert.Equal(t, headers, response.ResponseHeaders())
 	assert.Equal(t, trailers, response.ResponseTrailers())
 	assert.Equal(t, []byte("r"), response.ResponseResult())
-	assert.True(t, response.IsEventFrame())
+	assert.False(t, response.IsEnd())
 }

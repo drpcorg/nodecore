@@ -194,9 +194,13 @@ type ResponseHolder interface {
 	Id() string
 }
 
+// SubscriptionResponseHolder is a client-facing frame of a subscription or
+// stream: an event carrying a payload, or the clean end of a bounded stream.
 type SubscriptionResponseHolder interface {
 	ResponseHolder
-	IsEventFrame() bool
+	// IsEnd reports the final frame of a stream that completed cleanly. It
+	// carries no payload, only the trailers the upstream closed with.
+	IsEnd() bool
 }
 
 type RequestBlockTag int
