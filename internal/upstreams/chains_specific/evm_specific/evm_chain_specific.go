@@ -152,11 +152,7 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 		evm_bounds.NewEvmReceiptsLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities),
 	}
 	if e.hasMethod("eth_getProof") {
-		proofDetector := evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities)
-		if e.hasMethod("debug_proofsSyncStatus") {
-			proofDetector = proofDetector.WithProofsSyncStatus(evm_bounds.NewEvmProofsSyncStatus(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector))
-		}
-		detectors = append(detectors, proofDetector)
+		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities))
 	}
 	return lower_bounds.NewGenericLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }

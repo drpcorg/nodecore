@@ -220,7 +220,7 @@ type evmCapabilityEntry struct {
 	OldestBlock json.RawMessage `json:"oldestBlock"`
 }
 
-// head and deleteStrategy are intentionally ignored for now.
+// deleteStrategy is intentionally ignored for now.
 type evmCapabilitiesResponse struct {
 	State       *evmCapabilityEntry `json:"state"`
 	Tx          *evmCapabilityEntry `json:"tx"`
@@ -228,6 +228,11 @@ type evmCapabilitiesResponse struct {
 	Blocks      *evmCapabilityEntry `json:"blocks"`
 	Logs        *evmCapabilityEntry `json:"logs"`
 	StateProofs *evmCapabilityEntry `json:"stateproofs"`
+	Head        *evmCapabilityHead  `json:"head"`
+}
+
+type evmCapabilityHead struct {
+	Number json.RawMessage `json:"number"`
 }
 
 type evmCapabilityResource struct {
@@ -237,6 +242,9 @@ type evmCapabilityResource struct {
 
 type evmCapabilitiesSnapshot struct {
 	resources map[protocol.LowerBoundType]evmCapabilityResource
+	// head is the block the upstream reports as its tip, 0 when it is absent or
+	// unparseable. The proof detector validates stateproofs.oldestBlock against it.
+	head int64
 }
 
 // resource answers for TraceBound with the state capability: nodecore derives the trace
@@ -291,7 +299,13 @@ func parseEvmCapabilities(raw []byte) *evmCapabilitiesSnapshot {
 	if len(resources) == 0 {
 		return nil
 	}
-	return &evmCapabilitiesSnapshot{resources: resources}
+	snapshot := &evmCapabilitiesSnapshot{resources: resources}
+	if parsed.Head != nil {
+		if head, err := parseHexInt(parsed.Head.Number); err == nil && head > 0 {
+			snapshot.head = head
+		}
+	}
+	return snapshot
 }
 
 // detectFromCapabilities resolves this detector's bound types straight from the upstream's
