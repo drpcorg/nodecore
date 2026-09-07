@@ -81,9 +81,6 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		)
 	}
-	// the label describes what backs eth_getProof, so a chain whose spec disables the
-	// method has nothing to label; debug_proofsSyncStatus itself sits in the base spec
-	// of every EVM chain and would gate nothing
 	if e.hasMethod("eth_getProof") {
 		labelsDetectors = append(
 			labelsDetectors,

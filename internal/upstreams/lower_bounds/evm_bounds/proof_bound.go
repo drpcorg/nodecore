@@ -3,7 +3,6 @@ package evm_bounds
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -79,16 +78,25 @@ func (e *EvmProofLowerBoundDetector) detectFromProofsSyncStatus(ctx context.Cont
 	if !available {
 		return 0, false
 	}
-	window, err := parseEvmProofsSyncStatus(raw)
-	if err != nil {
-		log.Debug().Err(err).Msgf("unable to parse %s of upstream '%s'", evmProofsSyncStatusMethod, e.UpstreamId)
+	var window struct {
+		Earliest json.RawMessage `json:"earliest"`
+		Latest   json.RawMessage `json:"latest"`
+	}
+	if err := sonic.Unmarshal(raw, &window); err != nil || len(window.Earliest) == 0 || len(window.Latest) == 0 {
+		log.Debug().Err(err).Msgf("unable to parse %s of upstream '%s': %s", evmProofsSyncStatusMethod, e.UpstreamId, raw)
 		return 0, false
 	}
-	if window.latest == 0 || window.earliest > window.latest {
-		log.Debug().Msgf("upstream '%s' reports an empty proof window [%d, %d]", e.UpstreamId, window.earliest, window.latest)
+	earliest, earliestErr := parseEvmBlockNumber(window.Earliest)
+	latest, latestErr := parseEvmBlockNumber(window.Latest)
+	if earliestErr != nil || latestErr != nil || earliest < 0 || latest <= 0 || earliest > latest {
+		log.Debug().Msgf("upstream '%s' reports no usable proof window: %s", e.UpstreamId, raw)
 		return 0, false
 	}
-	return window.earliest, true
+	// earliest 0 is coerced to 1: a 0 bound reads as "unknown" to routing
+	if earliest == 0 {
+		return 1, true
+	}
+	return earliest, true
 }
 
 // detectFromCapabilities reads stateproofs from the upstream-shared eth_capabilities
@@ -128,45 +136,6 @@ func (e *EvmProofLowerBoundDetector) hasProof(ctx context.Context, height int64)
 		return available, err
 	}
 	return !isEvmNullResult(raw), nil
-}
-
-// evmProofWindow is the inclusive block range served from the proof store.
-type evmProofWindow struct {
-	earliest int64
-	latest   int64
-}
-
-type evmProofsSyncStatusResponse struct {
-	Earliest json.RawMessage `json:"earliest"`
-	Latest   json.RawMessage `json:"latest"`
-}
-
-// parseEvmProofsSyncStatus maps the raw result to a window. A missing or unparseable
-// field is malformed. earliest 0x0 is coerced to 1: nodecore's convention for "from the
-// first block" is bound 1, and a 0 prediction reads as "unknown" to routing.
-func parseEvmProofsSyncStatus(raw []byte) (*evmProofWindow, error) {
-	if isEvmNullResult(raw) {
-		return nil, fmt.Errorf("null result")
-	}
-	parsed := evmProofsSyncStatusResponse{}
-	if err := sonic.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("malformed response: %w", err)
-	}
-	if len(parsed.Earliest) == 0 || len(parsed.Latest) == 0 {
-		return nil, fmt.Errorf("malformed response: earliest or latest missing")
-	}
-	earliest, err := parseEvmBlockNumber(parsed.Earliest)
-	if err != nil || earliest < 0 {
-		return nil, fmt.Errorf("malformed earliest: %w", err)
-	}
-	latest, err := parseEvmBlockNumber(parsed.Latest)
-	if err != nil || latest < 0 {
-		return nil, fmt.Errorf("malformed latest: %w", err)
-	}
-	if earliest == 0 {
-		earliest = 1
-	}
-	return &evmProofWindow{earliest: earliest, latest: latest}, nil
 }
 
 var _ lower_bounds.LowerBoundDetector = (*EvmProofLowerBoundDetector)(nil)
