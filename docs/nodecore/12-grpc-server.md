@@ -61,7 +61,7 @@ The main service. Exposes the following RPCs:
     | `grpc_data.metadata` | the first item | the upstream's initial metadata |
     | `grpc_data.trailers` | the final item | the upstream's trailers |
     | `grpc_data.final` | the final item | the upstream stream ended; `payload` is absent |
-    | `grpc_data.status` | the final item | serialized `google.rpc.Status` (decode with `status.FromProto`); empty on a clean end, otherwise the upstream's status verbatim (typed details included) or nodecore's own failure on a canonical code (`UNAVAILABLE` when the node closed a live subscription, `RESOURCE_EXHAUSTED` when the client fell too far behind) |
+    | `grpc_data.status` | the final item | serialized `google.rpc.Status` (decode with `status.FromProto`); empty on a clean end, otherwise the upstream's status verbatim (typed details included) or nodecore's own failure on a canonical code (`UNAVAILABLE` when the node closed a live subscription without a status, or when the client fell too far behind and was dropped; the message tells which) |
 
     After the final item the NativeSubscribe stream closes with `OK`. Only failures before dispatch (unknown chain, a method the chain does not advertise, a nonce without a signing key) end the stream with a non-OK status. Client rules, in order: skip heartbeats; if `grpc_data.final` is set, take the trailers, decode `status` if non-empty, the stream is done; otherwise deliver `payload`, taking `grpc_data.metadata` from it if present.
 
