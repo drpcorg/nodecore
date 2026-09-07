@@ -102,7 +102,11 @@ This is the same split NativeCall uses between item errors and stream failures.
   upstream stream failed to open after dispatch) have no upstream bytes at all. `status` is
   therefore always built by nodecore as `proto.Marshal(GrpcStatusOf(err).Proto())`: upstream
   statuses come through byte-for-byte including details, nodecore failures arrive in the same
-  shape with canonical codes. The client has one error vocabulary: `status.FromProto`.
+  shape with canonical codes. The client has one error vocabulary: `status.FromProto`. Note that
+  a slow subscriber and a node closing a live subscription both surface as `UNAVAILABLE`: the
+  too-slow error deliberately reuses the `SubscribeTotalFailure` code (the WS server keys on it
+  to close the connection), and only the message differs. A distinct code is a separate,
+  cross-transport decision.
 
 ### Wire sequence
 
@@ -245,7 +249,7 @@ adapters.
 | node aborts mid-stream | final item, `status` = node status verbatim, trailers, then OK |
 | node ends a live subscription cleanly | final item, `status` = `UNAVAILABLE` (SubscribeTotalFailure), then OK |
 | node ends a finite stream cleanly | final item, `status` empty, trailers, then OK |
-| client too slow | final item, `status` = `RESOURCE_EXHAUSTED`, then OK |
+| client too slow (dropped by the engine) | final item, `status` = `UNAVAILABLE` (SubscriberTooSlowError shares the SubscribeTotalFailure code; distinct message), then OK |
 | no upstream after dispatch (selection failed) | final item, `status` = `UNAVAILABLE`, then OK |
 | client cancels | upstream stream cancelled, handler returns nil |
 
