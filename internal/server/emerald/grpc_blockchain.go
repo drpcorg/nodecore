@@ -1,11 +1,8 @@
 package emerald
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -17,7 +14,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/dshackle"
-	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,8 +22,6 @@ import (
 )
 
 const defaultNativeSubscribeHeartbeat = 30 * time.Second
-
-var errSubscribeMappingNotSupported = errors.New("unsupported subscribe method mapping")
 
 type GrpcBlockchainService struct {
 	dshackle.UnimplementedBlockchainServer
@@ -161,12 +155,10 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Unimplemented, fmt.Sprintf("subscribe %s is not supported for chain %d", request.GetMethod(), request.GetChain()))
 	}
 
-	mappedMethod, mappedPayload, err := mapNativeSubscribeMethod(configuredChain.MethodSpec, chainSupervisor, request.GetMethod(), request.GetPayload())
+	adapter := subscribeAdapterFor(configuredChain.MethodSpec, request.GetMethod())
+	subscribeRequest, err := adapter.BuildRequest(configuredChain, chainSupervisor, request)
 	if err != nil {
-		if errors.Is(err, errSubscribeMappingNotSupported) {
-			return status.Error(codes.Unimplemented, err.Error())
-		}
-		return status.Error(codes.Internal, err.Error())
+		return err
 	}
 
 	nonce := request.GetNonce()
@@ -175,10 +167,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Internal, err.Error())
 	}
 
-	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
-	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec, mapDshackleSelectors([]*dshackle.Selector{request.GetSelector()})...)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
-
 	executionFlow := flow.NewGenericExecutionFlow(
 		configuredChain.Chain,
 		s.appCtx.UpstreamSupervisor,
@@ -193,7 +182,23 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 
 	go executionFlow.Execute(stream.Context(), []protocol.RequestHolder{subscribeRequest})
 
-	ticker := time.NewTicker(s.heartbeatInterval)
+	return serveNativeSubscribe(stream, executionFlow.GetResponses(), adapter, nonce, s.signer, s.heartbeatInterval)
+}
+
+// serveNativeSubscribe forwards the flow's responses through the adapter until
+// the client goes away, the flow closes the channel, or the adapter reports
+// the subscription over. Heartbeats keep an idle stream visibly alive; they
+// carry nothing but the flag. A nil wrapper or response is a flow bug and is
+// reported as Internal.
+func serveNativeSubscribe(
+	stream dshackle.Blockchain_NativeSubscribeServer,
+	responses <-chan *protocol.ResponseHolderWrapper,
+	adapter nativeSubscribeAdapter,
+	nonce uint64,
+	signer signature.ResponseSigner,
+	heartbeatInterval time.Duration,
+) error {
+	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 	lastSent := time.Now()
 
@@ -201,36 +206,23 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		select {
 		case <-stream.Context().Done():
 			return nil
-		case wrapper, ok := <-executionFlow.GetResponses():
+		case wrapper, ok := <-responses:
 			if !ok {
 				return nil
 			}
 			if wrapper == nil || wrapper.Response == nil {
 				return status.Error(codes.Internal, "subscription response is empty")
 			}
-			if wrapper.Response.HasError() {
-				return mapNativeSubscribeError(wrapper.Response.GetError())
-			}
-
-			subscriptionResponse, ok := wrapper.Response.(protocol.SubscriptionResponseHolder)
-			if !ok {
-				return status.Error(codes.Internal, "unexpected subscription response type")
-			}
-			if subscriptionResponse.IsEnd() {
-				return nil
-			}
-
-			replyItem, err := nativeSubscribeReplyItem(wrapper, subscriptionResponse.ResponseResult(), nonce, s.signer)
+			done, err := adapter.SendReply(stream, wrapper, nonce, signer)
 			if err != nil {
-				log.Warn().Err(err).Msg("unable to sign a subscription event")
-				return status.Error(codes.Internal, "unable to sign a subscription event")
-			}
-			if err := stream.Send(replyItem); err != nil {
 				return err
+			}
+			if done {
+				return nil
 			}
 			lastSent = time.Now()
 		case <-ticker.C:
-			if time.Since(lastSent) >= s.heartbeatInterval {
+			if time.Since(lastSent) >= heartbeatInterval {
 				if err := stream.Send(&dshackle.NativeSubscribeReplyItem{Heartbeat: true}); err != nil {
 					return err
 				}
@@ -436,95 +428,7 @@ func parseCallItemID(requestID string) uint32 {
 	return uint32(id)
 }
 
-func mapNativeSubscribeMethod(
-	methodSpecName string,
-	chainSupervisor upstreams.ChainSupervisor,
-	requestedMethod string,
-	payload []byte,
-) (string, []byte, error) {
-	if supportsNativeSubscribeMethod(methodSpecName, requestedMethod) {
-		return normalizeNativeSubscribePayload(requestedMethod, payload)
-	}
-	if !supportsEthSubscribeFallback(methodSpecName, chainSupervisor) {
-		return "", nil, fmt.Errorf("%w: subscribe %s is not supported for chain spec %s", errSubscribeMappingNotSupported, requestedMethod, methodSpecName)
-	}
-	return mapToEthSubscribeFallback(requestedMethod, payload)
-}
-
-func supportsNativeSubscribeMethod(methodSpecName string, requestedMethod string) bool {
-	return specs.IsSubscribeMethod(methodSpecName, requestedMethod)
-}
-
 func subscribeMethodSupported(chainSupervisor upstreams.ChainSupervisor, method string) bool {
 	subMethods := chainSupervisor.GetChainState().SubMethods
 	return subMethods != nil && subMethods.ContainsOne(method)
-}
-
-func normalizeNativeSubscribePayload(requestedMethod string, payload []byte) (string, []byte, error) {
-	if len(payload) == 0 {
-		return requestedMethod, []byte("[]"), nil
-	}
-	if !json.Valid(payload) {
-		return "", nil, fmt.Errorf("invalid subscribe payload format")
-	}
-	return requestedMethod, payload, nil
-}
-
-func supportsEthSubscribeFallback(methodSpecName string, chainSupervisor upstreams.ChainSupervisor) bool {
-	ethSubscribeSupported := specs.IsSubscribeMethod(methodSpecName, "eth_subscribe")
-	if !ethSubscribeSupported && chainSupervisor != nil {
-		ethSubscribeSupported = chainSupervisor.GetMethod("eth_subscribe") != nil
-	}
-	return ethSubscribeSupported
-}
-
-func mapToEthSubscribeFallback(requestedMethod string, payload []byte) (string, []byte, error) {
-	mappedParams, err := mapEthSubscribeParams(requestedMethod, payload)
-	if err != nil {
-		return "", nil, err
-	}
-	return "eth_subscribe", mappedParams, nil
-}
-
-func mapEthSubscribeParams(requestedMethod string, payload []byte) ([]byte, error) {
-	methodRaw, _ := sonic.Marshal(requestedMethod)
-	params := []json.RawMessage{methodRaw}
-
-	// dproxy NativeSubscribe sends Method as the concrete subscription type and
-	// Payload as that type's single parameter payload. For example:
-	//   Method="logs", Payload={...} -> eth_subscribe params ["logs", {...}]
-	//   Method="newHeads", Payload=null -> eth_subscribe params ["newHeads"]
-	if len(payload) > 0 && string(payload) != "null" {
-		if !json.Valid(payload) {
-			return nil, fmt.Errorf("invalid subscribe payload format")
-		}
-		params = append(params, append(json.RawMessage(nil), payload...))
-	}
-
-	result, err := sonic.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func mapNativeSubscribeError(responseError *protocol.ResponseError) error {
-	if responseError == nil {
-		return status.Error(codes.Internal, "internal server error")
-	}
-
-	switch responseError.Code {
-	case protocol.NoAvailableUpstreams, protocol.WrongChain:
-		return status.Error(codes.Unavailable, responseError.Message)
-	case protocol.NoSupportedMethod:
-		return status.Error(codes.Unimplemented, responseError.Message)
-	case protocol.AuthErrorCode:
-		return status.Error(codes.Unauthenticated, responseError.Message)
-	default:
-		if strings.Contains(strings.ToLower(responseError.Message), "subscription request") &&
-			strings.Contains(strings.ToLower(responseError.Message), "unable to process") {
-			return status.Error(codes.Unimplemented, responseError.Message)
-		}
-		return status.Error(codes.Internal, responseError.Message)
-	}
 }
