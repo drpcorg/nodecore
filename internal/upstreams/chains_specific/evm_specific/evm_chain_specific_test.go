@@ -9,6 +9,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
@@ -193,6 +195,35 @@ func lowerBoundDetectorCount(t *testing.T, processor lower_bounds.LowerBoundProc
 	detectors := reflect.ValueOf(base).Elem().FieldByName("lowerBoundsDetectors")
 	require.True(t, detectors.IsValid())
 	return detectors.Len()
+}
+
+// The historical_proofs label describes what backs eth_getProof, so the detector follows
+// that method rather than debug_proofsSyncStatus, which the base EVM spec always carries.
+func TestEvmHistoricalProofsLabelDetectorFollowsGetProofSupport(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	assert.True(t, hasHistoricalProofsLabelDetector(t, "ethereum"))
+	for _, chainName := range []string{"viction", "viction-testnet", "hyperliquid", "hyperliquid-testnet"} {
+		t.Run(chainName, func(t *testing.T) {
+			assert.False(t, hasHistoricalProofsLabelDetector(t, chainName))
+		})
+	}
+}
+
+func hasHistoricalProofsLabelDetector(t *testing.T, chainName string) bool {
+	t.Helper()
+	processor, ok := newEvmChainSpecificForChain(chainName).LabelsProcessor().(*labels.GenericLabelsProcessor)
+	require.True(t, ok)
+
+	detectors := reflect.ValueOf(processor).Elem().FieldByName("labelsDetectors")
+	require.True(t, detectors.IsValid())
+	target := reflect.TypeOf(&eth_labels.EthHistoricalProofsLabelsDetector{})
+	for i := range detectors.Len() {
+		if detectors.Index(i).Elem().Type() == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
