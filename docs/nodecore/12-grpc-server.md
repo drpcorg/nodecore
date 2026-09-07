@@ -50,7 +50,22 @@ The main service. Exposes the following RPCs:
 
 - **`NativeSubscribe(NativeSubscribeRequest) → stream NativeSubscribeReplyItem`**
 
-  Server-streaming RPC. Opens a subscription on the target chain (e.g. `newHeads`, `logs` on EVM; `slotSubscribe`, `accountSubscribe` on Solana). The subscription is fulfilled through nodecore's shared-subscription registry, so multiple gRPC clients asking for the same subscription are coalesced onto a single upstream WebSocket. Periodic `Heartbeat: true` items are emitted (default every 30 seconds) so idle subscriptions don't look dead.
+  Server-streaming RPC. Opens a subscription on the target chain. Two transports are served, chosen by the chain's [method spec](11-method-specs.md):
+
+  - **JSON-RPC subscriptions** (`newHeads`, `logs` on EVM; `slotSubscribe`, `accountSubscribe` on Solana; any native sub method). `payload` is the JSON params. The subscription is fulfilled through nodecore's shared-subscription engine, so multiple clients asking for the same subscription are coalesced onto a single upstream WebSocket. Each event is a reply item whose `payload` is the bare event result. A failure ends the stream with a gRPC status.
+  - **gRPC server streams** (methods whose spec declares `grpc.call-type: server-stream-subscription` or `server-stream-finite`, e.g. Sui `/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints`, `/sui.rpc.v2.LedgerService/ListCheckpoints`). `method` is the full gRPC method name, `payload` the serialized request message (no wire-frame prefix; an empty payload is a valid empty message), and `grpc_data.metadata` optional call metadata forwarded to the upstream (nodecore's own credential headers are dropped). Streams are not shared: each request opens its own upstream stream. Reply items carry `grpc_data` only when it has something to say (a plain data item has none):
+
+    | field | when | meaning |
+    |---|---|---|
+    | `payload` | data item | one upstream message, verbatim |
+    | `grpc_data.metadata` | the first item | the upstream's initial metadata |
+    | `grpc_data.trailers` | the final item | the upstream's trailers |
+    | `grpc_data.final` | the final item | the upstream stream ended; `payload` is absent |
+    | `grpc_data.status` | the final item | serialized `google.rpc.Status` (decode with `status.FromProto`); empty on a clean end, otherwise the upstream's status verbatim (typed details included) or nodecore's own failure on a canonical code (`UNAVAILABLE` when the node closed a live subscription, `RESOURCE_EXHAUSTED` when the client fell too far behind) |
+
+    After the final item the NativeSubscribe stream closes with `OK`. Only failures before dispatch (unknown chain, a method the chain does not advertise, a nonce without a signing key) end the stream with a non-OK status. Client rules, in order: skip heartbeats; if `grpc_data.final` is set, take the trailers, decode `status` if non-empty, the stream is done; otherwise deliver `payload`, taking `grpc_data.metadata` from it if present.
+
+  Periodic `heartbeat: true` items are emitted (default every 30 seconds) so idle subscriptions don't look dead; they carry nothing else.
 
 ### `AuthService`
 
@@ -73,7 +88,7 @@ Three behaviours are worth knowing:
 
 - **Streamed replies are not signed.** A reply that arrives as a stream carries no signature, matching dshackle. Note that `chunk_size` requests streaming but does not guarantee it — a response served from cache or by a non-streaming connector still comes back buffered, and is signed. Combine `nonce` with `chunk_size` and whether you get a signature depends on where the response came from, so a client that needs a signature should leave `chunk_size` unset.
 - **A nonce with no signing key is an error, not an unsigned reply.** The request is rejected before it is dispatched — a `NativeCall` item fails without an upstream call, and a `NativeSubscribe` fails before the upstream subscription is established — rather than returning a silently unsigned result.
-- **Errors are never signed**, and subscription heartbeats are never signed.
+- **Errors are never signed**, and neither are subscription heartbeats nor the `final` item of a gRPC stream. Data items of a gRPC stream are signed over `payload` like any other event.
 
 Upstreams on a signing-capable instance advertise the [`secure-signed`](05-upstream-config.md#fields) label, so clients can find them with a label selector.
 
