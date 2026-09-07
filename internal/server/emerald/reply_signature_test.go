@@ -17,6 +17,8 @@ import (
 	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestNewResponseSignerDisabledWithoutGrpcAuth(t *testing.T) {
@@ -309,7 +311,8 @@ func TestNativeSubscribeReplyItemFailsWhenSigningUnavailable(t *testing.T) {
 	}
 
 	_, err := nativeSubscribeReplyItem(wrapper, event, 55, signature.NewDisabledSigner())
-	require.ErrorIs(t, err, signature.ErrSigningNotConfigured)
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err), "the builder reports its failure as the stream status")
 }
 
 // Locally-synthesized events carry "NoUpstream" and are signed with it as the

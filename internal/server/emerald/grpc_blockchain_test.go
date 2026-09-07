@@ -958,3 +958,83 @@ func TestGrpcSendReplyDropsUnparseableStatusProto(t *testing.T) {
 	assert.Equal(t, int32(codes.NotFound), stream.sent[0].GetItemErrorCode())
 	assert.Equal(t, "object not found", stream.sent[0].GetErrorMessage())
 }
+
+// countingAdapter is a nativeSubscribeAdapter that records replies and answers
+// with a scripted (done, err) per call.
+type countingAdapter struct {
+	replies []*protocol.ResponseHolderWrapper
+	done    bool
+	err     error
+}
+
+func (a *countingAdapter) BuildRequest(*chains.ConfiguredChain, upstreams.ChainSupervisor, *dshackle.NativeSubscribeRequest) (protocol.RequestHolder, error) {
+	return nil, nil
+}
+
+func (a *countingAdapter) SendReply(_ dshackle.Blockchain_NativeSubscribeServer, wrapper *protocol.ResponseHolderWrapper, _ uint64, _ signature.ResponseSigner) (bool, error) {
+	a.replies = append(a.replies, wrapper)
+	return a.done, a.err
+}
+
+func TestServeNativeSubscribeForwardsUntilChannelCloses(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{}
+	responses := make(chan *protocol.ResponseHolderWrapper, 2)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`2`))}
+	close(responses)
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.NoError(t, err)
+	assert.Len(t, adapter.replies, 2)
+	assert.Empty(t, stream.sent, "the scripted adapter sends nothing itself")
+}
+
+func TestServeNativeSubscribeStopsWhenAdapterIsDone(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{done: true}
+	responses := make(chan *protocol.ResponseHolderWrapper, 2)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`2`))}
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.NoError(t, err)
+	assert.Len(t, adapter.replies, 1, "done stops the loop before the second wrapper")
+}
+
+func TestServeNativeSubscribeReturnsAdapterError(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{done: true, err: status.Error(codes.Unavailable, "gone")}
+	responses := make(chan *protocol.ResponseHolderWrapper, 1)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestServeNativeSubscribeEmptyWrapperIsInternal(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	responses := make(chan *protocol.ResponseHolderWrapper, 1)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0"}
+
+	err := serveNativeSubscribe(stream, responses, &countingAdapter{}, 0, signature.NewDisabledSigner(), time.Hour)
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+func TestServeNativeSubscribeSendsHeartbeatsWithoutGrpcData(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	stream := &testNativeSubscribeStream{ctx: ctx}
+	responses := make(chan *protocol.ResponseHolderWrapper)
+
+	err := serveNativeSubscribe(stream, responses, &countingAdapter{}, 0, signature.NewDisabledSigner(), 20*time.Millisecond)
+	require.NoError(t, err, "ctx expiry is a clean end")
+	require.NotEmpty(t, stream.sent)
+	for _, item := range stream.sent {
+		assert.True(t, item.GetHeartbeat())
+		assert.Nil(t, item.GetGrpcData())
+		assert.Nil(t, item.GetSignature())
+	}
+}

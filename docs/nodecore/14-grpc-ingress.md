@@ -15,6 +15,9 @@ This is a **different server** from the [gRPC API](12-grpc-server.md) on `grpc-p
 speaks the dshackle-compatible `emerald.*` protocol for querying upstream/chain state; this one
 speaks the chains' own protocols for client traffic. They have different auth models and can run
 independently of each other.
+A dshackle client that speaks the `emerald.*` protocol reaches the same gRPC upstreams through
+`NativeCall` (unary methods, `grpc_data` items) and `NativeSubscribe` (server-streaming methods);
+see [gRPC API](12-grpc-server.md#blockchainservice).
 
 ## Enabling
 
