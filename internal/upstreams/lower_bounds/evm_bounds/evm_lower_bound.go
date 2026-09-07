@@ -23,16 +23,18 @@ const (
 // EvmLowerBoundDetector detects the lower bound of a single data type (block,
 // state, tx, receipts or proof) for an EVM upstream. The concrete per-type probe
 // logic lives in the sibling *_bound.go files; this file holds the shared wiring:
-// construction, the probe dispatcher, and the JSON-RPC call helper. When the
-// upstream reports its bounds via eth_capabilities, that answer is used directly
-// instead of probing (see capabilities.go).
+// construction, the probe dispatcher, and the JSON-RPC call helper. Reported answers
+// are preferred over probing: the proof detector first asks debug_proofsSyncStatus
+// (see proofs_sync_status.go), then eth_capabilities (see capabilities.go), and only
+// then falls back to the gold bound and the binary search.
 type EvmLowerBoundDetector struct {
 	*lower_bounds.LowerBoundSearchCalculator
 
-	connector       connectors.ApiConnector
-	chain           *chains.ConfiguredChain
-	internalTimeout time.Duration
-	capabilities    *EvmCapabilities
+	connector        connectors.ApiConnector
+	chain            *chains.ConfiguredChain
+	internalTimeout  time.Duration
+	capabilities     *EvmCapabilities
+	proofsSyncStatus *EvmProofsSyncStatus
 
 	stateOverrideSupport atomic.Int32
 }
@@ -41,6 +43,13 @@ type EvmLowerBoundDetector struct {
 // without one (nil) keep the pure gold-bound/search behavior.
 func (e *EvmLowerBoundDetector) WithCapabilities(capabilities *EvmCapabilities) *EvmLowerBoundDetector {
 	e.capabilities = capabilities
+	return e
+}
+
+// WithProofsSyncStatus attaches the debug_proofsSyncStatus source. Only meaningful for
+// the ProofBound detector; other detectors ignore it.
+func (e *EvmLowerBoundDetector) WithProofsSyncStatus(syncStatus *EvmProofsSyncStatus) *EvmLowerBoundDetector {
+	e.proofsSyncStatus = syncStatus
 	return e
 }
 
@@ -73,6 +82,9 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 }
 
 func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	if results, ok := e.detectFromProofsSyncStatus(ctx); ok {
+		return results, nil
+	}
 	if results, ok := e.detectFromCapabilities(ctx); ok {
 		return results, nil
 	}
