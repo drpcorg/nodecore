@@ -53,6 +53,13 @@ const localDrpcPendingTxKey = "local|drpcPendingTransactions"
 // the subengine default for low-volume local sources.
 const genericSubscriptionBufferSize = 4096
 
+// blockSubscribeBufferSize bounds the source buffer for Solana's blockSubscribe,
+// whose events are whole blocks - several megabytes each with full transaction
+// details. One event arrives per slot, so the buffer only has to absorb client
+// write jitter: a subscriber thousands of blocks behind would pin gigabytes and
+// never catch up, so it is better cut off early by the subengine.
+const blockSubscribeBufferSize = 100
+
 // resolveSource decides how the shared source for this subscription is produced
 // and returns its aggregation key alongside the builder, keeping the local-vs-
 // generic decision and the key in one place:
@@ -273,7 +280,8 @@ func newGenericSourceBuilder(
 			stateChan = statesSub.Events
 		}
 
-		out := make(chan protocol.SubResponse, genericSubscriptionBufferSize)
+		bufferSize := genericSourceBufferSize(request)
+		out := make(chan protocol.SubResponse, bufferSize)
 		// emit never parks on a full buffer once the engine has stopped reading
 		// (after terminate nothing drains out; srcCtx is cancelled instead)
 		emit := func(r protocol.SubResponse) bool {
@@ -324,6 +332,16 @@ func newGenericSourceBuilder(
 		stop := func() {
 			wsConn.Unsubscribe(subResp.OpId())
 		}
-		return &subengine.Source{Events: out, Stop: stop, Buffer: genericSubscriptionBufferSize, Exclusive: exclusive}, nil
+		return &subengine.Source{Events: out, Stop: stop, Buffer: bufferSize, Exclusive: exclusive}, nil
 	}
+}
+
+// genericSourceBufferSize picks the source and per-subscriber buffer depth for a
+// node-backed subscription. Both are counted in events, so methods whose events
+// are huge get a smaller depth to keep the retained bytes bounded.
+func genericSourceBufferSize(request protocol.RequestHolder) int {
+	if request.Method() == "blockSubscribe" {
+		return blockSubscribeBufferSize
+	}
+	return genericSubscriptionBufferSize
 }

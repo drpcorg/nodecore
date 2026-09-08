@@ -252,6 +252,5 @@ func ParseJsonRpcWsMessage(body []byte) *WsResponse {
 		Message: message,
 		SubId:   subId,
 		Error:   upstreamError,
-		Event:   body,
 	}
 }
