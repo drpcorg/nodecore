@@ -411,3 +411,15 @@ func TestIsFiniteGrpcStream(t *testing.T) {
 	assert.True(t, isGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints")))
 	assert.False(t, isGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/GetObject")))
 }
+
+// blockSubscribe events are whole Solana blocks (megabytes each), so its
+// source buffer must be far smaller than the generic one: a subscriber that
+// lags by thousands of blocks pins gigabytes and never catches up anyway.
+func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
+	blockSub := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "blockSubscribe", Params: []byte(`["all",{"encoding":"json","transactionDetails":"full"}]`)}, true, "solana")
+	newHeads := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth")
+
+	assert.Equal(t, blockSubscribeBufferSize, genericSourceBufferSize(blockSub))
+	assert.Equal(t, genericSubscriptionBufferSize, genericSourceBufferSize(newHeads))
+	assert.Less(t, blockSubscribeBufferSize, genericSubscriptionBufferSize)
+}

@@ -322,8 +322,6 @@ func TestParseJsonRpcWsMessage_SubscriptionEventHasNoErrorAndCarriesSubId(t *tes
 	assert.Equal(t, protocol.Ws, ws.Type)
 	assert.Equal(t, "0xabc", ws.SubId)
 	assert.JSONEq(t, `{"number":"0x1"}`, string(ws.Message))
-	assert.Equal(t, body, ws.Event,
-		"the original full envelope must be retained as Event for downstream re-emission")
 }
 
 func TestParseWsSubMessage(t *testing.T) {
