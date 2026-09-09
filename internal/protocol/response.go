@@ -190,6 +190,10 @@ func (h *GenericUpstreamResponse) HasError() bool {
 }
 
 func jsonRpcResponseReader(id []byte, bodyName string, body []byte) io.Reader {
+	if len(id) == 0 {
+		id = []byte("null")
+	}
+
 	return io.MultiReader(
 		bytes.NewReader([]byte(`{"id":`)),
 		bytes.NewReader(id),
