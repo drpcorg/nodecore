@@ -187,7 +187,7 @@ func TestHttpConnectorType(t *testing.T) {
 			cfg := &config.ApiConnectorConfig{
 				Url: "http://localhost:8080",
 			}
-			connector, err := connectors.NewHttpConnector(cfg, test.connType, "", "test-upstream")
+			connector, err := connectors.NewHttpConnector(cfg, test.connType, "", "test-upstream", 0)
 			assert.NoError(te, err)
 
 			assert.Equal(te, test.connType, connector.GetType())
@@ -608,6 +608,7 @@ func TestRestRequest_UpstreamGzipBodyReachesFrameworkDecompressed(t *testing.T) 
 		specs.RestConnector,
 		"",
 		"test-upstream",
+		0,
 	)
 	require.NoError(t, err)
 	req := protocol.NewUpstreamRestRequest(

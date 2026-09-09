@@ -336,3 +336,50 @@ func TestSetOptionsDefaultsMethodsDetectionUpstreamValueWins(t *testing.T) {
 
 	assert.True(t, *options.DisableMethodsDetection, "an explicit per-upstream value must be left alone")
 }
+
+// http-response-timeout is the total budget for one upstream HTTP exchange (dial, headers AND the
+// whole body). Unset inherits chain-defaults, then the chain's global settings, then 60s — the value
+// that used to be hard-coded in the connector.
+func TestSetOptionsDefaultsHttpResponseTimeoutFallsBackToSixtySeconds(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chains.Settings{}, DefaultMode)
+
+	mustResolved(t, options.HttpResponseTimeout)
+	assert.Equal(t, 60*time.Second, *options.HttpResponseTimeout)
+}
+
+// An explicit 0 means "no client-side timeout at all": only the caller's context ends a stuck
+// exchange. It must survive defaulting even when chain defaults or global settings say otherwise.
+func TestSetOptionsDefaultsHttpResponseTimeoutKeepsExplicitZero(t *testing.T) {
+	options := &chains.Options{HttpResponseTimeout: new(time.Duration(0))}
+
+	setOptionsDefaults(options, &ChainDefaults{
+		Options: &chains.Options{HttpResponseTimeout: new(30 * time.Second)},
+	}, chains.Settings{Options: &chains.Options{HttpResponseTimeout: new(45 * time.Second)}}, DefaultMode)
+
+	mustResolved(t, options.HttpResponseTimeout)
+	assert.Equal(t, time.Duration(0), *options.HttpResponseTimeout)
+}
+
+func TestSetOptionsDefaultsHttpResponseTimeoutInheritsChainDefaultsOverGlobal(t *testing.T) {
+	options := &chains.Options{}
+	setOptionsDefaults(options, &ChainDefaults{
+		Options: &chains.Options{HttpResponseTimeout: new(15 * time.Second)},
+	}, chains.Settings{Options: &chains.Options{HttpResponseTimeout: new(25 * time.Second)}}, DefaultMode)
+	mustResolved(t, options.HttpResponseTimeout)
+	assert.Equal(t, 15*time.Second, *options.HttpResponseTimeout, "chain-defaults win over global chain settings")
+
+	options = &chains.Options{}
+	setOptionsDefaults(options, nil, chains.Settings{Options: &chains.Options{HttpResponseTimeout: new(25 * time.Second)}}, DefaultMode)
+	mustResolved(t, options.HttpResponseTimeout)
+	assert.Equal(t, 25*time.Second, *options.HttpResponseTimeout, "global chain settings apply when chain-defaults are silent")
+}
+
+// mustResolved fails the test when a pointer option was left unresolved by setOptionsDefaults.
+func mustResolved(t *testing.T, d *time.Duration) {
+	t.Helper()
+	if d == nil {
+		t.Fatal("expected setOptionsDefaults to resolve http-response-timeout, got nil")
+	}
+}

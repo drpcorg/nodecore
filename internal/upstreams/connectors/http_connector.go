@@ -110,6 +110,7 @@ func NewHttpConnector(
 	connectorType specs.ApiConnectorType,
 	torProxyUrl string,
 	upstreamId string,
+	httpResponseTimeout time.Duration,
 ) (*HttpConnector, error) {
 	endpoint, err := url.Parse(connectorConfig.Url)
 	if err != nil {
@@ -117,7 +118,7 @@ func NewHttpConnector(
 	}
 	transport := utils.DefaultHttpTransport()
 	client := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: httpResponseTimeout,
 	}
 	customCA, err := utils.GetCustomCAPool(connectorConfig.Ca)
 	if err != nil {

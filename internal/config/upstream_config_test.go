@@ -99,6 +99,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 		Options: &chains.Options{
 			InternalTimeout:                       5 * time.Second,
 			ValidationInterval:                    30 * time.Second,
+			HttpResponseTimeout:                   new(60 * time.Second),
 			DisableValidation:                     new(false),
 			DisableSettingsValidation:             new(false),
 			DisableChainValidation:                new(false),
@@ -150,6 +151,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 		Options: &chains.Options{
 			InternalTimeout:                       5 * time.Second,
 			ValidationInterval:                    30 * time.Second,
+			HttpResponseTimeout:                   new(60 * time.Second),
 			DisableValidation:                     new(false),
 			DisableSettingsValidation:             new(false),
 			DisableChainValidation:                new(false),
@@ -201,6 +203,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 		Options: &chains.Options{
 			InternalTimeout:                       5 * time.Second,
 			ValidationInterval:                    30 * time.Second,
+			HttpResponseTimeout:                   new(60 * time.Second),
 			DisableValidation:                     new(false),
 			DisableSettingsValidation:             new(false),
 			DisableChainValidation:                new(false),
@@ -232,6 +235,7 @@ func TestSetStrictMode(t *testing.T) {
 	expectedOptions := &chains.Options{
 		InternalTimeout:                       5 * time.Second,
 		ValidationInterval:                    30 * time.Second,
+		HttpResponseTimeout:                   new(60 * time.Second),
 		DisableValidation:                     new(false),
 		DisableSettingsValidation:             new(false),
 		DisableChainValidation:                new(false),
@@ -370,6 +374,7 @@ func TestDefaultMode(t *testing.T) {
 	expectedOptions := &chains.Options{
 		InternalTimeout:                       5 * time.Second,
 		ValidationInterval:                    30 * time.Second,
+		HttpResponseTimeout:                   new(60 * time.Second),
 		DisableValidation:                     new(false),
 		DisableSettingsValidation:             new(false),
 		DisableChainValidation:                new(false),
@@ -455,6 +460,7 @@ func TestSetChainsDefault(t *testing.T) {
 					Options: &chains.Options{
 						InternalTimeout:                       5 * time.Second,
 						ValidationInterval:                    30 * time.Second,
+						HttpResponseTimeout:                   new(60 * time.Second),
 						DisableValidation:                     new(false),
 						DisableSettingsValidation:             new(false),
 						DisableChainValidation:                new(false),
@@ -718,4 +724,36 @@ func TestInvalidHeadModeThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-head-mode.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: invalid head-mode 'sometimes', expected 'subscribe' or 'poll'")
+}
+
+func TestUpstreamOptionsInvalidHttpResponseTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-invalid-http-response-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: http response timeout can't be less than 0")
+}
+
+// An explicit `http-response-timeout: 0s` means "no client-side timeout" and must survive
+// defaulting instead of being replaced by the 60s fallback.
+func TestUpstreamOptionsHttpResponseTimeoutZeroMeansNoTimeout(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-http-response-timeout-zero.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	require.NotNil(t, reqUp.Options.HttpResponseTimeout)
+	assert.Equal(t, time.Duration(0), *reqUp.Options.HttpResponseTimeout)
+}
+
+// Unset keeps the budget the connector used to hard-code.
+func TestUpstreamOptionsHttpResponseTimeoutDefaultsToSixtySeconds(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-disable-flags.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	reqUp := appConfig.UpstreamConfig.Upstreams[0]
+	require.NotNil(t, reqUp.Options)
+	require.NotNil(t, reqUp.Options.HttpResponseTimeout)
+	assert.Equal(t, config.DefaultHttpResponseTimeout, *reqUp.Options.HttpResponseTimeout)
+	assert.Equal(t, 60*time.Second, config.DefaultHttpResponseTimeout)
 }

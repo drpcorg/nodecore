@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/stats/hook"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
@@ -121,16 +122,24 @@ func createLowerBoundsProcessor(chainSpecific chains_specific.ChainSpecific, opt
 	return chainSpecific.LowerBoundProcessor()
 }
 
+func httpResponseTimeoutOf(options *chains.Options) time.Duration {
+	if options == nil || options.HttpResponseTimeout == nil {
+		return config.DefaultHttpResponseTimeout
+	}
+	return *options.HttpResponseTimeout
+}
+
 func createConnector(
 	ctx context.Context,
 	upId string,
 	configuredChain *chains.ConfiguredChain,
 	connectorConfig *config.ApiConnectorConfig,
 	torProxyUrl string,
+	httpResponseTimeout time.Duration,
 ) (connectors.ApiConnector, error) {
 	switch connectorConfig.GetApiConnectorType() {
 	case specs.JsonRpcConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId, httpResponseTimeout)
 	case specs.WebsocketConnector:
 		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
@@ -149,13 +158,13 @@ func createConnector(
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.TendermintConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, torProxyUrl, upId, httpResponseTimeout)
 	case specs.RestConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId, httpResponseTimeout)
 	case specs.RestIndexer:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId, httpResponseTimeout)
 	case specs.RestAdditional:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId, httpResponseTimeout)
 	case specs.GrpcConnector:
 		return connectors.NewGrpcConnector(connectorConfig, upId)
 	default:
@@ -381,7 +390,7 @@ func createUpstreamConnectors(
 	var internalRequestConnector connectors.ApiConnector
 
 	for _, connectorConfig := range conf.Connectors {
-		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
+		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl, httpResponseTimeoutOf(conf.Options))
 		if err != nil {
 			return nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
 		}

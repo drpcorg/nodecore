@@ -249,6 +249,7 @@ func TestReadFullConfig(t *testing.T) {
 					Options: &chains.Options{
 						InternalTimeout:                       5 * time.Second,
 						ValidationInterval:                    30 * time.Second,
+						HttpResponseTimeout:                   new(60 * time.Second),
 						DisableValidation:                     new(false),
 						DisableSettingsValidation:             new(false),
 						DisableChainValidation:                new(false),
@@ -300,6 +301,7 @@ func TestReadFullConfig(t *testing.T) {
 					Options: &chains.Options{
 						InternalTimeout:                       5 * time.Second,
 						ValidationInterval:                    30 * time.Second,
+						HttpResponseTimeout:                   new(60 * time.Second),
 						DisableValidation:                     new(false),
 						DisableSettingsValidation:             new(false),
 						DisableChainValidation:                new(false),
