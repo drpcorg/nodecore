@@ -28,8 +28,8 @@ func newHeadFeed() *headFeed {
 	return &headFeed{mgr: utils.NewSubscriptionManager[blocks.HeadEvent]("test_heads")}
 }
 
-func (h *headFeed) Subscribe(name string) *utils.Subscription[blocks.HeadEvent] {
-	return h.mgr.Subscribe(name)
+func (h *headFeed) SubscribeWithReplay(name string) *utils.Subscription[blocks.HeadEvent] {
+	return h.mgr.SubscribeWithReplay(name)
 }
 
 func (h *headFeed) emit(height uint64) {
@@ -173,6 +173,46 @@ func TestWsHeadLivenessCapDetector(t *testing.T) {
 		// stall detection is armed again with the original window, so a real stall is
 		// still caught within the test budget instead of a backed-off multi-second window
 		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap), "expected the cap to drop after a stall")
+	})
+
+	t.Run("no stall timeout fires before the socket is connected", func(t *testing.T) {
+		conn, _ := stateFeed("ws")
+		head := newHeadFeed()
+		// timeout window ~= 100ms * 3 * 2 = 600ms
+		detector := caps.NewWsHeadLivenessCapDetector("up", "ws", protocol.WsCap, conn, head, 100*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		out := detector.DetectCaps(ctx)
+
+		// not observing yet: nothing to time out on, and no backoff of the block-time estimate
+		assertNoCaps(t, out, time.Second)
+	})
+
+	t.Run("a head stopped before the detector subscribed is learned through replay", func(t *testing.T) {
+		conn, wsMgr := stateFeed("ws")
+		head := newHeadFeed()
+		// the health probe paused the head before the cap processor started
+		head.setRunning(false)
+		// timeout window ~= 100ms * 3 * 2 = 600ms
+		detector := caps.NewWsHeadLivenessCapDetector("up", "ws", protocol.WsCap, conn, head, 100*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		out := detector.DetectCaps(ctx)
+
+		// the replayed stop is the first thing the detector sees, before any ws state
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
+
+		wsMgr.Publish(protocol.WsConnected)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
+
+		// connected, but the head is known to be paused: no stall timeout fires
+		assertNoCaps(t, out, time.Second)
+
+		head.setRunning(true)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
+		driveToLive(t, head, out, 100)
 	})
 
 	t.Run("a forward gap while connected retracts the cap", func(t *testing.T) {

@@ -89,7 +89,7 @@ func (r *RpcHead) Start() {
 	r.lifecycle.Start(func(ctx context.Context) error {
 		go func() {
 			for {
-				r.poll()
+				r.poll(ctx)
 				select {
 				case <-ctx.Done():
 					return
@@ -113,7 +113,11 @@ func (r *RpcHead) HeadsChan() chan protocol.Block {
 func (r *RpcHead) OnNoHeadUpdates() {
 }
 
-func (r *RpcHead) poll() {
+// poll fetches the latest block and hands it to the processor. The send waits for the
+// reader only while this run of the head is alive: once it is stopped nobody drains the
+// channel, and a poll parked in the send would hold the poll slot and deliver a stale block
+// on the next start.
+func (r *RpcHead) poll(runCtx context.Context) {
 	if !r.pollInProgress.Load() {
 		r.pollInProgress.Store(true)
 		defer r.pollInProgress.Store(false)
@@ -126,7 +130,10 @@ func (r *RpcHead) poll() {
 			log.Error().Err(err).Msgf("couldn't get the latest block of upstream %s", r.upstreamId)
 		} else {
 			r.block.Store(block)
-			r.headsChan <- block
+			select {
+			case r.headsChan <- block:
+			case <-runCtx.Done():
+			}
 		}
 	}
 }
@@ -180,7 +187,7 @@ func (w *SubscriptionHead) Start() {
 		}
 		w.subOpId.Store(subResponse.OpId())
 		go func() {
-			w.getLatestBlock()
+			w.getLatestBlock(ctx)
 			for {
 				select {
 				case message, ok := <-subResponse.ResponseChan():
@@ -201,7 +208,13 @@ func (w *SubscriptionHead) Start() {
 						return
 					}
 					w.block.Store(block)
-					w.headsChan <- block
+					// the reader is gone once this run is stopped; a send parked here
+					// would deliver this block on the next start as if it were fresh
+					select {
+					case w.headsChan <- block:
+					case <-ctx.Done():
+						return
+					}
 				case <-ctx.Done():
 					return
 				}
@@ -221,7 +234,7 @@ func (w *SubscriptionHead) OnNoHeadUpdates() {
 	w.Start()
 }
 
-func (w *SubscriptionHead) getLatestBlock() {
+func (w *SubscriptionHead) getLatestBlock(runCtx context.Context) {
 	ctx, cancel := context.WithTimeout(w.lifecycle.GetParentContext(), w.internalTimeout)
 	defer cancel()
 	block, err := w.chainSpecific.GetLatestBlock(ctx)
@@ -230,7 +243,10 @@ func (w *SubscriptionHead) getLatestBlock() {
 		return
 	}
 	w.block.Store(block)
-	w.headsChan <- block
+	select {
+	case w.headsChan <- block:
+	case <-runCtx.Done():
+	}
 }
 
 func NewSubHead(

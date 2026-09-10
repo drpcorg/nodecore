@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -95,7 +96,9 @@ func (h *HeadEventProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
 		h.headProcessor.Start()
 
-		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
+		// unique per start: the previous run releases its subscription asynchronously, and
+		// a pause followed by an immediate resume must not clash with it
+		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates_%s", h.upstreamId, uuid.NewString()))
 
 		go func() {
 			defer headSub.Unsubscribe()
@@ -106,7 +109,7 @@ func (h *HeadEventProcessor) Start() {
 					return
 				case event, ok := <-headSub.Events:
 					if !ok {
-						continue
+						return
 					}
 					// lifecycle changes of the head are for liveness consumers; the upstream
 					// state only ever learns about blocks

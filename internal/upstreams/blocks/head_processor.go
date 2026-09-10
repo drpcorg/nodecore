@@ -22,6 +22,11 @@ type HeadProcessor interface {
 	UpdateHead(height, slot uint64)
 
 	Subscribe(name string) *utils.Subscription[HeadEvent]
+	// SubscribeWithReplay also delivers the last published event first. On this stream that
+	// event is HeadStateEvent{Running: false} exactly when the head is stopped - Stop
+	// publishes it last and nothing else is published until Start - so a late subscriber
+	// learns whether the head is currently paused.
+	SubscribeWithReplay(name string) *utils.Subscription[HeadEvent]
 }
 
 // HeadEvent is what a head processor publishes to its subscribers: head blocks interleaved
@@ -95,6 +100,10 @@ func (h *GenericHeadProcessor) GetCurrentBlock() protocol.Block {
 
 func (h *GenericHeadProcessor) Subscribe(name string) *utils.Subscription[HeadEvent] {
 	return h.subManager.Subscribe(name)
+}
+
+func (h *GenericHeadProcessor) SubscribeWithReplay(name string) *utils.Subscription[HeadEvent] {
+	return h.subManager.SubscribeWithReplay(name)
 }
 
 func (h *GenericHeadProcessor) Running() bool {

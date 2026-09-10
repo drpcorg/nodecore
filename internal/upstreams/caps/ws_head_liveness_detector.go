@@ -30,10 +30,11 @@ const (
 	defaultBlockTime = 12 * time.Second
 )
 
-// HeadSource is the subset of blocks.HeadProcessor the detector consumes: a stream of new
-// heads. blocks.HeadProcessor satisfies it.
+// HeadSource is the subset of blocks.HeadProcessor the detector consumes: the stream of new
+// heads and head lifecycle changes, with the last event replayed so a detector that starts
+// while the head is already paused learns it. blocks.HeadProcessor satisfies it.
 type HeadSource interface {
-	Subscribe(name string) *utils.Subscription[blocks.HeadEvent]
+	SubscribeWithReplay(name string) *utils.Subscription[blocks.HeadEvent]
 }
 
 // headLivenessTracker reduces a stream of head heights into a "live" verdict The head goes live once it has produced
@@ -189,7 +190,7 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 		close(out)
 		return out
 	}
-	headSub := d.head.Subscribe(fmt.Sprintf("%s_head", d.name))
+	headSub := d.head.SubscribeWithReplay(fmt.Sprintf("%s_head", d.name))
 
 	go func() {
 		defer close(out)
@@ -202,8 +203,8 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 			measuredBlockTime: d.expectedBlockTime,
 		}
 		var wsConnected, headLive bool
-		// The head processor is started before the cap processor (Resume order), and a
-		// later pause arrives on the head stream, so "running" is the right initial guess.
+		// A head that is already paused announces itself through the replayed
+		// HeadStateEvent{Running: false}; anything else on the stream means it is running.
 		headRunning := true
 		observing := func() bool { return wsConnected && headRunning }
 
@@ -222,8 +223,10 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 
 		// The timer fires when the head produces no progress within tracker.timeout(); it is
 		// re-armed with the current window at the bottom of every iteration while observing,
-		// and held stopped otherwise.
+		// and held stopped otherwise. It starts stopped: nothing is observed until the socket
+		// reports connected, and a timeout before that would only back off the estimate.
 		timer := time.NewTimer(tracker.timeout())
+		timer.Stop()
 		defer timer.Stop()
 
 		for {
