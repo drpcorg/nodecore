@@ -190,3 +190,7 @@ var _ chains_specific.ChainSpecific = (*TendermintChainSpecific)(nil)
 func (t *TendermintChainSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (t *TendermintChainSpecific) PauseHeadWhileSyncing() bool {
+	return false
+}

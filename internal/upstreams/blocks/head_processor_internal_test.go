@@ -105,3 +105,23 @@ func TestCreateHead(t *testing.T) {
 		})
 	}
 }
+
+func TestGenericHeadProcessorUpdateHeadDoesNotBlockWhenStopped(t *testing.T) {
+	// a paused head processor has nobody draining manualHeadChan; the integrity
+	// processor must never hang on it
+	processor := &GenericHeadProcessor{manualHeadChan: make(chan protocol.Block, 100)}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 150 {
+			processor.UpdateHead(uint64(i), 0)
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("UpdateHead blocked on a full manual head channel")
+	}
+}

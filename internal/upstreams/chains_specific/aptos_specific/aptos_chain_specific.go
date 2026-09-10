@@ -165,3 +165,7 @@ var _ chains_specific.ChainSpecific = (*AptosChainSpecificObject)(nil)
 func (a *AptosChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (a *AptosChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

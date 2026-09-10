@@ -163,3 +163,7 @@ var _ chains_specific.ChainSpecific = (*CosmosRestSpecific)(nil)
 func (c *CosmosRestSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (c *CosmosRestSpecific) PauseHeadWhileSyncing() bool {
+	return false
+}

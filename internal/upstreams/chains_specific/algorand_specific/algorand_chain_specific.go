@@ -258,3 +258,7 @@ var _ chains_specific.ChainSpecific = (*AlgorandChainSpecificObject)(nil)
 func (a *AlgorandChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (a *AlgorandChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}
