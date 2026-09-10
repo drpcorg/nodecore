@@ -2,14 +2,14 @@ module github.com/drpcorg/nodecore
 
 go 1.27.0
 
-replace github.com/itchyny/gojq => github.com/drpcorg/gojq v0.0.0-20250828154704-4517ca0cd43c
-
 require (
+	cosmossdk.io/api v1.0.0
 	github.com/DataDog/sketches-go v1.4.8
-	github.com/bytedance/sonic v1.15.3-0.20260730064818-2a36d6da63e2 // TODO: switch to the v1.15.3 tag once released; go1.27 support only landed on main (last tag v1.15.2 is gated `!go1.27` and silently falls back to encoding/json)
+	github.com/bytedance/sonic v1.15.3
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
+	github.com/drpcorg/public v1.3.6
 	github.com/ethereum/go-ethereum v1.17.5
 	github.com/evanw/esbuild v0.28.2
 	github.com/failsafe-go/failsafe-go v0.9.7
@@ -20,17 +20,15 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/pyroscope-go v1.4.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/imdario/mergo v0.3.16
-	github.com/itchyny/gojq v0.12.17
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jarcoal/httpmock v1.4.2
 	github.com/juju/ratelimit v1.0.2
-	github.com/klauspost/compress v1.19.2
+	github.com/klauspost/compress v1.20.0
 	github.com/labstack/echo-contrib v0.50.1
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/client_model v0.6.3
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/rs/zerolog v1.35.1
 	github.com/sajari/regression v1.0.1
@@ -40,9 +38,9 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
@@ -67,6 +65,8 @@ require (
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
+	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
+	github.com/cosmos/gogoproto v1.7.2 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/crate-crypto/go-eth-kzg v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -86,7 +86,9 @@ require (
 	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
-	github.com/itchyny/timefmt-go v0.1.6 // indirect
+	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/itchyny/gojq v0.12.19 // indirect
+	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
@@ -135,6 +137,5 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 )
-
-tool google.golang.org/protobuf/cmd/protoc-gen-go

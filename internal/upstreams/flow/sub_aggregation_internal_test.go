@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"strings"
 	"testing"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -8,9 +9,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -379,4 +381,45 @@ func TestSubscriptionKeyDependsOnMethodParamsAndSelectors(t *testing.T) {
 	assert.NotEqual(t, subscriptionKey(newHeads), subscriptionKey(logs))
 	// same method+params (different client id) collapse onto the same source
 	assert.Equal(t, subscriptionKey(newHeads), subscriptionKey(newHeadsAgain))
+}
+
+func grpcStreamRequest(t *testing.T, method string) protocol.RequestHolder {
+	t.Helper()
+	specs_utils.LoadMethodSpecs()
+	return protocol.NewUpstreamGrpcRequest("1", method, nil, []byte{1, 2}, "sui")
+}
+
+// gRPC streams are pass-through: identical requests must never share a source.
+func TestResolveSourceGrpcStreamKeyIsUniquePerRequest(t *testing.T) {
+	request := grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/ListCheckpoints")
+	supervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+
+	key1, _, _ := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+	key2, _, _ := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+
+	prefix := subscriptionKey(request) + "|"
+	assert.True(t, strings.HasPrefix(key1, prefix))
+	assert.True(t, strings.HasPrefix(key2, prefix))
+	assert.NotEqual(t, key1, key2)
+}
+
+func TestIsFiniteGrpcStream(t *testing.T) {
+	assert.True(t, isFiniteGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/ListCheckpoints")))
+	assert.False(t, isFiniteGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints")))
+	assert.False(t, isFiniteGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/GetObject")))
+	assert.True(t, isGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints")))
+	assert.False(t, isGrpcStream(grpcStreamRequest(t, "/sui.rpc.v2.LedgerService/GetObject")))
+}
+
+// blockSubscribe events are whole Solana blocks (megabytes each), so its
+// source buffer must be far smaller than the generic one: a subscriber that
+// lags by thousands of blocks pins gigabytes and never catches up anyway.
+func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
+	blockSub := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "blockSubscribe", Params: []byte(`["all",{"encoding":"json","transactionDetails":"full"}]`)}, true, "solana")
+	newHeads := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth")
+
+	assert.Equal(t, blockSubscribeBufferSize, genericSourceBufferSize(blockSub))
+	assert.Equal(t, genericSubscriptionBufferSize, genericSourceBufferSize(newHeads))
+	assert.Less(t, blockSubscribeBufferSize, genericSubscriptionBufferSize)
 }

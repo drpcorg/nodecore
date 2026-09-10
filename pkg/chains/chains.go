@@ -1,7 +1,6 @@
 package chains
 
 import (
-	_ "embed"
 	"fmt"
 	"maps"
 	"math"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/drpcorg/public"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"gopkg.in/yaml.v3"
@@ -32,20 +32,18 @@ const (
 	Aztec               BlockchainType = "aztec"
 	Aptos               BlockchainType = "aptos"
 	Sui                 BlockchainType = "sui"
+	Celestia            BlockchainType = "celestia"
 )
 
 func IsValidBlockchainType(t string) bool {
 	switch BlockchainType(t) {
 	case Algorand, Bitcoin, Cosmos, Ethereum, EthereumBeaconChain,
-		Near, Polkadot, Solana, Starknet, Stellar, Ton, Aztec, Aptos, Sui:
+		Near, Polkadot, Solana, Starknet, Stellar, Ton, Aztec, Aptos, Sui, Celestia:
 		return true
 	default:
 		return false
 	}
 }
-
-//go:embed public/chains.yaml
-var chainsCfg []byte
 
 type ChainConfig struct {
 	ChainSettings ChainSettings `yaml:"chain-settings"`
@@ -143,7 +141,7 @@ var extraChainsMu sync.Mutex
 var extraChainsLoadedFlag bool
 
 func init() {
-	result, grpcResult, err := configureChainsFromBytes(chainsCfg)
+	result, grpcResult, err := configureChainsFromBytes(public.GetChainConfig())
 	if err != nil {
 		panic(err)
 	}
@@ -373,6 +371,8 @@ func getMethodSpecName(blockchainType BlockchainType, methodSpecName string) str
 		return "cosmos"
 	case Sui:
 		return "sui"
+	case Celestia:
+		return "celestia"
 	}
 
 	return ""

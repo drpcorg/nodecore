@@ -64,3 +64,20 @@ type testInterfaceMock struct {
 func (t *testInterfaceMock) Test() error {
 	return t.Called().Error(0)
 }
+
+// A start function that fails leaves nothing behind: the context handed to it
+// is cancelled, so whatever it bound to that context (streams, goroutines) is
+// released even though Stop() will never run for a lifecycle that never became
+// running.
+func TestLifecycleFailedStartCancelsItsContext(t *testing.T) {
+	lifecycle := utils.NewGenericLifecycle("test", context.Background())
+	var startCtx context.Context
+
+	lifecycle.Start(func(ctx context.Context) error {
+		startCtx = ctx
+		return errors.New("start failed")
+	})
+
+	assert.False(t, lifecycle.Running())
+	assert.ErrorIs(t, startCtx.Err(), context.Canceled)
+}

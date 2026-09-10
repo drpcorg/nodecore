@@ -12,7 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

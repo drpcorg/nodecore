@@ -7,7 +7,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 // reservedQueryParams names every query-string key that nodecore consumes for

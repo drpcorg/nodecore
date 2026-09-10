@@ -14,8 +14,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )

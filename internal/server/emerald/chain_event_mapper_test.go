@@ -7,7 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/server/emerald"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

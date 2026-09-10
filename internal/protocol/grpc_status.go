@@ -1,7 +1,10 @@
 package protocol
 
 import (
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // GrpcStatus is the upstream's verbatim gRPC status. It rides through the
@@ -36,7 +39,10 @@ func GrpcStatusFromError(respError *ResponseError) (*GrpcStatus, bool) {
 // client-facing status is reconstructed from it, never from this int.
 const GrpcErrorCodeBase = 10000
 
-func grpcResponseError(grpcStatus *GrpcStatus) *ResponseError {
+// NewGrpcStatusResponseError builds the ResponseError that carries an upstream
+// gRPC status verbatim. The int code is informational; routing and rendering
+// read the typed GrpcStatus in Data.
+func NewGrpcStatusResponseError(grpcStatus *GrpcStatus) *ResponseError {
 	return &ResponseError{
 		Code:    GrpcErrorCodeBase + int(grpcStatus.Code),
 		Message: grpcStatus.Message,
@@ -49,7 +55,7 @@ func grpcResponseError(grpcStatus *GrpcStatus) *ResponseError {
 // of degrading it to INTERNAL (e.g. receive-side errors: client cancel,
 // oversized request message).
 func NewGrpcStatusError(code codes.Code, message string) *ResponseError {
-	return grpcResponseError(&GrpcStatus{Code: code, Message: message})
+	return NewGrpcStatusResponseError(&GrpcStatus{Code: code, Message: message})
 }
 
 // NewGrpcUpstreamResponse frames a successful unary gRPC reply: the response
@@ -76,7 +82,7 @@ func NewGrpcUpstreamResponse(id string, body []byte) *GenericUpstreamResponse {
 //   - UNIMPLEMENTED is a partial failure too, and additionally bans the
 //     method on the upstream via ClassifyMethodAvailability.
 func NewGrpcUpstreamErrorResponse(request RequestHolder, grpcStatus *GrpcStatus) ResponseHolder {
-	respError := grpcResponseError(grpcStatus)
+	respError := NewGrpcStatusResponseError(grpcStatus)
 	switch grpcStatus.Code {
 	case codes.Unknown, codes.Internal, codes.DataLoss, codes.Unavailable, codes.Aborted,
 		codes.DeadlineExceeded, codes.ResourceExhausted, codes.Unimplemented:
@@ -108,4 +114,51 @@ func IsGrpcRateLimited(response ResponseHolder) bool {
 	}
 	grpcStatus, ok := GrpcStatusFromError(response.GetError())
 	return ok && grpcStatus.Code == codes.ResourceExhausted
+}
+
+// GrpcStatusOf turns a flow error into the *status.Status a gRPC client
+// receives. An upstream gRPC status rides through verbatim - typed details
+// included; nodecore's own error codes are mapped onto the closed 17-code
+// model. Shared by every gRPC-facing ingress so no client needs its own table.
+//
+// fromStatusProto reports that the status was reconstructed from the carried
+// google.rpc.Status bytes, i.e. those bytes are valid and may go on the wire
+// verbatim; false covers nodecore errors, statuses without proto bytes, and
+// bytes that failed to unmarshal (the code/message fallback).
+func GrpcStatusOf(respError *ResponseError) (grpcStatus *status.Status, fromStatusProto bool) {
+	if respError == nil {
+		return status.New(codes.Internal, "internal server error"), false
+	}
+	if upstreamStatus, ok := GrpcStatusFromError(respError); ok {
+		if len(upstreamStatus.StatusProto) > 0 {
+			var statusProto spb.Status
+			if err := proto.Unmarshal(upstreamStatus.StatusProto, &statusProto); err == nil {
+				return status.FromProto(&statusProto), true
+			}
+		}
+		return status.New(upstreamStatus.Code, upstreamStatus.Message), false
+	}
+
+	var code codes.Code
+	switch respError.Code {
+	case NoAvailableUpstreams, NoApiConnectors:
+		code = codes.Unavailable
+	case AuthErrorCode:
+		code = codes.PermissionDenied
+	case ClientErrorCode, WrongChain:
+		code = codes.InvalidArgument
+	case RequestTimeout, CtxErrorCode:
+		code = codes.DeadlineExceeded
+	case RateLimitExceeded:
+		code = codes.ResourceExhausted
+	case NoSupportedMethod:
+		code = codes.Unimplemented
+	case SubscribeTotalFailure:
+		// the node ended a subscription without a status, or the client fell
+		// too far behind
+		code = codes.Unavailable
+	default:
+		code = codes.Internal
+	}
+	return status.New(code, respError.Message), false
 }

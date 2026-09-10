@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 
@@ -330,6 +330,9 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		if headConnector := u.GetBestConnector(upstreamMode); headConnector != specs.UnknownType {
 			u.HeadConnector = headConnector.String()
 		}
+	}
+	if u.HeadMode == "" {
+		u.HeadMode = HeadModeSubscribe
 	}
 	if u.RateLimitAutoTune != nil {
 		u.RateLimitAutoTune.setDefaults()

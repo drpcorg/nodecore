@@ -6,7 +6,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 )
 
@@ -115,6 +115,9 @@ func (c *ChainMethods) HasMethod(method string) bool {
 }
 
 func (c *ChainMethods) GetMethod(methodName string) *specs.Method {
+	if !c.availableMethods.ContainsOne(methodName) {
+		return nil
+	}
 	for _, delegate := range c.delegates {
 		if delegate.HasMethod(methodName) {
 			return delegate.GetMethod(methodName)

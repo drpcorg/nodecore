@@ -21,10 +21,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/cosmos_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
-
-var errUnsupportedHeadSubscriptions = errors.New("cosmos rest: head subscriptions are not supported")
 
 type CosmosRestSpecific struct {
 	ctx          context.Context
@@ -91,11 +89,11 @@ func (c *CosmosRestSpecific) ParseBlock(blockBytes []byte) (protocol.Block, erro
 }
 
 func (c *CosmosRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (c *CosmosRestSpecific) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (c *CosmosRestSpecific) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

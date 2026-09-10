@@ -8,14 +8,15 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tron_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -92,7 +93,7 @@ func TestTronSubscribeHeadRequest(t *testing.T) {
 	req, err := cs.SubscribeHeadRequest()
 
 	assert.Nil(t, req)
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestTronParseSubscriptionBlock(t *testing.T) {
@@ -100,7 +101,7 @@ func TestTronParseSubscriptionBlock(t *testing.T) {
 
 	block, err := cs.ParseSubscriptionBlock([]byte(`{}`))
 
-	assert.NoError(t, err)
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 	assert.True(t, block.IsFullEmpty())
 }
 

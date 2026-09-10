@@ -23,7 +23,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/samber/lo"
 )
@@ -79,6 +79,12 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 		labelsDetectors = append(
 			labelsDetectors,
 			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
+	}
+	if e.hasMethod("eth_getProof") {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthHistoricalProofsLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		)
 	}
 

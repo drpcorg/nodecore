@@ -3,7 +3,6 @@ package ws_test
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -11,13 +10,11 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-var loadSpecsOnce sync.Once
 
 func TestJsonRpcWsProtocolRequestFrameForEthSubscription(t *testing.T) {
 	wsProtocol := ws.NewJsonRpcWsProtocol("upstream-1", "eth", chains.ETHEREUM)
@@ -284,7 +281,5 @@ func decodeBody(t *testing.T, body []byte) map[string]any {
 func loadMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	loadSpecsOnce.Do(func() {
-		require.NoError(t, specs.NewMethodSpecLoader().Load())
-	})
+	specs_utils.LoadMethodSpecs()
 }

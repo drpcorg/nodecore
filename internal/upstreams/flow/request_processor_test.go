@@ -3,7 +3,6 @@ package flow_test
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -11,16 +10,16 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()

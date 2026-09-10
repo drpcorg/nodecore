@@ -22,11 +22,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: nearcore's JSON-RPC is HTTP request/response only,
-// there is no subscription transport at all, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("near: head subscriptions are not supported")
-
 type NearChainSpecificObject struct {
 	ctx             context.Context
 	upstreamId      string
@@ -194,11 +189,11 @@ func (n *NearChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block,
 }
 
 func (n *NearChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (n *NearChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type nearBlock struct {

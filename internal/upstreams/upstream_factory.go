@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/celestia_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/cosmos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
@@ -21,7 +22,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/sui_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
-	"github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/methods"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
@@ -343,6 +344,15 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			conf.Options,
+		), nil
+	case chains.Celestia:
+		return celestia_specific.NewCelestiaChainSpecificObject(
+			ctx,
+			configuredChain,
+			conf.Id,
+			upstreamConnectorsInfo.internalRequestConnector,
+			conf.PollInterval,
 			conf.Options,
 		), nil
 	default:

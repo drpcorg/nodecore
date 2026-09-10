@@ -1,6 +1,7 @@
 package protocol_test
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -321,8 +322,6 @@ func TestParseJsonRpcWsMessage_SubscriptionEventHasNoErrorAndCarriesSubId(t *tes
 	assert.Equal(t, protocol.Ws, ws.Type)
 	assert.Equal(t, "0xabc", ws.SubId)
 	assert.JSONEq(t, `{"number":"0x1"}`, string(ws.Message))
-	assert.Equal(t, body, ws.Event,
-		"the original full envelope must be retained as Event for downstream re-emission")
 }
 
 func TestParseWsSubMessage(t *testing.T) {
@@ -499,6 +498,7 @@ func TestEncodeSubscriptionEventResponse(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.False(t, response.HasError())
+	assert.False(t, response.IsEnd())
 	assert.Equal(t, "11", response.Id())
 	assert.Nil(t, response.GetError())
 	assert.False(t, response.HasStream())
@@ -506,37 +506,35 @@ func TestEncodeSubscriptionEventResponse(t *testing.T) {
 	assert.Equal(t, result, respBytes)
 }
 
-func TestEncodeSubscriptionWithRealIdEventResponse(t *testing.T) {
-	result := []byte("event")
-	response := protocol.NewSubscriptionMessageEventResponse("11", result)
+func TestEncodeJsonRpcSubscriptionEventResponse(t *testing.T) {
+	result := []byte(`{"number":"0x1"}`)
+	response := protocol.NewJsonRpcSubscriptionEventResponse("11", "eth_subscription", result, json.RawMessage(`"0xabc"`))
 
 	respReader := response.EncodeResponse([]byte("32"))
 	respBytes, err := io.ReadAll(respReader)
 
 	assert.Nil(t, err)
 	assert.False(t, response.HasError())
+	assert.False(t, response.IsEnd())
 	assert.Equal(t, "11", response.Id())
-	assert.Nil(t, response.GetError())
-	assert.False(t, response.HasStream())
 	assert.Equal(t, result, response.ResponseResult())
-	assert.Equal(t, []byte(`{"id":32,"jsonrpc":"2.0","result":event}`), respBytes)
+	assert.JSONEq(t, `{"jsonrpc":"2.0","method":"eth_subscription","params":{"result":{"number":"0x1"},"subscription":"0xabc"}}`, string(respBytes))
 }
 
-func TestEncodeSubscriptionResultEventResponse(t *testing.T) {
-	result := []byte(`{"foo":"bar"}`)
-	response := protocol.NewSubscriptionResultEventResponse("11", result)
+func TestEncodeSubscriptionEndResponse(t *testing.T) {
+	response := protocol.NewSubscriptionEndResponse("11")
 
 	respReader := response.EncodeResponse([]byte("32"))
 	respBytes, err := io.ReadAll(respReader)
 
 	assert.Nil(t, err)
+	assert.True(t, response.IsEnd())
 	assert.False(t, response.HasError())
 	assert.Equal(t, "11", response.Id())
 	assert.Nil(t, response.GetError())
 	assert.False(t, response.HasStream())
-	assert.True(t, response.IsEventFrame())
-	assert.Equal(t, result, response.ResponseResult())
-	assert.Equal(t, result, respBytes)
+	assert.Nil(t, response.ResponseResult())
+	assert.Empty(t, respBytes)
 }
 
 func TestRestResponseSuccessLeavesErrorNil(t *testing.T) {

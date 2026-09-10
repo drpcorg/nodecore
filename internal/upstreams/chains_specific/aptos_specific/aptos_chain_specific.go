@@ -93,11 +93,11 @@ func (a *AptosChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 }
 
 func (a *AptosChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("aptos does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AptosChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("aptos does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AptosChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

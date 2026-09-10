@@ -187,11 +187,11 @@ func (b *BeaconChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bloc
 }
 
 func (b *BeaconChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("beacon chain does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (b *BeaconChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("beacon chain does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func hashOrEmpty(value string) blockchain.HashId {

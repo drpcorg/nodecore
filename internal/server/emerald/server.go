@@ -3,7 +3,7 @@ package emerald
 import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )

@@ -23,7 +23,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tron_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type TronRestSpecific struct {
@@ -109,11 +109,11 @@ func (t *TronRestSpecific) ParseBlock(bytes []byte) (protocol.Block, error) {
 }
 
 func (t *TronRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, nil
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *TronRestSpecific) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, nil
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *TronRestSpecific) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

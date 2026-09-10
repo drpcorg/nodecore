@@ -22,10 +22,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tendermint_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
-
-var errUnsupportedHeadSubscriptions = errors.New("tendermint: head subscriptions are not supported")
 
 type TendermintChainSpecific struct {
 	ctx          context.Context
@@ -94,11 +92,11 @@ func (t *TendermintChainSpecific) ParseBlock(blockBytes []byte) (protocol.Block,
 }
 
 func (t *TendermintChainSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *TendermintChainSpecific) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *TendermintChainSpecific) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

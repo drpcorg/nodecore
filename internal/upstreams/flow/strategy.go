@@ -160,7 +160,9 @@ func filterUpstreams(
 	}
 	matchers := lo.Ternary(len(additionalMatchers) > 0, additionalMatchers, make([]Matcher, 0))
 	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
-	if request.IsSubscribe() {
+	// a JSON-RPC subscription needs a live ws connector on the upstream; a gRPC
+	// stream rides the grpc connector the spec already binds the method to
+	if request.IsSubscribe() && request.RequestType() != protocol.Grpc {
 		matchers = append(matchers, NewWsCapMatcher(request.Method()))
 	}
 

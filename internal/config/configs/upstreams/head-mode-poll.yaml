@@ -1,0 +1,8 @@
+upstream-config:
+  upstreams:
+    - id: sui-upstream
+      chain: sui
+      head-mode: poll
+      connectors:
+        - type: grpc
+          url: grpc://sui.test:9000

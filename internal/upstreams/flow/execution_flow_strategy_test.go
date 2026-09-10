@@ -9,16 +9,15 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *GenericExecutionFlow {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()

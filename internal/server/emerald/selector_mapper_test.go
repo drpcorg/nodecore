@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

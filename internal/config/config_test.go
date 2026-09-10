@@ -6,7 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -196,6 +196,7 @@ func TestReadFullConfig(t *testing.T) {
 				{
 					Id:            "eth-upstream",
 					HeadConnector: specs.WebsocketConnector.String(),
+					HeadMode:      config.HeadModeSubscribe,
 					PollInterval:  3 * time.Minute,
 					ChainName:     "ethereum",
 					RateLimit: &config.RateLimiterConfig{
@@ -270,6 +271,7 @@ func TestReadFullConfig(t *testing.T) {
 				{
 					Id:            "another",
 					HeadConnector: specs.RestConnector.String(),
+					HeadMode:      config.HeadModeSubscribe,
 					PollInterval:  1 * time.Minute,
 					ChainName:     "polygon",
 					Methods: &config.MethodsConfig{

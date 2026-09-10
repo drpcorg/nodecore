@@ -10,7 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	chainspublic "github.com/drpcorg/nodecore/pkg/chains/public"
+	"github.com/drpcorg/public"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
@@ -133,7 +133,7 @@ func (v *EthClientVersionValidator) ruleApplies(rule compatibleClientRule, clien
 
 func loadCompatibleClientRules() []compatibleClientRule {
 	var cfg compatibleClientsConfig
-	if err := yaml.Unmarshal(chainspublic.GetCompatibleClients(), &cfg); err != nil {
+	if err := yaml.Unmarshal(public.GetCompatibleClients(), &cfg); err != nil {
 		log.Warn().Err(err).Msg("failed to load compatible clients config")
 		return nil
 	}

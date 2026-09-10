@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 )
 
 func mapDshackleSelectors(selectors []*dshackle.Selector) []protocol.RequestSelector {

@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/google/uuid"
 )
 
@@ -52,6 +53,13 @@ const localDrpcPendingTxKey = "local|drpcPendingTransactions"
 // the subengine default for low-volume local sources.
 const genericSubscriptionBufferSize = 4096
 
+// blockSubscribeBufferSize bounds the source buffer for Solana's blockSubscribe,
+// whose events are whole blocks - several megabytes each with full transaction
+// details. One event arrives per slot, so the buffer only has to absorb client
+// write jitter: a subscriber thousands of blocks behind would pin gigabytes and
+// never catch up, so it is better cut off early by the subengine.
+const blockSubscribeBufferSize = 100
+
 // resolveSource decides how the shared source for this subscription is produced
 // and returns its aggregation key alongside the builder, keeping the local-vs-
 // generic decision and the key in one place:
@@ -85,7 +93,30 @@ func resolveSource(
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
 	}
+	if isGrpcStream(request) {
+		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix
+		// makes the key unique per request so the engine never shares one
+		// upstream stream between clients (a late joiner of a finite List*
+		// stream would miss its first messages), while its fan-out and
+		// slow-consumer handling stay in force. Delete this branch when
+		// aggregation of gRPC streams is implemented: subscriptions then fall
+		// through to the shared subscriptionKey below (finite streams must
+		// still never be shared).
+		return fmt.Sprintf("%s|%s", subscriptionKey(request), uuid.NewString()), newGenericSourceBuilder(supervisor, request, strategy), nil
+	}
 	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
+}
+
+// isGrpcStream reports whether request is a gRPC server-streaming call of
+// either kind.
+func isGrpcStream(request protocol.RequestHolder) bool {
+	return request.SpecMethod() != nil && request.SpecMethod().GrpcCallType().IsServerStream()
+}
+
+// isFiniteGrpcStream reports a bounded gRPC stream: a clean upstream close is
+// completion, not a failure.
+func isFiniteGrpcStream(request protocol.RequestHolder) bool {
+	return request.SpecMethod() != nil && request.SpecMethod().GrpcCallType() == specs.GrpcCallTypeServerStreamFinite
 }
 
 func hasEffectiveSelectors(selectors []protocol.RequestSelector) bool {
@@ -210,17 +241,20 @@ func selectorKey(selectors []protocol.RequestSelector) string {
 }
 
 // newGenericSourceBuilder builds the default node-backed source: it selects an
-// upstream via the strategy, opens a single ws subscription, and normalizes the
-// upstream stream - surfacing errors/disconnects as a terminal frame and
-// forwarding actual events (the connector's own service frames, e.g. the ws
-// subscribe confirmation, never leave the transport layer). Works for any
-// chain family since it is spec-driven (the connector is chosen from the
-// method's api-connector types).
+// upstream via the strategy, opens a single upstream subscription/stream via the
+// method's connector, and normalizes the upstream stream - surfacing
+// errors/disconnects as a terminal frame and forwarding actual events (the
+// connector's own service frames, e.g. the ws subscribe confirmation, never
+// leave the transport layer). An end frame completes a finite gRPC stream but
+// fails a subscription. Works for any chain family since it is
+// spec-driven (the connector is chosen from the method's api-connector types).
 func newGenericSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	request protocol.RequestHolder,
 	strategy UpstreamStrategy,
 ) subengine.SourceBuilder {
+	finite := isFiniteGrpcStream(request)
+	exclusive := isGrpcStream(request) // per-request key, see resolveSource
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		upstreamId, err := strategy.SelectUpstream(request)
 		if err != nil {
@@ -246,7 +280,21 @@ func newGenericSourceBuilder(
 			stateChan = statesSub.Events
 		}
 
-		out := make(chan protocol.SubResponse, genericSubscriptionBufferSize)
+		bufferSize := genericSourceBufferSize(request)
+		out := make(chan protocol.SubResponse, bufferSize)
+		// emit never parks on a full buffer once the engine has stopped reading
+		// (after terminate nothing drains out; srcCtx is cancelled instead)
+		emit := func(r protocol.SubResponse) bool {
+			select {
+			case out <- r:
+				return true
+			case <-srcCtx.Done():
+				return false
+			}
+		}
+		failure := func() {
+			emit(&protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId})
+		}
 		go func() {
 			defer close(out)
 			defer func() {
@@ -260,16 +308,21 @@ func newGenericSourceBuilder(
 					return
 				case state, ok := <-stateChan:
 					if ok && state == protocol.WsDisconnected {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
+						failure()
 						return
 					}
 				case r, ok := <-subResp.ResponseChan():
 					if !ok {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError(), UpstreamId: upstreamId}
+						failure()
 						return
 					}
-					out <- r
-					if r.GetError() != nil {
+					if r.IsEnd() && !finite {
+						// a node ending a live subscription is a failure; only a
+						// bounded stream completes
+						failure()
+						return
+					}
+					if !emit(r) || r.GetError() != nil || r.IsEnd() {
 						return
 					}
 				}
@@ -279,6 +332,16 @@ func newGenericSourceBuilder(
 		stop := func() {
 			wsConn.Unsubscribe(subResp.OpId())
 		}
-		return &subengine.Source{Events: out, Stop: stop, Buffer: genericSubscriptionBufferSize}, nil
+		return &subengine.Source{Events: out, Stop: stop, Buffer: bufferSize, Exclusive: exclusive}, nil
 	}
+}
+
+// genericSourceBufferSize picks the source and per-subscriber buffer depth for a
+// node-backed subscription. Both are counted in events, so methods whose events
+// are huge get a smaller depth to keep the retained bytes bounded.
+func genericSourceBufferSize(request protocol.RequestHolder) int {
+	if request.Method() == "blockSubscribe" {
+		return blockSubscribeBufferSize
+	}
+	return genericSubscriptionBufferSize
 }

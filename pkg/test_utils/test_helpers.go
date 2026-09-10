@@ -18,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/celestia_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
@@ -31,9 +32,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
@@ -268,6 +269,16 @@ func NewNearChainSpecific(ctx context.Context, connector connectors.ApiConnector
 		DisableHealthValidation: new(false),
 	}
 	return near_specific.NewNearChainSpecificObject(ctx, chains.GetChain("near"), "id", connector, time.Second, options)
+}
+
+func NewCelestiaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *celestia_specific.CelestiaChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return celestia_specific.NewCelestiaChainSpecificObject(ctx, chains.GetChain("celestia"), "id", connector, time.Second, options)
 }
 
 func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConnector) *starknet_specific.StarknetChainSpecificObject {

@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tendermint_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/tendermint_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tendermint_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -187,11 +188,11 @@ func TestTendermintHeadSubscriptionsUnsupported(t *testing.T) {
 
 	req, err := cs.SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.ErrorContains(t, err, "head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
 	block, err := cs.ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.ErrorContains(t, err, "head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 // ---------- validators ----------

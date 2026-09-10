@@ -6,8 +6,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 )
 
 type WsConnector struct {

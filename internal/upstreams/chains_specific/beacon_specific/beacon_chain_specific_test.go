@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
@@ -41,13 +42,13 @@ func TestBeaconBlockProcessorEnabledForFinalized(t *testing.T) {
 func TestBeaconSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewBeaconChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "beacon chain does not support websocket subscriptions")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestBeaconParseSubscriptionBlock(t *testing.T) {
 	block, err := test_utils.NewBeaconChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "beacon chain does not support websocket subscriptions")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestBeaconParseBlock(t *testing.T) {

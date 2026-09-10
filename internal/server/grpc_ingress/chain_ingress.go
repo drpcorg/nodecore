@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,16 +13,14 @@ import (
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	spb "google.golang.org/genproto/googleapis/rpc/status"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // xNodecoreChain selects the target chain, sent as call metadata: the chain
@@ -65,9 +64,10 @@ func NewServer(appCtx *server_ctx.ApplicationServerContext, baseOptions ...grpc.
 }
 
 // chainIngress is the catch-all handler of the chain-ingress gRPC server: a
-// native gRPC call ("/sui.rpc.v2.LedgerService/GetObject") is routed through
-// the same execution flow as JSON-RPC and REST, bytes-only. It fires for
-// every service no registered handler owns - on this server only reflection
+// native gRPC call ("/sui.rpc.v2.LedgerService/GetObject"), unary or
+// server-streaming, is routed through the same execution flow as JSON-RPC and
+// REST, bytes-only. It fires for every service no registered handler owns - on
+// this server only reflection
 // is registered. The dshackle services live on their own server (grpc-port)
 // and never pass through here.
 type chainIngress struct {
@@ -98,18 +98,11 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 		return status.Errorf(codes.Unauthenticated, "auth error - %s", err.Error())
 	}
 
-	requestHandler := &grpcRequestHandler{stream: stream, md: md, method: fullMethod}
-	handleResp := c.appCtx.HandleRequest(ctx, requestHandler, authPayload, flow.NewSubCtx())
-	wrapper, ok := <-handleResp.ResponseWrappers()
-	if !ok {
-		return statusFromMissingResponse(ctx)
-	}
-
-	forwardResponseMetadata(stream, wrapper.Response)
-	if wrapper.Response.HasError() {
-		return grpcStatusFromResponseError(wrapper.Response.GetError()).Err()
-	}
-	return stream.SendMsg(&rawFrame{data: wrapper.Response.ResponseResult()})
+	call := newGrpcCall(stream, md, fullMethod)
+	// result-only: subscription frames are bare payloads (no JSON-RPC envelope,
+	// no client subscription id); irrelevant for unary calls
+	handleResp := c.appCtx.HandleRequest(ctx, call, authPayload, flow.NewSubCtx().WithSubscriptionResultOnly(true))
+	return call.serve(stream, handleResp)
 }
 
 // statusFromMissingResponse covers the response channel closing without a
@@ -140,12 +133,13 @@ func (c *chainIngress) contextWithClientIps(ctx context.Context, md metadata.MD)
 	return utils.ContextWithResolvedIps(ctx, remoteAddr, md.Get("x-forwarded-for"), trustedProxies)
 }
 
-// grpcRequestHandler decodes one unary gRPC call for the shared ingress
-// pipeline: the chain from metadata, the call type from the method spec
-// (arity is not on the gRPC wire), and exactly ONE request message - never
-// waiting for the client's half-close (grpc-go's own processUnaryRPC does
-// the same; extra frames from rogue clients are never read, HTTP/2 flow
-// control bounds them).
+// grpcRequestHandler decodes one gRPC call for the shared ingress pipeline:
+// the chain from metadata, the method from the spec (arity is not on the gRPC
+// wire), and exactly ONE request message - every routable call (unary and
+// server-streaming) has one; client-streaming/bidi are rejected by the spec
+// lookup. It never waits for the client's half-close (grpc-go's own
+// processUnaryRPC does the same; extra frames from rogue clients are never
+// read, HTTP/2 flow control bounds them).
 type grpcRequestHandler struct {
 	stream grpc.ServerStream
 	md     metadata.MD
@@ -164,14 +158,14 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 	}
 
 	specName := chains.GetMethodSpecNameByChainName(chainName)
+	// The grpc connector requirement makes the "only gRPC methods are served
+	// here" invariant local: today it also follows from the :path shape
+	// (grpc-go only accepts /Service/Method and no JSON-RPC or REST method is
+	// named that way), but that is a naming convention, not a guarantee.
 	specMethod := specs.GetSpecMethod(specName, h.method)
-	if specMethod == nil {
+	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
 		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, fmt.Sprintf("unknown method %s", h.method), nil)
 	}
-	if specMethod.GrpcCallType() == specs.GrpcCallTypeServerStream {
-		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, "server-streaming methods are not supported yet", nil)
-	}
-
 	requestFrame, err := h.receiveRequestFrame()
 	if err != nil {
 		return nil, err
@@ -192,8 +186,8 @@ func (h *grpcRequestHandler) GetRequestType() protocol.RequestType {
 }
 
 // receiveRequestFrame reads the one request message every routable method has
-// (unary now, server-stream later; client-streaming/bidi are rejected by the
-// spec lookup before this point), bounded by firstMessageDeadline: keepalives
+// (client-streaming/bidi are rejected by the spec lookup before this point),
+// bounded by firstMessageDeadline: keepalives
 // only detect dead peers, so without this a live client that opens a call and
 // never sends would hold the stream and its goroutine forever. Receive errors
 // keep their gRPC identity (client cancel, oversized message) instead of
@@ -225,50 +219,13 @@ func (h *grpcRequestHandler) receiveRequestFrame() (*rawFrame, error) {
 // headers via SetHeader (flushed with the first message or the status),
 // trailers via SetTrailer - a gRPC client must receive trailers as trailers.
 func forwardResponseMetadata(stream grpc.ServerStream, response protocol.ResponseHolder) {
-	if headerBearer, ok := response.(protocol.HasResponseHeaders); ok {
-		if headers := headerBearer.ResponseHeaders(); len(headers) > 0 {
-			_ = stream.SetHeader(metadata.MD(headers))
-		}
+	headers, trailers := protocol.ResponseMetadata(response)
+	if len(headers) > 0 {
+		_ = stream.SetHeader(metadata.MD(headers))
 	}
-	if trailerBearer, ok := response.(protocol.HasResponseTrailers); ok {
-		if trailers := trailerBearer.ResponseTrailers(); len(trailers) > 0 {
-			stream.SetTrailer(trailers)
-		}
+	if len(trailers) > 0 {
+		stream.SetTrailer(trailers)
 	}
-}
-
-// grpcStatusFromResponseError turns a flow error back into a *status.Status.
-// An upstream gRPC status rides through verbatim - typed details included;
-// nodecore's own error codes are mapped onto the closed 17-code model.
-func grpcStatusFromResponseError(respError *protocol.ResponseError) *status.Status {
-	if grpcStatus, ok := protocol.GrpcStatusFromError(respError); ok {
-		if len(grpcStatus.StatusProto) > 0 {
-			var statusProto spb.Status
-			if err := proto.Unmarshal(grpcStatus.StatusProto, &statusProto); err == nil {
-				return status.FromProto(&statusProto)
-			}
-		}
-		return status.New(grpcStatus.Code, grpcStatus.Message)
-	}
-
-	var code codes.Code
-	switch respError.Code {
-	case protocol.NoAvailableUpstreams, protocol.NoApiConnectors:
-		code = codes.Unavailable
-	case protocol.AuthErrorCode:
-		code = codes.PermissionDenied
-	case protocol.ClientErrorCode, protocol.WrongChain:
-		code = codes.InvalidArgument
-	case protocol.RequestTimeout, protocol.CtxErrorCode:
-		code = codes.DeadlineExceeded
-	case protocol.RateLimitExceeded:
-		code = codes.ResourceExhausted
-	case protocol.NoSupportedMethod:
-		code = codes.Unimplemented
-	default:
-		code = codes.Internal
-	}
-	return status.New(code, respError.Message)
 }
 
 func firstMetadataValue(md metadata.MD, key string) string {

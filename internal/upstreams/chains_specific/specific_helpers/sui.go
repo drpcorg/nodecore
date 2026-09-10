@@ -6,7 +6,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/sui"
+	"github.com/drpcorg/public/pkg/sui"
 	"google.golang.org/protobuf/proto"
 )
 

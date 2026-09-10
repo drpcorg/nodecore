@@ -32,7 +32,7 @@ For the field semantics, see [Server config](02-server-config.md).
 
 ## Services and RPCs
 
-The protocol definitions live in the [`emerald-grpc/`](../../emerald-grpc) submodule and are generated into [`pkg/dshackle/`](../../pkg/dshackle). Run `make dshackle-proto-gen` to regenerate the Go stubs after pulling submodule updates.
+The protocol definitions (`proto/`) and the generated Go stubs (`pkg/dshackle`) live in the [`drpcorg/public`](https://github.com/drpcorg/public) module; nodecore imports `github.com/drpcorg/public/pkg/dshackle`. To change the protocol, PR against that repo, release it, and bump the dependency here.
 
 ### `BlockchainService`
 
