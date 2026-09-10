@@ -8,9 +8,11 @@ package http_server
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/labstack/echo/v4"
@@ -28,7 +30,14 @@ type compressResponseWriter struct {
 	code        int
 	wroteHeader bool
 	committed   bool
+	released    bool
 }
+
+// errResponseFinished reports a write that arrived after the body was closed
+// off. There is nowhere left to put those bytes: the stream on the wire is
+// already terminated, and the codec that produced it has gone back to the
+// pool, where it may already belong to another response.
+var errResponseFinished = errors.New("the response body is already finished")
 
 // Compress returns a middleware that compresses the response body with the
 // coding the client asked for - zstd or gzip, whichever Negotiate picks.
@@ -41,7 +50,14 @@ func Compress() echo.MiddlewareFunc {
 			// this key hands a zstd body to a gzip-only client.
 			res.Header().Add(echo.HeaderVary, echo.HeaderAcceptEncoding)
 
-			scheme := compression.Negotiate(c.Request().Header.Get(echo.HeaderAcceptEncoding))
+			// Joined, not Get: a client is allowed to send Accept-Encoding as
+			// several field lines, and RFC 9110 §5.3 says they mean the same
+			// as one comma-separated line. Get would see only the first, so
+			// "Accept-Encoding: zstd;q=0" followed by "Accept-Encoding: gzip"
+			// would lose the refusal.
+			scheme := compression.Negotiate(
+				strings.Join(c.Request().Header.Values(echo.HeaderAcceptEncoding), ","),
+			)
 			if scheme == compression.Identity {
 				return next(c)
 			}
@@ -72,6 +88,11 @@ func Compress() echo.MiddlewareFunc {
 					log.Error().Err(closeErr).Msg("couldn't close a compressing writer")
 				}
 				compression.ReleaseWriter(writer)
+				// From here the codec belongs to whoever takes it out of the
+				// pool next. Anything still holding this writer - echo's
+				// error handler, an outer middleware - has to be turned away
+				// rather than allowed to write through it.
+				crw.released = true
 			}()
 			res.Writer = crw
 
@@ -101,6 +122,9 @@ func (w *compressResponseWriter) commit() {
 }
 
 func (w *compressResponseWriter) Write(b []byte) (int, error) {
+	if w.released {
+		return 0, errResponseFinished
+	}
 	if w.Header().Get(echo.HeaderContentType) == "" {
 		w.Header().Set(echo.HeaderContentType, http.DetectContentType(b))
 	}
@@ -111,6 +135,9 @@ func (w *compressResponseWriter) Write(b []byte) (int, error) {
 // Flush pushes a streamed chunk all the way to the socket: through the codec
 // first, since bytes still buffered in an encoder have not been produced yet.
 func (w *compressResponseWriter) Flush() {
+	if w.released {
+		return
+	}
 	w.commit()
 	if err := w.writer.Flush(); err != nil {
 		log.Error().Err(err).Msg("couldn't flush a compressing writer")

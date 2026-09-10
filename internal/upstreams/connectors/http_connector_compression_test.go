@@ -6,8 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -156,4 +159,151 @@ func TestUnsupportedUpstreamCodingFails(t *testing.T) {
 	r := connector.SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
 
 	assert.True(t, r.HasError(), "an undecodable body must not be passed off as a result")
+}
+
+// A node that puts a coding on a bodyless response - a 204, or an empty 200 -
+// is describing bytes that are not there. Before zstd, Go's transparent gzip
+// surfaced that as a clean empty body and the request succeeded; decoding it
+// here must not turn it into a partial failure.
+func TestUpstreamEmptyBodyWithAContentEncodingStillSucceeds(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		scheme string
+	}{
+		{"200 with an empty gzip body", http.StatusOK, "gzip"},
+		{"200 with an empty zstd body", http.StatusOK, "zstd"},
+		{"204 labelled gzip", http.StatusNoContent, "gzip"},
+		{"204 labelled zstd", http.StatusNoContent, "zstd"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(te *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Encoding", tt.scheme)
+				w.WriteHeader(tt.status)
+			}))
+			defer srv.Close()
+
+			r := restConnectorFor(te, &config.ApiConnectorConfig{Url: srv.URL}).
+				SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
+
+			require.False(te, r.HasError(), "an empty body is not an undecodable one")
+			assert.Empty(te, r.ResponseResult())
+		})
+	}
+}
+
+// The window cap that protects the ingress protects this edge too: a node
+// answering with a frame that demands more window than any real encoder emits
+// is a node nodecore should refuse rather than allocate for.
+func TestUpstreamFrameAboveTheWindowCapFails(t *testing.T) {
+	var buf bytes.Buffer
+	writer, err := zstd.NewWriter(&buf, zstd.WithWindowSize(64<<20), zstd.WithEncoderLevel(zstd.SpeedFastest))
+	require.NoError(t, err)
+	_, err = writer.Write(bytes.Repeat(upstreamBody, 1<<14))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Encoding", "zstd")
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer srv.Close()
+
+	r := restConnectorFor(t, &config.ApiConnectorConfig{Url: srv.URL}).
+		SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
+
+	assert.True(t, r.HasError())
+}
+
+// A streamed upstream response is torn down from the consuming goroutine
+// while the producing one is still reading it - a client that disconnects
+// mid-stream, or a gRPC send that fails. The decoder wrapped around the body
+// must not go back to the pool while that read is in flight; if it does, the
+// teardown deadlocks on the decoder it is trying to drain.
+func TestUpstreamStreamTornDownWhileStillBeingRead(t *testing.T) {
+	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip} {
+		t.Run(string(scheme), func(te *testing.T) {
+			plain := bytes.Repeat([]byte(`{"chunk":"0123456789abcdef"},`), 2048)
+			encoded := encodeUpstream(te, string(scheme), plain)
+
+			// Send enough of the body for a read to be under way, then hold the
+			// response open so the read is still in flight when the test tears
+			// the stream down.
+			release := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Encoding", string(scheme))
+				w.WriteHeader(http.StatusOK)
+				flusher, _ := w.(http.Flusher)
+				if _, err := w.Write(encoded[:len(encoded)/2]); err != nil {
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+				<-release
+			}))
+			defer srv.Close()
+			defer close(release)
+
+			connector := restConnectorFor(te, &config.ApiConnectorConfig{Url: srv.URL})
+
+			for range 4 {
+				r := connector.SendRequest(
+					context.Background(),
+					protocol.NewStreamUpstreamRestRequest("1", "GET#/status", nil, nil, ""),
+				)
+				require.False(te, r.HasError())
+				require.True(te, r.HasStream())
+
+				reader := r.EncodeResponse([]byte("1"))
+				closer, ok := reader.(io.Closer)
+				require.True(te, ok)
+
+				// One goroutine reads while this one closes, which is the
+				// shape streamReadAhead creates on an early return.
+				var wg sync.WaitGroup
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					_, _ = io.Copy(io.Discard, reader)
+				}()
+				time.Sleep(2 * time.Millisecond)
+
+				closed := make(chan struct{})
+				go func() {
+					defer close(closed)
+					_ = closer.Close()
+				}()
+				select {
+				case <-closed:
+				case <-time.After(15 * time.Second):
+					te.Fatal("closing a stream that is still being read did not return")
+				}
+				wg.Wait()
+			}
+
+			// The pool has to be healthy afterwards: nothing in it may still
+			// belong to one of the streams that were torn down.
+			done := make(chan struct{})
+			srvWhole := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Encoding", string(scheme))
+				_, _ = w.Write(encoded)
+			}))
+			defer srvWhole.Close()
+			go func() {
+				defer close(done)
+				whole := restConnectorFor(te, &config.ApiConnectorConfig{Url: srvWhole.URL}).
+					SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
+				assert.False(te, whole.HasError())
+				assert.Equal(te, plain, whole.ResponseResult())
+			}()
+			select {
+			case <-done:
+			case <-time.After(15 * time.Second):
+				te.Fatal("a later request could not get a working decoder from the pool")
+			}
+		})
+	}
 }

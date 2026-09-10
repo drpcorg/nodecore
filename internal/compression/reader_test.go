@@ -2,8 +2,12 @@ package compression_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"io/fs"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/klauspost/compress/gzip"
@@ -138,14 +142,255 @@ func TestWrapReaderRejectsBodyThatIsNotZstd(t *testing.T) {
 	}
 }
 
-// An empty body is a legitimate zero-byte payload, not a malformed frame.
-func TestWrapReaderAcceptsEmptyZstdBody(t *testing.T) {
-	reader, err := compression.WrapReader("zstd", bytes.NewReader(nil))
-	require.NoError(t, err)
-	defer func() { _ = reader.Close() }()
+// An empty body is a legitimate zero-byte payload, not a malformed frame -
+// and every coding has to say so. Left to the codecs they disagree: gzip
+// calls it a truncated header and zstd a missing magic. A peer that labels an
+// empty 204 with a coding used to be served by both echo's decompress
+// middleware and Go's transparent gzip, and it stays served here.
+func TestWrapReaderAcceptsAnEmptyBodyUnderEveryCoding(t *testing.T) {
+	for _, contentEncoding := range []string{"zstd", "gzip", "identity", ""} {
+		name := contentEncoding
+		if name == "" {
+			name = "absent"
+		}
+		t.Run(name, func(te *testing.T) {
+			reader, err := compression.WrapReader(contentEncoding, bytes.NewReader(nil))
+			require.NoError(te, err)
+			defer func() { require.NoError(te, reader.Close()) }()
 
-	got, err := io.ReadAll(reader)
+			got, err := io.ReadAll(reader)
 
+			require.NoError(te, err)
+			assert.Empty(te, got)
+		})
+	}
+}
+
+// A zstd frame declares its own window and the decoder allocates that much up
+// front, so the cap is the only thing standing between a few hundred bytes on
+// the wire and tens of megabytes of heap - on the ingress, where the bytes
+// come from a client, as much as upstream.
+func TestWrapReaderRejectsFramesAboveTheWindowCap(t *testing.T) {
+	// Well above the 8MiB cap, and far above anything a real encoder emits.
+	oversized := zstdBytesWithWindow(t, bytes.Repeat([]byte("nodecore"), 1<<20), 64<<20)
+
+	reader, err := compression.WrapReader("zstd", bytes.NewReader(oversized))
+	if err == nil {
+		defer func() { _ = reader.Close() }()
+		_, err = io.ReadAll(reader)
+	}
+
+	assert.Error(t, err, "a frame demanding more window than the cap must be refused, not allocated")
+}
+
+// The cap has to clear every window a real encoder asks for, or legitimate
+// bodies start failing. `zstd -19` and klauspost's best level both declare
+// exactly 8MiB; nothing mainstream goes higher.
+func TestWrapReaderAcceptsEveryWindowRealEncodersEmit(t *testing.T) {
+	plain := bytes.Repeat([]byte(`{"jsonrpc":"2.0","method":"eth_call"},`), 1<<15)
+
+	for _, window := range []int{1 << 10, 128 << 10, 1 << 20, 4 << 20, 8 << 20} {
+		t.Run(fmt.Sprintf("window=%dKiB", window>>10), func(te *testing.T) {
+			reader, err := compression.WrapReader("zstd",
+				bytes.NewReader(zstdBytesWithWindow(te, plain, window)))
+			require.NoError(te, err)
+			defer func() { require.NoError(te, reader.Close()) }()
+
+			got, err := io.ReadAll(reader)
+
+			require.NoError(te, err)
+			assert.Equal(te, plain, got)
+		})
+	}
+}
+
+func zstdBytesWithWindow(t *testing.T, plain []byte, window int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf, zstd.WithWindowSize(window), zstd.WithEncoderLevel(zstd.SpeedFastest))
 	require.NoError(t, err)
-	assert.Empty(t, got)
+	_, err = w.Write(plain)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+// parkingReader hands out the first prefixLen bytes of a body and then parks,
+// the way a read on a live connection parks waiting for the next packet. It
+// says so on `parked`, so a test can close the reader at a moment when a Read
+// is provably inside it rather than probably inside it.
+type parkingReader struct {
+	body      []byte
+	i         int
+	prefixLen int
+	parked    chan struct{}
+	release   chan struct{}
+	once      sync.Once
+}
+
+func (r *parkingReader) Read(p []byte) (int, error) {
+	if r.i < r.prefixLen {
+		n := copy(p, r.body[r.i:min(r.prefixLen, len(r.body))])
+		r.i += n
+		return n, nil
+	}
+	r.once.Do(func() { close(r.parked) })
+	<-r.release
+	return 0, io.ErrUnexpectedEOF
+}
+
+// A streamed body is closed from the consuming goroutine while the producing
+// one is still inside Read - that is how internal/server/emerald unblocks a
+// parked producer when a stream is torn down early. The codec must not be
+// handed back to the pool underneath that read: the next request would decode
+// through a codec still in use, and for zstd the release path deadlocks
+// against the read outright.
+func TestWrapReaderSurvivesACloseDuringARead(t *testing.T) {
+	for _, contentEncoding := range []string{"zstd", "gzip"} {
+		t.Run(contentEncoding, func(te *testing.T) {
+			plain := bytes.Repeat([]byte("payload-payload-"), 4096)
+			frame := zstdBytes(te, plain)
+			if contentEncoding == "gzip" {
+				frame = gzipBytes(te, plain)
+			}
+
+			for range 10 {
+				source := &parkingReader{
+					body:      frame,
+					prefixLen: len(frame) / 2,
+					parked:    make(chan struct{}),
+					release:   make(chan struct{}),
+				}
+				reader, err := compression.WrapReader(contentEncoding, source)
+				require.NoError(te, err)
+
+				readDone := make(chan struct{})
+				go func() {
+					defer close(readDone)
+					_, _ = io.Copy(io.Discard, reader)
+				}()
+
+				// A Read is now provably inside the source, not probably.
+				<-source.parked
+
+				closed := make(chan struct{})
+				go func() {
+					defer close(closed)
+					require.NoError(te, reader.Close())
+				}()
+				select {
+				case <-closed:
+				case <-time.After(10 * time.Second):
+					te.Fatal("Close blocked behind a read it was supposed to outlive")
+				}
+
+				// Only now let the read finish, as closing the body would.
+				close(source.release)
+				select {
+				case <-readDone:
+				case <-time.After(10 * time.Second):
+					te.Fatal("the parked read never returned")
+				}
+
+				// Whatever the pool holds now must belong to nobody else.
+				other, err := compression.WrapReader(contentEncoding, bytes.NewReader(frame))
+				require.NoError(te, err)
+				got, err := io.ReadAll(other)
+				require.NoError(te, err)
+				require.NoError(te, other.Close())
+				require.Equal(te, plain, got, "a codec was released while it was still being read")
+			}
+		})
+	}
+}
+
+// Reading a body after it has been closed must be refused rather than reach a
+// codec that now belongs to someone else.
+func TestWrapReaderRefusesReadsAfterClose(t *testing.T) {
+	for _, contentEncoding := range []string{"zstd", "gzip"} {
+		t.Run(contentEncoding, func(te *testing.T) {
+			frame := zstdBytes(te, []byte("payload"))
+			if contentEncoding == "gzip" {
+				frame = gzipBytes(te, []byte("payload"))
+			}
+			reader, err := compression.WrapReader(contentEncoding, bytes.NewReader(frame))
+			require.NoError(te, err)
+			require.NoError(te, reader.Close())
+			require.NoError(te, reader.Close(), "Close stays idempotent")
+
+			_, err = reader.Read(make([]byte, 8))
+
+			assert.ErrorIs(te, err, fs.ErrClosed)
+		})
+	}
+}
+
+// dribbleReader hands out one byte per Read with a short pause, so a teardown
+// racing it lands at an unpredictable point inside the codec rather than at
+// the one boundary a barrier can arrange. The barrier test above pins the
+// contract; this one goes looking for the interleavings.
+type dribbleReader struct {
+	body []byte
+	i    int
+	stop chan struct{}
+}
+
+func (r *dribbleReader) Read(p []byte) (int, error) {
+	select {
+	case <-r.stop:
+		return 0, io.ErrUnexpectedEOF
+	case <-time.After(50 * time.Microsecond):
+	}
+	if r.i >= len(r.body) {
+		return 0, io.EOF
+	}
+	n := copy(p[:1], r.body[r.i:])
+	r.i += n
+	return n, nil
+}
+
+func TestWrapReaderSurvivesATornDownStreamUnderRacingTeardown(t *testing.T) {
+	for _, contentEncoding := range []string{"zstd", "gzip"} {
+		t.Run(contentEncoding, func(te *testing.T) {
+			plain := bytes.Repeat([]byte("payload-payload-"), 4096)
+			frame := zstdBytes(te, plain)
+			if contentEncoding == "gzip" {
+				frame = gzipBytes(te, plain)
+			}
+
+			for round := range 15 {
+				source := &dribbleReader{body: frame, stop: make(chan struct{})}
+				reader, err := compression.WrapReader(contentEncoding, source)
+				require.NoError(te, err)
+
+				readDone := make(chan struct{})
+				go func() {
+					defer close(readDone)
+					_, _ = io.Copy(io.Discard, reader)
+				}()
+
+				time.Sleep(time.Duration(round%7+1) * time.Millisecond)
+				close(source.stop) // stands in for closing the response body
+				closed := make(chan struct{})
+				go func() {
+					defer close(closed)
+					_ = reader.Close()
+				}()
+				select {
+				case <-closed:
+				case <-time.After(10 * time.Second):
+					te.Fatal("Close deadlocked against a read still inside the codec")
+				}
+
+				other, err := compression.WrapReader(contentEncoding, bytes.NewReader(frame))
+				require.NoError(te, err)
+				got, err := io.ReadAll(other)
+				require.NoError(te, err)
+				require.NoError(te, other.Close())
+				require.Equal(te, plain, got, "a codec was released while it was still being read")
+
+				<-readDone
+			}
+		})
+	}
 }

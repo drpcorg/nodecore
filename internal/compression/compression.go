@@ -9,6 +9,7 @@
 package compression
 
 import (
+	"math"
 	"strconv"
 	"strings"
 )
@@ -33,38 +34,81 @@ const Offer = "zstd, gzip"
 // Accept-Encoding (RFC 9110 §12.5.3). The highest q wins; zstd breaks a tie
 // because it decodes faster and compresses denser than gzip at these levels.
 // Anything unrecognised, refused with q=0, or absent yields Identity.
+//
+// A coding the client names twice is settled by its last mention, which the
+// RFC leaves open and which lets a merged header ("gzip, gzip;q=0", two field
+// lines joined) express a refusal rather than contradict itself.
+//
+// When nothing at all is acceptable - "identity;q=0" on its own, or "*;q=0" -
+// this answers Identity rather than the 406 §12.5.3 permits. Serving a plain
+// body is the response an RPC client can actually use, and the RFC allows
+// disregarding negotiation when no available representation is acceptable.
 func Negotiate(acceptEncoding string) Scheme {
 	if acceptEncoding == "" {
 		return Identity
 	}
 
-	best, bestQ := Identity, 0.0
+	// "*" stands in only for the codings the client did not name itself, so
+	// its q is collected separately and applied afterwards. Folding it in
+	// during the scan is how "zstd;q=0, *" would end up serving zstd to a
+	// client that had just refused it.
+	var gzipQ, zstdQ, identityQ, wildcardQ float64
+	var gzipNamed, zstdNamed, identityNamed, wildcardNamed bool
+
 	for _, part := range strings.Split(acceptEncoding, ",") {
 		coding, quality := parseCoding(part)
-		if quality == 0 {
-			continue
-		}
 		switch coding {
-		case "zstd", "*":
-			coding = string(Zstd)
-		case "gzip":
-			// keep
-		default:
-			continue
-		}
-		// A strictly higher q always wins; an equal q only promotes zstd, so
-		// the tie-break can never demote a coding the client ranked higher.
-		if quality > bestQ || (quality == bestQ && Scheme(coding) == Zstd) {
-			best, bestQ = Scheme(coding), quality
+		case string(Gzip):
+			gzipQ, gzipNamed = quality, true
+		case string(Zstd):
+			zstdQ, zstdNamed = quality, true
+		case "identity":
+			identityQ, identityNamed = quality, true
+		case "*":
+			wildcardQ, wildcardNamed = quality, true
 		}
 	}
-	return best
+	if wildcardNamed {
+		// A bare "*" is a client saying anything is acceptable, so it reaches
+		// both codings at the same q and the tie-break below picks zstd.
+		if !gzipNamed {
+			gzipQ = wildcardQ
+		}
+		if !zstdNamed {
+			zstdQ = wildcardQ
+		}
+	}
+
+	// A client that ranks plain bytes above every coding it offered is asking
+	// not to be compressed, and only an explicit "identity" says that - left
+	// unmentioned it is the fallback, which it stays either way. The
+	// comparison is strict so an unranked tie still compresses.
+	if identityNamed && identityQ > gzipQ && identityQ > zstdQ {
+		return Identity
+	}
+
+	// A q of zero is a refusal rather than a weak preference, so it never
+	// wins. Of what remains the higher q takes it, and zstd takes an exact
+	// tie - which can never demote a coding the client ranked higher.
+	switch {
+	case zstdQ > 0 && zstdQ >= gzipQ:
+		return Zstd
+	case gzipQ > 0:
+		return Gzip
+	default:
+		return Identity
+	}
 }
 
 // parseCoding splits one Accept-Encoding element into its coding name and its
 // q value. A missing or malformed q means q=1: a client that garbled the
 // parameter still asked for the coding, and treating that as a refusal would
 // silently drop compression instead of failing loudly.
+//
+// The q that comes back is always a real number in [0,1]. RFC 9110 §12.4.2
+// defines qvalue over exactly that range, but ParseFloat is happy to hand
+// back "1e9", "+Inf" or "NaN", and those would order themselves against real
+// preferences in ways nobody meant.
 func parseCoding(part string) (string, float64) {
 	name, params, hasParams := strings.Cut(part, ";")
 	name = strings.ToLower(strings.TrimSpace(name))
@@ -77,7 +121,12 @@ func parseCoding(part string) (string, float64) {
 			continue
 		}
 		quality, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
-		if err != nil {
+		switch {
+		case err != nil, math.IsNaN(quality):
+			return name, 1
+		case quality < 0:
+			return name, 0
+		case quality > 1:
 			return name, 1
 		}
 		return name, quality

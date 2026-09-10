@@ -313,17 +313,21 @@ func decodeResponseBody(resp *http.Response) (io.ReadCloser, error) {
 
 // decodedBody ties the lifetime of a pooled decoder to the response body it
 // decodes, so neither the buffered nor the streaming path has to remember
-// there are two things to close.
+// there are two things to close, or which order they go in.
 type decodedBody struct {
 	io.Reader
 	decoder io.Closer
 	raw     io.Closer
 }
 
+// Close closes the raw body before the decoder, not after. A streamed
+// response can be torn down from the consuming goroutine while the producing
+// one is still parked in Read, and closing the raw body is what lets that
+// read return - the decoder cannot go back to the pool until it has.
 func (d *decodedBody) Close() error {
-	err := d.decoder.Close()
-	if rawErr := d.raw.Close(); err == nil {
-		err = rawErr
+	err := d.raw.Close()
+	if decoderErr := d.decoder.Close(); err == nil {
+		err = decoderErr
 	}
 	return err
 }

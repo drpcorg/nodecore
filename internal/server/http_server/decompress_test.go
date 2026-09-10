@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
+	"github.com/klauspost/compress/zstd"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -153,4 +154,44 @@ func TestDecompressFailsOnTruncatedStream(t *testing.T) {
 			assert.NotEqual(te, plain, seen)
 		})
 	}
+}
+
+// An empty body is nothing to decode whatever it claims to be. echo's
+// decompress middleware, which this replaced, made a point of letting one
+// through ("ignore if body is empty"), and a client that sets the header on a
+// bodyless POST must not start getting a 400 for it.
+func TestDecompressPassesEmptyBodiesThrough(t *testing.T) {
+	for _, contentEncoding := range []string{"gzip", "zstd", "identity", ""} {
+		name := contentEncoding
+		if name == "" {
+			name = "absent"
+		}
+		t.Run(name, func(te *testing.T) {
+			rec, seen := postCompressed(te, contentEncoding, nil)
+
+			assert.Equal(te, http.StatusOK, rec.Code)
+			assert.Empty(te, seen)
+		})
+	}
+}
+
+// A client body decodes through the same pooled decoders as an upstream
+// response, so the window cap that bounds a node's frame bounds a client's
+// too. Without it a few hundred bytes on the wire commit tens of megabytes of
+// heap, from anyone who can reach the port.
+func TestDecompressRejectsFramesAboveTheWindowCap(t *testing.T) {
+	plain := []byte(`{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}`)
+	var buf bytes.Buffer
+	writer, err := zstd.NewWriter(&buf, zstd.WithWindowSize(64<<20), zstd.WithEncoderLevel(zstd.SpeedFastest))
+	require.NoError(t, err)
+	_, err = writer.Write(bytes.Repeat([]byte("padding"), 1<<20))
+	require.NoError(t, err)
+	_, err = writer.Write(plain)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	rec, seen := postCompressed(t, "zstd", buf.Bytes())
+
+	assert.NotEqual(t, http.StatusOK, rec.Code)
+	assert.NotEqual(t, plain, seen)
 }
