@@ -123,6 +123,11 @@ func (e *EthSyncingValidator) Validate() protocol.AvailabilityStatus {
 		root.Get("syncTargetMsgCount").Exists() {
 		return protocol.Syncing
 	}
+	// newer Arbitrum Nitro releases report sync progress with these fields instead
+	if root.Get("executionSyncTarget").Exists() &&
+		root.Get("messageOfLastBlock").Exists() {
+		return protocol.Syncing
+	}
 	return protocol.Available
 }
 

@@ -125,3 +125,64 @@ func TestGenericHeadProcessorUpdateHeadDoesNotBlockWhenStopped(t *testing.T) {
 		t.Fatal("UpdateHead blocked on a full manual head channel")
 	}
 }
+
+// stubHead is a Head that does nothing; the processor tests only exercise the
+// lifecycle around it.
+type stubHead struct {
+	heads chan protocol.Block
+}
+
+func (s *stubHead) Start() {}
+
+func (s *stubHead) Stop() {}
+
+func (s *stubHead) Running() bool {
+	return true
+}
+
+func (s *stubHead) HeadsChan() chan protocol.Block {
+	return s.heads
+}
+
+func (s *stubHead) OnNoHeadUpdates() {}
+
+func (s *stubHead) GetCurrentBlock() protocol.Block {
+	return protocol.ZeroBlock{}
+}
+
+func (s *stubHead) UpdateHead(protocol.Block) {}
+
+func TestGenericHeadProcessorPublishesStateAroundBlocks(t *testing.T) {
+	head := &stubHead{heads: make(chan protocol.Block)}
+	processor := &GenericHeadProcessor{
+		upstreamId:           "up",
+		head:                 head,
+		manualHeadChan:       make(chan protocol.Block, 100),
+		lifecycle:            utils.NewGenericLifecycle("up_head_processor", context.Background()),
+		headNoUpdatesTimeout: time.Minute,
+		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
+	}
+	sub := processor.Subscribe("test")
+	defer sub.Unsubscribe()
+
+	processor.Start()
+	assert.Equal(t, HeadStateEvent{Running: true}, nextHeadEvent(t, sub.Events))
+
+	head.heads <- protocol.NewBlockWithHeight(10)
+	assert.Equal(t, HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(10)}, nextHeadEvent(t, sub.Events))
+
+	processor.Stop()
+	assert.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events))
+}
+
+func nextHeadEvent(t *testing.T, events <-chan HeadEvent) HeadEvent {
+	t.Helper()
+	select {
+	case event := <-events:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for a head event")
+		return nil
+	}
+}

@@ -49,6 +49,9 @@ type GenericUpstream struct {
 	headLag atomic.Int64
 
 	processorAggregator *event_processors.UpstreamProcessorAggregator
+	// pauseHeadWhileSyncing is the chain family's answer to ChainSpecific.PauseHeadWhileSyncing,
+	// captured at construction so the state pipeline does not need the chain-specific itself
+	pauseHeadWhileSyncing bool
 }
 
 // groupLabelsFromConfig builds the immutable set of config-defined group-labels
@@ -112,6 +115,7 @@ func NewGenericUpstream(
 	if err != nil {
 		return nil, err
 	}
+	upstream.pauseHeadWhileSyncing = chainSpecific.PauseHeadWhileSyncing()
 	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific)
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
@@ -141,6 +145,7 @@ func NewGenericUpstreamWithParams(
 	processorAggregator *event_processors.UpstreamProcessorAggregator,
 	stateChan *chan protocol.AbstractUpstreamStateEvent,
 	emitter *event_processors.Emitter,
+	pauseHeadWhileSyncing bool,
 ) *GenericUpstream {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -160,18 +165,19 @@ func NewGenericUpstreamWithParams(
 
 	mainLifecycle := utils.NewGenericLifecycle(fmt.Sprintf("%s_main_upstream", id), ctx)
 	return &GenericUpstream{
-		id:                  id,
-		configuredChain:     chains.GetChain(chain.String()),
-		upstreamCtx:         newUpstreamCtx(cancel, mainLifecycle),
-		upstreamState:       upState,
-		apiConnectors:       apiConnectors,
-		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
-		upstreamIndexHex:    index,
-		upConfig:            upConfig,
-		groupLabels:         groupLabelsFromConfig(upConfig),
-		processorAggregator: processorAggregator,
-		stateChan:           *stateChan,
-		emitter:             *emitter,
+		id:                    id,
+		configuredChain:       chains.GetChain(chain.String()),
+		upstreamCtx:           newUpstreamCtx(cancel, mainLifecycle),
+		upstreamState:         upState,
+		apiConnectors:         apiConnectors,
+		subManager:            utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
+		upstreamIndexHex:      index,
+		upConfig:              upConfig,
+		groupLabels:           groupLabelsFromConfig(upConfig),
+		processorAggregator:   processorAggregator,
+		stateChan:             *stateChan,
+		emitter:               *emitter,
+		pauseHeadWhileSyncing: pauseHeadWhileSyncing,
 	}
 }
 

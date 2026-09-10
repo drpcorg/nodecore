@@ -24,9 +24,27 @@ type HeadProcessor interface {
 	Subscribe(name string) *utils.Subscription[HeadEvent]
 }
 
-type HeadEvent struct {
+// HeadEvent is what a head processor publishes to its subscribers: head blocks interleaved
+// with lifecycle changes, in the order they happened. One stream keeps them ordered, so a
+// consumer can tell a block that arrived before a stop from one that arrived after a start.
+type HeadEvent interface {
+	headEvent()
+}
+
+// HeadBlockEvent carries a new head of the upstream.
+type HeadBlockEvent struct {
 	HeadData protocol.Block
 }
+
+// HeadStateEvent reports that the head processor started or stopped observing the node.
+// Silence after Running == false is not a stall: nothing is being observed.
+type HeadStateEvent struct {
+	Running bool
+}
+
+func (HeadBlockEvent) headEvent() {}
+
+func (HeadStateEvent) headEvent() {}
 
 type GenericHeadProcessor struct {
 	upstreamId           string
@@ -87,6 +105,7 @@ func (h *GenericHeadProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
 		h.head.Start()
 		h.lastUpdate.Store(time.Now())
+		h.subManager.Publish(HeadStateEvent{Running: true})
 
 		go func() {
 			timeout := time.NewTimer(h.headNoUpdatesTimeout)
@@ -102,14 +121,14 @@ func (h *GenericHeadProcessor) Start() {
 					if ok {
 						log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
 						h.lastUpdate.Store(time.Now())
-						h.subManager.Publish(HeadEvent{HeadData: block})
+						h.subManager.Publish(HeadBlockEvent{HeadData: block})
 					}
 				case manualBlock := <-h.manualHeadChan:
 					if manualBlock.Height > h.head.GetCurrentBlock().Height {
 						log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.Height)
 						h.lastUpdate.Store(time.Now())
 						h.head.UpdateHead(manualBlock)
-						h.subManager.Publish(HeadEvent{HeadData: manualBlock})
+						h.subManager.Publish(HeadBlockEvent{HeadData: manualBlock})
 					}
 				}
 				timeout.Reset(h.headNoUpdatesTimeout)
@@ -122,10 +141,16 @@ func (h *GenericHeadProcessor) Start() {
 func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
 	h.head.Stop()
+	h.subManager.Publish(HeadStateEvent{Running: false})
 }
 
 func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {
-	h.manualHeadChan <- protocol.NewBlockWithHeights(height, slot)
+	select {
+	case h.manualHeadChan <- protocol.NewBlockWithHeights(height, slot):
+	default:
+		// nobody drains the channel while the head is paused; a dropped manual head
+		// costs nothing, the next real head supersedes it
+	}
 }
 
 func createHead(

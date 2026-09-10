@@ -107,6 +107,12 @@ func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, methods.DetectionInterval)
 }
 
+// PauseHeadWhileSyncing is true for EVM nodes: a syncing execution client streams
+// newHeads at replay speed, and nothing downstream consumes those heads.
+func (e *EvmChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return true
+}
+
 // detectableMethods is the set of spec methods the detectors above may form an opinion
 // about - the chain spec's methods restricted to the connectors that speak JSON-RPC.
 func (e *EvmChainSpecificObject) detectableMethods() mapset.Set[string] {

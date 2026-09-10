@@ -33,7 +33,20 @@ func (h *headFeed) Subscribe(name string) *utils.Subscription[blocks.HeadEvent] 
 }
 
 func (h *headFeed) emit(height uint64) {
-	h.mgr.Publish(blocks.HeadEvent{HeadData: protocol.NewBlockWithHeight(height)})
+	h.mgr.Publish(blocks.HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(height)})
+}
+
+func (h *headFeed) setRunning(running bool) {
+	h.mgr.Publish(blocks.HeadStateEvent{Running: running})
+}
+
+func assertNoCaps(t *testing.T, out <-chan mapset.Set[protocol.Cap], within time.Duration) {
+	t.Helper()
+	select {
+	case c := <-out:
+		t.Fatalf("expected no cap snapshot, got %v", c.ToSlice())
+	case <-time.After(within):
+	}
 }
 
 func nextCaps(t *testing.T, out <-chan mapset.Set[protocol.Cap]) mapset.Set[protocol.Cap] {
@@ -88,7 +101,7 @@ func TestWsHeadLivenessCapDetector(t *testing.T) {
 		driveToLive(t, source, out, 102) // finish the consecutive run -> live
 	})
 
-	t.Run("ws disconnect retracts the cap even while heads keep flowing", func(t *testing.T) {
+	t.Run("ws disconnect retracts the cap and the head must re-prove itself after reconnect", func(t *testing.T) {
 		conn, wsMgr := stateFeed("ws")
 		head := newHeadFeed()
 		detector := caps.NewWsHeadLivenessCapDetector("up", "ws", protocol.WsCap, conn, head, bigBlockTime)
@@ -104,11 +117,62 @@ func TestWsHeadLivenessCapDetector(t *testing.T) {
 		wsMgr.Publish(protocol.WsDisconnected)
 		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
 
-		head.emit(last + 1) // head still live, but disconnected -> no cap
+		wsMgr.Publish(protocol.WsConnected) // reconnect alone proves nothing about the head
 		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
 
-		wsMgr.Publish(protocol.WsConnected) // reconnect -> live again
-		assert.True(t, nextCaps(t, out).Contains(protocol.WsCap))
+		driveToLive(t, head, out, last+1) // a fresh consecutive run brings the cap back
+	})
+
+	t.Run("ws disconnect pauses stall detection instead of backing off", func(t *testing.T) {
+		conn, wsMgr := stateFeed("ws")
+		head := newHeadFeed()
+		// timeout window ~= 100ms * 3 * 2 = 600ms
+		detector := caps.NewWsHeadLivenessCapDetector("up", "ws", protocol.WsCap, conn, head, 100*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		out := detector.DetectCaps(ctx)
+
+		wsMgr.Publish(protocol.WsConnected)
+		nextCaps(t, out)
+		driveToLive(t, head, out, 100)
+
+		wsMgr.Publish(protocol.WsDisconnected)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
+
+		// well past the stall window: no timeout fires while the socket is down
+		assertNoCaps(t, out, time.Second)
+	})
+
+	t.Run("a stopped head retracts the cap and pauses stall detection until it starts again", func(t *testing.T) {
+		conn, wsMgr := stateFeed("ws")
+		head := newHeadFeed()
+		// timeout window ~= 100ms * 3 * 2 = 600ms
+		detector := caps.NewWsHeadLivenessCapDetector("up", "ws", protocol.WsCap, conn, head, 100*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		out := detector.DetectCaps(ctx)
+
+		wsMgr.Publish(protocol.WsConnected)
+		nextCaps(t, out)
+		last := driveToLive(t, head, out, 100)
+
+		head.setRunning(false)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap), "a paused head is not live")
+
+		// well past the stall window: no timeout fires while the head is paused
+		assertNoCaps(t, out, time.Second)
+
+		head.setRunning(true)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap), "starting alone proves nothing")
+		// the node advanced a lot while paused: a fresh run from the new height goes live
+		// without the forward-gap cooldown
+		driveToLive(t, head, out, last+10_000)
+
+		// stall detection is armed again with the original window, so a real stall is
+		// still caught within the test budget instead of a backed-off multi-second window
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap), "expected the cap to drop after a stall")
 	})
 
 	t.Run("a forward gap while connected retracts the cap", func(t *testing.T) {

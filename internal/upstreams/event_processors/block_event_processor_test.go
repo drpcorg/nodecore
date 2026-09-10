@@ -160,7 +160,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 	headData := protocol.NewBlockWithHeight(202)
 
 	require.Eventually(t, func() bool {
-		headProcessor.Publish(blocks.HeadEvent{HeadData: headData})
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: headData})
 
 		select {
 		case event := <-events:
@@ -224,4 +224,39 @@ func TestHeadEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 
 	assert.False(t, processor.Running())
 	headProcessor.AssertExpectations(t)
+}
+
+func TestHeadEventProcessorIgnoresStateEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	headProcessor := mocks.NewHeadProcessorMock()
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
+	events := make(chan protocol.AbstractUpstreamStateEvent, 10)
+
+	headProcessor.On("Start").Return()
+	headProcessor.On("Subscribe", "upstream-1_head_updates")
+	headProcessor.On("Stop").Return()
+
+	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+	processor.Start()
+	defer processor.Stop()
+
+	headData := protocol.NewBlockWithHeight(202)
+	require.Eventually(t, func() bool {
+		// state changes carry no head data and must not reach the upstream state pipeline
+		headProcessor.Publish(blocks.HeadStateEvent{Running: false})
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: headData})
+
+		select {
+		case event := <-events:
+			headEvent, ok := event.(*protocol.HeadUpstreamStateEvent)
+			require.True(t, ok, "only head blocks are emitted, got %T", event)
+			return headEvent.HeadData.Equals(headData)
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 }

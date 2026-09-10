@@ -104,8 +104,13 @@ func (h *HeadEventProcessor) Start() {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
 					return
-				case head, ok := <-headSub.Events:
-					if ok {
+				case event, ok := <-headSub.Events:
+					if !ok {
+						continue
+					}
+					// lifecycle changes of the head are for liveness consumers; the upstream
+					// state only ever learns about blocks
+					if head, isBlock := event.(blocks.HeadBlockEvent); isBlock {
 						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
 						headsMetric.WithLabelValues(h.chain.String(), h.upstreamId).Set(float64(head.HeadData.Height))
 					}
