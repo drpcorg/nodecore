@@ -59,6 +59,9 @@ type GenericHeadProcessor struct {
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
 	manualHeadChan       chan protocol.Block
+	// drainDone is closed when the current run's drain goroutine exits. Stop waits on it so
+	// that HeadStateEvent{Running: false} is published after the last block of the run.
+	drainDone chan struct{}
 }
 
 func NewGenericHeadProcessor(
@@ -116,7 +119,10 @@ func (h *GenericHeadProcessor) Start() {
 		h.lastUpdate.Store(time.Now())
 		h.subManager.Publish(HeadStateEvent{Running: true})
 
+		drainDone := make(chan struct{})
+		h.drainDone = drainDone
 		go func() {
+			defer close(drainDone)
 			timeout := time.NewTimer(h.headNoUpdatesTimeout)
 			for {
 				select {
@@ -147,8 +153,14 @@ func (h *GenericHeadProcessor) Start() {
 	})
 }
 
+// Stop cancels the drain goroutine and waits for it before publishing the stop, so nothing
+// of this run is published after HeadStateEvent{Running: false}: a late subscriber's replay
+// then reports a paused head exactly when the head is paused.
 func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
+	if h.drainDone != nil {
+		<-h.drainDone
+	}
 	h.head.Stop()
 	h.subManager.Publish(HeadStateEvent{Running: false})
 }

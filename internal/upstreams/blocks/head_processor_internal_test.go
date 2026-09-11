@@ -3,6 +3,7 @@ package blocks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubConnector only reports its type; createHead never calls anything else
@@ -174,6 +176,42 @@ func TestGenericHeadProcessorPublishesStateAroundBlocks(t *testing.T) {
 
 	processor.Stop()
 	assert.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events))
+}
+
+func TestGenericHeadProcessorStopPublishesStateAfterTheLastBlock(t *testing.T) {
+	// a syncing node floods heads, so a producer is always parked in its send when Stop runs
+	head := &stubHead{heads: make(chan protocol.Block)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for height := uint64(1); ; height++ {
+			select {
+			case head.heads <- protocol.NewBlockWithHeight(height):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	processor := &GenericHeadProcessor{
+		upstreamId:           "up",
+		head:                 head,
+		manualHeadChan:       make(chan protocol.Block, 100),
+		lifecycle:            utils.NewGenericLifecycle("up_head_processor", context.Background()),
+		headNoUpdatesTimeout: time.Minute,
+		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
+	}
+
+	for i := range 200 {
+		processor.Start()
+		processor.Stop()
+
+		// a liveness consumer that subscribes during the pause must learn it is paused
+		sub := processor.SubscribeWithReplay(fmt.Sprintf("late_%d", i))
+		require.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events), "iteration %d", i)
+		sub.Unsubscribe()
+	}
 }
 
 func nextHeadEvent(t *testing.T, events <-chan HeadEvent) HeadEvent {
