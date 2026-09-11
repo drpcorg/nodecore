@@ -195,3 +195,59 @@ func TestDecompressRejectsFramesAboveTheWindowCap(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, rec.Code)
 	assert.NotEqual(t, plain, seen)
 }
+
+// A compressed request body is a size multiplier, and the multiplier is the
+// sender's to choose: DEFLATE tops out near 1000:1, zstd has no such ceiling,
+// so a few hundred kilobytes on the wire can ask nodecore to hold gigabytes.
+// The decoded body is capped, and a body that runs past the cap fails rather
+// than being quietly served short.
+func TestDecompressCapsTheDecodedBodySize(t *testing.T) {
+	oversize := http_server.MaxDecodedRequestBytes + 1<<20
+	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip} {
+		t.Run(string(scheme), func(te *testing.T) {
+			bomb := compress(te, scheme, bytes.Repeat([]byte("A"), oversize))
+			require.Less(te, len(bomb), 1<<20, "a bomb this cheap on the wire is the whole point of the cap")
+
+			read, readErr, rec := postAndCount(te, string(scheme), bomb)
+
+			require.Error(te, readErr, "the handler read a body past the cap without noticing")
+			assert.LessOrEqual(te, read, int64(http_server.MaxDecodedRequestBytes))
+			assert.NotEqual(te, http.StatusOK, rec.Code)
+		})
+	}
+}
+
+// The cap is a ceiling on abuse, not on real traffic: a body that decodes to
+// exactly the cap is a body nodecore still has to serve intact.
+func TestDecompressPassesBodiesUpToTheCap(t *testing.T) {
+	plain := bytes.Repeat([]byte("A"), http_server.MaxDecodedRequestBytes)
+
+	read, readErr, rec := postAndCount(t, "zstd", compress(t, compression.Zstd, plain))
+
+	require.NoError(t, readErr)
+	assert.Equal(t, int64(len(plain)), read)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// postAndCount reports how much of the body the handler managed to read, and
+// the error it stopped on, without holding the decoded bytes in memory.
+func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, error, *httptest.ResponseRecorder) {
+	t.Helper()
+	var read int64
+	var readErr error
+	e := echo.New()
+	e.Use(http_server.Decompress())
+	e.POST("/", func(c echo.Context) error {
+		read, readErr = io.Copy(io.Discard, c.Request().Body)
+		if readErr != nil {
+			return readErr
+		}
+		return c.NoContent(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentEncoding, contentEncoding)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return read, readErr, rec
+}

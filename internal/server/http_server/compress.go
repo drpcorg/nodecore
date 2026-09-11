@@ -9,7 +9,6 @@ package http_server
 import (
 	"bufio"
 	"errors"
-	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -23,6 +22,10 @@ import (
 // negotiated. The status line is held back until the first byte of body:
 // headers freeze once the status goes out, and until then we do not know
 // whether this response has a body to label with a Content-Encoding.
+//
+// The encoder is taken at that same moment, so writer stays nil for as long as
+// the response is uncommitted - and for good on a response that never has a
+// body to encode.
 type compressResponseWriter struct {
 	http.ResponseWriter
 	writer      compression.Writer
@@ -63,31 +66,23 @@ func Compress() echo.MiddlewareFunc {
 			}
 
 			rw := res.Writer
-			writer, err := compression.AcquireWriter(scheme, rw)
-			if err != nil {
-				// An unusable codec pool is an operator problem, not a reason
-				// to fail the request: serving the body uncompressed is
-				// something every client understands.
-				log.Error().Err(err).Str("scheme", string(scheme)).Msg("couldn't acquire a compressing writer")
-				return next(c)
-			}
-
-			crw := &compressResponseWriter{ResponseWriter: rw, writer: writer, scheme: scheme}
+			crw := &compressResponseWriter{ResponseWriter: rw, scheme: scheme}
 			defer func() {
 				if !crw.committed {
-					// Nothing was ever written, so no Content-Encoding went
-					// out and the codec must not append an empty frame to the
-					// body. The status still has to reach the client.
+					// Nothing was ever written, so no encoder was ever taken
+					// and no Content-Encoding went out. The status still has
+					// to reach the client.
 					if crw.wroteHeader {
 						rw.WriteHeader(crw.code)
 					}
 					res.Writer = rw
-					writer.Reset(io.Discard)
 				}
-				if closeErr := writer.Close(); closeErr != nil {
-					log.Error().Err(closeErr).Msg("couldn't close a compressing writer")
+				if crw.writer != nil {
+					if closeErr := crw.writer.Close(); closeErr != nil {
+						log.Error().Err(closeErr).Msg("couldn't close a compressing writer")
+					}
+					compression.ReleaseWriter(crw.writer)
 				}
-				compression.ReleaseWriter(writer)
 				// From here the codec belongs to whoever takes it out of the
 				// pool next. Anything still holding this writer - echo's
 				// error handler, an outer middleware - has to be turned away
@@ -115,7 +110,23 @@ func (w *compressResponseWriter) commit() {
 		return
 	}
 	w.committed = true
-	w.Header().Set(echo.HeaderContentEncoding, string(w.scheme)) // Issue #806
+	// The encoder is taken here rather than when the middleware wrapped the
+	// response, because "this response has a body" is the only thing that
+	// makes one worth holding. A handler that writes none and returns at once
+	// would merely waste a pool round-trip; one that writes none and then
+	// stays - a WebSocket upgrade hijacks the connection and lives as long as
+	// the socket does - would pin a megabyte of encoder it never writes a
+	// single byte through, once per connection, for hours.
+	writer, err := compression.AcquireWriter(w.scheme, w.ResponseWriter)
+	if err != nil {
+		// An unusable codec pool is an operator problem, not a reason to fail
+		// the request: serving the body uncompressed is something every client
+		// understands, and leaving w.writer nil is what does that.
+		log.Error().Err(err).Str("scheme", string(w.scheme)).Msg("couldn't acquire a compressing writer")
+	} else {
+		w.writer = writer
+		w.Header().Set(echo.HeaderContentEncoding, string(w.scheme)) // Issue #806
+	}
 	if w.wroteHeader {
 		w.ResponseWriter.WriteHeader(w.code)
 	}
@@ -129,6 +140,9 @@ func (w *compressResponseWriter) Write(b []byte) (int, error) {
 		w.Header().Set(echo.HeaderContentType, http.DetectContentType(b))
 	}
 	w.commit()
+	if w.writer == nil {
+		return w.ResponseWriter.Write(b)
+	}
 	return w.writer.Write(b)
 }
 
@@ -139,8 +153,10 @@ func (w *compressResponseWriter) Flush() {
 		return
 	}
 	w.commit()
-	if err := w.writer.Flush(); err != nil {
-		log.Error().Err(err).Msg("couldn't flush a compressing writer")
+	if w.writer != nil {
+		if err := w.writer.Flush(); err != nil {
+			log.Error().Err(err).Msg("couldn't flush a compressing writer")
+		}
 	}
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()

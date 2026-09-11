@@ -307,3 +307,46 @@ func TestUpstreamStreamTornDownWhileStillBeingRead(t *testing.T) {
 		})
 	}
 }
+
+// A client that walks away mid-response must not be charged to the node. The
+// decode path reads the first bytes of the body - gzip parses its header, zstd
+// peeks its frame magic - so a cancelled context surfaces right here, as a read
+// failure like any other. Calling that a partial failure both penalises a
+// healthy upstream and retries a request nobody is waiting for any more.
+func TestCancelledDecodeIsAContextFailureRatherThanTheUpstreamsFault(t *testing.T) {
+	for _, scheme := range []string{"gzip", "zstd"} {
+		t.Run(scheme, func(te *testing.T) {
+			headersOut := make(chan struct{})
+			release := make(chan struct{})
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Headers and nothing else: the body the decoder is about to
+				// read never arrives, so the read is still in flight when the
+				// context goes away.
+				w.Header().Set("Content-Encoding", scheme)
+				w.WriteHeader(http.StatusOK)
+				w.(http.Flusher).Flush()
+				close(headersOut)
+				<-release
+			}))
+			defer srv.Close()
+			defer close(release)
+
+			connector := restConnectorFor(te, &config.ApiConnectorConfig{Url: srv.URL})
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				// The headers are what ends Do and starts the decode; the pause
+				// leaves no doubt about which of the two the cancellation hits.
+				<-headersOut
+				time.Sleep(100 * time.Millisecond)
+				cancel()
+			}()
+
+			response := connector.SendRequest(ctx, protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
+
+			replyError, ok := response.(*protocol.ReplyError)
+			require.True(te, ok, "expected an error reply, got %T", response)
+			assert.Equal(te, protocol.TotalFailure, replyError.ErrorKind)
+			assert.False(te, protocol.IsRetryable(response), "a cancelled request must not be retried")
+		})
+	}
+}

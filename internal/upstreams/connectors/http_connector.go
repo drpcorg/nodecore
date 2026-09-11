@@ -506,6 +506,13 @@ func (h *HttpConnector) dispatch(
 	body, err := decodeResponseBody(resp)
 	if err != nil {
 		utils.CloseBodyReader(ctx, resp.Body)
+		// Both codings read the head of the body to validate it, so a client
+		// that walked away lands here as a read failure. That is nobody's
+		// fault upstream: reported as a partial failure it would penalise a
+		// healthy node and retry a request with no one left to answer.
+		if ctx.Err() != nil {
+			return protocol.NewTotalFailure(request, protocol.CtxError(fmt.Errorf("upstream %s: %v", h.upstreamId, ctx.Err())))
+		}
 		zerolog.Ctx(ctx).Warn().Err(err).Str("upstream", h.upstreamId).Msg("cannot decode the upstream response body")
 		return protocol.NewPartialFailure(
 			request,
