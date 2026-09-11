@@ -16,6 +16,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
@@ -58,10 +59,14 @@ var defaultResponseHeaderDeny = []string{
 // defaultRequestHeaderDeny is the request-side mirror of the response deny
 // list: RFC 7230 §6.1 hop-by-hop headers plus Host and Content-Length (both
 // owned by the transport for the *outgoing* request) and Accept-Encoding.
-// Accept-Encoding must stay with the transport: forwarding the client's value
-// disables Go's transparent decompression, so a gzip upstream body would ride
-// through unmarked (Content-Encoding is stripped from responses) and get
-// compressed a second time by the server gzip middleware (issue #268).
+//
+// Accept-Encoding belongs to this hop alone. The two hops compress
+// independently - the connector decodes whatever the node sends and the
+// server re-encodes for the client - so a client's preference says nothing
+// about what this connector should ask a node for. Forwarding it is also how
+// issue #268 happened: the upstream's compressed body lost its
+// Content-Encoding to the response deny list and was then compressed a second
+// time on the way out.
 var defaultRequestHeaderDeny = mapset.NewThreadUnsafeSet(
 	"Connection",
 	"Keep-Alive",
@@ -288,6 +293,48 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 	for k, v := range h.additionalHeaders {
 		req.Header.Set(k, v)
 	}
+	// Go's transport would negotiate gzip on its own, but only gzip, and only
+	// while no Accept-Encoding is set. Asking for zstd here therefore also
+	// takes over decoding the answer - see decodeResponseBody. An operator who
+	// pinned the header in the connector config keeps it: a node that
+	// mishandles a coding is exactly what that setting is for.
+	if req.Header.Get(acceptEncodingHeader) == "" {
+		req.Header.Set(acceptEncodingHeader, compression.Offer)
+	}
+}
+
+const acceptEncodingHeader = "Accept-Encoding"
+
+// decodeResponseBody wraps the response body in the decoder its
+// Content-Encoding calls for. The returned reader owns both the codec and the
+// body: closing it releases the pooled decoder and then the connection.
+func decodeResponseBody(resp *http.Response) (io.ReadCloser, error) {
+	decoded, err := compression.WrapReader(resp.Header.Get("Content-Encoding"), resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &decodedBody{Reader: decoded, decoder: decoded, raw: resp.Body}, nil
+}
+
+// decodedBody ties the lifetime of a pooled decoder to the response body it
+// decodes, so neither the buffered nor the streaming path has to remember
+// there are two things to close, or which order they go in.
+type decodedBody struct {
+	io.Reader
+	decoder io.Closer
+	raw     io.Closer
+}
+
+// Close closes the raw body before the decoder, not after. A streamed
+// response can be torn down from the consuming goroutine while the producing
+// one is still parked in Read, and closing the raw body is what lets that
+// read return - the decoder cannot go back to the pool until it has.
+func (d *decodedBody) Close() error {
+	err := d.raw.Close()
+	if decoderErr := d.decoder.Close(); err == nil {
+		err = decoderErr
+	}
+	return err
 }
 
 // applyClientHeaders forwards per-request client headers onto the upstream
@@ -452,20 +499,41 @@ func (h *HttpConnector) dispatch(
 		)
 	}
 
+	// Decoding happens before anything reads the body, so the buffered and
+	// streaming paths downstream only ever see plain bytes - which is what
+	// they must be, since Content-Encoding is stripped from the headers this
+	// response carries onward.
+	body, err := decodeResponseBody(resp)
+	if err != nil {
+		utils.CloseBodyReader(ctx, resp.Body)
+		// Both codings read the head of the body to validate it, so a client
+		// that walked away lands here as a read failure. That is nobody's
+		// fault upstream: reported as a partial failure it would penalise a
+		// healthy node and retry a request with no one left to answer.
+		if ctx.Err() != nil {
+			return protocol.NewTotalFailure(request, protocol.CtxError(fmt.Errorf("upstream %s: %v", h.upstreamId, ctx.Err())))
+		}
+		zerolog.Ctx(ctx).Warn().Err(err).Str("upstream", h.upstreamId).Msg("cannot decode the upstream response body")
+		return protocol.NewPartialFailure(
+			request,
+			protocol.ServerErrorWithCause(fmt.Errorf("cannot decode the response from upstream %s", h.upstreamId)),
+		)
+	}
+
 	if request.IsStream() && isSuccessStatus(resp.StatusCode) && !quorumRequested {
-		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
+		bufReader := bufio.NewReaderSize(body, protocol.MaxChunkSize)
 		if decision := allowStream(bufReader); decision.stream {
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
-			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType()).
+			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, body), request.RequestType()).
 				WithStreamHint(decision.hint)
 			return streamResp.WithResponseHeaders(h.filterResponseHeaders(resp.Header))
 		}
-		defer utils.CloseBodyReader(ctx, resp.Body)
+		defer utils.CloseBodyReader(ctx, body)
 		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, bufReader)
 	}
 
-	defer utils.CloseBodyReader(ctx, resp.Body)
-	return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, resp.Body)
+	defer utils.CloseBodyReader(ctx, body)
+	return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, body)
 }
 
 func (h *HttpConnector) receiveWholeResponse(

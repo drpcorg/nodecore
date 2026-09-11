@@ -18,9 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -73,8 +71,8 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 	configureServer(ctx, httpServer.Server)
 	configureServer(ctx, httpServer.TLSServer)
 	httpServer.JSONSerializer = &FastJSONSerializer{}
-	httpServer.Use(middleware.Decompress())
-	httpServer.Use(GzipWithConfig(GzipConfig{Level: gzip.BestSpeed}))
+	httpServer.Use(Decompress())
+	httpServer.Use(Compress())
 
 	httpGroup := httpServer.Group("/queries/:chain")
 
@@ -282,7 +280,10 @@ func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
 		for _, item := range corsOrigins {
 			if utils.MatchWildcards(item, origin) {
 				reqCtx.Response().Header().Set("Access-Control-Allow-Origin", origin)
-				reqCtx.Response().Header().Set("Vary", "Origin")
+				// Added, not set: the compression middleware has already put
+				// Accept-Encoding here, and dropping it lets a shared cache
+				// hand a zstd body to a client that only reads gzip.
+				reqCtx.Response().Header().Add("Vary", "Origin")
 				return
 			}
 		}
