@@ -214,6 +214,65 @@ func TestGenericHeadProcessorStopPublishesStateAfterTheLastBlock(t *testing.T) {
 	}
 }
 
+// resubscribingHead models a websocket head whose OnNoHeadUpdates is parked in a subscribe
+// that only returns once the head's own Stop cancels it.
+type resubscribingHead struct {
+	stubHead
+	entered  chan struct{}
+	released chan struct{}
+}
+
+func (h *resubscribingHead) OnNoHeadUpdates() {
+	close(h.entered)
+	<-h.released
+}
+
+func (h *resubscribingHead) Stop() {
+	close(h.released)
+}
+
+func TestGenericHeadProcessorStopReleasesDrainParkedInResubscribe(t *testing.T) {
+	head := &resubscribingHead{
+		stubHead: stubHead{heads: make(chan protocol.Block)},
+		entered:  make(chan struct{}),
+		released: make(chan struct{}),
+	}
+	processor := &GenericHeadProcessor{
+		upstreamId:           "up",
+		head:                 head,
+		manualHeadChan:       make(chan protocol.Block, 100),
+		lifecycle:            utils.NewGenericLifecycle("up_head_processor", context.Background()),
+		headNoUpdatesTimeout: 10 * time.Millisecond,
+		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
+	}
+
+	processor.Start()
+	select {
+	case <-head.entered:
+	case <-time.After(time.Second):
+		t.Fatal("the silence timer never fired")
+	}
+
+	// the drain goroutine is inside the resubscribe; Stop must not wait for a subscribe
+	// that only its own head.Stop() can end
+	stopped := make(chan struct{})
+	go func() {
+		processor.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop is parked behind a resubscribe the head could have cancelled")
+	}
+
+	// and the ordering guarantee still holds
+	sub := processor.SubscribeWithReplay("late")
+	defer sub.Unsubscribe()
+	assert.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events))
+}
+
 func nextHeadEvent(t *testing.T, events <-chan HeadEvent) HeadEvent {
 	t.Helper()
 	select {

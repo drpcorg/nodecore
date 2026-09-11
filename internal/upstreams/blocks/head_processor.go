@@ -156,12 +156,16 @@ func (h *GenericHeadProcessor) Start() {
 // Stop cancels the drain goroutine and waits for it before publishing the stop, so nothing
 // of this run is published after HeadStateEvent{Running: false}: a late subscriber's replay
 // then reports a paused head exactly when the head is paused.
+//
+// The head is stopped before the wait: the drain goroutine may be parked inside
+// OnNoHeadUpdates, in a resubscribe whose request honours the head's lifecycle context, and
+// head.Stop() cancelling that context is what lets the goroutine return and exit.
 func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
+	h.head.Stop()
 	if h.drainDone != nil {
 		<-h.drainDone
 	}
-	h.head.Stop()
 	h.subManager.Publish(HeadStateEvent{Running: false})
 }
 
