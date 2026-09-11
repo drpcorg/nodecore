@@ -208,7 +208,7 @@ func TestDecompressCapsTheDecodedBodySize(t *testing.T) {
 			bomb := compress(te, scheme, bytes.Repeat([]byte("A"), oversize))
 			require.Less(te, len(bomb), 1<<20, "a bomb this cheap on the wire is the whole point of the cap")
 
-			read, readErr, rec := postAndCount(te, string(scheme), bomb)
+			read, rec, readErr := postAndCount(te, string(scheme), bomb)
 
 			require.Error(te, readErr, "the handler read a body past the cap without noticing")
 			assert.LessOrEqual(te, read, int64(http_server.MaxDecodedRequestBytes))
@@ -222,7 +222,7 @@ func TestDecompressCapsTheDecodedBodySize(t *testing.T) {
 func TestDecompressPassesBodiesUpToTheCap(t *testing.T) {
 	plain := bytes.Repeat([]byte("A"), http_server.MaxDecodedRequestBytes)
 
-	read, readErr, rec := postAndCount(t, "zstd", compress(t, compression.Zstd, plain))
+	read, rec, readErr := postAndCount(t, "zstd", compress(t, compression.Zstd, plain))
 
 	require.NoError(t, readErr)
 	assert.Equal(t, int64(len(plain)), read)
@@ -231,7 +231,7 @@ func TestDecompressPassesBodiesUpToTheCap(t *testing.T) {
 
 // postAndCount reports how much of the body the handler managed to read, and
 // the error it stopped on, without holding the decoded bytes in memory.
-func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, error, *httptest.ResponseRecorder) {
+func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, *httptest.ResponseRecorder, error) {
 	t.Helper()
 	var read int64
 	var readErr error
@@ -249,5 +249,5 @@ func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, err
 	req.Header.Set(echo.HeaderContentEncoding, contentEncoding)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
-	return read, readErr, rec
+	return read, rec, readErr
 }
