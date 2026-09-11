@@ -45,7 +45,7 @@ func TestClientContentTypeReplacesTheDefault(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -65,7 +65,7 @@ func TestClientJsonContentTypeIsNotDuplicated(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -83,7 +83,7 @@ func TestNoClientContentTypeKeepsTheJsonDefault(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(nil, []byte(`{"a":1}`)))
@@ -104,7 +104,7 @@ func TestConfiguredContentTypeBeatsTheClient(t *testing.T) {
 			Url:     ts.URL,
 			Type:    "rest",
 			Headers: map[string]string{"Content-Type": "application/json"},
-		}, specs.RestConnector, "", "id", 0)
+		}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -126,7 +126,7 @@ func TestOtherClientHeadersStillStack(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -158,7 +158,7 @@ func TestRootPathIsNotDoubledForATrailingSlashEndpoint(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL + "/", Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL + "/", Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), rootRequest())
@@ -173,7 +173,7 @@ func TestRootPathIsKeptForASlashlessEndpoint(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), rootRequest())
@@ -190,7 +190,7 @@ func TestNestedPathIsNotDoubledForATrailingSlashEndpoint(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL + "/", Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL + "/", Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(),
@@ -207,7 +207,7 @@ func TestEndpointBasePathIsPreserved(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL + "/api", Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL + "/api", Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(),
@@ -229,7 +229,7 @@ func TestJsonBodyKeepsTheJsonDefaultDespiteAFormContentType(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -247,7 +247,7 @@ func TestJsonBodyKeepsTheJsonDefaultDespiteATextPlainContentType(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -268,7 +268,7 @@ func TestNonJsonBodyLetsTheClientContentTypeThrough(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -289,7 +289,7 @@ func TestJsonSuffixContentTypeIsForwardedWithoutBodyInspection(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(
@@ -308,7 +308,7 @@ func TestEmptyBodyLetsTheClientContentTypeThrough(t *testing.T) {
 	defer ts.Close()
 
 	connector, err := connectors.NewHttpConnector(
-		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id", 0)
+		&config.ApiConnectorConfig{Url: ts.URL, Type: "rest"}, specs.RestConnector, "", "id")
 	require.NoError(t, err)
 
 	response := connector.SendRequest(context.Background(), restRequestWithHeaders(

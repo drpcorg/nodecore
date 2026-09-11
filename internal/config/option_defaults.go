@@ -7,8 +7,6 @@ import (
 	"github.com/samber/lo"
 )
 
-const DefaultHttpResponseTimeout = 60 * time.Second
-
 func setOptionsDefaults(
 	upstreamOptions *chains.Options,
 	chainDefaults *ChainDefaults,
@@ -73,26 +71,6 @@ func setOptionsDefaults(
 		return getter(options)
 	}
 
-	getDurationPtr := func(options *chains.Options, getter func(*chains.Options) *time.Duration) *time.Duration {
-		if options == nil {
-			return nil
-		}
-		return getter(options)
-	}
-
-	// Pointer durations distinguish "unset" (inherit) from an explicit 0 (feature disabled), so
-	// they resolve like the *bool toggles: chain-defaults win over the chain's global settings.
-	resolveDurationPtr := func(defaultValue, chainValue *time.Duration, fallback time.Duration) *time.Duration {
-		value := fallback
-		if chainValue != nil {
-			value = *chainValue
-		}
-		if defaultValue != nil {
-			value = *defaultValue
-		}
-		return &value
-	}
-
 	if upstreamOptions.InternalTimeout == 0 {
 		upstreamOptions.InternalTimeout = resolveDuration(
 			getDuration(defaultChainOptions, func(options *chains.Options) time.Duration { return options.InternalTimeout }),
@@ -105,13 +83,6 @@ func setOptionsDefaults(
 			getDuration(defaultChainOptions, func(options *chains.Options) time.Duration { return options.ValidationInterval }),
 			getDuration(globalChainOptions, func(options *chains.Options) time.Duration { return options.ValidationInterval }),
 			30*time.Second,
-		)
-	}
-	if upstreamOptions.HttpResponseTimeout == nil {
-		upstreamOptions.HttpResponseTimeout = resolveDurationPtr(
-			getDurationPtr(defaultChainOptions, func(options *chains.Options) *time.Duration { return options.HttpResponseTimeout }),
-			getDurationPtr(globalChainOptions, func(options *chains.Options) *time.Duration { return options.HttpResponseTimeout }),
-			DefaultHttpResponseTimeout,
 		)
 	}
 	if upstreamOptions.DisableValidation == nil {

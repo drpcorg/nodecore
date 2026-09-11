@@ -336,7 +336,6 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
 * `<chain>.options` - Behavioral, validation, and detector toggles for all upstreams of this chain. Several of the boolean toggles fall back to different values depending on [`mode`](#mode); see the per-mode defaults table there for the exact fallbacks. Leaving a `*bool` field unset means "use the mode-dependent fallback":
   * `internal-timeout` - Maximum time allowed for internal nodecore probes (head poll, settings validators, label detectors). **_Default_**: `5s`
   * `validation-interval` - How frequently nodecore re-runs validators and label detectors against the upstream. **_Default_**: `30s`
-  * `http-response-timeout` - Total budget for one upstream HTTP exchange: connecting, waiting for headers **and streaming the whole body**. A response whose body cannot be delivered within it is cut. `0s` disables the client-side budget entirely: the caller's deadline (the gRPC/HTTP request context) is then the only thing that ends a stuck or slow exchange, which is what large streamed responses such as beacon `/validators` need. Applies to the HTTP connectors (`json-rpc`, `rest`, `tendermint`, `rest-indexer`, `rest-additional`); it does not change the transport-level timeouts for dialing and response headers. Must carry a unit (`120s`, `0s`). **_Default_**: `60s`
   * `disable-validation` - Master switch. When `true`, no validators of any kind run. **_Default_**: `false`
   * `disable-settings-validation` - Disables the settings validators as a group (chain id / net version, peers, syncing, call-limit). **_Default_**: `false`
   * `disable-chain-validation` - Disables only the chain-id / net-version validator. **_Default_**: `false`
@@ -606,6 +605,27 @@ Supported connector types:
 - `rest-additional` - REST endpoints that augment a chain whose primary transport is something else (e.g. Hyperliquid). This is an *additional* connector: it cannot work standalone at all - an upstream cannot consist of only `rest-additional` connectors, at least one plain connector (`json-rpc` / `tendermint` / `rest` / `grpc` / `websocket` / `rest-indexer`) must also be configured
 
 By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each incoming request.
+
+#### connector settings
+
+Each connector may carry a `settings` block of per-transport tuning. Settings are grouped by the transport they apply to, so that knobs for different connector kinds can be added without them colliding; today the only group is `http`. A group may only be set on a connector that actually uses that transport - `http` settings on a `websocket` or `grpc` connector are rejected at config load rather than silently ignored.
+
+`http` applies to the connectors backed by an HTTP client: `json-rpc`, `tendermint`, `rest`, `rest-indexer` and `rest-additional`.
+
+  * `response-timeout` - Total budget for one upstream HTTP exchange: connecting, waiting for headers **and streaming the whole body**. A response whose body cannot be delivered within it is cut. `0s` disables the client-side budget entirely: the caller's deadline (the gRPC/HTTP request context) is then the only thing that ends a stuck or slow exchange, which is what large streamed responses such as beacon `/validators` need. It does not change the transport-level timeouts for dialing and response headers. Must carry a unit (`120s`, `0s`). **_Default_**: `60s`
+
+```yaml
+upstreams:
+  - id: eth-beacon
+    chain: eth-beacon-chain
+    connectors:
+      - type: rest
+        url: http://beacon-node:5052
+        settings:
+          http:
+            # no client-side budget; the caller's deadline ends the exchange
+            response-timeout: 0s
+```
 
 Every upstream must also track its head (latest block / finalization state). The connector used for head tracking is selected as follows:
 

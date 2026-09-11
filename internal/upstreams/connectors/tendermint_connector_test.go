@@ -42,7 +42,6 @@ func newTendermintConnector(t *testing.T, handler http.HandlerFunc) (*connectors
 		specs.TendermintConnector,
 		"",
 		"test-upstream",
-		0,
 	)
 	require.NoError(t, err)
 	return connector, captured

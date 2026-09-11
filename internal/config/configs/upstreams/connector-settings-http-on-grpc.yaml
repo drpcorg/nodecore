@@ -1,0 +1,10 @@
+upstream-config:
+  upstreams:
+    - id: sui-upstream
+      chain: sui
+      connectors:
+        - type: grpc
+          url: grpc://localhost:9000
+          settings:
+            http:
+              response-timeout: 30s

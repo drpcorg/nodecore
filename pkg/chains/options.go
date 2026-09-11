@@ -11,20 +11,19 @@ import (
 const ArchiveLabel = "archive"
 
 type Options struct {
-	InternalTimeout    time.Duration `yaml:"internal-timeout"`
-	ValidationInterval time.Duration `yaml:"validation-interval"`
-	HttpResponseTimeout                   *time.Duration `yaml:"http-response-timeout"`
-	DisableValidation                     *bool          `yaml:"disable-validation"`
-	DisableSettingsValidation             *bool          `yaml:"disable-settings-validation"`
-	DisableChainValidation                *bool          `yaml:"disable-chain-validation"`
-	DisableHealthValidation               *bool          `yaml:"disable-health-validation"`
-	DisableLowerBoundsDetection           *bool          `yaml:"disable-lower-bounds-detection"`
-	DisableSafeBlockDetection             *bool          `yaml:"disable-safe-block-detection"`
-	DisableFinalizedBlockDetection        *bool          `yaml:"disable-finalized-block-detection"`
-	DisableLabelsDetection                *bool          `yaml:"disable-labels-detection"`
-	DisableMethodsDetection               *bool          `yaml:"disable-methods-detection"`
-	DisableLogIndexValidation             *bool          `yaml:"disable-log-index-validation"`
-	DisableLivenessSubscriptionValidation *bool          `yaml:"disable-liveness-subscription-validation"`
+	InternalTimeout                       time.Duration `yaml:"internal-timeout"`
+	ValidationInterval                    time.Duration `yaml:"validation-interval"`
+	DisableValidation                     *bool         `yaml:"disable-validation"`
+	DisableSettingsValidation             *bool         `yaml:"disable-settings-validation"`
+	DisableChainValidation                *bool         `yaml:"disable-chain-validation"`
+	DisableHealthValidation               *bool         `yaml:"disable-health-validation"`
+	DisableLowerBoundsDetection           *bool         `yaml:"disable-lower-bounds-detection"`
+	DisableSafeBlockDetection             *bool         `yaml:"disable-safe-block-detection"`
+	DisableFinalizedBlockDetection        *bool         `yaml:"disable-finalized-block-detection"`
+	DisableLabelsDetection                *bool         `yaml:"disable-labels-detection"`
+	DisableMethodsDetection               *bool         `yaml:"disable-methods-detection"`
+	DisableLogIndexValidation             *bool         `yaml:"disable-log-index-validation"`
+	DisableLivenessSubscriptionValidation *bool         `yaml:"disable-liveness-subscription-validation"`
 	// ArchiveCapability is deprecated: set the 'archive' upstream label instead. It is
 	// still honoured - Upstream.setDefaults translates it into that label and warns -
 	// so existing configs keep working rather than silently losing the override.
@@ -77,9 +76,6 @@ func (o *Options) Validate() error {
 	}
 	if o.ValidationInterval < 0 {
 		return errors.New("validation interval can't be less than 0")
-	}
-	if o.HttpResponseTimeout != nil && *o.HttpResponseTimeout < 0 {
-		return errors.New("http response timeout can't be less than 0")
 	}
 	return nil
 }

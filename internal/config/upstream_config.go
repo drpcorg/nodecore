@@ -358,6 +358,56 @@ type ApiConnectorConfig struct {
 	// hard-coded defaults (hop-by-hop per RFC 7230 plus Set-Cookie /
 	// Server). Matching is case-insensitive (HTTP header rules).
 	ResponseHeaderDeny []string `yaml:"response-header-deny,omitempty"`
+	// Settings carries per-transport connector tuning; see ConnectorSettings.
+	Settings *ConnectorSettings `yaml:"settings,omitempty"`
+}
+const DefaultHttpResponseTimeout = 60 * time.Second
+// ConnectorSettings groups per-connector tuning by the transport it applies to, so that
+// settings for different connector kinds can be added without widening
+// ApiConnectorConfig itself. Only the group matching the connector's own transport may be
+// set - validate rejects the others rather than ignoring them silently.
+type ConnectorSettings struct {
+	Http *HttpConnectorSettings `yaml:"http,omitempty"`
+}
+type HttpConnectorSettings struct {
+	ResponseTimeout *time.Duration `yaml:"response-timeout"`
+}
+var httpConnectorTypes = []specs.ApiConnectorType{
+	specs.JsonRpcConnector,
+	specs.TendermintConnector,
+	specs.RestConnector,
+	specs.RestIndexer,
+	specs.RestAdditional,
+}
+func isHttpConnectorType(connectorType specs.ApiConnectorType) bool {
+	return slices.Contains(httpConnectorTypes, connectorType)
+}
+func (a *ApiConnectorConfig) HttpResponseTimeout() time.Duration {
+	if a == nil || a.Settings == nil || a.Settings.Http == nil || a.Settings.Http.ResponseTimeout == nil {
+		return DefaultHttpResponseTimeout
+	}
+	return *a.Settings.Http.ResponseTimeout
+}
+func (s *ConnectorSettings) validate(connectorName string, connectorType specs.ApiConnectorType) error {
+	if s == nil {
+		return nil
+	}
+	if s.Http != nil {
+		if !isHttpConnectorType(connectorType) {
+			return fmt.Errorf("http settings are not applicable to the '%s' connector", connectorName)
+		}
+		if err := s.Http.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *HttpConnectorSettings) validate() error {
+	if h.ResponseTimeout != nil && *h.ResponseTimeout < 0 {
+		return errors.New("http response timeout can't be less than 0")
+	}
+	return nil
 }
 
 func (a *ApiConnectorConfig) GetApiConnectorType() specs.ApiConnectorType {
@@ -707,6 +757,10 @@ func (c *ChainDefaults) validate() error {
 
 func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 	if err := specs.ValidateApiConnectorType(a.Type); err != nil {
+		return err
+	}
+
+	if err := a.Settings.validate(a.Type, a.GetApiConnectorType()); err != nil {
 		return err
 	}
 
