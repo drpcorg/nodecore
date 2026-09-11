@@ -30,10 +30,11 @@ const (
 	defaultBlockTime = 12 * time.Second
 )
 
-// HeadSource is the subset of blocks.HeadProcessor the detector consumes: a stream of new
-// heads. blocks.HeadProcessor satisfies it.
+// HeadSource is the subset of blocks.HeadProcessor the detector consumes: the stream of new
+// heads and head lifecycle changes, with the last event replayed so a detector that starts
+// while the head is already paused learns it. blocks.HeadProcessor satisfies it.
 type HeadSource interface {
-	Subscribe(name string) *utils.Subscription[blocks.HeadEvent]
+	SubscribeWithReplay(name string) *utils.Subscription[blocks.HeadEvent]
 }
 
 // headLivenessTracker reduces a stream of head heights into a "live" verdict The head goes live once it has produced
@@ -121,6 +122,19 @@ func (h *headLivenessTracker) onTimeout() bool {
 	return h.live
 }
 
+// suspend records that observation stopped: the head is paused or the socket is down.
+// Liveness is retracted and the next observe becomes a new baseline that starts a fresh run,
+// so the height jump accumulated while not looking is not mistaken for a forward gap and no
+// cooldown is imposed. measuredBlockTime is untouched: nothing was learned about the chain,
+// and the gap is ours, not the node's. Returns the (now false) verdict.
+func (h *headLivenessTracker) suspend() bool {
+	h.live = false
+	h.count = 0
+	h.haveLast = false
+	h.haveLastBlockTime = false
+	return h.live
+}
+
 // timeout is the stall window: how long the detector waits for head progress before calling onTimeout.
 func (h *headLivenessTracker) timeout() time.Duration {
 	return h.measuredBlockTime * checkedBlocksUntilLive * timeoutMultiplier
@@ -132,6 +146,12 @@ func (h *headLivenessTracker) timeout() time.Duration {
 // upstream out of subscription serving without affecting regular RPC routing. If the connector
 // isn't a websocket (SubscribeStates returns nil) or there is no head source, the cap is never
 // asserted.
+//
+// Stall detection only runs while the detector is actually observing the node: the socket is
+// connected and the head processor is running. A disconnect or a head pause retracts the cap
+// at once, stops the stall timer, and makes the head re-prove itself with a fresh consecutive
+// run once observation resumes - without the timeout backoff, which would otherwise inflate the
+// block-time estimate for the rest of the process lifetime.
 type WsHeadLivenessCapDetector struct {
 	upstreamId        string
 	name              string
@@ -170,7 +190,7 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 		close(out)
 		return out
 	}
-	headSub := d.head.Subscribe(fmt.Sprintf("%s_head", d.name))
+	headSub := d.head.SubscribeWithReplay(fmt.Sprintf("%s_head", d.name))
 
 	go func() {
 		defer close(out)
@@ -183,6 +203,10 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 			measuredBlockTime: d.expectedBlockTime,
 		}
 		var wsConnected, headLive bool
+		// A head that is already paused announces itself through the replayed
+		// HeadStateEvent{Running: false}; anything else on the stream means it is running.
+		headRunning := true
+		observing := func() bool { return wsConnected && headRunning }
 
 		emit := func() bool {
 			caps := mapset.NewThreadUnsafeSet[protocol.Cap]()
@@ -198,8 +222,11 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 		}
 
 		// The timer fires when the head produces no progress within tracker.timeout(); it is
-		// re-armed with the current window at the bottom of every iteration.
+		// re-armed with the current window at the bottom of every iteration while observing,
+		// and held stopped otherwise. It starts stopped: nothing is observed until the socket
+		// reports connected, and a timeout before that would only back off the estimate.
 		timer := time.NewTimer(tracker.timeout())
+		timer.Stop()
 		defer timer.Stop()
 
 		for {
@@ -211,6 +238,9 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 					return
 				}
 				wsConnected = state == protocol.WsConnected
+				if !wsConnected {
+					headLive = tracker.suspend()
+				}
 				if !emit() {
 					return
 				}
@@ -218,7 +248,15 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 				if !ok {
 					return
 				}
-				headLive = tracker.observe(event.HeadData.Height)
+				switch event := event.(type) {
+				case blocks.HeadBlockEvent:
+					headLive = tracker.observe(event.HeadData.Height)
+				case blocks.HeadStateEvent:
+					headRunning = event.Running
+					if !headRunning {
+						headLive = tracker.suspend()
+					}
+				}
 				if !emit() {
 					return
 				}
@@ -228,7 +266,11 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 					return
 				}
 			}
-			timer.Reset(tracker.timeout())
+			if observing() {
+				timer.Reset(tracker.timeout())
+			} else {
+				timer.Stop()
+			}
 		}
 	}()
 

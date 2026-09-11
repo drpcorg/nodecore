@@ -220,3 +220,7 @@ var _ chains_specific.ChainSpecific = (*BeaconChainSpecificObject)(nil)
 func (b *BeaconChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (b *BeaconChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

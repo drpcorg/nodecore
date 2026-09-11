@@ -43,7 +43,7 @@ func TestRpcHead(t *testing.T) {
 	sub := headProcessor.Subscribe("test")
 	go headProcessor.Start()
 
-	event, ok := <-sub.Events
+	head := nextHeadBlock(t, sub.Events)
 	expected := protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
@@ -51,19 +51,17 @@ func TestRpcHead(t *testing.T) {
 	}
 
 	connector.AssertExpectations(t)
-	assert.True(t, ok)
-	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, head)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	headProcessor.UpdateHead(79195275, 0)
 
-	event, ok = <-sub.Events
+	head = nextHeadBlock(t, sub.Events)
 	expected = protocol.Block{
 		Height: uint64(79195275),
 	}
 
-	assert.True(t, ok)
-	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, head)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	headProcessor.UpdateHead(5555, 0)
@@ -72,7 +70,7 @@ func TestRpcHead(t *testing.T) {
 		sub.Unsubscribe()
 	}()
 
-	_, ok = <-sub.Events
+	_, ok := <-sub.Events
 
 	assert.False(t, ok)
 }
@@ -126,7 +124,7 @@ func TestSubHeadSubscribe(t *testing.T) {
 	sub := headProcessor.Subscribe("test")
 	go headProcessor.Start()
 
-	event, ok := <-sub.Events
+	head := nextHeadBlock(t, sub.Events)
 	expected := protocol.Block{
 		Height:     uint64(69195275),
 		Hash:       blockchain.NewHashIdFromString("0xdeeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d18"),
@@ -135,8 +133,7 @@ func TestSubHeadSubscribe(t *testing.T) {
 		RawData: protocol.ParseJsonRpcWsMessage(body).Message,
 	}
 
-	assert.True(t, ok)
-	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, head)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	connector.AssertExpectations(t)
@@ -167,13 +164,12 @@ func TestSubHeadManualUpdate(t *testing.T) {
 
 	headProcessor.UpdateHead(79195275, 0)
 
-	event, ok := <-sub.Events
+	head := nextHeadBlock(t, sub.Events)
 	expected := protocol.Block{
 		Height: uint64(79195275),
 	}
 
-	assert.True(t, ok)
-	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, head)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 }
 
@@ -211,16 +207,34 @@ func TestSubHeadGetLastBlock(t *testing.T) {
 
 	headProcessor.Start()
 
-	event, ok := <-sub.Events
+	head := nextHeadBlock(t, sub.Events)
 	expected := protocol.Block{
 		Height:     uint64(69195274),
 		Hash:       blockchain.NewHashIdFromString("0x2eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d12"),
 		ParentHash: blockchain.NewHashIdFromString("0x3eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d13"),
 	}
-	assert.True(t, ok)
-	assert.Equal(t, expected, event.HeadData)
+	assert.Equal(t, expected, head)
 	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
 
 	reqConnector.AssertExpectations(t)
 	connector.AssertExpectations(t)
+}
+
+// nextHeadBlock returns the next head block published to the subscription, skipping the
+// lifecycle events the processor interleaves with them.
+func nextHeadBlock(t *testing.T, events <-chan blocks.HeadEvent) protocol.Block {
+	t.Helper()
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatal("head subscription closed before a block arrived")
+			}
+			if head, isBlock := event.(blocks.HeadBlockEvent); isBlock {
+				return head.HeadData
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out waiting for a head block")
+		}
+	}
 }

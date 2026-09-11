@@ -231,6 +231,7 @@ func TestEvmUpstream(
 		processorAggregator,
 		nil,
 		nil,
+		false,
 	)
 }
 

@@ -2,10 +2,12 @@ package event_processors_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -152,5 +154,53 @@ func aggregatorTestUpstreamOptions() *chains.Options {
 		DisableChainValidation:      new(false),
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(false),
+	}
+}
+
+func TestUpstreamProcessorAggregatorSerializesConcurrentStartStop(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	headProcessor := mocks.NewHeadProcessorMock()
+	headProcessor.On("Start").Return()
+	headProcessor.On("Stop").Return()
+	headProcessor.On("Subscribe", mock.Anything)
+
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{processor})
+	events := make(chan protocol.AbstractUpstreamStateEvent, 100)
+	aggregator.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+
+	// the supervisor (Resume/PartialStop) and the upstream state loop (pause on syncing)
+	// drive the same processor from different goroutines
+	const iterations = 3000
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+			aggregator.StopProcessor(event_processors.HeadEventProcessorType)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			aggregator.StopProcessor(event_processors.HeadEventProcessorType)
+			aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+		}
+	}()
+	wg.Wait()
+	aggregator.StopProcessor(event_processors.HeadEventProcessorType)
+
+	// everything is stopped: a head published now must reach no forwarder. A run that
+	// escaped the lifecycle (started behind a concurrent stop) would still forward it.
+	headProcessor.Publish(blocks.HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(1)})
+	select {
+	case event := <-events:
+		t.Fatalf("an orphan forwarder is still alive: got %T after the final stop", event)
+	case <-time.After(200 * time.Millisecond):
 	}
 }

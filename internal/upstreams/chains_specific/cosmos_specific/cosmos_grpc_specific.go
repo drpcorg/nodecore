@@ -168,4 +168,8 @@ func (c *CosmosGrpcSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+func (c *CosmosGrpcSpecific) PauseHeadWhileSyncing() bool {
+	return false
+}
+
 var _ chains_specific.ChainSpecific = (*CosmosGrpcSpecific)(nil)

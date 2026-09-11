@@ -200,3 +200,7 @@ var _ chains_specific.ChainSpecific = (*AztecChainSpecificObject)(nil)
 func (a *AztecChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (a *AztecChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

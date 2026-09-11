@@ -402,6 +402,7 @@ func pendingDrpcUpstream(id string, wsCh chan protocol.SubResponse, opId string,
 		nil,
 		nil,
 		nil,
+		false,
 	)
 }
 
@@ -515,6 +516,7 @@ func TestDrpcPendingTxSourceEnrichesConcurrently(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		false,
 	)
 
 	upSup := mocks.NewUpstreamSupervisorMock()

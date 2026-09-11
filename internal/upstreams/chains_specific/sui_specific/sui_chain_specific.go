@@ -186,6 +186,10 @@ func (s *SuiChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+func (s *SuiChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}
+
 func newSuiBlock(serviceInfo *sui.GetServiceInfoResponse, rawData []byte) (protocol.Block, error) {
 	return newSuiBlockFromHeight(serviceInfo.GetCheckpointHeight(), rawData)
 }

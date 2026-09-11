@@ -88,6 +88,10 @@ func (s *stellarBaseChainSpecificObject) MethodsProcessor() methods.MethodsProce
 	return nil
 }
 
+func (s *stellarBaseChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}
+
 func (s *stellarBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }

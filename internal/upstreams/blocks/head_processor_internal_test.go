@@ -3,6 +3,7 @@ package blocks
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubConnector only reports its type; createHead never calls anything else
@@ -103,5 +105,181 @@ func TestCreateHead(t *testing.T) {
 			head := createHead(t.Context(), "id", time.Second, tt.headMode, connector, &stubSpecific{subErr: tt.subErr}, options)
 			assert.IsType(t, tt.expected, head)
 		})
+	}
+}
+
+func TestGenericHeadProcessorUpdateHeadDoesNotBlockWhenStopped(t *testing.T) {
+	// a paused head processor has nobody draining manualHeadChan; the integrity
+	// processor must never hang on it
+	processor := &GenericHeadProcessor{manualHeadChan: make(chan protocol.Block, 100)}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 150 {
+			processor.UpdateHead(uint64(i), 0)
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("UpdateHead blocked on a full manual head channel")
+	}
+}
+
+// stubHead is a Head that does nothing; the processor tests only exercise the
+// lifecycle around it.
+type stubHead struct {
+	heads chan protocol.Block
+}
+
+func (s *stubHead) Start() {}
+
+func (s *stubHead) Stop() {}
+
+func (s *stubHead) Running() bool {
+	return true
+}
+
+func (s *stubHead) HeadsChan() chan protocol.Block {
+	return s.heads
+}
+
+func (s *stubHead) OnNoHeadUpdates() {}
+
+func (s *stubHead) GetCurrentBlock() protocol.Block {
+	return protocol.ZeroBlock{}
+}
+
+func (s *stubHead) UpdateHead(protocol.Block) {}
+
+func TestGenericHeadProcessorPublishesStateAroundBlocks(t *testing.T) {
+	head := &stubHead{heads: make(chan protocol.Block)}
+	processor := &GenericHeadProcessor{
+		upstreamId:           "up",
+		head:                 head,
+		manualHeadChan:       make(chan protocol.Block, 100),
+		lifecycle:            utils.NewGenericLifecycle("up_head_processor", context.Background()),
+		headNoUpdatesTimeout: time.Minute,
+		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
+	}
+	sub := processor.Subscribe("test")
+	defer sub.Unsubscribe()
+
+	processor.Start()
+	assert.Equal(t, HeadStateEvent{Running: true}, nextHeadEvent(t, sub.Events))
+
+	head.heads <- protocol.NewBlockWithHeight(10)
+	assert.Equal(t, HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(10)}, nextHeadEvent(t, sub.Events))
+
+	processor.Stop()
+	assert.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events))
+}
+
+func TestGenericHeadProcessorStopPublishesStateAfterTheLastBlock(t *testing.T) {
+	// a syncing node floods heads, so a producer is always parked in its send when Stop runs
+	head := &stubHead{heads: make(chan protocol.Block)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for height := uint64(1); ; height++ {
+			select {
+			case head.heads <- protocol.NewBlockWithHeight(height):
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	processor := &GenericHeadProcessor{
+		upstreamId:           "up",
+		head:                 head,
+		manualHeadChan:       make(chan protocol.Block, 100),
+		lifecycle:            utils.NewGenericLifecycle("up_head_processor", context.Background()),
+		headNoUpdatesTimeout: time.Minute,
+		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
+	}
+
+	for i := range 200 {
+		processor.Start()
+		processor.Stop()
+
+		// a liveness consumer that subscribes during the pause must learn it is paused
+		sub := processor.SubscribeWithReplay(fmt.Sprintf("late_%d", i))
+		require.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events), "iteration %d", i)
+		sub.Unsubscribe()
+	}
+}
+
+// resubscribingHead models a websocket head whose OnNoHeadUpdates is parked in a subscribe
+// that only returns once the head's own Stop cancels it.
+type resubscribingHead struct {
+	stubHead
+	entered  chan struct{}
+	released chan struct{}
+}
+
+func (h *resubscribingHead) OnNoHeadUpdates() {
+	close(h.entered)
+	<-h.released
+}
+
+func (h *resubscribingHead) Stop() {
+	close(h.released)
+}
+
+func TestGenericHeadProcessorStopReleasesDrainParkedInResubscribe(t *testing.T) {
+	head := &resubscribingHead{
+		stubHead: stubHead{heads: make(chan protocol.Block)},
+		entered:  make(chan struct{}),
+		released: make(chan struct{}),
+	}
+	processor := &GenericHeadProcessor{
+		upstreamId:           "up",
+		head:                 head,
+		manualHeadChan:       make(chan protocol.Block, 100),
+		lifecycle:            utils.NewGenericLifecycle("up_head_processor", context.Background()),
+		headNoUpdatesTimeout: 10 * time.Millisecond,
+		lastUpdate:           utils.NewAtomic[time.Time](),
+		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
+	}
+
+	processor.Start()
+	select {
+	case <-head.entered:
+	case <-time.After(time.Second):
+		t.Fatal("the silence timer never fired")
+	}
+
+	// the drain goroutine is inside the resubscribe; Stop must not wait for a subscribe
+	// that only its own head.Stop() can end
+	stopped := make(chan struct{})
+	go func() {
+		processor.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop is parked behind a resubscribe the head could have cancelled")
+	}
+
+	// and the ordering guarantee still holds
+	sub := processor.SubscribeWithReplay("late")
+	defer sub.Unsubscribe()
+	assert.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events))
+}
+
+func nextHeadEvent(t *testing.T, events <-chan HeadEvent) HeadEvent {
+	t.Helper()
+	select {
+	case event := <-events:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for a head event")
+		return nil
 	}
 }

@@ -37,4 +37,10 @@ type ChainSpecific interface {
 	// chain has no way to introspect a node. Detection only ever subtracts, so nil means
 	// the upstream keeps the full method set its spec declares.
 	MethodsProcessor() methods.MethodsProcessor
+
+	// PauseHeadWhileSyncing reports whether the head processor must be stopped while the
+	// health probes say the node is syncing. Some node families push heads at full replay
+	// speed during a sync, which is wasted work: fork choice drops the heads of a
+	// non-available upstream anyway.
+	PauseHeadWhileSyncing() bool
 }
