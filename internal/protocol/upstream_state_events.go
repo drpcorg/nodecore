@@ -32,7 +32,7 @@ type LowerBoundUpstreamStateEvent struct {
 // otherwise the detector's next publish would undo them.
 // TODO: route live corrections through LowerBoundProcessor and drop this duplication.
 func (l *LowerBoundUpstreamStateEvent) Same(state UpstreamState) bool {
-	if head := state.HeadData.Height; head > 0 && l.Data.Bound > int64(head) {
+	if head := state.HeadData.Height; l.Data.Type != SlotBound && head > 0 && l.Data.Bound > int64(head) {
 		return true
 	}
 	lowerBound, ok := state.LowerBoundsInfo.GetLowerBound(l.Data.Type)
