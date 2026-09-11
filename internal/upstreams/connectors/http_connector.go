@@ -110,6 +110,11 @@ func NewHttpConnectorWithDefaultClient(
 	}
 }
 
+// NewHttpConnector builds an HTTP connector for the upstream. The client budget for one
+// exchange - dial, headers and streaming the whole body - comes from the connector's own
+// http settings (config.ConnectorSettings) and becomes http.Client.Timeout; 0 disables that
+// budget so only the request context (the caller's deadline) ends a stuck or slow exchange.
+// The transport-level header/dial timeouts in utils.DefaultHttpTransport still apply.
 func NewHttpConnector(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,
@@ -122,7 +127,7 @@ func NewHttpConnector(
 	}
 	transport := utils.DefaultHttpTransport()
 	client := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: connectorConfig.HttpResponseTimeout(),
 	}
 	customCA, err := utils.GetCustomCAPool(connectorConfig.Ca)
 	if err != nil {

@@ -719,3 +719,64 @@ func TestInvalidHeadModeThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: invalid head-mode 'sometimes', expected 'subscribe' or 'poll'")
 }
+
+// A connector with no settings block keeps the budget the HTTP connector hard-coded before
+// the setting existed.
+func TestConnectorSettingsHttpResponseTimeoutDefaultsToSixtySeconds(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-disable-flags.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	connector := appConfig.UpstreamConfig.Upstreams[0].Connectors[0]
+	assert.Nil(t, connector.Settings)
+	assert.Equal(t, config.DefaultHttpResponseTimeout, connector.HttpResponseTimeout())
+	assert.Equal(t, 60*time.Second, config.DefaultHttpResponseTimeout)
+}
+
+func TestConnectorSettingsHttpResponseTimeoutParsed(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-response-timeout.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	connector := appConfig.UpstreamConfig.Upstreams[0].Connectors[0]
+	require.NotNil(t, connector.Settings)
+	require.NotNil(t, connector.Settings.Http)
+	require.NotNil(t, connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, 120*time.Second, *connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, 120*time.Second, connector.HttpResponseTimeout())
+}
+
+// An explicit 0 means "no client-side budget; only the caller's context ends a stuck
+// exchange" and must survive as 0 instead of being replaced by the default.
+func TestConnectorSettingsHttpResponseTimeoutZeroMeansNoTimeout(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-response-timeout-zero.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	connector := appConfig.UpstreamConfig.Upstreams[0].Connectors[0]
+	require.NotNil(t, connector.Settings)
+	require.NotNil(t, connector.Settings.Http)
+	require.NotNil(t, connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, time.Duration(0), *connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, time.Duration(0), connector.HttpResponseTimeout())
+}
+
+func TestConnectorSettingsInvalidHttpResponseTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-invalid-http-response-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: http response timeout can't be less than 0")
+}
+
+// http settings on a connector that has no http.Client would be silently ignored, so the
+// config is rejected instead.
+func TestConnectorSettingsHttpOnGrpcConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-on-grpc.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: http settings are not applicable to the 'grpc' connector")
+}
+
+func TestConnectorSettingsHttpOnWebsocketConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-on-websocket.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: http settings are not applicable to the 'websocket' connector")
+}

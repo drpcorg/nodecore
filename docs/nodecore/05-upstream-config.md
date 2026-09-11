@@ -606,6 +606,27 @@ Supported connector types:
 
 By defining multiple connectors under one upstream, you give nodecore the flexibility to select the right transport for each incoming request.
 
+#### connector settings
+
+Each connector may carry a `settings` block of per-transport tuning. Settings are grouped by the transport they apply to, so that knobs for different connector kinds can be added without them colliding; today the only group is `http`. A group may only be set on a connector that actually uses that transport - `http` settings on a `websocket` or `grpc` connector are rejected at config load rather than silently ignored.
+
+`http` applies to the connectors backed by an HTTP client: `json-rpc`, `tendermint`, `rest`, `rest-indexer` and `rest-additional`.
+
+  * `response-timeout` - Total budget for one upstream HTTP exchange: connecting, waiting for headers **and streaming the whole body**. A response whose body cannot be delivered within it is cut. `0s` disables the client-side budget entirely: the caller's deadline (the gRPC/HTTP request context) is then the only thing that ends a stuck or slow exchange, which is what large streamed responses such as beacon `/validators` need. It does not change the transport-level timeouts for dialing and response headers. Must carry a unit (`120s`, `0s`). **_Default_**: `60s`
+
+```yaml
+upstreams:
+  - id: eth-beacon
+    chain: eth-beacon-chain
+    connectors:
+      - type: rest
+        url: http://beacon-node:5052
+        settings:
+          http:
+            # no client-side budget; the caller's deadline ends the exchange
+            response-timeout: 0s
+```
+
 Every upstream must also track its head (latest block / finalization state). The connector used for head tracking is selected as follows:
 
 - If `head-connector` is set explicitly, that type is used
