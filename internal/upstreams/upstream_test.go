@@ -2,6 +2,7 @@ package upstreams_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,7 +23,6 @@ import (
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -697,40 +697,40 @@ func TestGenericUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *t
 }
 
 func TestGenericUpstreamProcessStateEvents_ProbeSyncingPausesHead(t *testing.T) {
-	headProcessor := newHeadEventProcessorMock()
+	headProcessor := newHeadProcessorStub()
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
 	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
 	t.Cleanup(upstream.Stop)
 	startUpstream(t, upstream, sub)
 	// Resume on Start brings the head up once
-	headProcessor.AssertNumberOfCalls(t, "Start", 1)
+	assert.Equal(t, int32(1), headProcessor.starts.Load())
 
 	// the probe says syncing: the head is stopped before the status is published
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
 	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Stop", 1)
+	assert.Equal(t, int32(1), headProcessor.stops.Load())
 
 	// a repeated syncing verdict changes nothing
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
 	assertNoUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Stop", 1)
+	assert.Equal(t, int32(1), headProcessor.stops.Load())
 
 	// synced again: the head is started
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
 	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Start", 2)
+	assert.Equal(t, int32(2), headProcessor.starts.Load())
 
 	// any non-syncing verdict resumes, Immature included
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
 	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Stop", 2)
+	assert.Equal(t, int32(2), headProcessor.stops.Load())
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Immature})
 	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Start", 3)
+	assert.Equal(t, int32(3), headProcessor.starts.Load())
 }
 
 func TestGenericUpstreamProcessStateEvents_LagSyncingDoesNotPauseHead(t *testing.T) {
-	headProcessor := newHeadEventProcessorMock()
+	headProcessor := newHeadProcessorStub()
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
 	upstream, _, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
 	t.Cleanup(upstream.Stop)
@@ -743,11 +743,11 @@ func TestGenericUpstreamProcessStateEvents_LagSyncingDoesNotPauseHead(t *testing
 	require.True(t, ok)
 	require.Equal(t, protocol.Syncing, stateEvent.State.Status)
 
-	headProcessor.AssertNumberOfCalls(t, "Stop", 0)
+	assert.Equal(t, int32(0), headProcessor.stops.Load())
 }
 
 func TestGenericUpstreamProcessStateEvents_ProbeSyncingKeepsHeadWithoutPauseFlag(t *testing.T) {
-	headProcessor := newHeadEventProcessorMock()
+	headProcessor := newHeadProcessorStub()
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
 	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, false)
 	t.Cleanup(upstream.Stop)
@@ -757,11 +757,11 @@ func TestGenericUpstreamProcessStateEvents_ProbeSyncingKeepsHeadWithoutPauseFlag
 	_ = nextUpstreamEvent(t, sub)
 	require.Equal(t, protocol.Syncing, upstream.GetUpstreamState().Status)
 
-	headProcessor.AssertNumberOfCalls(t, "Stop", 0)
+	assert.Equal(t, int32(0), headProcessor.stops.Load())
 }
 
-func TestGenericUpstreamProcessStateEvents_HeadPauseResetsAfterFatalError(t *testing.T) {
-	headProcessor := newHeadEventProcessorMock()
+func TestGenericUpstreamProcessStateEvents_HeadStartedBySupervisorIsPausedAgain(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
 	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
 	t.Cleanup(upstream.Stop)
@@ -769,35 +769,52 @@ func TestGenericUpstreamProcessStateEvents_HeadPauseResetsAfterFatalError(t *tes
 
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
 	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Stop", 1)
+	require.Equal(t, int32(1), headProcessor.stops.Load())
 
-	// the supervisor takes the whole upstream down on a fatal error and brings
-	// everything back on Valid, so the pause bookkeeping must start over
-	emit(&protocol.FatalErrorUpstreamStateEvent{})
-	event := nextUpstreamEvent(t, sub)
-	_, ok := event.EventType.(*protocol.RemoveUpstreamEvent)
-	require.True(t, ok)
-	emit(&protocol.ValidUpstreamStateEvent{})
-	event = nextUpstreamEvent(t, sub)
-	_, ok = event.EventType.(*protocol.ValidUpstreamEvent)
-	require.True(t, ok)
+	// the supervisor brings the head back behind the state loop's back (Resume)
+	aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+	require.True(t, headProcessor.Running())
 
-	// the head is considered running again: a synced verdict does not start it...
-	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
-	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Start", 1)
-	// ...and a syncing verdict stops it once more
+	// the toggle must act on what is actually running, not on what it last did: the
+	// next syncing verdict stops the head again (the status is unchanged, so no event)
 	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
-	_ = nextUpstreamEvent(t, sub)
-	headProcessor.AssertNumberOfCalls(t, "Stop", 2)
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.stops.Load())
+	assert.False(t, headProcessor.Running())
 }
 
-func newHeadEventProcessorMock() *mocks.UpstreamStateEventProcessorMock {
-	headProcessor := mocks.NewUpstreamStateEventProcessorMock(event_processors.HeadEventProcessorType)
-	headProcessor.On("SetEmitter", mock.Anything)
-	headProcessor.On("Start")
-	headProcessor.On("Stop")
-	return headProcessor
+// headProcessorStub is a stateful head event processor: it remembers whether it is running
+// and counts starts and stops, so tests can drive it from the supervisor side as well.
+type headProcessorStub struct {
+	running atomic.Bool
+	starts  atomic.Int32
+	stops   atomic.Int32
+}
+
+func newHeadProcessorStub() *headProcessorStub {
+	return &headProcessorStub{}
+}
+
+func (h *headProcessorStub) Start() {
+	if h.running.CompareAndSwap(false, true) {
+		h.starts.Add(1)
+	}
+}
+
+func (h *headProcessorStub) Stop() {
+	if h.running.CompareAndSwap(true, false) {
+		h.stops.Add(1)
+	}
+}
+
+func (h *headProcessorStub) Running() bool {
+	return h.running.Load()
+}
+
+func (h *headProcessorStub) SetEmitter(event_processors.Emitter) {}
+
+func (h *headProcessorStub) Type() event_processors.EventProcessorType {
+	return event_processors.HeadEventProcessorType
 }
 
 func newTestGenericUpstream(

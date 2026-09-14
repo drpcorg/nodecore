@@ -59,9 +59,10 @@ type GenericHeadProcessor struct {
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
 	manualHeadChan       chan protocol.Block
-	// drainDone is closed when the current run's drain goroutine exits. Stop waits on it so
-	// that HeadStateEvent{Running: false} is published after the last block of the run.
-	drainDone chan struct{}
+	// drainDone holds the channel closed when the current run's drain goroutine exits. Stop
+	// waits on it so that HeadStateEvent{Running: false} is published after the last block of
+	// the run. Atomic because Start and Stop may be driven from different goroutines.
+	drainDone *utils.Atomic[chan struct{}]
 }
 
 func NewGenericHeadProcessor(
@@ -94,6 +95,7 @@ func NewGenericHeadProcessor(
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent](name),
+		drainDone:            utils.NewAtomic[chan struct{}](),
 	}
 }
 
@@ -120,7 +122,7 @@ func (h *GenericHeadProcessor) Start() {
 		h.subManager.Publish(HeadStateEvent{Running: true})
 
 		drainDone := make(chan struct{})
-		h.drainDone = drainDone
+		h.drainDone.Store(drainDone)
 		go func() {
 			defer close(drainDone)
 			timeout := time.NewTimer(h.headNoUpdatesTimeout)
@@ -157,15 +159,14 @@ func (h *GenericHeadProcessor) Start() {
 // of this run is published after HeadStateEvent{Running: false}: a late subscriber's replay
 // then reports a paused head exactly when the head is paused.
 //
-// The head is stopped before the wait: the drain goroutine may be parked inside
-// OnNoHeadUpdates, in a resubscribe whose request honours the head's lifecycle context, and
-// head.Stop() cancelling that context is what lets the goroutine return and exit.
+// The wait is short: the drain goroutine never blocks in network I/O, since a silence nudge
+// (Head.OnNoHeadUpdates) is a non-blocking signal to the head.
 func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
-	h.head.Stop()
-	if h.drainDone != nil {
-		<-h.drainDone
+	if drainDone := h.drainDone.Load(); drainDone != nil {
+		<-drainDone
 	}
+	h.head.Stop()
 	h.subManager.Publish(HeadStateEvent{Running: false})
 }
 
@@ -175,6 +176,7 @@ func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {
 	default:
 		// nobody drains the channel while the head is paused; a dropped manual head
 		// costs nothing, the next real head supersedes it
+		log.Debug().Msgf("dropped a manual head %d of upstream %s: the head processor is not draining", height, h.upstreamId)
 	}
 }
 

@@ -189,6 +189,27 @@ func TestWsHeadLivenessCapDetector(t *testing.T) {
 		assertNoCaps(t, out, time.Second)
 	})
 
+	t.Run("no stall timeout fires until the head has reported itself", func(t *testing.T) {
+		conn, wsMgr := stateFeed("ws")
+		head := newHeadFeed() // nothing published yet: no replay for the detector
+		// timeout window ~= 100ms * 3 * 2 = 600ms
+		detector := caps.NewWsHeadLivenessCapDetector("up", "ws", protocol.WsCap, conn, head, 100*time.Millisecond)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		out := detector.DetectCaps(ctx)
+
+		wsMgr.Publish(protocol.WsConnected)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap))
+
+		// connected, but the head has said nothing: not observing, so nothing times out
+		assertNoCaps(t, out, time.Second)
+
+		// blocks prove the head is running, and arm stall detection
+		driveToLive(t, head, out, 100)
+		assert.False(t, nextCaps(t, out).Contains(protocol.WsCap), "expected the cap to drop after a stall")
+	})
+
 	t.Run("a head stopped before the detector subscribed is learned through replay", func(t *testing.T) {
 		conn, wsMgr := stateFeed("ws")
 		head := newHeadFeed()

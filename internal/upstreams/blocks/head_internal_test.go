@@ -3,6 +3,8 @@ package blocks
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -91,4 +93,120 @@ func TestSubscriptionHeadStopReleasesProducerParkedOnSend(t *testing.T) {
 	head.Start()
 	defer head.Stop()
 	assert.Equal(t, uint64(2), nextBlock(t, head.HeadsChan()).Height)
+}
+
+// recordingConnector opens a distinct, never-ending subscription per Subscribe call and
+// records every Unsubscribe, so a test can see which subscriptions were released.
+type recordingConnector struct {
+	stubConnector
+	mu           sync.Mutex
+	subscribes   int
+	unsubscribed []string
+}
+
+func (r *recordingConnector) Subscribe(context.Context, protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.subscribes++
+	return protocol.NewJsonRpcWsUpstreamResponse(make(chan protocol.SubResponse), fmt.Sprintf("op-%d", r.subscribes)), nil
+}
+
+func (r *recordingConnector) Unsubscribe(opId string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.unsubscribed = append(r.unsubscribed, opId)
+}
+
+func (r *recordingConnector) subscribeCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.subscribes
+}
+
+func (r *recordingConnector) released() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.unsubscribed...)
+}
+
+// parkingConnector models a wedged socket: Subscribe returns only when its ctx is cancelled.
+type parkingConnector struct {
+	stubConnector
+	entered chan struct{}
+}
+
+func (p *parkingConnector) Subscribe(ctx context.Context, _ protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {
+	close(p.entered)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestSubscriptionHeadResubscribesWithinTheRun(t *testing.T) {
+	connector := &recordingConnector{}
+	head := NewSubHead(context.Background(), "up", time.Second, connector, &countingSpecific{failLatest: true})
+
+	head.Start()
+	defer head.Stop()
+	require.Eventually(t, func() bool { return connector.subscribeCount() == 1 }, time.Second, time.Millisecond)
+
+	// a silence nudge swaps the subscription without touching the lifecycle
+	head.OnNoHeadUpdates()
+	require.Eventually(t, func() bool { return connector.subscribeCount() == 2 }, time.Second, time.Millisecond)
+	assert.Equal(t, []string{"op-1"}, connector.released())
+	assert.True(t, head.Running())
+
+	// and nothing resubscribes on its own
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, 2, connector.subscribeCount())
+}
+
+func TestSubscriptionHeadStopReleasesTheOpenSubscription(t *testing.T) {
+	connector := &recordingConnector{}
+	head := NewSubHead(context.Background(), "up", time.Second, connector, &countingSpecific{failLatest: true})
+
+	head.Start()
+	require.Eventually(t, func() bool { return connector.subscribeCount() == 1 }, time.Second, time.Millisecond)
+
+	head.Stop()
+	assert.False(t, head.Running())
+	require.Eventually(t, func() bool { return len(connector.released()) == 1 }, time.Second, time.Millisecond)
+	assert.Equal(t, []string{"op-1"}, connector.released())
+
+	// nothing restarts a stopped head, late nudges included, and with no run goroutine
+	// to consume them the nudges must still return at once
+	for range 3 {
+		head.OnNoHeadUpdates()
+	}
+	time.Sleep(20 * time.Millisecond)
+	assert.Equal(t, 1, connector.subscribeCount())
+	assert.False(t, head.Running())
+}
+
+func TestSubscriptionHeadStartDoesNotBlockOnSubscribe(t *testing.T) {
+	connector := &parkingConnector{entered: make(chan struct{})}
+	head := NewSubHead(context.Background(), "up", time.Second, connector, &countingSpecific{failLatest: true})
+
+	started := make(chan struct{})
+	go func() {
+		head.Start()
+		close(started)
+	}()
+	select {
+	case <-started:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Start blocked on a parked subscribe")
+	}
+	<-connector.entered
+
+	// the parked subscribe is released by the run's context on Stop
+	stopped := make(chan struct{})
+	go func() {
+		head.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not return")
+	}
 }

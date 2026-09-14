@@ -31,8 +31,6 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 	// with the upstream's current head lag (u.headLag) to derive the effective
 	// availability published on UpstreamState.Status.
 	baseAvail := u.upstreamState.Load().Status
-	// headPaused tracks whether toggleHeadOnSyncing has stopped the head processor
-	headPaused := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -50,9 +48,6 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				log.Warn().Msgf("upstream '%s' settings are invalid, it will be stopped", u.id)
 				eventType = &protocol.RemoveUpstreamEvent{}
 				validUpstream = false
-				// PartialStop takes the head down with everything else and Resume brings it
-				// back outside this loop, so the pause bookkeeping starts over
-				headPaused = false
 				u.publishUpstreamEvent(state, eventType)
 			case *protocol.ValidUpstreamStateEvent:
 				if validUpstream {
@@ -102,7 +97,7 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				}
 				if stateEvent.Lag == nil {
 					baseAvail = stateEvent.Status
-					headPaused = u.toggleHeadOnSyncing(baseAvail, headPaused)
+					u.toggleHeadOnSyncing(baseAvail)
 				}
 				newAvail := protocol.StatusByLag(u.headLag.Load(), baseAvail, u.configuredChain.Settings.Lags.Syncing)
 				if newAvail != state.Status {
@@ -130,21 +125,23 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 // toggleHeadOnSyncing stops the head processor when the health probes report Syncing
 // and starts it again on the first non-Syncing verdict. Only probe results reach here:
 // lag-observer events carry a Lag and never change baseAvail, so a node that merely
-// fell behind keeps its head. Returns the new paused state.
-func (u *GenericUpstream) toggleHeadOnSyncing(probeAvail protocol.AvailabilityStatus, paused bool) bool {
+// fell behind keeps its head. It acts on whether the processor is actually running rather
+// than on what it last did, because the supervisor (PartialStop, Resume) drives the same
+// processor from another goroutine.
+func (u *GenericUpstream) toggleHeadOnSyncing(probeAvail protocol.AvailabilityStatus) {
 	if !u.pauseHeadWhileSyncing {
-		return false
+		return
 	}
 	syncing := probeAvail == protocol.Syncing
+	running := u.processorAggregator.IsProcessorRunning(event_processors.HeadEventProcessorType)
 	switch {
-	case syncing && !paused:
+	case syncing && running:
 		log.Warn().Msgf("upstream '%s' reports syncing, pausing its head", u.id)
 		u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
-	case !syncing && paused:
+	case !syncing && !running:
 		log.Warn().Msgf("upstream '%s' is synced again, resuming its head", u.id)
 		u.processorAggregator.StartProcessor(event_processors.HeadEventProcessorType)
 	}
-	return syncing
 }
 
 func (u *GenericUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {

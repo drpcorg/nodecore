@@ -81,10 +81,9 @@ func TestSubHeadUnsub(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	subHead := blocks.NewSubHead(ctx, "", 0, connector, nil)
 
-	connector.On("Unsubscribe", mock.Anything).Return()
-
+	// a head that never subscribed has nothing to release
 	subHead.Stop()
-	connector.AssertExpectations(t)
+	connector.AssertNotCalled(t, "Unsubscribe", mock.Anything)
 }
 
 func TestSubHeadSubscribe(t *testing.T) {

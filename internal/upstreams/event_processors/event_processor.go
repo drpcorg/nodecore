@@ -100,6 +100,15 @@ func (u *UpstreamProcessorAggregator) StopProcessor(processorType EventProcessor
 	}
 }
 
+// IsProcessorRunning reports whether the processor of the given type is currently running;
+// false when there is no such processor.
+func (u *UpstreamProcessorAggregator) IsProcessorRunning(processorType EventProcessorType) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	processor, ok := u.eventProcessors[processorType]
+	return ok && processor.Running()
+}
+
 func (u *UpstreamProcessorAggregator) IsHealthProcessorDisabled() bool {
 	_, ok := u.eventProcessors[HealthValidatorProcessorType]
 	return !ok

@@ -203,9 +203,9 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 			measuredBlockTime: d.expectedBlockTime,
 		}
 		var wsConnected, headLive bool
-		// A head that is already paused announces itself through the replayed
-		// HeadStateEvent{Running: false}; anything else on the stream means it is running.
-		headRunning := true
+		// Nothing is assumed about the head until it speaks: a HeadStateEvent (replayed or
+		// live) states it, and a block can only come from a running head.
+		headRunning := false
 		observing := func() bool { return wsConnected && headRunning }
 
 		emit := func() bool {
@@ -250,6 +250,7 @@ func (d *WsHeadLivenessCapDetector) DetectCaps(ctx context.Context) <-chan mapse
 				}
 				switch event := event.(type) {
 				case blocks.HeadBlockEvent:
+					headRunning = true
 					headLive = tracker.observe(event.HeadData.Height)
 				case blocks.HeadStateEvent:
 					headRunning = event.Running
