@@ -14,6 +14,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewUpstreamProcessorAggregator_SkipsNilProcessors(t *testing.T) {
@@ -197,10 +198,22 @@ func TestUpstreamProcessorAggregatorSerializesConcurrentStartStop(t *testing.T) 
 
 	// everything is stopped: a head published now must reach no forwarder. A run that
 	// escaped the lifecycle (started behind a concurrent stop) would still forward it.
-	headProcessor.Publish(blocks.HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(1)})
-	select {
-	case event := <-events:
-		t.Fatalf("an orphan forwarder is still alive: got %T after the final stop", event)
-	case <-time.After(200 * time.Millisecond):
-	}
+	// Stop cancels a forwarder without waiting for it, so forwarders from the last
+	// iterations may still be winding down: those go quiet within a few polls, an orphan
+	// keeps answering every publish.
+	require.Eventually(t, func() bool {
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(1)})
+		select {
+		case <-events:
+			for {
+				select {
+				case <-events:
+				default:
+					return false
+				}
+			}
+		case <-time.After(20 * time.Millisecond):
+			return true
+		}
+	}, 3*time.Second, 10*time.Millisecond, "an orphan forwarder is still alive after the final stop")
 }
