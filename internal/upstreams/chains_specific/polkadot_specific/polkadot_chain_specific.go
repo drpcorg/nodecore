@@ -193,3 +193,7 @@ var _ chains_specific.ChainSpecific = (*PolkadotChainSpecificObject)(nil)
 func (p *PolkadotChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (p *PolkadotChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

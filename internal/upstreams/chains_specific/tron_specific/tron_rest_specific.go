@@ -224,3 +224,7 @@ var _ chains_specific.ChainSpecific = (*TronRestSpecific)(nil)
 func (t *TronRestSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (t *TronRestSpecific) PauseHeadWhileSyncing() bool {
+	return false
+}

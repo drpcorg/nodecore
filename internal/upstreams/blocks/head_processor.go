@@ -22,11 +22,34 @@ type HeadProcessor interface {
 	UpdateHead(height, slot uint64)
 
 	Subscribe(name string) *utils.Subscription[HeadEvent]
+	// SubscribeWithReplay also delivers the last published event first. On this stream that
+	// event is HeadStateEvent{Running: false} exactly when the head is stopped - Stop
+	// publishes it last and nothing else is published until Start - so a late subscriber
+	// learns whether the head is currently paused.
+	SubscribeWithReplay(name string) *utils.Subscription[HeadEvent]
 }
 
-type HeadEvent struct {
+// HeadEvent is what a head processor publishes to its subscribers: head blocks interleaved
+// with lifecycle changes, in the order they happened. One stream keeps them ordered, so a
+// consumer can tell a block that arrived before a stop from one that arrived after a start.
+type HeadEvent interface {
+	headEvent()
+}
+
+// HeadBlockEvent carries a new head of the upstream.
+type HeadBlockEvent struct {
 	HeadData protocol.Block
 }
+
+// HeadStateEvent reports that the head processor started or stopped observing the node.
+// Silence after Running == false is not a stall: nothing is being observed.
+type HeadStateEvent struct {
+	Running bool
+}
+
+func (HeadBlockEvent) headEvent() {}
+
+func (HeadStateEvent) headEvent() {}
 
 type GenericHeadProcessor struct {
 	upstreamId           string
@@ -36,6 +59,10 @@ type GenericHeadProcessor struct {
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
 	manualHeadChan       chan protocol.Block
+	// drainDone holds the channel closed when the current run's drain goroutine exits. Stop
+	// waits on it so that HeadStateEvent{Running: false} is published after the last block of
+	// the run. Atomic because Start and Stop may be driven from different goroutines.
+	drainDone *utils.Atomic[chan struct{}]
 }
 
 func NewGenericHeadProcessor(
@@ -68,6 +95,7 @@ func NewGenericHeadProcessor(
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent](name),
+		drainDone:            utils.NewAtomic[chan struct{}](),
 	}
 }
 
@@ -79,6 +107,10 @@ func (h *GenericHeadProcessor) Subscribe(name string) *utils.Subscription[HeadEv
 	return h.subManager.Subscribe(name)
 }
 
+func (h *GenericHeadProcessor) SubscribeWithReplay(name string) *utils.Subscription[HeadEvent] {
+	return h.subManager.SubscribeWithReplay(name)
+}
+
 func (h *GenericHeadProcessor) Running() bool {
 	return h.lifecycle.Running()
 }
@@ -87,8 +119,12 @@ func (h *GenericHeadProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
 		h.head.Start()
 		h.lastUpdate.Store(time.Now())
+		h.subManager.Publish(HeadStateEvent{Running: true})
 
+		drainDone := make(chan struct{})
+		h.drainDone.Store(drainDone)
 		go func() {
+			defer close(drainDone)
 			timeout := time.NewTimer(h.headNoUpdatesTimeout)
 			for {
 				select {
@@ -102,14 +138,14 @@ func (h *GenericHeadProcessor) Start() {
 					if ok {
 						log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
 						h.lastUpdate.Store(time.Now())
-						h.subManager.Publish(HeadEvent{HeadData: block})
+						h.subManager.Publish(HeadBlockEvent{HeadData: block})
 					}
 				case manualBlock := <-h.manualHeadChan:
 					if manualBlock.Height > h.head.GetCurrentBlock().Height {
 						log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.Height)
 						h.lastUpdate.Store(time.Now())
 						h.head.UpdateHead(manualBlock)
-						h.subManager.Publish(HeadEvent{HeadData: manualBlock})
+						h.subManager.Publish(HeadBlockEvent{HeadData: manualBlock})
 					}
 				}
 				timeout.Reset(h.headNoUpdatesTimeout)
@@ -119,13 +155,29 @@ func (h *GenericHeadProcessor) Start() {
 	})
 }
 
+// Stop cancels the drain goroutine and waits for it before publishing the stop, so nothing
+// of this run is published after HeadStateEvent{Running: false}: a late subscriber's replay
+// then reports a paused head exactly when the head is paused.
+//
+// The wait is short: the drain goroutine never blocks in network I/O, since a silence nudge
+// (Head.OnNoHeadUpdates) is a non-blocking signal to the head.
 func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
+	if drainDone := h.drainDone.Load(); drainDone != nil {
+		<-drainDone
+	}
 	h.head.Stop()
+	h.subManager.Publish(HeadStateEvent{Running: false})
 }
 
 func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {
-	h.manualHeadChan <- protocol.NewBlockWithHeights(height, slot)
+	select {
+	case h.manualHeadChan <- protocol.NewBlockWithHeights(height, slot):
+	default:
+		// nobody drains the channel while the head is paused; a dropped manual head
+		// costs nothing, the next real head supersedes it
+		log.Debug().Msgf("dropped a manual head %d of upstream %s: the head processor is not draining", height, h.upstreamId)
+	}
 }
 
 func createHead(

@@ -201,3 +201,7 @@ var _ chains_specific.ChainSpecific = (*StarknetChainSpecificObject)(nil)
 func (s *StarknetChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (s *StarknetChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

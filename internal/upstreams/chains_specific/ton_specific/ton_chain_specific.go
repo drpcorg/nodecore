@@ -145,3 +145,7 @@ func tonBlockFromIdExt(last tonBlockIdExt) protocol.Block {
 func (t *tonBaseChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (t *tonBaseChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

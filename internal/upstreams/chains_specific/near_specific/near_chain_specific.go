@@ -213,3 +213,7 @@ var _ chains_specific.ChainSpecific = (*NearChainSpecificObject)(nil)
 func (n *NearChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (n *NearChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -95,7 +96,9 @@ func (h *HeadEventProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
 		h.headProcessor.Start()
 
-		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
+		// unique per start: the previous run releases its subscription asynchronously, and
+		// a pause followed by an immediate resume must not clash with it
+		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates_%s", h.upstreamId, uuid.NewString()))
 
 		go func() {
 			defer headSub.Unsubscribe()
@@ -104,8 +107,13 @@ func (h *HeadEventProcessor) Start() {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
 					return
-				case head, ok := <-headSub.Events:
-					if ok {
+				case event, ok := <-headSub.Events:
+					if !ok {
+						return
+					}
+					// lifecycle changes of the head are for liveness consumers; the upstream
+					// state only ever learns about blocks
+					if head, isBlock := event.(blocks.HeadBlockEvent); isBlock {
 						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
 						headsMetric.WithLabelValues(h.chain.String(), h.upstreamId).Set(float64(head.HeadData.Height))
 					}
