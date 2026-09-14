@@ -1,6 +1,7 @@
 package evm_bounds
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -20,7 +21,21 @@ func isEvmNoDataError(err *protocol.ResponseError) bool {
 			return true
 		}
 	}
+	for _, pattern := range evmNoDataErrorPatterns {
+		if pattern.MatchString(message) {
+			return true
+		}
+	}
 	return false
+}
+
+// evmNoDataErrorPatterns covers messages with a variable part (block number, state
+// root) in the middle. They match against the lowercased message.
+var evmNoDataErrorPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`block #\d+ not found`),
+	regexp.MustCompile(`state at block #\d+ is pruned`),
+	regexp.MustCompile(`historical state .+ is not available`),
+	regexp.MustCompile(`state .+ is not available`),
 }
 
 var evmNoDataErrorHints = []string{
