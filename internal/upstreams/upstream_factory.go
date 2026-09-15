@@ -207,7 +207,8 @@ func createBlockProcessor(chainSpecific chains_specific.ChainSpecific) blocks.Bl
 // upstreamSpecifics are the two roles a chain specific plays. The probe
 // specific is built from the internal-request connector and runs every poll:
 // validators, labels, lower bounds, method detection and the finalized/safe
-// block processor. The head specific is built from the head connector and
+// block processor, and answers PauseHeadWhileSyncing, which its own syncing
+// validator drives. The head specific is built from the head connector and
 // drives only the head processor - the one place that connector's protocol
 // matters, since a head subscription is opened on it. On the usual
 // upstream both connectors are the same and so is the specific. On a

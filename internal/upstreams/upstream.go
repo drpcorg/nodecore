@@ -115,7 +115,7 @@ func NewGenericUpstream(
 	if err != nil {
 		return nil, err
 	}
-	upstream.pauseHeadWhileSyncing = specifics.head.PauseHeadWhileSyncing()
+	upstream.pauseHeadWhileSyncing = specifics.probe.PauseHeadWhileSyncing()
 	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, specifics.head)
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
