@@ -2,6 +2,7 @@ package upstreams_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -695,11 +696,143 @@ func TestGenericUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *t
 	assert.Equal(t, protocol.Unavailable, upstream.GetUpstreamState().Status)
 }
 
+func TestGenericUpstreamProcessStateEvents_ProbeSyncingPausesHead(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+	// Resume on Start brings the head up once
+	assert.Equal(t, int32(1), headProcessor.starts.Load())
+
+	// the probe says syncing: the head is stopped before the status is published
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(1), headProcessor.stops.Load())
+
+	// a repeated syncing verdict changes nothing
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, int32(1), headProcessor.stops.Load())
+
+	// synced again: the head is started
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.starts.Load())
+
+	// any non-syncing verdict resumes, Immature included
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.stops.Load())
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Immature})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(3), headProcessor.starts.Load())
+}
+
+func TestGenericUpstreamProcessStateEvents_LagSyncingDoesNotPauseHead(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, _, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	// the lag observer downgrades the status to Syncing, but that is not the probe's verdict
+	upstream.UpdateHeadLag(100)
+	event := nextUpstreamEvent(t, sub)
+	stateEvent, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	require.True(t, ok)
+	require.Equal(t, protocol.Syncing, stateEvent.State.Status)
+
+	assert.Equal(t, int32(0), headProcessor.stops.Load())
+}
+
+func TestGenericUpstreamProcessStateEvents_ProbeSyncingKeepsHeadWithoutPauseFlag(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, false)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	require.Equal(t, protocol.Syncing, upstream.GetUpstreamState().Status)
+
+	assert.Equal(t, int32(0), headProcessor.stops.Load())
+}
+
+func TestGenericUpstreamProcessStateEvents_HeadStartedBySupervisorIsPausedAgain(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	require.Equal(t, int32(1), headProcessor.stops.Load())
+
+	// the supervisor brings the head back behind the state loop's back (Resume)
+	aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+	require.True(t, headProcessor.Running())
+
+	// the toggle must act on what is actually running, not on what it last did: the
+	// next syncing verdict stops the head again (the status is unchanged, so no event)
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.stops.Load())
+	assert.False(t, headProcessor.Running())
+}
+
+// headProcessorStub is a stateful head event processor: it remembers whether it is running
+// and counts starts and stops, so tests can drive it from the supervisor side as well.
+type headProcessorStub struct {
+	running atomic.Bool
+	starts  atomic.Int32
+	stops   atomic.Int32
+}
+
+func newHeadProcessorStub() *headProcessorStub {
+	return &headProcessorStub{}
+}
+
+func (h *headProcessorStub) Start() {
+	if h.running.CompareAndSwap(false, true) {
+		h.starts.Add(1)
+	}
+}
+
+func (h *headProcessorStub) Stop() {
+	if h.running.CompareAndSwap(true, false) {
+		h.stops.Add(1)
+	}
+}
+
+func (h *headProcessorStub) Running() bool {
+	return h.running.Load()
+}
+
+func (h *headProcessorStub) SetEmitter(event_processors.Emitter) {}
+
+func (h *headProcessorStub) Type() event_processors.EventProcessorType {
+	return event_processors.HeadEventProcessorType
+}
+
 func newTestGenericUpstream(
 	t *testing.T,
 	upConfig *config.Upstream,
 	connectorMocks []*mocks.ConnectorMock,
 	aggregator *event_processors.UpstreamProcessorAggregator,
+) (*upstreams.GenericUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
+	t.Helper()
+	return newTestGenericUpstreamWithHeadPause(t, upConfig, connectorMocks, aggregator, false)
+}
+
+func newTestGenericUpstreamWithHeadPause(
+	t *testing.T,
+	upConfig *config.Upstream,
+	connectorMocks []*mocks.ConnectorMock,
+	aggregator *event_processors.UpstreamProcessorAggregator,
+	pauseHeadWhileSyncing bool,
 ) (*upstreams.GenericUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
 	t.Helper()
 	loadMethodSpecs(t)
@@ -741,6 +874,7 @@ func newTestGenericUpstream(
 		aggregator,
 		&stateChan,
 		&stateEmitter,
+		pauseHeadWhileSyncing,
 	)
 
 	sub := upstream.Subscribe(t.Name())

@@ -78,6 +78,10 @@ func (c *CelestiaChainSpecificObject) MethodsProcessor() methods.MethodsProcesso
 	return nil
 }
 
+func (c *CelestiaChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}
+
 // node.Info requires an admin token, so client labels can't be detected.
 func (c *CelestiaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return nil

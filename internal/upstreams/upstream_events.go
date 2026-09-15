@@ -6,6 +6,7 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
@@ -96,6 +97,7 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				}
 				if stateEvent.Lag == nil {
 					baseAvail = stateEvent.Status
+					u.toggleHeadOnSyncing(baseAvail)
 				}
 				newAvail := protocol.StatusByLag(u.headLag.Load(), baseAvail, u.configuredChain.Settings.Lags.Syncing)
 				if newAvail != state.Status {
@@ -117,6 +119,28 @@ func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid b
 				u.publishUpstreamEvent(state, eventType)
 			}
 		}
+	}
+}
+
+// toggleHeadOnSyncing stops the head processor when the health probes report Syncing
+// and starts it again on the first non-Syncing verdict. Only probe results reach here:
+// lag-observer events carry a Lag and never change baseAvail, so a node that merely
+// fell behind keeps its head. It acts on whether the processor is actually running rather
+// than on what it last did, because the supervisor (PartialStop, Resume) drives the same
+// processor from another goroutine.
+func (u *GenericUpstream) toggleHeadOnSyncing(probeAvail protocol.AvailabilityStatus) {
+	if !u.pauseHeadWhileSyncing {
+		return
+	}
+	syncing := probeAvail == protocol.Syncing
+	running := u.processorAggregator.IsProcessorRunning(event_processors.HeadEventProcessorType)
+	switch {
+	case syncing && running:
+		log.Warn().Msgf("upstream '%s' reports syncing, pausing its head", u.id)
+		u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
+	case !syncing && !running:
+		log.Warn().Msgf("upstream '%s' is synced again, resuming its head", u.id)
+		u.processorAggregator.StartProcessor(event_processors.HeadEventProcessorType)
 	}
 }
 

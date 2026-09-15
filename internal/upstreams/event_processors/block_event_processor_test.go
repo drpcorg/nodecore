@@ -2,6 +2,7 @@ package event_processors_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -148,7 +149,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
 
 	headProcessor.On("Start").Return()
-	headProcessor.On("Subscribe", "upstream-1_head_updates")
+	headProcessor.On("Subscribe", headUpdatesSubscription())
 	headProcessor.On("Stop").Return()
 
 	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
@@ -160,7 +161,7 @@ func TestHeadEventProcessorStartEmitsEvents(t *testing.T) {
 	headData := protocol.NewBlockWithHeight(202)
 
 	require.Eventually(t, func() bool {
-		headProcessor.Publish(blocks.HeadEvent{HeadData: headData})
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: headData})
 
 		select {
 		case event := <-events:
@@ -210,7 +211,7 @@ func TestHeadEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
 
 	headProcessor.On("Start").Return()
-	headProcessor.On("Subscribe", "upstream-1_head_updates")
+	headProcessor.On("Subscribe", headUpdatesSubscription())
 	headProcessor.On("Stop").Return()
 
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
@@ -224,4 +225,85 @@ func TestHeadEventProcessorStopStopsUnderlyingProcessor(t *testing.T) {
 
 	assert.False(t, processor.Running())
 	headProcessor.AssertExpectations(t)
+}
+
+func TestHeadEventProcessorIgnoresStateEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	headProcessor := mocks.NewHeadProcessorMock()
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
+	events := make(chan protocol.AbstractUpstreamStateEvent, 10)
+
+	headProcessor.On("Start").Return()
+	headProcessor.On("Subscribe", headUpdatesSubscription())
+	headProcessor.On("Stop").Return()
+
+	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+	processor.Start()
+	defer processor.Stop()
+
+	headData := protocol.NewBlockWithHeight(202)
+	require.Eventually(t, func() bool {
+		// state changes carry no head data and must not reach the upstream state pipeline
+		headProcessor.Publish(blocks.HeadStateEvent{Running: false})
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: headData})
+
+		select {
+		case event := <-events:
+			headEvent, ok := event.(*protocol.HeadUpstreamStateEvent)
+			require.True(t, ok, "only head blocks are emitted, got %T", event)
+			return headEvent.HeadData.Equals(headData)
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}
+
+// headUpdatesSubscription matches the head event processor's subscription name, which is
+// unique per start so that a restart never clashes with a subscription whose asynchronous
+// release has not run yet.
+func headUpdatesSubscription() any {
+	return mock.MatchedBy(func(name string) bool {
+		return strings.HasPrefix(name, "upstream-1_head_updates")
+	})
+}
+
+func TestHeadEventProcessorRestartsBackToBack(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	headProcessor := mocks.NewHeadProcessorMock()
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
+	events := make(chan protocol.AbstractUpstreamStateEvent, 10)
+
+	headProcessor.On("Start").Return()
+	headProcessor.On("Subscribe", headUpdatesSubscription())
+	headProcessor.On("Stop").Return()
+
+	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+
+	// a pause followed by an immediate resume: the previous run's subscription is
+	// released asynchronously, so the second start must not reuse its name
+	processor.Start()
+	processor.Stop()
+	processor.Start()
+	defer processor.Stop()
+
+	headData := protocol.NewBlockWithHeight(303)
+	require.Eventually(t, func() bool {
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: headData})
+
+		select {
+		case event := <-events:
+			headEvent, ok := event.(*protocol.HeadUpstreamStateEvent)
+			return ok && headEvent.HeadData.Equals(headData)
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 }

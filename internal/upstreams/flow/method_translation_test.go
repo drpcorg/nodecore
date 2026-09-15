@@ -156,6 +156,7 @@ func bitcoinTestUpstream(connector connectors.ApiConnector, headHeight uint64) *
 		nil,
 		nil,
 		nil,
+		false,
 	)
 }
 

@@ -205,6 +205,18 @@ func TestEthSyncingValidatorReturnsSyncingForOpNodeStylePayload(t *testing.T) {
 	connector.AssertExpectations(t)
 }
 
+func TestEthSyncingValidatorReturnsSyncingForNitroExecutionSyncTargetPayload(t *testing.T) {
+	connector := newEthHealthConnectorMock(t, "eth_syncing",
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"blockNum":43327714,"consensusMaxMessageCount":92338320,"executionSyncTarget":92338319,"messageOfLastBlock":43327714}`), protocol.JsonRpc),
+	)
+	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
+
+	status := validator.Validate()
+
+	assert.Equal(t, protocol.Syncing, status)
+	connector.AssertExpectations(t)
+}
+
 func TestEthSyncingValidatorReturnsAvailableWhenStructuredPayloadHasNoKnownSyncFields(t *testing.T) {
 	connector := newEthHealthConnectorMock(t, "eth_syncing",
 		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"status":"ok"}`), protocol.JsonRpc),

@@ -197,3 +197,7 @@ var _ chains_specific.ChainSpecific = (*BitcoinChainSpecificObject)(nil)
 func (b *BitcoinChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (b *BitcoinChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

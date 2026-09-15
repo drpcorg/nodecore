@@ -191,3 +191,7 @@ var _ chains_specific.ChainSpecific = (*SolanaChainSpecificObject)(nil)
 func (s *SolanaChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
+
+func (s *SolanaChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

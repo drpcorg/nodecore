@@ -134,6 +134,50 @@ func TestHeadLivenessTracker(t *testing.T) {
 		assert.Equal(t, maxBlockTime, tr.measuredBlockTime)
 	})
 
+	t.Run("suspend retracts liveness and resets the run but keeps measuredBlockTime", func(t *testing.T) {
+		tr, _ := newTracker()
+		tr.measuredBlockTime = 7 * time.Second
+		last := driveLiveByCount(tr, 100)
+		assert.True(t, tr.live)
+
+		assert.False(t, tr.suspend())
+		assert.False(t, tr.live)
+		assert.Equal(t, 0, tr.count)
+		assert.Equal(t, 7*time.Second, tr.measuredBlockTime, "a gap in observation is not a stall")
+
+		// a fresh consecutive run is required, like a cold start: baseline plus two blocks
+		assert.False(t, tr.observe(last+1)) // new baseline
+		assert.False(t, tr.observe(last+2))
+		assert.True(t, tr.observe(last+3))
+	})
+
+	t.Run("a height jump after suspend is a new baseline, not a forward gap with a cooldown", func(t *testing.T) {
+		tr, _ := newTracker()
+		driveLiveByCount(tr, 100)
+		tr.suspend()
+
+		// the node advanced thousands of blocks while we were not looking
+		assert.False(t, tr.observe(5000)) // baseline
+		assert.False(t, tr.observe(5001))
+		assert.True(t, tr.observe(5002), "no cooldown: the gap was ours, not the node's")
+		assert.True(t, tr.lastNonConsecutiveTime.IsZero())
+	})
+
+	t.Run("the first observation after suspend does not measure the gap as a block interval", func(t *testing.T) {
+		tr, clk := newTracker()
+		tr.measuredBlockTime = time.Second
+		tr.observe(100)
+
+		tr.suspend()
+		clk.advance(time.Hour) // the head was paused for an hour
+		tr.observe(101)
+		assert.Equal(t, time.Second, tr.measuredBlockTime)
+
+		clk.advance(3 * time.Second)
+		tr.observe(102) // measuring resumes from the first post-suspend head
+		assert.Equal(t, 3*time.Second, tr.measuredBlockTime)
+	})
+
 	t.Run("a single consecutive block after a timeout flips it live again (no cooldown)", func(t *testing.T) {
 		tr, _ := newTracker()
 		last := driveLiveByCount(tr, 100)
