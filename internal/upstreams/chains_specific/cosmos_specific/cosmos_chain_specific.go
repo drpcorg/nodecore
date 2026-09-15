@@ -14,8 +14,9 @@ import (
 	specs "github.com/drpcorg/public/pkg/methods"
 )
 
-// NewCosmosSpecific picks the flavor from the primary (internal-request)
-// connector. A cosmos node exposes three independent APIs - the CometBFT RPC
+// NewCosmosSpecific picks the flavor from the connector it is given - the
+// internal-request connector for the probe specific, the head connector for
+// the head specific. A cosmos node exposes three independent APIs - the CometBFT RPC
 // on 26657, the SDK LCD on 1317 and the SDK gRPC on 9090 - and any one of
 // them can carry the full set of probes nodecore needs, so an upstream may be
 // configured with one or several of them. A chain with an EVM module (the

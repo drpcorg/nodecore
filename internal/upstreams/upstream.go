@@ -111,22 +111,22 @@ func NewGenericUpstream(
 		emitter:          emitter,
 	}
 
-	chainSpecific, err := getChainSpecific(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
+	specifics, err := getUpstreamSpecifics(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
 	if err != nil {
 		return nil, err
 	}
-	upstream.pauseHeadWhileSyncing = chainSpecific.PauseHeadWhileSyncing()
-	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific)
+	upstream.pauseHeadWhileSyncing = specifics.head.PauseHeadWhileSyncing()
+	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, specifics.head)
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
-			CreateBlockEventProcessor(ctx, conf, chainSpecific, configuredChain),
+			CreateBlockEventProcessor(ctx, conf, specifics.probe, configuredChain),
 			CreateHeadEventProcessor(ctx, conf, configuredChain.Chain, headProcessor),
-			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
-			CreateHealthEventProcessor(ctx, conf, chainSpecific),
-			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
-			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
-			CreateMethodsEventProcessor(ctx, conf, chainSpecific),
-			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
+			CreateLowerBoundsEventProcessor(ctx, conf, specifics.probe),
+			CreateHealthEventProcessor(ctx, conf, specifics.probe),
+			CreateSettingsEventProcessor(ctx, conf, specifics.probe),
+			CreateLabelsEventProcessor(ctx, conf, specifics.probe),
+			CreateMethodsEventProcessor(ctx, conf, specifics.probe),
+			CreateCapEventProcessor(ctx, conf, specifics.probe, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)
