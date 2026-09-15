@@ -707,7 +707,7 @@ When NodeCore detects a `.onion` hostname, it automatically routes the connectio
 - `connectors` - The access endpoints for this upstream. **_Required_**, **_at least one_**. There can be only one connector of each type per upstream, and at least one connector must be a plain type (not `rest-additional`). Each connector has:
   - `type` - one of `json-rpc`, `tendermint`, `websocket`, `rest`, `grpc`, `rest-indexer`, `rest-additional`. **_Required_**
   - `url` - full endpoint URL. **_Required_**
-  - `headers` - optional key/value map of extra headers to send with requests
+  - `headers` - optional key/value map of extra headers to send with requests. Names are matched case-insensitively. Setting `Accept-Encoding` here overrides the `zstd, gzip` nodecore offers by default - see [Compression](15-compression.md#pinning-the-upstream-coding)
   - `ca` - Path to a Certificate Authority (CA) certificate file to validate client certificates (for example, if you use self-signed certificates)
   - `response-header-deny` - list of upstream response-header names that must *not* be forwarded back to the client, on top of the built-in deny list (RFC 7230 hop-by-hop headers plus `Set-Cookie` and `Server`). Matching is case-insensitive
 - `head-connector` - Connector type used to fetch chain head / finality information. Must match one of the connector types configured under `connectors`, and cannot be `rest-additional`
