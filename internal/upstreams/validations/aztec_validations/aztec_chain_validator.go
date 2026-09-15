@@ -49,12 +49,12 @@ func (a *AztecChainValidator) Validate() validations.ValidationSettingResult {
 		log.Error().Msgf("aztec upstream '%s' returned empty chain id", a.upstreamId)
 		return validations.SettingsError
 	}
-	if !chainIdEqual(chainId, a.chain.ChainId) {
+	if !chainIdEqual(chainId, a.chain.ChainIdFor(chains.Aztec)) {
 		log.Error().Msgf(
 			"'%s' is specified for upstream '%s' with chainId '%s', but the node reports chainId '%s'",
 			a.chain.Chain.String(),
 			a.upstreamId,
-			a.chain.ChainId,
+			a.chain.ChainIdFor(chains.Aztec),
 			chainId,
 		)
 		return validations.FatalSettingError

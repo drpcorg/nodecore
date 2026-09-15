@@ -115,7 +115,7 @@ func (t *TendermintChainSpecific) HealthValidators() []validations.Validator[pro
 }
 
 func (t *TendermintChainSpecific) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if t.chain == nil || t.chain.ChainId == "" {
+	if t.chain == nil || t.chain.ChainIdFor(chains.Cosmos) == "" {
 		return nil
 	}
 	if *t.options.DisableChainValidation {

@@ -104,7 +104,7 @@ func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Aztec) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {

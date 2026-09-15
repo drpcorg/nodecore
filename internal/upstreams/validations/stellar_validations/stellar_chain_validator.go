@@ -48,13 +48,13 @@ func (s *StellarChainValidator) Validate() validations.ValidationSettingResult {
 	// lowercases every chain-id, so the compare is case-insensitive by necessity.
 	// An empty passphrase fails this compare too - the chain-id is never empty
 	// here, since SettingsValidators() skips the validator entirely in that case.
-	if strings.EqualFold(passphrase, s.chain.ChainId) {
+	if strings.EqualFold(passphrase, s.chain.ChainIdFor(chains.Stellar)) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects passphrase '%s' but stellar upstream '%s' reports '%s'",
 		s.chain.Chain.String(),
-		s.chain.ChainId,
+		s.chain.ChainIdFor(chains.Stellar),
 		s.upstreamId,
 		passphrase,
 	)

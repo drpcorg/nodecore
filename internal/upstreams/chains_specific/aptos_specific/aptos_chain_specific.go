@@ -110,7 +110,7 @@ func (a *AptosChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (a *AptosChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Aptos) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {

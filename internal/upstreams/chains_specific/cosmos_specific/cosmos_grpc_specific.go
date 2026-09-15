@@ -113,7 +113,7 @@ func (c *CosmosGrpcSpecific) HealthValidators() []validations.Validator[protocol
 }
 
 func (c *CosmosGrpcSpecific) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if c.chain == nil || c.chain.ChainId == "" {
+	if c.chain == nil || c.chain.ChainIdFor(chains.Cosmos) == "" {
 		return nil
 	}
 	if *c.options.DisableChainValidation {

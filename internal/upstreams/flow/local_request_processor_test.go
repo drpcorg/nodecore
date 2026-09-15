@@ -156,3 +156,31 @@ func TestLocalRequestProcessorChainIdAndNetVersion(t *testing.T) {
 		}
 	}
 }
+
+// On a cosmos chain with an EVM module the locally served eth_chainId and
+// net_version are the EVM ids, not the cosmos network name.
+func TestLocalRequestProcessorChainIdAndNetVersionOnACosmosEvmChain(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	tests := []struct {
+		method string
+		result []byte
+	}{
+		{method: specs.EthChainId, result: []byte(`"0x59f"`)},
+		{method: specs.NetVersion, result: []byte(`"888"`)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.method, func(t *testing.T) {
+			processor := flow.NewLocalRequestProcessor(chains.INJECTIVE_TESTNET, nil)
+			jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: test.method}
+			request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "cosmos-evm")
+
+			response := processor.ProcessRequest(context.Background(), nil, request)
+
+			unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
+			assert.Nil(t, unaryRespWrapper.Response.GetError())
+			assert.Equal(t, string(test.result), string(unaryRespWrapper.Response.ResponseResult()))
+		})
+	}
+}

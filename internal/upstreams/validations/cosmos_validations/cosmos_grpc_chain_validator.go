@@ -37,7 +37,7 @@ func NewCosmosGrpcChainValidator(
 }
 
 func (c *CosmosGrpcChainValidator) Validate() validations.ValidationSettingResult {
-	expected := strings.TrimSpace(c.chain.ChainId)
+	expected := strings.TrimSpace(c.chain.ChainIdFor(chains.Cosmos))
 	if expected == "" {
 		return validations.Valid
 	}
