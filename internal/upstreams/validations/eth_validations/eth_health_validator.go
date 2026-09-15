@@ -28,12 +28,10 @@ func (e *EthPeersValidator) Validate() protocol.AvailabilityStatus {
 		log.Error().Err(err).Msgf("unable to get peer count of upstream '%s'", e.upstreamId)
 		return protocol.Unavailable
 	}
+	// a hex string on Ethereum nodes, a plain number on cosmos chains with an EVM module
 	var raw string
 	if err := sonic.Unmarshal(peerCountResp, &raw); err != nil {
-		log.Error().
-			Err(err).
-			Msgf("unable to unmarshal peer count of upstream '%s', response - %s", e.upstreamId, string(peerCountResp))
-		return protocol.Unavailable
+		raw = strings.TrimSpace(string(peerCountResp))
 	}
 
 	peers, err := strconv.ParseInt(raw, 0, 64)

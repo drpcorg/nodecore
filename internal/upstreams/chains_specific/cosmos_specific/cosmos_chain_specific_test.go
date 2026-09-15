@@ -13,8 +13,10 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/cosmos_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tendermint_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/cosmos_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/cosmos_validations"
@@ -96,9 +98,11 @@ func freshCosmosRest(t *testing.T, connector *mocks.ConnectorMock, opts *chains.
 		context.Background(),
 		"upstream-id",
 		connector,
+		nil,
 		chains.GetChain("cosmos-hub"),
 		100*time.Millisecond,
 		opts,
+		nil,
 	)
 	require.NoError(t, err)
 	restSpecific, ok := cs.(*cosmos_specific.CosmosRestSpecific)
@@ -113,39 +117,54 @@ func TestNewCosmosSpecificDispatchesOnConnectorType(t *testing.T) {
 
 	tendermintCs, err := cosmos_specific.NewCosmosSpecific(
 		context.Background(), "id",
-		mocks.NewConnectorMockWithType(specs.TendermintConnector),
-		chain, time.Second, cosmosOptions(false),
+		mocks.NewConnectorMockWithType(specs.TendermintConnector), nil,
+		chain, time.Second, cosmosOptions(false), nil,
 	)
 	require.NoError(t, err)
 	assert.IsType(t, &tendermint_specific.TendermintChainSpecific{}, tendermintCs)
 
 	restCs, err := cosmos_specific.NewCosmosSpecific(
 		context.Background(), "id",
-		mocks.NewConnectorMockWithType(specs.RestConnector),
-		chain, time.Second, cosmosOptions(false),
+		mocks.NewConnectorMockWithType(specs.RestConnector), nil,
+		chain, time.Second, cosmosOptions(false), nil,
 	)
 	require.NoError(t, err)
 	assert.IsType(t, &cosmos_specific.CosmosRestSpecific{}, restCs)
 }
 
-func TestNewCosmosSpecificUnsupportedConnector(t *testing.T) {
-	for _, connectorType := range []specs.ApiConnectorType{
-		specs.WebsocketConnector, specs.JsonRpcConnector, specs.RestIndexer,
-	} {
+// A cosmos chain with an EVM module (the cosmos-evm bundle) serves the
+// Ethereum JSON-RPC too, so its json-rpc and websocket connectors get the EVM
+// specific - the same one Tron's json-rpc connector gets.
+func TestNewCosmosSpecificEvmConnectorsGetTheEvmSpecific(t *testing.T) {
+	for _, connectorType := range []specs.ApiConnectorType{specs.JsonRpcConnector, specs.WebsocketConnector} {
+		connector := mocks.NewConnectorMockWithType(connectorType)
 		cs, err := cosmos_specific.NewCosmosSpecific(
 			context.Background(), "id",
-			mocks.NewConnectorMockWithType(connectorType),
-			chains.GetChain("cosmos-hub"), time.Second, cosmosOptions(false),
+			connector, []connectors.ApiConnector{connector},
+			chains.GetChain("injective-testnet"), time.Second, cosmosOptions(false),
+			map[string]string{"provider": "test"},
+		)
+		require.NoError(t, err, connectorType)
+		assert.IsType(t, &evm_specific.EvmChainSpecificObject{}, cs, connectorType)
+	}
+}
+
+func TestNewCosmosSpecificUnsupportedConnector(t *testing.T) {
+	for _, connectorType := range []specs.ApiConnectorType{specs.RestIndexer, specs.RestAdditional} {
+		cs, err := cosmos_specific.NewCosmosSpecific(
+			context.Background(), "id",
+			mocks.NewConnectorMockWithType(connectorType), nil,
+			chains.GetChain("cosmos-hub"), time.Second, cosmosOptions(false), nil,
 		)
 		assert.Nil(t, cs)
-		assert.ErrorContains(t, err, "cosmos specific supports only tendermint, rest or grpc connector")
+		assert.ErrorContains(t, err, "cosmos specific supports only tendermint, rest, grpc, json-rpc or websocket connector")
 	}
 }
 
 func TestNewCosmosSpecificNilConnector(t *testing.T) {
 	cs, err := cosmos_specific.NewCosmosSpecific(
-		context.Background(), "id", nil,
-		chains.GetChain("cosmos-hub"), time.Second, cosmosOptions(false),
+		context.Background(), "id", nil, nil,
+		chains.GetChain("cosmos-hub"), time.Second, cosmosOptions(false), nil,
 	)
 	assert.Nil(t, cs)
 	assert.ErrorContains(t, err, "no connector")

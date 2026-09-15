@@ -307,9 +307,11 @@ func getChainSpecific(
 			ctx,
 			conf.Id,
 			upstreamConnectorsInfo.internalRequestConnector,
+			upstreamConnectorsInfo.allConnectors,
 			configuredChain,
 			conf.PollInterval,
 			conf.Options,
+			conf.Labels,
 		)
 	case chains.Starknet:
 		return starknet_specific.NewStarknetChainSpecificObject(

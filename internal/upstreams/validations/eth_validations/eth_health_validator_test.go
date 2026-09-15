@@ -43,6 +43,23 @@ func TestEthPeersValidatorReturnsUnavailableOnInvalidJSON(t *testing.T) {
 	connector.AssertExpectations(t)
 }
 
+// Cosmos chains with an EVM module (Injective) report net_peerCount as a JSON
+// number instead of the hex string an Ethereum node returns.
+func TestEthPeersValidatorAcceptsANumericPeerCount(t *testing.T) {
+	connector := newEthHealthConnectorMock(t, "net_peerCount",
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`41`), protocol.JsonRpc),
+	)
+	validator := eth_validations.NewEthPeersValidator("upstream-1", chains.INJECTIVE_TESTNET, connector, &chains.Options{
+		InternalTimeout: time.Second,
+		MinPeers:        1,
+	})
+
+	status := validator.Validate()
+
+	assert.Equal(t, protocol.Available, status)
+	connector.AssertExpectations(t)
+}
+
 func TestEthPeersValidatorReturnsUnavailableOnInvalidPeerCount(t *testing.T) {
 	connector := newEthHealthConnectorMock(t, "net_peerCount",
 		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"not-a-number"`), protocol.JsonRpc),
