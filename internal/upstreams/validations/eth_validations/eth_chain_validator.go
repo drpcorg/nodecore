@@ -76,7 +76,7 @@ func (c *EthChainValidator) Validate() validations.ValidationSettingResult {
 
 	isValidChain := c.chain.ChainIdFor(chains.Ethereum) == chainId && c.chain.NetVersion == netVersion
 	if !isValidChain {
-		actualChain := chains.GetChainByChainIdAndVersion(c.chain.Type, chainId, netVersion)
+		actualChain := chains.GetChainByChainIdAndVersion(chains.Ethereum, chainId, netVersion)
 		log.Error().Msgf(
 			"'%s' is specified for upstream '%s' with chainId '%s' and netVersion '%s', but actually it's '%s' with chainId '%s' and netVersion '%s'",
 			c.chain.Chain.String(),

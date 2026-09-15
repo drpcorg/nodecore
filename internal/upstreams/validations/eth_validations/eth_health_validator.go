@@ -28,21 +28,31 @@ func (e *EthPeersValidator) Validate() protocol.AvailabilityStatus {
 		log.Error().Err(err).Msgf("unable to get peer count of upstream '%s'", e.upstreamId)
 		return protocol.Unavailable
 	}
-	// a hex string on Ethereum nodes, a plain number on cosmos chains with an EVM module
-	var raw string
-	if err := sonic.Unmarshal(peerCountResp, &raw); err != nil {
-		raw = strings.TrimSpace(string(peerCountResp))
-	}
-
-	peers, err := strconv.ParseInt(raw, 0, 64)
+	peers, err := parsePeerCount(peerCountResp)
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to parse peer count to int of upstream '%s', raw - %s", e.upstreamId, raw)
+		log.Error().
+			Err(err).
+			Msgf("unable to parse peer count of upstream '%s', response - %s", e.upstreamId, string(peerCountResp))
 		return protocol.Unavailable
 	}
 	if peers < e.options.MinPeers {
 		return protocol.Immature
 	}
 	return protocol.Available
+}
+
+// parsePeerCount reads net_peerCount as Ethereum nodes return it, a hex string,
+// or as cosmos chains with an EVM module return it, a plain JSON number.
+func parsePeerCount(result []byte) (int64, error) {
+	var raw string
+	if err := sonic.Unmarshal(result, &raw); err == nil {
+		return strconv.ParseInt(raw, 0, 64)
+	}
+	var number int64
+	if err := sonic.Unmarshal(result, &number); err != nil {
+		return 0, err
+	}
+	return number, nil
 }
 
 func NewEthPeersValidator(
