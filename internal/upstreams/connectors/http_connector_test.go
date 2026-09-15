@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -532,11 +533,11 @@ func TestRestRequest_ConfigHeadersWinAcrossCasing(t *testing.T) {
 }
 
 // Hop-by-hop headers (RFC 7230 §6.1) and Accept-Encoding must not be
-// forwarded from the client to the upstream. Forwarding Accept-Encoding is
-// how double-gzip happens (issue #268): an explicit Accept-Encoding on the
-// outgoing request disables Go's transparent decompression, the compressed
-// body then loses its Content-Encoding in the response deny list, and the
-// server-side gzip middleware compresses it a second time.
+// forwarded from the client to the upstream. The two hops compress
+// independently, so the connector answers with its own offer instead -
+// letting the client's value through is how double-gzip happened (issue
+// #268): the upstream's compressed body lost its Content-Encoding in the
+// response deny list and was compressed a second time on the way out.
 func TestRestRequest_HopByHopClientHeadersNotForwarded(t *testing.T) {
 	httpmock.Activate(t)
 	defer httpmock.Deactivate()
@@ -574,12 +575,14 @@ func TestRestRequest_HopByHopClientHeadersNotForwarded(t *testing.T) {
 
 	require.False(t, r.HasError())
 	for _, denied := range []string{
-		"Accept-Encoding", "Connection", "Keep-Alive", "Proxy-Authorization",
+		"Connection", "Keep-Alive", "Proxy-Authorization",
 		"Te", "Trailer", "Transfer-Encoding", "Upgrade", "Host", "Content-Length",
 	} {
 		assert.Empty(t, gotHeaders.Values(denied),
 			"client %s must not be forwarded to the upstream", denied)
 	}
+	assert.Equal(t, []string{compression.Offer}, gotHeaders.Values("Accept-Encoding"),
+		"the client's Accept-Encoding must be replaced by the connector's own offer, not appended to")
 	assert.Equal(t, []string{"hello"}, gotHeaders.Values("X-Custom"),
 		"non-denied client headers must still pass through")
 }
