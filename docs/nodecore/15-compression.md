@@ -32,19 +32,19 @@ not compressed.
 
 The coding is picked from the client's `Accept-Encoding` per RFC 9110 §12.5.3:
 
-| `Accept-Encoding` | Coding served | Why |
-| --- | --- | --- |
-| *(absent)* | none | Nothing was asked for |
-| `gzip` | `gzip` | |
-| `zstd` | `zstd` | |
-| `gzip, zstd` | `zstd` | Equal q — zstd wins the tie |
-| `*` | `zstd` | The wildcard reaches both codings at the same q |
-| `gzip;q=1.0, zstd;q=0.5` | `gzip` | Highest q wins |
-| `zstd;q=0, *` | `gzip` | `*` stands in only for codings the client did not name itself |
-| `gzip;q=0` | none | `q=0` is a refusal, not a weak preference |
-| `identity` | none | Plain bytes ranked above every offered coding |
-| `identity;q=0.5, gzip` | `gzip` | gzip outranks identity |
-| `br`, `deflate`, … | none | Not spoken here |
+| `Accept-Encoding`        | Coding served | Why                                                           |
+| ------------------------ | ------------- | ------------------------------------------------------------- |
+| _(absent)_               | none          | Nothing was asked for                                         |
+| `gzip`                   | `gzip`        |                                                               |
+| `zstd`                   | `zstd`        |                                                               |
+| `gzip, zstd`             | `zstd`        | Equal q — zstd wins the tie                                   |
+| `*`                      | `zstd`        | The wildcard reaches both codings at the same q               |
+| `gzip;q=1.0, zstd;q=0.5` | `gzip`        | Highest q wins                                                |
+| `zstd;q=0, *`            | `gzip`        | `*` stands in only for codings the client did not name itself |
+| `gzip;q=0`               | none          | `q=0` is a refusal, not a weak preference                     |
+| `identity`               | none          | Plain bytes ranked above every offered coding                 |
+| `identity;q=0.5, gzip`   | `gzip`        | gzip outranks identity                                        |
+| `br`, `deflate`, …       | none          | Not spoken here                                               |
 
 Details that matter in practice:
 
@@ -55,7 +55,7 @@ Details that matter in practice:
 - **Nothing acceptable yields plain bytes, not `406`.** `identity;q=0` alone, or `*;q=0`, gets an
   uncompressed body — the one response an RPC client can actually use.
 - **`Vary: Accept-Encoding` is always sent**, including on uncompressed responses, so a shared cache
-  cannot hand a zstd body to a gzip-only client. When CORS is active, `Vary: Origin` is *added*
+  cannot hand a zstd body to a gzip-only client. When CORS is active, `Vary: Origin` is _added_
   alongside it rather than replacing it.
 - **No size threshold.** Every response with a body is encoded; there is no minimum length below
   which compression is skipped.
@@ -125,11 +125,11 @@ upstreams:
       - type: json-rpc
         url: https://node.example.com
         headers:
-          Accept-Encoding: gzip          # only gzip from this node
+          Accept-Encoding: gzip # only gzip from this node
       - type: rest
         url: https://rest.example.com
         headers:
-          Accept-Encoding: identity      # no compression from this node at all
+          Accept-Encoding: identity # no compression from this node at all
 ```
 
 Header names are matched case-insensitively. This affects only that connector; the client-facing
@@ -140,12 +140,12 @@ side is unchanged.
 Levels are fixed. On a proxy the compression sits on the critical path of every request, where CPU
 time is worth more than the last few percent of ratio.
 
-| | gzip | zstd |
-| --- | --- | --- |
-| Encoder level | `BestSpeed` | `SpeedFastest` |
-| Encoder window | library default | 256 KiB |
-| Decoder window cap | n/a | 8 MiB |
-| Concurrency | 1 worker | 1 worker |
+|                    | gzip            | zstd           |
+| ------------------ | --------------- | -------------- |
+| Encoder level      | `BestSpeed`     | `SpeedFastest` |
+| Encoder window     | library default | 256 KiB        |
+| Decoder window cap | n/a             | 8 MiB          |
+| Concurrency        | 1 worker        | 1 worker       |
 
 Encoders and decoders are **pooled** and shared by both edges: a zstd codec allocates its window up
 front, which is far too expensive to repeat per proxied request. The 256 KiB encoder window is sized
@@ -169,8 +169,8 @@ decoders must support up to 8 MB and encoders must not generate frames requiring
 purpose zstd does produce larger frames — `zstd --long` alone defaults to a 128 MiB window — so a
 frame above the cap is rejected rather than allocated for.
 
-**Decoded request body: 32 MiB.** The window cap bounds what a frame *header* can ask for; this
-bounds what the decoded *bytes* can. A compressed body is a size multiplier whose factor the sender
+**Decoded request body: 32 MiB.** The window cap bounds what a frame _header_ can ask for; this
+bounds what the decoded _bytes_ can. A compressed body is a size multiplier whose factor the sender
 chooses — DEFLATE tops out near 1000:1 and zstd has no comparable ceiling — so without it a few
 hundred kilobytes on the wire can ask for gigabytes, from anyone who can reach the port. 32 MiB is
 far above anything JSON-RPC produces in practice (a batch of ten thousand calls is on the order of a
