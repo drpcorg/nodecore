@@ -132,6 +132,18 @@ func NotSupportedMethodError(method string) *ResponseError {
 	}
 }
 
+// MethodNotAvailableOverTransportError answers a method that exists on the
+// chain but is bound to connector types that cannot carry this request's wire
+// shape (a gRPC method called over JSON-RPC, for example). It shares the code of
+// NotSupportedMethodError so the observer and error classification keep
+// treating it as a client-side rejection rather than an upstream failure.
+func MethodNotAvailableOverTransportError(method string, requestType RequestType) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("the method %s is not available over %s", method, requestType.String()),
+		Code:    NoSupportedMethod,
+	}
+}
+
 func RateLimitError() *ResponseError {
 	return &ResponseError{
 		Message: "rate limit exceeded",

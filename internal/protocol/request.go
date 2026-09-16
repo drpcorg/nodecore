@@ -4,8 +4,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/bytedance/sonic"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 )
 
@@ -52,6 +54,27 @@ func (r RequestType) String() string {
 		return "grpc"
 	}
 	panic(fmt.Sprintf("unknown RequestType - %d", r))
+}
+
+// CanBeServedBy reports whether a request of this wire shape can be sent
+// through at least one of the given connector types. The only boundary policed
+// is gRPC: proto frames and JSON bodies are different codecs and nothing
+// translates between them, so a gRPC request needs a grpc connector and a
+// non-gRPC request needs any other connector. Within the HTTP family the shapes
+// are deliberately not checked - one connector may serve two forms (tendermint),
+// a spec may declare one form and ship another, and method translators rewrite
+// a JSON-RPC method into a REST call right before the connector.
+func (r RequestType) CanBeServedBy(connectorTypes []specs.ApiConnectorType) bool {
+	switch r {
+	case Grpc:
+		return slices.Contains(connectorTypes, specs.GrpcConnector)
+	case JsonRpc, Ws, Rest:
+		return slices.ContainsFunc(connectorTypes, func(connectorType specs.ApiConnectorType) bool {
+			return connectorType != specs.GrpcConnector
+		})
+	default:
+		return false
+	}
 }
 
 func calculateHash(b []byte) string {

@@ -272,6 +272,21 @@ func (e *GenericExecutionFlow) processRequest(ctx context.Context, upstreamStrat
 			return
 		}
 
+		// the method exists but not for this wire shape - a JSON-RPC body sent
+		// to a grpc-only method would otherwise be routed to the grpc connector
+		// and fail there with an opaque decode error (and proto bytes for a
+		// JSON-RPC method would hit an HTTP connector)
+		if !request.RequestType().CanBeServedBy(request.SpecMethod().GetApiConnectorTypes()) {
+			response := protocol.NewTotalFailure(request, protocol.MethodNotAvailableOverTransportError(request.Method(), request.RequestType()))
+			wrapper := &protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				Response:   response,
+				RequestId:  request.Id(),
+			}
+			e.sendResponse(ctx, wrapper, request)
+			return
+		}
+
 		if err := e.unsupportedBlockTagError(ctx, request); err != nil {
 			wrapper := &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
