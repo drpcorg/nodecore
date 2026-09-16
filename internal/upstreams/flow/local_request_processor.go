@@ -30,7 +30,7 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	var localResult []byte
 	switch request.Method() {
 	case specs.EthChainId:
-		localResult = []byte(fmt.Sprintf(`"%s"`, chain.ChainId))
+		localResult = []byte(fmt.Sprintf(`"%s"`, chain.ChainIdFor(chains.Ethereum)))
 	case specs.NetVersion:
 		localResult = []byte(fmt.Sprintf(`"%s"`, chain.NetVersion))
 	}

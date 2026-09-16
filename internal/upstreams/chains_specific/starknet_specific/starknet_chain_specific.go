@@ -109,7 +109,7 @@ func (s *StarknetChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (s *StarknetChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain == nil || s.configuredChain.ChainId == "" {
+	if s.configuredChain == nil || s.configuredChain.ChainIdFor(chains.Starknet) == "" {
 		return nil
 	}
 	if s.options != nil && *s.options.DisableChainValidation {

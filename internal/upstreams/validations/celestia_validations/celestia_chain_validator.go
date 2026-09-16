@@ -40,12 +40,12 @@ func (c *CelestiaChainValidator) Validate() validations.ValidationSettingResult 
 		log.Error().Err(err).Msgf("failed to get chainId of chain %s upstream '%s'", c.chain.Chain, c.upstreamId)
 		return validations.SettingsError
 	}
-	if !strings.EqualFold(chainId, c.chain.ChainId) {
+	if !strings.EqualFold(chainId, c.chain.ChainIdFor(chains.Celestia)) {
 		log.Error().Msgf(
 			"'%s' is specified for upstream '%s' with chainId '%s', but the node reports chainId '%s'",
 			c.chain.Chain.String(),
 			c.upstreamId,
-			c.chain.ChainId,
+			c.chain.ChainIdFor(chains.Celestia),
 			chainId,
 		)
 		return validations.FatalSettingError

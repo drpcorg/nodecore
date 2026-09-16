@@ -100,7 +100,7 @@ func (b *BitcoinChainSpecificObject) HealthValidators() []validations.Validator[
 }
 
 func (b *BitcoinChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if b.configuredChain == nil || b.configuredChain.ChainId == "" {
+	if b.configuredChain == nil || b.configuredChain.ChainIdFor(chains.Bitcoin) == "" {
 		return nil
 	}
 	if b.options != nil && *b.options.DisableChainValidation {

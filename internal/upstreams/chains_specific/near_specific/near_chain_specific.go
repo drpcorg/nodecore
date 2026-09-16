@@ -119,7 +119,7 @@ func (n *NearChainSpecificObject) HealthValidators() []validations.Validator[pro
 }
 
 func (n *NearChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if n.configuredChain == nil || n.configuredChain.ChainId == "" {
+	if n.configuredChain == nil || n.configuredChain.ChainIdFor(chains.Near) == "" {
 		return nil
 	}
 	if n.options != nil && *n.options.DisableChainValidation {

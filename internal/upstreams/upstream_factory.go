@@ -204,20 +204,60 @@ func createBlockProcessor(chainSpecific chains_specific.ChainSpecific) blocks.Bl
 	return chainSpecific.BlockProcessor()
 }
 
-func getChainSpecific(
+// upstreamSpecifics are the two roles a chain specific plays. The probe
+// specific is built from the internal-request connector and runs every poll:
+// validators, labels, lower bounds, method detection and the finalized/safe
+// block processor, and answers PauseHeadWhileSyncing, which its own syncing
+// validator drives. The head specific is built from the head connector and
+// drives only the head processor - the one place that connector's protocol
+// matters, since a head subscription is opened on it. On the usual
+// upstream both connectors are the same and so is the specific. On a
+// mixed-API upstream (an Injective node with json-rpc probes and a grpc head)
+// they belong to different API families, and each is built for the connector
+// it actually talks to - a head driven by the probe specific would try to open
+// eth_subscribe over gRPC.
+type upstreamSpecifics struct {
+	probe chains_specific.ChainSpecific
+	head  chains_specific.ChainSpecific
+}
+
+func getUpstreamSpecifics(
 	ctx context.Context,
 	conf *config.Upstream,
 	upstreamConnectorsInfo *connectorsInfo,
 	configuredChain *chains.ConfiguredChain,
+) (*upstreamSpecifics, error) {
+	probe, err := getChainSpecific(ctx, conf, upstreamConnectorsInfo.internalRequestConnector, upstreamConnectorsInfo.allConnectors, configuredChain)
+	if err != nil {
+		return nil, err
+	}
+	head := probe
+	if upstreamConnectorsInfo.headConnector != upstreamConnectorsInfo.internalRequestConnector {
+		head, err = getChainSpecific(ctx, conf, upstreamConnectorsInfo.headConnector, upstreamConnectorsInfo.allConnectors, configuredChain)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &upstreamSpecifics{probe: probe, head: head}, nil
+}
+
+// getChainSpecific builds the chain's specific for one connector: the chain
+// family picks the implementation, and on chains served by several API
+// families the connector's type picks the flavor.
+func getChainSpecific(
+	ctx context.Context,
+	conf *config.Upstream,
+	connector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
+	configuredChain *chains.ConfiguredChain,
 ) (chains_specific.ChainSpecific, error) {
-	//TODO: there might be a few protocols a chain can work with, so it will be necessary to implement all of them
 	switch configuredChain.Type {
 	case chains.Ethereum:
 		if chains.IsTron(configuredChain.Chain) {
 			return tron_specific.NewTronSpecific(
 				ctx,
 				conf.Id,
-				upstreamConnectorsInfo.internalRequestConnector,
+				connector,
 				configuredChain,
 				conf.PollInterval,
 				conf.Options,
@@ -227,8 +267,8 @@ func getChainSpecific(
 		return evm_specific.NewEvmChainSpecific(
 			ctx,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
-			upstreamConnectorsInfo.allConnectors,
+			connector,
+			allConnectors,
 			configuredChain,
 			conf.PollInterval,
 			conf.Options,
@@ -240,14 +280,14 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			conf.Options,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 		), nil
 	case chains.Algorand:
 		return algorand_specific.NewAlgorandChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.Options,
 		), nil
 	case chains.Bitcoin:
@@ -255,7 +295,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.Options,
 		), nil
 	case chains.EthereumBeaconChain:
@@ -263,7 +303,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.PollInterval,
 			conf.Options,
 		), nil
@@ -272,7 +312,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.Options,
 		), nil
 	case chains.Near:
@@ -280,7 +320,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.PollInterval,
 			conf.Options,
 		), nil
@@ -289,7 +329,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.Options,
 		), nil
 	case chains.Ton:
@@ -297,8 +337,8 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
-			upstreamConnectorsInfo.allConnectors,
+			connector,
+			allConnectors,
 			conf.PollInterval,
 			conf.Options,
 		), nil
@@ -306,17 +346,19 @@ func getChainSpecific(
 		return cosmos_specific.NewCosmosSpecific(
 			ctx,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
+			allConnectors,
 			configuredChain,
 			conf.PollInterval,
 			conf.Options,
+			conf.Labels,
 		)
 	case chains.Starknet:
 		return starknet_specific.NewStarknetChainSpecificObject(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.PollInterval,
 			conf.Options,
 		), nil
@@ -325,7 +367,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.PollInterval,
 			conf.Options,
 		), nil
@@ -334,7 +376,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.PollInterval,
 			conf.Options,
 		), nil
@@ -343,7 +385,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.Options,
 		), nil
 	case chains.Celestia:
@@ -351,7 +393,7 @@ func getChainSpecific(
 			ctx,
 			configuredChain,
 			conf.Id,
-			upstreamConnectorsInfo.internalRequestConnector,
+			connector,
 			conf.PollInterval,
 			conf.Options,
 		), nil

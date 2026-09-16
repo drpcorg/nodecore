@@ -30,9 +30,11 @@ func freshCosmosGrpc(t *testing.T, connector *mocks.ConnectorMock, opts *chains.
 		context.Background(),
 		"upstream-id",
 		connector,
+		nil,
 		chains.GetChain("cosmos-hub"),
 		100*time.Millisecond,
 		opts,
+		nil,
 	)
 	require.NoError(t, err)
 	grpcSpecific, ok := cs.(*cosmos_specific.CosmosGrpcSpecific)

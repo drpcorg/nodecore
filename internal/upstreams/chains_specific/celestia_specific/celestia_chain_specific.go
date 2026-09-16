@@ -116,7 +116,7 @@ func (c *CelestiaChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (c *CelestiaChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if c.configuredChain == nil || c.configuredChain.ChainId == "" {
+	if c.configuredChain == nil || c.configuredChain.ChainIdFor(chains.Celestia) == "" {
 		return nil
 	}
 	if c.options != nil && *c.options.DisableChainValidation {

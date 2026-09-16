@@ -102,7 +102,7 @@ func (a *AlgorandChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Algorand) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {

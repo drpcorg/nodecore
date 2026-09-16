@@ -124,7 +124,7 @@ func (s *SuiChainSpecificObject) HealthValidators() []validations.Validator[prot
 }
 
 func (s *SuiChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain.ChainId == "" {
+	if s.configuredChain.ChainIdFor(chains.Sui) == "" {
 		return nil
 	}
 	if *s.options.DisableChainValidation {
