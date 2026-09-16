@@ -4,8 +4,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/bytedance/sonic"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/crypto/blake2b"
 )
 
@@ -52,6 +54,34 @@ func (r RequestType) String() string {
 		return "grpc"
 	}
 	panic(fmt.Sprintf("unknown RequestType - %d", r))
+}
+
+// CanBeServedBy reports whether a request of this wire shape can be sent
+// through at least one of the given connector types. A method spec binds a
+// method to connector types; the request body is what the client sent, so a
+// JSON-RPC body must never reach a grpc connector and proto bytes must never
+// reach an HTTP one. The tendermint connector accepts both JSON-RPC and REST
+// forms of the same method.
+func (r RequestType) CanBeServedBy(connectorTypes []specs.ApiConnectorType) bool {
+	return slices.ContainsFunc(connectorTypes, r.servedBy)
+}
+
+func (r RequestType) servedBy(connectorType specs.ApiConnectorType) bool {
+	switch r {
+	case JsonRpc, Ws:
+		return connectorType == specs.JsonRpcConnector ||
+			connectorType == specs.WebsocketConnector ||
+			connectorType == specs.TendermintConnector
+	case Rest:
+		return connectorType == specs.RestConnector ||
+			connectorType == specs.RestIndexer ||
+			connectorType == specs.RestAdditional ||
+			connectorType == specs.TendermintConnector
+	case Grpc:
+		return connectorType == specs.GrpcConnector
+	default:
+		return false
+	}
 }
 
 func calculateHash(b []byte) string {
