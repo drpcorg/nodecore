@@ -95,3 +95,33 @@ func TestExecuteLetsJsonRpcRequestForTendermintMethodThrough(t *testing.T) {
 	require.True(t, wrapper.Response.HasError())
 	assert.Equal(t, protocol.NoAvailableUpstreams, wrapper.Response.GetError().Code, wrapper.Response.GetError().Message)
 }
+
+func TestExecuteLetsTranslatedJsonRpcMethodOnRestAdditionalConnectorThrough(t *testing.T) {
+	exec := newTransportExec(t, chains.BITCOIN)
+	// listunspent lives in bitcoin-esplora under rest-additional and is
+	// translated to a REST call right before the connector - the gate must not
+	// stop it on the client-side method
+	request := protocol.NewUpstreamJsonRpcRequest(
+		"1",
+		protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "listunspent", Params: []byte(`[1, 9999999, ["bc1q"]]`)},
+		false,
+		"bitcoin",
+	)
+
+	wrapper := executeSingle(t, exec, request)
+
+	require.True(t, wrapper.Response.HasError())
+	assert.Equal(t, protocol.NoAvailableUpstreams, wrapper.Response.GetError().Code, wrapper.Response.GetError().Message)
+}
+
+func TestExecuteLetsRestRequestOnJsonRpcDeclaredMethodThrough(t *testing.T) {
+	exec := newTransportExec(t, chains.ALGORAND)
+	// the algorand spec declares json-rpc but ships REST templates; the HTTP
+	// family is deliberately not policed by the gate
+	request := protocol.NewUpstreamRestRequest("1", "GET#/v2/status", nil, nil, "algorand")
+
+	wrapper := executeSingle(t, exec, request)
+
+	require.True(t, wrapper.Response.HasError())
+	assert.Equal(t, protocol.NoAvailableUpstreams, wrapper.Response.GetError().Code, wrapper.Response.GetError().Message)
+}

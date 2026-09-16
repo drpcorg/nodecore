@@ -57,28 +57,21 @@ func (r RequestType) String() string {
 }
 
 // CanBeServedBy reports whether a request of this wire shape can be sent
-// through at least one of the given connector types. A method spec binds a
-// method to connector types; the request body is what the client sent, so a
-// JSON-RPC body must never reach a grpc connector and proto bytes must never
-// reach an HTTP one. The tendermint connector accepts both JSON-RPC and REST
-// forms of the same method.
+// through at least one of the given connector types. The only boundary policed
+// is gRPC: proto frames and JSON bodies are different codecs and nothing
+// translates between them, so a gRPC request needs a grpc connector and a
+// non-gRPC request needs any other connector. Within the HTTP family the shapes
+// are deliberately not checked - one connector may serve two forms (tendermint),
+// a spec may declare one form and ship another, and method translators rewrite
+// a JSON-RPC method into a REST call right before the connector.
 func (r RequestType) CanBeServedBy(connectorTypes []specs.ApiConnectorType) bool {
-	return slices.ContainsFunc(connectorTypes, r.servedBy)
-}
-
-func (r RequestType) servedBy(connectorType specs.ApiConnectorType) bool {
 	switch r {
-	case JsonRpc, Ws:
-		return connectorType == specs.JsonRpcConnector ||
-			connectorType == specs.WebsocketConnector ||
-			connectorType == specs.TendermintConnector
-	case Rest:
-		return connectorType == specs.RestConnector ||
-			connectorType == specs.RestIndexer ||
-			connectorType == specs.RestAdditional ||
-			connectorType == specs.TendermintConnector
 	case Grpc:
-		return connectorType == specs.GrpcConnector
+		return slices.Contains(connectorTypes, specs.GrpcConnector)
+	case JsonRpc, Ws, Rest:
+		return slices.ContainsFunc(connectorTypes, func(connectorType specs.ApiConnectorType) bool {
+			return connectorType != specs.GrpcConnector
+		})
 	default:
 		return false
 	}
