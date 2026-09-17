@@ -330,6 +330,7 @@ func getChainSpecific(
 			configuredChain,
 			conf.Id,
 			connector,
+			allConnectors,
 			conf.Options,
 		), nil
 	case chains.Ton:
