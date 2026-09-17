@@ -145,6 +145,10 @@ type Upstream struct {
 	Labels            UpstreamLabels           `yaml:"labels"`
 }
 
+// hasGrpcLabel is published on every upstream configured with a grpc connector, so
+// gRPC clients can select upstreams that serve gRPC methods with a label selector.
+const hasGrpcLabel = "has_grpc"
+
 // UpstreamLabels is a manual upstream label map. Label values are strings, but any
 // YAML scalar is accepted and stored as its literal text, so `archive: false` and
 // `archive: "false"` are equivalent - a plain map[string]string would reject the
@@ -361,7 +365,9 @@ type ApiConnectorConfig struct {
 	// Settings carries per-transport connector tuning; see ConnectorSettings.
 	Settings *ConnectorSettings `yaml:"settings,omitempty"`
 }
+
 const DefaultHttpResponseTimeout = 60 * time.Second
+
 // ConnectorSettings groups per-connector tuning by the transport it applies to, so that
 // settings for different connector kinds can be added without widening
 // ApiConnectorConfig itself. Only the group matching the connector's own transport may be
@@ -372,6 +378,7 @@ type ConnectorSettings struct {
 type HttpConnectorSettings struct {
 	ResponseTimeout *time.Duration `yaml:"response-timeout"`
 }
+
 var httpConnectorTypes = []specs.ApiConnectorType{
 	specs.JsonRpcConnector,
 	specs.TendermintConnector,
@@ -379,6 +386,7 @@ var httpConnectorTypes = []specs.ApiConnectorType{
 	specs.RestIndexer,
 	specs.RestAdditional,
 }
+
 func isHttpConnectorType(connectorType specs.ApiConnectorType) bool {
 	return slices.Contains(httpConnectorTypes, connectorType)
 }
@@ -638,6 +646,8 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		)
 	}
 
+	specName := chains.GetMethodSpecNameByChainName(u.ChainName)
+	specConnectors := specs.GetSpecConnectors(specName)
 	connectorTypeSet := mapset.NewThreadUnsafeSet[specs.ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.GetApiConnectorType()) {
@@ -645,6 +655,11 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 		if err := connector.validate(torProxyUrl); err != nil {
 			return err
+		}
+		// A connector the chain's spec doesn't declare serves no method at all: it would
+		// be dialed for nothing and misrepresent the upstream's transports.
+		if !slices.Contains(specConnectors, connector.GetApiConnectorType()) {
+			return fmt.Errorf("connector '%s' is not supported by the '%s' method spec of chain '%s'", connector.Type, specName, u.ChainName)
 		}
 		connectorTypeSet.Add(connector.GetApiConnectorType())
 	}

@@ -42,19 +42,20 @@ func main() {
 		log.Info().Str("path", path).Msg("loaded extra chain definitions")
 	}
 
-	appConfig, err := config.NewAppConfig()
-	if err != nil {
-		log.Panic().Err(err).Msg("unable to parse the config file")
-	}
-
+	// Specs load before the config: connector validation checks each connector
+	// against the connectors its chain's method spec declares.
 	specLoader := specs.NewMethodSpecLoader()
 	if path := os.Getenv(specPathVar); path != "" {
 		specLoader = specs.NewMethodSpecLoaderWithExtraFs(os.DirFS(path))
 		log.Info().Str("path", path).Msg("extending method specs with external directory")
 	}
-	err = specLoader.Load()
-	if err != nil {
+	if err := specLoader.Load(); err != nil {
 		log.Panic().Err(err).Msg("unable to load method specs")
+	}
+
+	appConfig, err := config.NewAppConfig()
+	if err != nil {
+		log.Panic().Err(err).Msg("unable to parse the config file")
 	}
 
 	mainCtx, mainCtxCancel := context.WithCancel(context.Background())

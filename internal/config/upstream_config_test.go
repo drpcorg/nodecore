@@ -132,7 +132,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 		HeadConnector: specs.JsonRpcConnector.String(),
 		HeadMode:      config.HeadModeSubscribe,
 		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
+		ChainName:     "tron",
 		Methods: &config.MethodsConfig{
 			BanDuration: 5 * time.Minute,
 		},
@@ -183,7 +183,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 		HeadConnector: specs.RestConnector.String(),
 		HeadMode:      config.HeadModeSubscribe,
 		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
+		ChainName:     "injective",
 		Methods: &config.MethodsConfig{
 			BanDuration: 5 * time.Minute,
 		},
@@ -779,4 +779,10 @@ func TestConnectorSettingsHttpOnWebsocketConnectorThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-on-websocket.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: http settings are not applicable to the 'websocket' connector")
+}
+
+func TestConnectorNotDeclaredBySpecThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-not-in-spec.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: connector 'grpc' is not supported by the 'eth' method spec of chain 'ethereum'")
 }
