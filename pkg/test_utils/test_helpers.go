@@ -249,7 +249,19 @@ func NewEvmChainSpecific(connector connectors.ApiConnector) *evm_specific.EvmCha
 }
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
-	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, newTestChainOptions())
+	var allConnectors []connectors.ApiConnector
+	if connector != nil {
+		allConnectors = []connectors.ApiConnector{connector}
+	}
+	return NewSolanaChainSpecificWithConnectors(ctx, connector, allConnectors)
+}
+
+func NewSolanaChainSpecificWithConnectors(
+	ctx context.Context,
+	connector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
+) *specific.SolanaChainSpecificObject {
+	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, allConnectors, newTestChainOptions())
 }
 
 func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aztec_specific.AztecChainSpecificObject {
