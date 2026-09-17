@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 )
 
 const (
@@ -346,6 +347,26 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		u.PollInterval = pollInterval
 	}
 	u.translateDeprecatedArchiveOption()
+	u.setHasGrpcLabel()
+}
+
+// setHasGrpcLabel advertises that this upstream serves gRPC methods. Connector
+// validation guarantees a grpc connector only exists on a chain whose spec declares
+// grpc, so connector presence is enough. An explicit label always wins.
+func (u *Upstream) setHasGrpcLabel() {
+	hasGrpc := lo.ContainsBy(u.Connectors, func(c *ApiConnectorConfig) bool {
+		return c.GetApiConnectorType() == specs.GrpcConnector
+	})
+	if !hasGrpc {
+		return
+	}
+	if _, set := u.Labels[hasGrpcLabel]; set {
+		return
+	}
+	if u.Labels == nil {
+		u.Labels = UpstreamLabels{}
+	}
+	u.Labels[hasGrpcLabel] = "true"
 }
 
 // translateDeprecatedArchiveOption turns the deprecated options.archive flag into the

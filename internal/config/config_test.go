@@ -273,7 +273,8 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: specs.RestConnector.String(),
 					HeadMode:      config.HeadModeSubscribe,
 					PollInterval:  1 * time.Minute,
-					ChainName:     "polygon",
+					ChainName:     "cosmos-hub",
+					Labels:        config.UpstreamLabels{"has_grpc": "true"},
 					Methods: &config.MethodsConfig{
 						BanDuration: 5 * time.Minute,
 					},

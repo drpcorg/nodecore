@@ -151,7 +151,7 @@ upstream-config:
         - type: websocket
           url: wss://test.com
     - id: another
-      chain: polygon
+      chain: cosmos-hub
       rate-limit:
         auto: true
       failsafe-config:

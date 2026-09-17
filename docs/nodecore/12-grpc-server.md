@@ -92,6 +92,8 @@ Three behaviours are worth knowing:
 
 Upstreams on a signing-capable instance advertise the [`secure-signed`](05-upstream-config.md#fields) label, so clients can find them with a label selector.
 
+Likewise, every upstream configured with a `grpc` connector advertises the [`has_grpc`](05-upstream-config.md#fields) label, so a client that needs a gRPC method served can select such upstreams the same way.
+
 ## Minimal client snippet (Go)
 
 ```go
