@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	cosmossdk.io/api v1.0.0
 	github.com/DataDog/sketches-go v1.4.8
-	github.com/bytedance/sonic v1.15.3
+	github.com/bytedance/sonic v1.15.4
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
@@ -20,13 +20,13 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/pyroscope-go v1.4.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jarcoal/httpmock v1.4.2
 	github.com/juju/ratelimit v1.0.2
 	github.com/klauspost/compress v1.20.0
 	github.com/labstack/echo-contrib v0.50.1
 	github.com/labstack/echo/v4 v4.15.4
-	github.com/pashagolub/pgxmock/v4 v4.9.0
+	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3
 	github.com/redis/go-redis/v9 v9.22.0
@@ -38,8 +38,8 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/crypto v0.56.0
-	golang.org/x/net v0.58.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.23.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
 	google.golang.org/grpc v1.83.2
@@ -133,8 +133,8 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
