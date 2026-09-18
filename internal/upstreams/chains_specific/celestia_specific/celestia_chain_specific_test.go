@@ -5,13 +5,19 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/celestia_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/cosmos_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tendermint_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -166,4 +172,64 @@ func TestCelestiaChainValidator(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "rpc error", nil))).Once()
 	assert.Equal(t, validations.SettingsError, validators[0].Validate())
+}
+
+// ---------- dispatch ----------
+
+func celestiaDispatchOptions() *chains.Options {
+	return &chains.Options{
+		InternalTimeout:         time.Second,
+		ValidationInterval:      time.Second,
+		MinPeers:                1,
+		ValidatePeers:           new(false),
+		ValidateSyncing:         new(false),
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+}
+
+// A celestia chain is served by two kinds of nodes: the DA node over json-rpc
+// and the consensus (cosmos) node over tendermint, rest or grpc. Each connector
+// gets the specific that speaks its API.
+func TestNewCelestiaSpecificDispatchesOnConnectorType(t *testing.T) {
+	chain := chains.GetChain("celestia")
+	cases := []struct {
+		connectorType specs.ApiConnectorType
+		expected      interface{}
+	}{
+		{specs.JsonRpcConnector, &celestia_specific.CelestiaChainSpecificObject{}},
+		{specs.TendermintConnector, &tendermint_specific.TendermintChainSpecific{}},
+		{specs.RestConnector, &cosmos_specific.CosmosRestSpecific{}},
+		{specs.GrpcConnector, &cosmos_specific.CosmosGrpcSpecific{}},
+	}
+	for _, c := range cases {
+		cs, err := celestia_specific.NewCelestiaSpecific(
+			context.Background(), "id",
+			mocks.NewConnectorMockWithType(c.connectorType),
+			chain, time.Second, celestiaDispatchOptions(),
+		)
+		require.NoError(t, err, c.connectorType)
+		assert.IsType(t, c.expected, cs, c.connectorType)
+	}
+}
+
+func TestNewCelestiaSpecificUnsupportedConnector(t *testing.T) {
+	for _, connectorType := range []specs.ApiConnectorType{specs.WebsocketConnector, specs.RestIndexer, specs.RestAdditional} {
+		cs, err := celestia_specific.NewCelestiaSpecific(
+			context.Background(), "id",
+			mocks.NewConnectorMockWithType(connectorType),
+			chains.GetChain("celestia"), time.Second, celestiaDispatchOptions(),
+		)
+		assert.Nil(t, cs, connectorType)
+		assert.ErrorContains(t, err, "celestia specific supports only json-rpc, tendermint, rest or grpc connector", connectorType)
+	}
+}
+
+func TestNewCelestiaSpecificNilConnector(t *testing.T) {
+	cs, err := celestia_specific.NewCelestiaSpecific(
+		context.Background(), "id", nil,
+		chains.GetChain("celestia"), time.Second, celestiaDispatchOptions(),
+	)
+	assert.Nil(t, cs)
+	assert.ErrorContains(t, err, "no connector")
 }
