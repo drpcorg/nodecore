@@ -7,6 +7,9 @@ import (
 
 type ChainSupervisorStateWrapperEvent struct {
 	Wrappers []ChainSupervisorStateWrapper
+	// NodeGroupId tags per-group events on the group manager; always empty on
+	// the network manager (SubscribeState).
+	NodeGroupId string
 }
 
 type ChainSupervisorStateWrapper interface {

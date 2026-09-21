@@ -80,6 +80,8 @@ github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0 h1:fuHXpEVTTk7T
 github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0/go.mod h1:Tb7Xxye4LX7cT3i8YLvmPMGCV92IOi4CDZvm/V8ylc0=
 github.com/drpcorg/public v1.4.5 h1:DKmMVWgh5lOnZZmMPz5hVd0SEBbL7IcP2520UipndQI=
 github.com/drpcorg/public v1.4.5/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
+github.com/drpcorg/public v1.4.6-0.20260921210125-7c43fa3c55bf h1:AVe9D8d6ULN73W3UjcFjWkuI2Pei2WQ9AWkbEv1MvGM=
+github.com/drpcorg/public v1.4.6-0.20260921210125-7c43fa3c55bf/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
 github.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/qyY=
 github.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/emicklei/dot v1.6.2 h1:08GN+DD79cy/tzN6uLCT84+2Wk9u+wvqP+Hkx/dIR8A=
