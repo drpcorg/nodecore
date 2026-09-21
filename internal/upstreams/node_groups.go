@@ -84,11 +84,11 @@ func newGroupState(id string) *groupState {
 	}
 }
 
-func (b *BaseChainSupervisor) SubscribeNodeGroupStates(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent] {
+func (b *GenericChainSupervisor) SubscribeNodeGroupStates(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent] {
 	return b.subGroupStateManager.Subscribe(name)
 }
 
-func (b *BaseChainSupervisor) GetNodeGroupStates() map[string]ChainSupervisorState {
+func (b *GenericChainSupervisor) GetNodeGroupStates() map[string]ChainSupervisorState {
 	states := make(map[string]ChainSupervisorState)
 	b.groups.Range(func(id string, g *groupState) bool {
 		states[id] = g.state.Load()
@@ -97,7 +97,7 @@ func (b *BaseChainSupervisor) GetNodeGroupStates() map[string]ChainSupervisorSta
 	return states
 }
 
-func (b *BaseChainSupervisor) GetNodeGroupState(id string) (ChainSupervisorState, bool) {
+func (b *GenericChainSupervisor) GetNodeGroupState(id string) (ChainSupervisorState, bool) {
 	g, ok := b.groups.Load(id)
 	if !ok {
 		return ChainSupervisorState{}, false
@@ -105,7 +105,7 @@ func (b *BaseChainSupervisor) GetNodeGroupState(id string) (ChainSupervisorState
 	return g.state.Load(), true
 }
 
-func (b *BaseChainSupervisor) assignGroup(id string, state *protocol.UpstreamState) {
+func (b *GenericChainSupervisor) assignGroup(id string, state *protocol.UpstreamState) {
 	if state == nil {
 		return
 	}
@@ -137,14 +137,14 @@ func (b *BaseChainSupervisor) assignGroup(id string, state *protocol.UpstreamSta
 	b.updateGroupHeadIn(g, id, &protocol.HeadUpstreamEvent{Status: state.Status, Head: state.HeadData})
 }
 
-func (b *BaseChainSupervisor) removeFromGroup(id string) {
+func (b *GenericChainSupervisor) removeFromGroup(id string) {
 	if membership, ok := b.upstreamGroup[id]; ok {
 		delete(b.upstreamGroup, id)
 		b.leaveGroup(id, membership.key)
 	}
 }
 
-func (b *BaseChainSupervisor) leaveGroup(id string, key GroupKey) {
+func (b *GenericChainSupervisor) leaveGroup(id string, key GroupKey) {
 	g, ok := b.groups.Load(key.Id())
 	if !ok {
 		return
@@ -160,7 +160,7 @@ func (b *BaseChainSupervisor) leaveGroup(id string, key GroupKey) {
 	}
 }
 
-func (b *BaseChainSupervisor) recomputeGroup(g *groupState) {
+func (b *GenericChainSupervisor) recomputeGroup(g *groupState) {
 	prev := g.state.Load()
 	next := recomputeState(prev, b.groupMemberStates(g), b.subChainMethods)
 	wrappers := prev.Compare(next)
@@ -171,7 +171,7 @@ func (b *BaseChainSupervisor) recomputeGroup(g *groupState) {
 	// no lag or dimension tracking here - that stays network-level
 }
 
-func (b *BaseChainSupervisor) groupMemberStates(g *groupState) []*protocol.UpstreamState {
+func (b *GenericChainSupervisor) groupMemberStates(g *groupState) []*protocol.UpstreamState {
 	states := make([]*protocol.UpstreamState, 0, g.members.Cardinality())
 	for _, id := range g.members.ToSlice() {
 		if state, ok := b.upstreamStates.Load(id); ok {
@@ -181,7 +181,7 @@ func (b *BaseChainSupervisor) groupMemberStates(g *groupState) []*protocol.Upstr
 	return states
 }
 
-func (b *BaseChainSupervisor) updateGroupHead(id string, headEvent *protocol.HeadUpstreamEvent) {
+func (b *GenericChainSupervisor) updateGroupHead(id string, headEvent *protocol.HeadUpstreamEvent) {
 	membership, ok := b.upstreamGroup[id]
 	if !ok {
 		// head before the first state event: the group is seeded on assignGroup
@@ -194,7 +194,7 @@ func (b *BaseChainSupervisor) updateGroupHead(id string, headEvent *protocol.Hea
 
 // updateGroupHeadIn mirrors updateHead against the group's own fork choice and
 // Atomic state, minus lag tracking.
-func (b *BaseChainSupervisor) updateGroupHeadIn(g *groupState, id string, headEvent *protocol.HeadUpstreamEvent) {
+func (b *GenericChainSupervisor) updateGroupHeadIn(g *groupState, id string, headEvent *protocol.HeadUpstreamEvent) {
 	if headEvent == nil {
 		return
 	}

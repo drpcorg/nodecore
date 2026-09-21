@@ -15,16 +15,12 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/bitcoin_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/bitcoin_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/bitcoin_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
-
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: bitcoind has no push-style head notification we can
-// consume (no ZMQ/WS in scope), so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("bitcoin: head subscriptions are not supported")
 
 type BitcoinChainSpecificObject struct {
 	ctx             context.Context
@@ -67,7 +63,7 @@ func (b *BitcoinChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			b.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
 }
 
 func (b *BitcoinChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -83,7 +79,7 @@ func (b *BitcoinChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBou
 			b.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.configuredChain.AverageRemoveSpeed(),
@@ -104,7 +100,7 @@ func (b *BitcoinChainSpecificObject) HealthValidators() []validations.Validator[
 }
 
 func (b *BitcoinChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if b.configuredChain == nil || b.configuredChain.ChainId == "" {
+	if b.configuredChain == nil || b.configuredChain.ChainIdFor(chains.Bitcoin) == "" {
 		return nil
 	}
 	if b.options != nil && *b.options.DisableChainValidation {
@@ -181,11 +177,11 @@ func (b *BitcoinChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Blo
 }
 
 func (b *BitcoinChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (b *BitcoinChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type bitcoinBlockHeader struct {
@@ -195,3 +191,13 @@ type bitcoinBlockHeader struct {
 }
 
 var _ chains_specific.ChainSpecific = (*BitcoinChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (b *BitcoinChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (b *BitcoinChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

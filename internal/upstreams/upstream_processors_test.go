@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
@@ -23,7 +24,7 @@ func TestCreateHeadEventProcessor_ReturnsHeadProcessor(t *testing.T) {
 		Options:      testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(conf.ChainName), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(conf.ChainName), conf.PollInterval, conf.Options, nil)
 
 	headProcessor := upstreams.CreateHeadProcessor(context.Background(), conf, connector, chainSpecific)
 	assert.NotNil(t, headProcessor)
@@ -41,7 +42,7 @@ func TestCreateHealthEventProcessor_ReturnsNilWithoutValidators(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -54,7 +55,7 @@ func TestCreateHealthEventProcessor_ReturnsNilWhenValidationDisabled(t *testing.
 		Options: testUpstreamOptions(withDisableValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -67,7 +68,7 @@ func TestCreateHealthEventProcessor_ReturnsNilWhenHealthValidationDisabled(t *te
 		Options: testUpstreamOptions(withDisableHealthValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -80,12 +81,12 @@ func TestCreateHealthEventProcessor_ReturnsHealthProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateHealthEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseHealthEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericHealthEventProcessor{}, processor)
 	assert.Equal(t, event_processors.HealthValidatorProcessorType, processor.Type())
 }
 
@@ -95,7 +96,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilWhenValidatorsDisabledByChainSpe
 		Options: testUpstreamOptions(withDisableChainValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -108,7 +109,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilOnlyWhenSettingsValidationDisabl
 		Options: testUpstreamOptions(withDisableSettingsValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -121,7 +122,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilWhenOnlyGlobalValidationDisabled
 		Options: testUpstreamOptions(withDisableValidation(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -134,12 +135,12 @@ func TestCreateSettingsEventProcessor_ReturnsSettingsProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseSettingsEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericSettingsEventProcessor{}, processor)
 	assert.Equal(t, event_processors.SettingsValidatorProcessorType, processor.Type())
 }
 
@@ -149,12 +150,12 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessorForEvm(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseLowerBoundEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericLowerBoundEventProcessor{}, processor)
 	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
@@ -164,7 +165,7 @@ func TestCreateLowerBoundsEventProcessor_ReturnsNilWhenDisabled(t *testing.T) {
 		Options: testUpstreamOptions(withDisableLowerBoundsDetection(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -177,12 +178,12 @@ func TestCreateLowerBoundsEventProcessor_ReturnsProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateLowerBoundsEventProcessor(context.Background(), conf, chainSpecific)
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseLowerBoundEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericLowerBoundEventProcessor{}, processor)
 	assert.Equal(t, event_processors.LowerBoundEventProcessorType, processor.Type())
 }
 
@@ -192,7 +193,7 @@ func TestCreateLabelsEventProcessor_ReturnsNilWhenDisabled(t *testing.T) {
 		Options: testUpstreamOptions(withDisableLabelsDetection(true)),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateLabelsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -205,7 +206,7 @@ func TestCreateLabelsEventProcessor_ReturnsProcessor(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateLabelsEventProcessor(context.Background(), conf, chainSpecific)
 
@@ -220,7 +221,7 @@ func TestCreateBlockEventProcessor_ReturnsNilForUnsupportedBlockchain(t *testing
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, conf.Options)
+	chainSpecific := solana_specific.NewSolanaChainSpecificObject(context.Background(), chains.GetChain(chains.SOLANA.String()), conf.Id, connector, []connectors.ApiConnector{connector}, conf.Options)
 
 	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, chainSpecific, chains.GetChain(chains.SOLANA.String()))
 
@@ -233,12 +234,12 @@ func TestCreateBlockEventProcessor_ReturnsProcessorForEthereum(t *testing.T) {
 		Options: testUpstreamOptions(),
 	}
 	connector := mocks.NewConnectorMock()
-	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options)
+	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, nil, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
 	processor := upstreams.CreateBlockEventProcessor(context.Background(), conf, chainSpecific, chains.GetChain(chains.ETHEREUM.String()))
 
 	assert.NotNil(t, processor)
-	assert.IsType(t, &event_processors.BaseBlockEventProcessor{}, processor)
+	assert.IsType(t, &event_processors.GenericBlockEventProcessor{}, processor)
 	assert.Equal(t, event_processors.BlockEventProcessorType, processor.Type())
 }
 

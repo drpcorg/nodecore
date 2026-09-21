@@ -2,7 +2,7 @@ package upstreams_test
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -10,24 +10,24 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var loadMethodSpecsOnce sync.Once
-
-func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -53,8 +53,8 @@ func TestBaseUpstreamStart_WithoutProcessors_PublishesAvailableState(t *testing.
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamStop_StopsRunningLifecycle(t *testing.T) {
-	upstream, _, _ := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamStop_StopsRunningLifecycle(t *testing.T) {
+	upstream, _, _ := newTestGenericUpstream(t, nil, nil, nil)
 
 	upstream.Start()
 	require.True(t, upstream.Running())
@@ -64,8 +64,8 @@ func TestBaseUpstreamStop_StopsRunningLifecycle(t *testing.T) {
 	assert.False(t, upstream.Running())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -88,8 +88,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -112,8 +112,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesBlockState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -140,8 +140,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateBlockState(t *testing.T)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -164,8 +164,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesLowerBoundsState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -192,8 +192,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLowerBoundsState(t *test
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -215,8 +215,8 @@ func TestBaseUpstreamProcessStateEvents_UpdatesLabelsState(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -237,8 +237,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateStatusState(t *testing.T
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -265,8 +265,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateLabelsState(t *testing.T
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -294,8 +294,8 @@ func TestBaseUpstreamProcessStateEvents_DuplicateHeadStateStillPublishes(t *test
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -318,8 +318,8 @@ func TestBaseUpstreamProcessStateEvents_AppliesCaps(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -346,8 +346,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateCaps(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -373,8 +373,8 @@ func TestBaseUpstreamProcessStateEvents_ClearsCaps(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -403,8 +403,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateClearedCaps(t *testing.T
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -438,8 +438,8 @@ func TestBaseUpstreamProcessStateEvents_FatalErrorSuppressesStateUntilValid(t *t
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -464,8 +464,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateFatalErrorState(t *testi
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -485,8 +485,8 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidState(t *testing.T)
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -516,11 +516,11 @@ func TestBaseUpstreamProcessStateEvents_IgnoresDuplicateValidStateAfterRecovery(
 	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
+func TestGenericUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 	loadMethodSpecs(t)
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
-	upstream, _, sub := newTestBaseUpstream(t, upConfig, nil, nil)
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -558,14 +558,14 @@ func TestBaseUpstreamBanMethod_BansAndUnbansMethod(t *testing.T) {
 	assertUpstreamStateMatches(t, expectedInitialState, upstream.GetUpstreamState())
 }
 
-func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
+func TestGenericUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 	loadMethodSpecs(t)
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{
 		BanDuration:   20 * time.Millisecond,
 		EnableMethods: []string{"eth_call"},
 	})
-	upstream, _, sub := newTestBaseUpstream(t, upConfig, nil, nil)
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
 
 	t.Cleanup(upstream.Stop)
 
@@ -577,57 +577,57 @@ func TestBaseUpstreamBanMethod_IgnoresEnabledMethod(t *testing.T) {
 	assert.True(t, upstream.GetUpstreamState().UpstreamMethods.HasMethod("eth_call"))
 }
 
-func TestBaseUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
+func TestGenericUpstreamGetConnector_ReturnsMatchingConnector(t *testing.T) {
 	httpConnector := mocks.NewConnectorMockWithType(specs.JsonRpcConnector)
 	wsConnector := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
 
-	upstream, _, _ := newTestBaseUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
+	upstream, _, _ := newTestGenericUpstream(t, nil, []*mocks.ConnectorMock{httpConnector, wsConnector}, nil)
 
 	assert.Same(t, httpConnector, upstream.GetConnector(specs.JsonRpcConnector))
 	assert.Same(t, wsConnector, upstream.GetConnector(specs.WebsocketConnector))
 	assert.Nil(t, upstream.GetConnector(specs.RestConnector))
 }
 
-func TestBaseUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
+func TestGenericUpstreamUpdateHead_DelegatesToHeadProcessor(t *testing.T) {
 	headProcessor := mocks.NewHeadProcessorMock()
 	headProcessor.On("UpdateHead", uint64(100), uint64(7)).Once()
 
 	headEventProcessor := event_processors.NewHeadEventProcessor(context.Background(), "id", chains.ETHEREUM, headProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headEventProcessor})
-	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
+	upstream, _, _ := newTestGenericUpstream(t, nil, nil, aggregator)
 
 	upstream.UpdateHead(100, 7)
 
 	headProcessor.AssertExpectations(t)
 }
 
-func TestBaseUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
+func TestGenericUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
 	blockProcessor := mocks.NewBlockProcessorMock()
 	blockData := protocol.NewBlock(uint64(1002), 0, blockchain.EmptyHash, blockchain.EmptyHash)
 	blockProcessor.On("UpdateBlock", blockData, protocol.FinalizedBlock).Once()
 
-	blockEventProcessor := event_processors.NewBaseBlockEventProcessor(context.Background(), "id", chains.ETHEREUM, blockProcessor)
+	blockEventProcessor := event_processors.NewGenericBlockEventProcessor(context.Background(), "id", chains.ETHEREUM, blockProcessor)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{blockEventProcessor})
-	upstream, _, _ := newTestBaseUpstream(t, nil, nil, aggregator)
+	upstream, _, _ := newTestGenericUpstream(t, nil, nil, aggregator)
 
 	upstream.UpdateBlock(blockData, protocol.FinalizedBlock)
 
 	blockProcessor.AssertExpectations(t)
 }
 
-func TestBaseUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {
+func TestGenericUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.FatalSettingError).Once()
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
-	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"id",
 		testUpstreamOptions(),
 		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
 	)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
-	upstream, _, _ := newTestBaseUpstream(t, upConfig, nil, aggregator)
+	upstream, _, _ := newTestGenericUpstream(t, upConfig, nil, aggregator)
 
 	upstream.Start()
 
@@ -635,18 +635,18 @@ func TestBaseUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) 
 	validator.AssertExpectations(t)
 }
 
-func TestBaseUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(t *testing.T) {
+func TestGenericUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
 	validator.On("Validate").Return(validations.SettingsError)
 
-	settingsProcessor := event_processors.NewBaseSettingsEventProcessor(
+	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"id",
 		testUpstreamOptions(),
 		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
 	)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
-	upstream, _, sub := newTestBaseUpstream(t, nil, nil, aggregator)
+	upstream, _, sub := newTestGenericUpstream(t, nil, nil, aggregator)
 
 	t.Cleanup(upstream.Stop)
 
@@ -656,9 +656,9 @@ func TestBaseUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(
 	assertNoUpstreamEvent(t, sub)
 }
 
-func TestBaseUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
+func TestGenericUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
 	// The test upstream is on ethereum, whose syncing lag threshold is 6.
-	upstream, _, sub := newTestBaseUpstream(t, nil, nil, nil)
+	upstream, _, sub := newTestGenericUpstream(t, nil, nil, nil)
 	t.Cleanup(upstream.Stop)
 	startUpstream(t, upstream, sub)
 
@@ -680,8 +680,8 @@ func TestBaseUpstreamProcessStateEvents_HeadLagDrivesSyncing(t *testing.T) {
 	assert.Equal(t, protocol.Available, upstream.GetUpstreamState().Status)
 }
 
-func TestBaseUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *testing.T) {
-	upstream, emit, sub := newTestBaseUpstream(t, nil, nil, nil)
+func TestGenericUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *testing.T) {
+	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 	t.Cleanup(upstream.Stop)
 	startUpstream(t, upstream, sub)
 
@@ -696,12 +696,144 @@ func TestBaseUpstreamProcessStateEvents_HeadLagDoesNotUpgradeUnavailable(t *test
 	assert.Equal(t, protocol.Unavailable, upstream.GetUpstreamState().Status)
 }
 
-func newTestBaseUpstream(
+func TestGenericUpstreamProcessStateEvents_ProbeSyncingPausesHead(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+	// Resume on Start brings the head up once
+	assert.Equal(t, int32(1), headProcessor.starts.Load())
+
+	// the probe says syncing: the head is stopped before the status is published
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(1), headProcessor.stops.Load())
+
+	// a repeated syncing verdict changes nothing
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, int32(1), headProcessor.stops.Load())
+
+	// synced again: the head is started
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Available})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.starts.Load())
+
+	// any non-syncing verdict resumes, Immature included
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.stops.Load())
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Immature})
+	_ = nextUpstreamEvent(t, sub)
+	assert.Equal(t, int32(3), headProcessor.starts.Load())
+}
+
+func TestGenericUpstreamProcessStateEvents_LagSyncingDoesNotPauseHead(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, _, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	// the lag observer downgrades the status to Syncing, but that is not the probe's verdict
+	upstream.UpdateHeadLag(100)
+	event := nextUpstreamEvent(t, sub)
+	stateEvent, ok := event.EventType.(*protocol.StateUpstreamEvent)
+	require.True(t, ok)
+	require.Equal(t, protocol.Syncing, stateEvent.State.Status)
+
+	assert.Equal(t, int32(0), headProcessor.stops.Load())
+}
+
+func TestGenericUpstreamProcessStateEvents_ProbeSyncingKeepsHeadWithoutPauseFlag(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, false)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	require.Equal(t, protocol.Syncing, upstream.GetUpstreamState().Status)
+
+	assert.Equal(t, int32(0), headProcessor.stops.Load())
+}
+
+func TestGenericUpstreamProcessStateEvents_HeadStartedBySupervisorIsPausedAgain(t *testing.T) {
+	headProcessor := newHeadProcessorStub()
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{headProcessor})
+	upstream, emit, sub := newTestGenericUpstreamWithHeadPause(t, nil, nil, aggregator, true)
+	t.Cleanup(upstream.Stop)
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	_ = nextUpstreamEvent(t, sub)
+	require.Equal(t, int32(1), headProcessor.stops.Load())
+
+	// the supervisor brings the head back behind the state loop's back (Resume)
+	aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+	require.True(t, headProcessor.Running())
+
+	// the toggle must act on what is actually running, not on what it last did: the
+	// next syncing verdict stops the head again (the status is unchanged, so no event)
+	emit(&protocol.StatusUpstreamStateEvent{Status: protocol.Syncing})
+	assertNoUpstreamEvent(t, sub)
+	assert.Equal(t, int32(2), headProcessor.stops.Load())
+	assert.False(t, headProcessor.Running())
+}
+
+// headProcessorStub is a stateful head event processor: it remembers whether it is running
+// and counts starts and stops, so tests can drive it from the supervisor side as well.
+type headProcessorStub struct {
+	running atomic.Bool
+	starts  atomic.Int32
+	stops   atomic.Int32
+}
+
+func newHeadProcessorStub() *headProcessorStub {
+	return &headProcessorStub{}
+}
+
+func (h *headProcessorStub) Start() {
+	if h.running.CompareAndSwap(false, true) {
+		h.starts.Add(1)
+	}
+}
+
+func (h *headProcessorStub) Stop() {
+	if h.running.CompareAndSwap(true, false) {
+		h.stops.Add(1)
+	}
+}
+
+func (h *headProcessorStub) Running() bool {
+	return h.running.Load()
+}
+
+func (h *headProcessorStub) SetEmitter(event_processors.Emitter) {}
+
+func (h *headProcessorStub) Type() event_processors.EventProcessorType {
+	return event_processors.HeadEventProcessorType
+}
+
+func newTestGenericUpstream(
 	t *testing.T,
 	upConfig *config.Upstream,
 	connectorMocks []*mocks.ConnectorMock,
 	aggregator *event_processors.UpstreamProcessorAggregator,
-) (*upstreams.BaseUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
+) (*upstreams.GenericUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
+	t.Helper()
+	return newTestGenericUpstreamWithHeadPause(t, upConfig, connectorMocks, aggregator, false)
+}
+
+func newTestGenericUpstreamWithHeadPause(
+	t *testing.T,
+	upConfig *config.Upstream,
+	connectorMocks []*mocks.ConnectorMock,
+	aggregator *event_processors.UpstreamProcessorAggregator,
+	pauseHeadWhileSyncing bool,
+) (*upstreams.GenericUpstream, func(protocol.AbstractUpstreamStateEvent), *utils.Subscription[protocol.UpstreamEvent]) {
 	t.Helper()
 	loadMethodSpecs(t)
 
@@ -732,7 +864,7 @@ func newTestBaseUpstream(
 		apiConnectors = append(apiConnectors, connector)
 	}
 
-	upstream := upstreams.NewBaseUpstreamWithParams(
+	upstream := upstreams.NewGenericUpstreamWithParams(
 		"id",
 		chains.ETHEREUM,
 		apiConnectors,
@@ -742,6 +874,7 @@ func newTestBaseUpstream(
 		aggregator,
 		&stateChan,
 		&stateEmitter,
+		pauseHeadWhileSyncing,
 	)
 
 	sub := upstream.Subscribe(t.Name())
@@ -765,7 +898,7 @@ func newUpstreamConfig(methodsConfig *config.MethodsConfig) *config.Upstream {
 // that Start emits at the end of its lifecycle to announce the upstream's
 // initial state to subscribers. Tests that exercise post-Start event flows
 // use this so the announcement doesn't masquerade as their expected event.
-func startUpstream(t *testing.T, upstream *upstreams.BaseUpstream, sub *utils.Subscription[protocol.UpstreamEvent]) {
+func startUpstream(t *testing.T, upstream *upstreams.GenericUpstream, sub *utils.Subscription[protocol.UpstreamEvent]) {
 	t.Helper()
 	upstream.Start()
 	event := nextUpstreamEvent(t, sub)
@@ -830,10 +963,7 @@ func assertNoUpstreamEvent(t *testing.T, sub *utils.Subscription[protocol.Upstre
 func loadMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	loadMethodSpecsOnce.Do(func() {
-		err := specs.NewMethodSpecLoader().Load()
-		require.NoError(t, err)
-	})
+	specs_utils.LoadMethodSpecs()
 }
 
 func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) methods.Methods {
@@ -847,4 +977,205 @@ func mustNewUpstreamMethods(t *testing.T, methodsConfig *config.MethodsConfig) m
 	upstreamMethods, err := methods.NewUpstreamMethods("eth", methodsConfig, nil)
 	require.NoError(t, err)
 	return upstreamMethods
+}
+
+func TestGenericUpstreamUnsupportedMethods_StripsDetectedMethod(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	// Detection subtracts exactly like a disable does, so the resulting set is the one
+	// the spec would produce with trace_block disabled.
+	expectedState := protocol.DefaultUpstreamState(
+		mustNewUpstreamMethods(t, &config.MethodsConfig{
+			BanDuration:    upConfig.Methods.BanDuration,
+			EnableMethods:  upConfig.Methods.EnableMethods,
+			DisableMethods: []string{"trace_block"},
+		}),
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"00012",
+		nil,
+		nil,
+	)
+	expectedState.Status = protocol.Available
+
+	event := nextUpstreamEvent(t, sub)
+	assertStateEventMatches(t, event, expectedState)
+	assertUpstreamStateMatches(t, expectedState, upstream.GetUpstreamState())
+}
+
+func TestGenericUpstreamUnsupportedMethods_IdenticalSetIsNotRepublished(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	unsupported := mapset.NewThreadUnsafeSet[string]("trace_block")
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{Methods: unsupported})
+	nextUpstreamEvent(t, sub)
+
+	// A re-detection round that finds the same thing must not wake subscribers.
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{Methods: unsupported.Clone()})
+	assertNoUpstreamEvent(t, sub)
+}
+
+func TestGenericUpstreamUnsupportedMethods_SurvivesAnUnban(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+	nextUpstreamEvent(t, sub)
+
+	// A different method is banned and then auto-unbanned after BanDuration. The unban
+	// must restore only the banned method, never the detected one.
+	upstream.BanMethod("eth_call")
+	nextUpstreamEvent(t, sub)
+	nextUpstreamEvent(t, sub)
+
+	supported := upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()
+	assert.True(t, supported.ContainsOne("eth_call"), "the ban must have expired")
+	assert.False(t, supported.ContainsOne("trace_block"), "an unban must not resurrect an unsupported method")
+}
+
+func TestGenericUpstreamUnsupportedMethods_ConfigEnableWins(t *testing.T) {
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace_block"},
+	})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	require.Eventually(t, func() bool {
+		return upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block")
+	}, time.Second, 10*time.Millisecond, "config enable is applied last and must outrank detection")
+}
+
+func TestGenericUpstreamStartsMethodsDetectionAndNarrowsTheMethodSet(t *testing.T) {
+	methodsProcessor := mocks.NewMethodsProcessorMock()
+	methodsProcessor.On("Start").Return()
+	methodsProcessor.On("Subscribe", "id_methods").Return()
+	methodsProcessor.On("Stop").Return()
+
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	methodsEventProcessor := event_processors.NewMethodsEventProcessor(context.Background(), upConfig.Id, methodsProcessor)
+	require.NotNil(t, methodsEventProcessor)
+
+	aggregator := event_processors.NewUpstreamProcessorAggregator(
+		[]event_processors.UpstreamStateEventProcessor{methodsEventProcessor},
+	)
+
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, aggregator)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	// Resume() runs inside Start(), so the processor must be running by now.
+	require.True(t, methodsEventProcessor.Running(), "Resume must start the methods event processor")
+
+	before := upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()
+	require.True(t, before.ContainsOne("trace_block"), "the upstream starts with the full spec set")
+
+	methodsProcessor.Publish(mapset.NewThreadUnsafeSet[string]("trace_block"))
+
+	require.Eventually(t, func() bool {
+		supported := upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods()
+		// Locally-served methods are never detectable, so they must survive regardless.
+		return !supported.ContainsOne("trace_block") &&
+			supported.ContainsOne("net_version") &&
+			supported.ContainsOne("eth_chainId")
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// Not AssertExpectations: Stop is registered so the t.Cleanup teardown does not panic
+	// on an unexpected call, but that teardown runs after this body, so Stop has not been
+	// called yet here. MethodsEventProcessor's own test covers the Stop delegation.
+	methodsProcessor.AssertCalled(t, "Start")
+	methodsProcessor.AssertCalled(t, "Subscribe", "id_methods")
+}
+
+func TestCreateMethodsEventProcessorRespectsTheOption(t *testing.T) {
+	loadMethodSpecs(t)
+
+	build := func(disabled bool) event_processors.UpstreamStateEventProcessor {
+		conf := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+		conf.Options.DisableMethodsDetection = new(disabled)
+
+		connector := mocks.NewConnectorMock()
+		connector.On("GetType").Return(specs.JsonRpcConnector).Maybe()
+
+		chainSpecific := evm_specific.NewEvmChainSpecific(
+			context.Background(),
+			conf.Id,
+			connector,
+			[]connectors.ApiConnector{connector},
+			chains.GetChain(chains.ETHEREUM.String()),
+			time.Second,
+			conf.Options,
+			nil,
+		)
+
+		return upstreams.CreateMethodsEventProcessor(context.Background(), conf, chainSpecific)
+	}
+
+	assert.Nil(t, build(true), "the option must switch the whole pipeline off")
+	assert.NotNil(t, build(false))
+}
+
+func TestGenericUpstreamUnsupportedMethods_GroupEnableWins(t *testing.T) {
+	// `enable: [trace]` is a group name, not a method name, so a name-list check would
+	// miss it. The composition still re-enables trace_block, and the warning must fire.
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace"},
+	})
+	upstream, emit, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	emit(&protocol.UnsupportedMethodsUpstreamStateEvent{
+		Methods: mapset.NewThreadUnsafeSet[string]("trace_block"),
+	})
+
+	require.Eventually(t, func() bool {
+		return upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block")
+	}, time.Second, 10*time.Millisecond, "a group enable outranks detection just as a name enable does")
+}
+
+func TestGenericUpstreamBanMethod_GroupEnabledMethodIsNotBanned(t *testing.T) {
+	// The ban would be undone by the group enable, so recording it would only schedule a
+	// pointless unban and re-arm on the next failure.
+	upConfig := newUpstreamConfig(&config.MethodsConfig{
+		BanDuration:   20 * time.Millisecond,
+		EnableMethods: []string{"trace"},
+	})
+	upstream, _, sub := newTestGenericUpstream(t, upConfig, nil, nil)
+	t.Cleanup(upstream.Stop)
+
+	startUpstream(t, upstream, sub)
+
+	upstream.BanMethod("trace_block")
+
+	assertNoUpstreamEvent(t, sub)
+	assert.True(t,
+		upstream.GetUpstreamState().UpstreamMethods.GetSupportedMethods().ContainsOne("trace_block"),
+		"the method stays enabled, so nothing should have changed",
+	)
 }

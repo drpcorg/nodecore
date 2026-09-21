@@ -15,8 +15,8 @@ type RequestOperationMock struct {
 	SubTypeValue         string
 	CompletedValue       bool
 	ShouldDoOnCloseValue bool
-	ResponseChannel      chan *protocol.WsResponse
-	InternalChannel      chan *protocol.WsResponse
+	ResponseChannel      chan protocol.SubResponse
+	InternalChannel      chan protocol.SubResponse
 	DoneChannel          <-chan struct{}
 	IDValue              string
 	DoOnCloseFunc        ws.DoOnClose
@@ -27,14 +27,14 @@ func NewRequestOperationMock() *RequestOperationMock {
 
 	return &RequestOperationMock{
 		ShouldDoOnCloseValue: true,
-		ResponseChannel:      make(chan *protocol.WsResponse, 1),
-		InternalChannel:      make(chan *protocol.WsResponse, 1),
+		ResponseChannel:      make(chan protocol.SubResponse, 1),
+		InternalChannel:      make(chan protocol.SubResponse, 1),
 		DoneChannel:          done,
 		IDValue:              "op-1",
 	}
 }
 
-func (r *RequestOperationMock) Write(message *protocol.WsResponse, messageType ws.MessageType) {
+func (r *RequestOperationMock) Write(message protocol.SubResponse, messageType ws.MessageType) {
 	switch messageType {
 	case ws.MessageInternal:
 		r.InternalChannel <- message
@@ -85,7 +85,7 @@ func (r *RequestOperationMock) Method() string {
 	return r.MethodValue
 }
 
-func (r *RequestOperationMock) GetChannel(messageType ws.MessageType) chan *protocol.WsResponse {
+func (r *RequestOperationMock) GetChannel(messageType ws.MessageType) chan protocol.SubResponse {
 	switch messageType {
 	case ws.MessageInternal:
 		return r.InternalChannel

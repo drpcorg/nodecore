@@ -5,24 +5,20 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
+	"unicode/utf8"
 
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
-	"github.com/drpcorg/nodecore/internal/stats/hook"
 
 	"github.com/bytedance/sonic/decoder"
 	"github.com/bytedance/sonic/encoder"
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
-	"github.com/drpcorg/nodecore/internal/upstreams/flow"
-	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/klauspost/compress/gzip"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -39,23 +35,6 @@ var requestTimeToLastByte = prometheus.NewHistogram(
 
 func init() {
 	prometheus.MustRegister(requestTimeToLastByte)
-}
-
-type HandleResponse struct {
-	responseWrappers chan *protocol.ResponseHolderWrapper
-	corsOrigins      []string
-}
-
-func NewHandleResponse(responseWrappers chan *protocol.ResponseHolderWrapper, corsOrigins []string) *HandleResponse {
-	return &HandleResponse{
-		responseWrappers: responseWrappers,
-		corsOrigins:      corsOrigins,
-	}
-}
-
-type Request struct {
-	Chain            string
-	UpstreamRequests []protocol.RequestHolder
 }
 
 type Response struct {
@@ -92,10 +71,14 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 	configureServer(ctx, httpServer.Server)
 	configureServer(ctx, httpServer.TLSServer)
 	httpServer.JSONSerializer = &FastJSONSerializer{}
-	httpServer.Use(middleware.Decompress())
-	httpServer.Use(GzipWithConfig(GzipConfig{Level: gzip.BestSpeed}))
+	httpServer.Use(Decompress())
+	httpServer.Use(Compress())
 
 	httpGroup := httpServer.Group("/queries/:chain")
+
+	// X-Forwarded-For is only trusted from configured reverse proxies. The list is
+	// parsed and validated once at config load time.
+	trustedProxies := trustedProxiesFromConfig(appCtx)
 
 	requestHandler := func(c echo.Context) error {
 		if c.Request().Method == http.MethodOptions {
@@ -105,9 +88,26 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		c.Request().SetPathValue("key", c.Param("key"))
 		chain := c.Param("chain")
 		restPath := c.Param("*") // for rest requests
-		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request())
+		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request(), trustedProxies)
 		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
-		reqType := lo.Ternary(len(restPath) > 0, protocol.Rest, protocol.JsonRpc)
+		// An empty rest path with a GET is a REST call on the API root: a
+		// JSON-RPC request is always a POST, so nothing legitimate is
+		// reclassified. Without this, a root endpoint (Horizon's GET /) is
+		// reachable only through the double-slash /queries/{chain}//, because
+		// echo hands us an empty wildcard for /queries/{chain}/.
+		//
+		// A WebSocket handshake is a GET too, and it is excluded: the auth and
+		// invalid-UTF-8 checks below run *before* the upgrade (deliberately - see
+		// the comment there) and encode with reqType, while a ws connection
+		// carries JSON-RPC (ws_server.go builds a JsonRpcHandler unconditionally).
+		// A handshake failure has to keep the JSON-RPC envelope, which is the only
+		// place its error code is reported.
+		isWsUpgrade := c.Request().Header.Get("Upgrade") == "websocket"
+		reqType := lo.Ternary(
+			len(restPath) > 0 || (c.Request().Method == http.MethodGet && !isWsUpgrade),
+			protocol.Rest,
+			protocol.JsonRpc,
+		)
 		authPayload := auth.NewHttpAuthPayload(c.Request())
 
 		err := appCtx.AuthProcessor.Authenticate(c.Request().Context(), authPayload)
@@ -120,7 +120,22 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 			)
 		}
 
-		if c.Request().Header.Get("Upgrade") == "websocket" {
+		// The chain param reaches a Prometheus label value verbatim on the WebSocket
+		// path (ws_server.go), and WithLabelValues panics on invalid UTF-8. Reject
+		// before the upgrade: once the connection is hijacked, net/http's recover
+		// skips its own cleanup, so the panic would leak the socket instead of
+		// closing it. An uppercase percent-escape is enough to get a raw byte here -
+		// %FF leaves URL.RawPath empty, so echo routes on the decoded URL.Path.
+		if !utf8.ValidString(chain) {
+			resp := protocol.NewTotalFailureFromErr("0", protocol.ParseError(), reqType)
+			return writeResponse(
+				c.Response(),
+				protocol.ToHttpCode(resp),
+				resp.EncodeResponse([]byte("0")),
+			)
+		}
+
+		if isWsUpgrade {
 			conn, err := upgrader.Upgrade(c.Response().Writer, c.Request(), nil)
 			if err != nil {
 				log.Error().Err(err).Msg("couldn't upgrade http to ws")
@@ -140,6 +155,15 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 	httpGroup.Any("", requestHandler)
 
 	return httpServer
+}
+
+// trustedProxiesFromConfig safely extracts the parsed trusted-proxy prefixes,
+// tolerating a nil app/server config.
+func trustedProxiesFromConfig(appCtx *server_ctx.ApplicationServerContext) []netip.Prefix {
+	if appCtx == nil || appCtx.AppConfig == nil {
+		return nil
+	}
+	return appCtx.AppConfig.ServerConfig.TrustedProxyPrefixes()
 }
 
 var corsHeaders = []lo.Tuple2[string, string]{
@@ -166,7 +190,7 @@ func handleHttp(
 	authPayload auth.AuthPayload,
 	appCtx *server_ctx.ApplicationServerContext,
 ) error {
-	preRequest := &Request{
+	preRequest := &server_ctx.Request{
 		Chain: chain,
 	}
 	var requestHandler RequestHandler
@@ -189,7 +213,7 @@ func handleHttp(
 			resp.EncodeResponse([]byte("0")),
 		)
 	}
-	handleResp := handleRequest(ctx, requestHandler, authPayload, appCtx, nil)
+	handleResp := appCtx.HandleRequest(ctx, requestHandler, authPayload, nil)
 
 	return handleResponse(ctx, requestHandler, reqCtx, handleResp)
 }
@@ -198,13 +222,13 @@ func handleResponse(
 	ctx context.Context,
 	requestHandler RequestHandler,
 	reqCtx echo.Context,
-	handleResp *HandleResponse,
+	handleResp *server_ctx.HandleResponse,
 ) error {
 	var responseReader io.Reader
 	code := http.StatusOK
 	httpResponse := reqCtx.Response()
 	if !requestHandler.IsSingle() {
-		responses := utils.Map(handleResp.responseWrappers, func(wrapper *protocol.ResponseHolderWrapper) *Response {
+		responses := utils.Map(handleResp.ResponseWrappers(), func(wrapper *protocol.ResponseHolderWrapper) *Response {
 			return requestHandler.ResponseEncode(wrapper.Response)
 		})
 		responseReader = ArraySortingStream(ctx, responses, requestHandler.RequestCount())
@@ -217,7 +241,7 @@ func handleResponse(
 				protocol.ToHttpCode(resp),
 				resp.EncodeResponse([]byte("0")),
 			)
-		case responseWrapper, ok := <-handleResp.responseWrappers:
+		case responseWrapper, ok := <-handleResp.ResponseWrappers():
 			if ok {
 				httpResponse.Header().Set("response-provider", responseWrapper.UpstreamId)
 				code = protocol.ToHttpCode(responseWrapper.Response)
@@ -228,7 +252,7 @@ func handleResponse(
 		}
 	}
 
-	setCorsHeaders(reqCtx, handleResp.corsOrigins)
+	setCorsHeaders(reqCtx, handleResp.CorsOrigins())
 
 	return writeResponse(httpResponse, code, responseReader)
 }
@@ -256,7 +280,10 @@ func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
 		for _, item := range corsOrigins {
 			if utils.MatchWildcards(item, origin) {
 				reqCtx.Response().Header().Set("Access-Control-Allow-Origin", origin)
-				reqCtx.Response().Header().Set("Vary", "Origin")
+				// Added, not set: the compression middleware has already put
+				// Accept-Encoding here, and dropping it lets a shared cache
+				// hand a zstd body to a client that only reads gzip.
+				reqCtx.Response().Header().Add("Vary", "Origin")
 				return
 			}
 		}
@@ -272,96 +299,4 @@ func writeResponse(httpResponse *echo.Response, code int, responseReader io.Read
 	httpResponse.WriteHeader(code)
 	_, err := io.Copy(httpResponse, responseReader)
 	return err
-}
-
-func handleRequest(
-	ctx context.Context,
-	requestHandler RequestHandler,
-	authPayload auth.AuthPayload,
-	appCtx *server_ctx.ApplicationServerContext,
-	subCtx *flow.SubCtx,
-) *HandleResponse {
-	var request *Request
-
-	corsOrigins, err := appCtx.AuthProcessor.PreKeyValidate(ctx, authPayload)
-	if err != nil {
-		return NewHandleResponse(
-			createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
-			nil,
-		)
-	}
-
-	request, err = requestHandler.RequestDecode(ctx)
-	if err != nil {
-		return NewHandleResponse(createWrapperFromError(request, err, requestHandler.GetRequestType()), nil)
-	}
-	if !chains.IsSupported(request.Chain) {
-		return NewHandleResponse(
-			createWrapperFromError(request, protocol.WrongChainError(request.Chain), requestHandler.GetRequestType()),
-			nil,
-		)
-	}
-	chain := chains.GetChain(request.Chain).Chain
-
-	if appCtx.UpstreamSupervisor.GetChainSupervisor(chain) == nil {
-		return NewHandleResponse(
-			createWrapperFromError(request, protocol.NoAvailableUpstreamsError(), requestHandler.GetRequestType()),
-			nil,
-		)
-	}
-
-	for _, requestHolder := range request.UpstreamRequests {
-		err = appCtx.AuthProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
-		if err != nil {
-			return NewHandleResponse(
-				createWrapperFromError(request, protocol.AuthError(err), requestHandler.GetRequestType()),
-				nil,
-			)
-		}
-		requestHolder.RequestObserver().
-			WithApiKey(appCtx.AuthProcessor.GetKeyValue(authPayload))
-	}
-
-	executionFlow := flow.NewBaseExecutionFlow(
-		chain,
-		appCtx.UpstreamSupervisor,
-		appCtx.CacheProcessor,
-		appCtx.Registry,
-		appCtx.AppConfig,
-		subCtx,
-		appCtx.QuorumRegistry,
-		appCtx.SubEngineRegistry,
-	)
-	executionFlow.AddHooks(
-		flow.NewMethodBanHook(appCtx.UpstreamSupervisor),
-		dimensions.NewDimensionHook(appCtx.DimensionTracker),
-		hook.NewStatsHook(appCtx.StatsService),
-	)
-
-	go executionFlow.Execute(ctx, request.UpstreamRequests)
-	responseChan := executionFlow.GetResponses()
-
-	return NewHandleResponse(responseChan, corsOrigins)
-}
-
-func createWrapperFromError(request *Request, err error, requestType protocol.RequestType) chan *protocol.ResponseHolderWrapper {
-	respChan := make(chan *protocol.ResponseHolderWrapper)
-	errWrapper := func(id string) *protocol.ResponseHolderWrapper {
-		return &protocol.ResponseHolderWrapper{
-			UpstreamId: flow.NoUpstream,
-			RequestId:  id,
-			Response:   protocol.NewTotalFailureFromErr(id, err, requestType),
-		}
-	}
-	go func() {
-		if request == nil || len(request.UpstreamRequests) == 0 {
-			respChan <- errWrapper("0")
-		} else {
-			for _, req := range request.UpstreamRequests {
-				respChan <- errWrapper(req.Id())
-			}
-		}
-		close(respChan)
-	}()
-	return respChan
 }

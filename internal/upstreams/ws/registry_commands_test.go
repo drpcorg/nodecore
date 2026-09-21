@@ -2,22 +2,19 @@ package ws
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var loadRegistryCommandSpecsOnce sync.Once
-
 func TestRegisterCommandHandleStoresRequest(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	req := NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
 
 	newRegisterCommand("request-1", req).handle(registry)
 
@@ -26,7 +23,7 @@ func TestRegisterCommandHandleStoresRequest(t *testing.T) {
 
 func TestAbortCommandHandleCancelsRequestAndSkipsDoOnClose(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	req := NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
 	registry.registryState.requests["request-1"] = req
 
 	newAbortCommand("request-1").handle(registry)
@@ -38,7 +35,7 @@ func TestAbortCommandHandleCancelsRequestAndSkipsDoOnClose(t *testing.T) {
 
 func TestRPCCommandHandleDropsUnaryMessageWhenInternalChannelIsFull(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	req := NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
 	registry.registryState.requests["request-1"] = req
 	fillInternalChannel(t, req)
 
@@ -59,37 +56,49 @@ func TestRPCCommandHandleDropsUnaryMessageWhenInternalChannelIsFull(t *testing.T
 	assert.Len(t, req.GetChannel(MessageInternal), cap(req.GetChannel(MessageInternal)))
 }
 
-func TestRPCCommandHandleStoresSubscriptionAndDropsMessageWhenInternalChannelIsFull(t *testing.T) {
+func TestRPCCommandHandleSwallowsSuccessfulSubscribeConfirmation(t *testing.T) {
 	loadRegistryCommandMethodSpecs(t)
 
 	registry := newTestRegistryState("eth")
-	req := NewBaseRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	registry.registryState.requests["request-1"] = req
-	fillInternalChannel(t, req)
 
-	response := &protocol.WsResponse{
+	newRpcCommand(&protocol.WsResponse{
 		Id:      "request-1",
 		Type:    protocol.JsonRpc,
 		Message: []byte(`"0xsub"`),
-	}
-	done := make(chan struct{})
-	go func() {
-		newRpcCommand(response).handle(registry)
-		close(done)
-	}()
+	}).handle(registry)
 
-	assertCommandCompletes(t, done)
-
+	// the confirmation's only job is the bookkeeping...
 	assert.Equal(t, "0xsub", req.SubID())
 	require.Contains(t, registry.registryState.subs, "0xsub")
 	assert.Contains(t, registry.registryState.subs["0xsub"].ops, req.Id())
-	assert.Len(t, req.GetChannel(MessageInternal), cap(req.GetChannel(MessageInternal)))
+	// ...and it must NOT be forwarded to the op
+	assert.Empty(t, req.GetChannel(MessageInternal))
+}
+
+func TestRPCCommandHandleForwardsSubscribeErrorConfirmation(t *testing.T) {
+	loadRegistryCommandMethodSpecs(t)
+
+	registry := newTestRegistryState("eth")
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	registry.registryState.requests["request-1"] = req
+
+	resp := &protocol.WsResponse{
+		Id:    "request-1",
+		Type:  protocol.JsonRpc,
+		Error: protocol.ResponseErrorWithMessage("subscribe rejected"),
+	}
+	newRpcCommand(resp).handle(registry)
+
+	require.Len(t, req.GetChannel(MessageInternal), 1)
+	assert.Same(t, resp, <-req.GetChannel(MessageInternal))
 }
 
 func TestSubscriptionCommandHandleDropsMessagesWhenInternalChannelsAreFull(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	req1 := NewBaseRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
-	req2 := NewBaseRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	req1 := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	req2 := NewGenericRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	req1.SetSubID([]byte(`"0xsub"`))
 	req2.SetSubID([]byte(`"0xsub"`))
 	registry.registryState.subs["0xsub"] = &registrySubscription{
@@ -121,8 +130,8 @@ func TestSubscriptionCommandHandleDropsMessagesWhenInternalChannelsAreFull(t *te
 
 func TestFinishCommandHandleKeepsSharedSubscriptionUntilLastRequest(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	req1 := NewBaseRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
-	req2 := NewBaseRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	req1 := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	req2 := NewGenericRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	req1.SetSubID([]byte(`"0xsub"`))
 	req2.SetSubID([]byte(`"0xsub"`))
 	registry.registryState.subs["0xsub"] = &registrySubscription{
@@ -152,7 +161,7 @@ func TestFinishCommandHandleKeepsSharedSubscriptionUntilLastRequest(t *testing.T
 
 func TestFinishCommandHandleReturnsFalseWhenSubscriptionIsMissing(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	req := NewBaseRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	req := NewGenericRequestOp(context.Background(), "request-1", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	req.SetSubID([]byte(`"0xmissing"`))
 	result := make(chan bool, 1)
 
@@ -164,9 +173,9 @@ func TestFinishCommandHandleReturnsFalseWhenSubscriptionIsMissing(t *testing.T) 
 
 func TestCancelAllCommandHandleCancelsRequestsAndSubscriptions(t *testing.T) {
 	registry := newTestRegistryState("eth")
-	unaryReq := NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
-	subReq1 := NewBaseRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
-	subReq2 := NewBaseRequestOp(context.Background(), "request-3", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	unaryReq := NewGenericRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(RequestOperation) {})
+	subReq1 := NewGenericRequestOp(context.Background(), "request-2", "eth_subscribe", "newHeads", func(RequestOperation) {})
+	subReq2 := NewGenericRequestOp(context.Background(), "request-3", "eth_subscribe", "newHeads", func(RequestOperation) {})
 	subReq1.SetSubID([]byte(`"0xsub"`))
 	subReq2.SetSubID([]byte(`"0xsub"`))
 	registry.registryState.requests["request-1"] = unaryReq
@@ -190,7 +199,7 @@ func TestCancelAllCommandHandleCancelsRequestsAndSubscriptions(t *testing.T) {
 	assertDoneRegistryCommand(t, subReq2.CtxDone())
 }
 
-func fillInternalChannel(t *testing.T, req *BaseRequestOp) {
+func fillInternalChannel(t *testing.T, req *GenericRequestOp) {
 	t.Helper()
 
 	internal := req.GetChannel(MessageInternal)
@@ -223,8 +232,8 @@ func assertDoneRegistryCommand(t *testing.T, done <-chan struct{}) {
 	}
 }
 
-func newTestRegistryState(methodSpec string) *BaseRequestRegistry {
-	return &BaseRequestRegistry{
+func newTestRegistryState(methodSpec string) *GenericRequestRegistry {
+	return &GenericRequestRegistry{
 		chain:      chains.ETHEREUM,
 		upId:       "upstream-1",
 		methodSpec: methodSpec,
@@ -238,7 +247,5 @@ func newTestRegistryState(methodSpec string) *BaseRequestRegistry {
 func loadRegistryCommandMethodSpecs(t *testing.T) {
 	t.Helper()
 
-	loadRegistryCommandSpecsOnce.Do(func() {
-		require.NoError(t, specs.NewMethodSpecLoader().Load())
-	})
+	specs_utils.LoadMethodSpecs()
 }

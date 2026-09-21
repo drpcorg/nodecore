@@ -6,8 +6,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 )
 
 type WsConnector struct {
@@ -37,7 +37,7 @@ func (w *WsConnector) SendRequest(ctx context.Context, request protocol.RequestH
 			protocol.ServerErrorWithCause(fmt.Errorf("unable to get a response via ws - %v", err)),
 		)
 	}
-	return protocol.NewWsJsonRpcResponse(request.Id(), wsResponse.Message, wsResponse.Error)
+	return protocol.NewWsJsonRpcResponse(request.Id(), wsResponse.GetMessage(), wsResponse.GetError())
 }
 
 func (w *WsConnector) Subscribe(ctx context.Context, request protocol.RequestHolder) (protocol.UpstreamSubscriptionResponse, error) {

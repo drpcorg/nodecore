@@ -8,7 +8,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
@@ -61,7 +61,7 @@ func TestInternalJsonRpcRequestNilParamsEncodedAsEmptyArray(t *testing.T) {
 
 	body, err := request.Body()
 	assert.NoError(t, err)
-	assert.JSONEq(t, `{"jsonrpc":"2.0","id":"1","method":"eth_chainId","params":[]}`, string(body))
+	assert.JSONEq(t, `{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}`, string(body))
 }
 
 func TestHttpRequestParseParamWithoutMethodThenNil(t *testing.T) {

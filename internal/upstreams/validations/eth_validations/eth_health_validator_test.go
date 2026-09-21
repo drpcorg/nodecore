@@ -43,6 +43,23 @@ func TestEthPeersValidatorReturnsUnavailableOnInvalidJSON(t *testing.T) {
 	connector.AssertExpectations(t)
 }
 
+// Cosmos chains with an EVM module (Injective) report net_peerCount as a JSON
+// number instead of the hex string an Ethereum node returns.
+func TestEthPeersValidatorAcceptsANumericPeerCount(t *testing.T) {
+	connector := newEthHealthConnectorMock(t, "net_peerCount",
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`41`), protocol.JsonRpc),
+	)
+	validator := eth_validations.NewEthPeersValidator("upstream-1", chains.INJECTIVE_TESTNET, connector, &chains.Options{
+		InternalTimeout: time.Second,
+		MinPeers:        1,
+	})
+
+	status := validator.Validate()
+
+	assert.Equal(t, protocol.Available, status)
+	connector.AssertExpectations(t)
+}
+
 func TestEthPeersValidatorReturnsUnavailableOnInvalidPeerCount(t *testing.T) {
 	connector := newEthHealthConnectorMock(t, "net_peerCount",
 		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"not-a-number"`), protocol.JsonRpc),
@@ -196,6 +213,18 @@ func TestEthSyncingValidatorReturnsAvailableOnInvalidHexLagPayload(t *testing.T)
 func TestEthSyncingValidatorReturnsSyncingForOpNodeStylePayload(t *testing.T) {
 	connector := newEthHealthConnectorMock(t, "eth_syncing",
 		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"batchProcessed":"0x1","batchSeen":"0x2","syncTargetMsgCount":"0x3"}`), protocol.JsonRpc),
+	)
+	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
+
+	status := validator.Validate()
+
+	assert.Equal(t, protocol.Syncing, status)
+	connector.AssertExpectations(t)
+}
+
+func TestEthSyncingValidatorReturnsSyncingForNitroExecutionSyncTargetPayload(t *testing.T) {
+	connector := newEthHealthConnectorMock(t, "eth_syncing",
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"blockNum":43327714,"consensusMaxMessageCount":92338320,"executionSyncTarget":92338319,"messageOfLastBlock":43327714}`), protocol.JsonRpc),
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 

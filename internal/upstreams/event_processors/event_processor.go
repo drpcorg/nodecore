@@ -1,6 +1,8 @@
 package event_processors
 
 import (
+	"sync"
+
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -16,6 +18,7 @@ const (
 	SettingsValidatorProcessorType
 	LabelsProcessorType
 	CapEventProcessorType
+	MethodsEventProcessorType
 )
 
 type UpstreamStateEventProcessor interface {
@@ -29,6 +32,11 @@ type Emitter func(event protocol.AbstractUpstreamStateEvent)
 
 type UpstreamProcessorAggregator struct {
 	eventProcessors map[EventProcessorType]UpstreamStateEventProcessor
+	// mu serializes StartProcessor and StopProcessor. Two goroutines drive them: the
+	// supervisor (Resume, PartialStop) and the upstream state loop (head pause while
+	// syncing). A processor's start or stop is a compound operation (its own lifecycle
+	// plus the nested processor it owns), so the whole call must be one critical section.
+	mu sync.Mutex
 }
 
 func (u *UpstreamProcessorAggregator) SetEmitter(emitter Emitter) {
@@ -77,15 +85,28 @@ func (u *UpstreamProcessorAggregator) ValidateSettings() (validations.Validation
 }
 
 func (u *UpstreamProcessorAggregator) StartProcessor(processorType EventProcessorType) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	if processor, ok := u.eventProcessors[processorType]; ok {
 		processor.Start()
 	}
 }
 
 func (u *UpstreamProcessorAggregator) StopProcessor(processorType EventProcessorType) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
 	if processor, ok := u.eventProcessors[processorType]; ok {
 		processor.Stop()
 	}
+}
+
+// IsProcessorRunning reports whether the processor of the given type is currently running;
+// false when there is no such processor.
+func (u *UpstreamProcessorAggregator) IsProcessorRunning(processorType EventProcessorType) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	processor, ok := u.eventProcessors[processorType]
+	return ok && processor.Running()
 }
 
 func (u *UpstreamProcessorAggregator) IsHealthProcessorDisabled() bool {

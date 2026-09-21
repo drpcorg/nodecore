@@ -75,3 +75,26 @@ func TestAptosChainsRegistered(t *testing.T) {
 	assert.Equal(t, "0x2", testnet.ChainId)
 	assert.Equal(t, 10203, testnet.GrpcId)
 }
+
+func TestStellarChainsRegistered(t *testing.T) {
+	mainnet := GetChain("stellar")
+	assert.Equal(t, STELLAR, mainnet.Chain)
+	assert.Equal(t, Stellar, mainnet.Type)
+	// the registry loader lowercases every chain-id; stellar's are network passphrases
+	assert.Equal(t, "public global stellar network ; september 2015", mainnet.ChainId)
+	assert.Equal(t, "0", mainnet.NetVersion)
+	assert.Equal(t, 1174, mainnet.GrpcId)
+	assert.Equal(t, "stellar", mainnet.MethodSpec)
+	assert.Equal(t, mainnet, GetChain("stellar-mainnet")) // alias
+	assert.Equal(t, mainnet, GetChainByGrpcId(1174))
+
+	testnet := GetChain("stellar-testnet")
+	assert.Equal(t, STELLAR_TESTNET, testnet.Chain)
+	assert.Equal(t, "test sdf network ; september 2015", testnet.ChainId)
+	assert.Equal(t, 10208, testnet.GrpcId)
+	assert.Equal(t, "stellar", testnet.MethodSpec)
+}
+
+func TestStellarIsAValidBlockchainType(t *testing.T) {
+	assert.True(t, IsValidBlockchainType("stellar"))
+}

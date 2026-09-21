@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 )
 
 func mapDshackleSelectors(selectors []*dshackle.Selector) []protocol.RequestSelector {
@@ -139,6 +139,10 @@ func mapDshackleLowerBoundType(boundType dshackle.LowerBoundType) (protocol.Lowe
 		return protocol.TraceBound, true
 	case dshackle.LowerBoundType_LOWER_BOUND_PROOF:
 		return protocol.ProofBound, true
+	case dshackle.LowerBoundType_LOWER_BOUND_BLOB:
+		return protocol.BlobBound, true
+	case dshackle.LowerBoundType_LOWER_BOUND_EPOCH:
+		return protocol.EpochBound, true
 	default:
 		return protocol.UnknownBound, false
 	}

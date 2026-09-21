@@ -261,16 +261,16 @@ func TestExtractSignatures_MalformedHeaderValue(t *testing.T) {
 	cases := map[string]string{
 		"missing nonce separator": "pid(u)_sig_0xaa",
 		"missing sig separator":   "pid(u)_nonce_1",
-		"empty prefix":             "_nonce_1_sig_0xaa",
-		"missing parens":           "pid_nonce_1_sig_0xaa",
-		"empty provider id":        "(u)_nonce_1_sig_0xaa",
-		"empty upstream id":        "pid()_nonce_1_sig_0xaa",
-		"open paren only":          "pid(u_nonce_1_sig_0xaa",
-		"close paren only":         "pidu)_nonce_1_sig_0xaa",
-		"bad nonce":                "pid(u)_nonce_abc_sig_0xaa",
-		"negative nonce":           "pid(u)_nonce_-1_sig_0xaa",
-		"bad hex":                  "pid(u)_nonce_1_sig_0xzz",
-		"empty signature":          "pid(u)_nonce_1_sig_",
+		"empty prefix":            "_nonce_1_sig_0xaa",
+		"missing parens":          "pid_nonce_1_sig_0xaa",
+		"empty provider id":       "(u)_nonce_1_sig_0xaa",
+		"empty upstream id":       "pid()_nonce_1_sig_0xaa",
+		"open paren only":         "pid(u_nonce_1_sig_0xaa",
+		"close paren only":        "pidu)_nonce_1_sig_0xaa",
+		"bad nonce":               "pid(u)_nonce_abc_sig_0xaa",
+		"negative nonce":          "pid(u)_nonce_-1_sig_0xaa",
+		"bad hex":                 "pid(u)_nonce_1_sig_0xzz",
+		"empty signature":         "pid(u)_nonce_1_sig_",
 	}
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {

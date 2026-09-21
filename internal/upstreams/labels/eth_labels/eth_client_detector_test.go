@@ -33,7 +33,7 @@ func TestEthClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	body, err := request.Body()
 	require.NoError(t, err)
 
-	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"web3_clientVersion","params":[]}`, string(body))
+	assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"web3_clientVersion","params":[]}`, string(body))
 }
 
 func TestEthMappingFunc(t *testing.T) {
@@ -114,6 +114,18 @@ func TestEthClientLabelsDetectorClientVersionAndType(t *testing.T) {
 			raw:                "Nethermind",
 			expectedVersion:    eth_labels.UnknownClientVersion,
 			expectedClientType: "nethermind",
+		},
+		{
+			name:               "detects classic hyperliquid node as hl",
+			raw:                "hyperliquid evm Mainnet",
+			expectedVersion:    eth_labels.UnknownClientVersion,
+			expectedClientType: eth_labels.HlClientType,
+		},
+		{
+			name:               "detects classic hyperliquid testnet node as hl",
+			raw:                "Hyperliquid evm Testnet",
+			expectedVersion:    eth_labels.UnknownClientVersion,
+			expectedClientType: eth_labels.HlClientType,
 		},
 		{
 			name:               "falls back to raw dotted version",

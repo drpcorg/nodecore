@@ -80,7 +80,7 @@ func newPendingTxSourceBuilder(
 			return nil, err
 		}
 
-		merged := make(chan *protocol.WsResponse, pendingTxBufferSize)
+		merged := make(chan protocol.SubResponse, pendingTxBufferSize)
 		// feedDone receives one signal per feed that dies on its own (not via srcCtx);
 		// when all feeds are gone the source terminates. Unbuffered: the forwarder
 		// races the send against srcCtx so it never leaks after the source returns.
@@ -109,14 +109,14 @@ func newPendingTxSourceBuilder(
 				continue
 			}
 			subs = append(subs, upstreamSub{conn: wsConn, opId: subResp.OpId()})
-			go forwardPendingFeed(srcCtx, id, subResp.ResponseChan(), merged, feedDone)
+			go forwardPendingFeed(srcCtx, subResp.ResponseChan(), merged, feedDone)
 		}
 
 		if len(subs) == 0 {
 			return nil, protocol.NoAvailableUpstreamsError()
 		}
 
-		out := make(chan *protocol.WsResponse, pendingTxBufferSize)
+		out := make(chan protocol.SubResponse, pendingTxBufferSize)
 		// Watch the chain caps so the source terminates when PendingTxCap is lost
 		// (the last ws upstream left). It then emits a terminal frame and clients
 		// fail over to the generic node-backed path - same contract as the local
@@ -133,7 +133,7 @@ func newPendingTxSourceBuilder(
 				return caps == nil || !caps.Contains(protocol.PendingTxCap)
 			}
 			if pendingTxLost() {
-				out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+				out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 				return
 			}
 
@@ -146,7 +146,7 @@ func newPendingTxSourceBuilder(
 						return
 					}
 					if pendingTxLost() {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 						return
 					}
 				case <-feedDone:
@@ -154,20 +154,20 @@ func newPendingTxSourceBuilder(
 					// never produce again, so terminate and let clients fail over.
 					feedsAlive--
 					if feedsAlive == 0 {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 						return
 					}
 				case r, ok := <-merged:
 					if !ok {
 						return
 					}
-					key := string(r.Message)
+					key := string(r.GetMessage())
 					if t, ok := seen.Get(key); ok && time.Since(t) < pendingTxDedupTTL {
 						continue // same tx hash seen within the TTL window — already emitted
 					}
 					seen.Add(key, time.Now())
 					select {
-					case out <- &protocol.WsResponse{Message: r.Message, UpstreamId: r.UpstreamId}:
+					case out <- &protocol.GenericSubResponse{Message: r.GetMessage(), UpstreamId: r.GetUpstreamId()}:
 					case <-srcCtx.Done():
 						return
 					}
@@ -185,17 +185,15 @@ func newPendingTxSourceBuilder(
 }
 
 // forwardPendingFeed drains one upstream's pending subscription into the merged
-// channel until srcCtx is cancelled or the feed ends. The upstream's own
-// subscription-confirmation frame (SubId == "") is swallowed. An error frame or
+// channel until srcCtx is cancelled or the feed ends. An error frame or
 // closed channel ends only this feed - it is NOT terminal for the merged source,
 // which keeps serving from the surviving upstreams - and signals feedDone so the
 // source can terminate once every feed has died. A feed that exits because srcCtx
 // was cancelled does NOT signal (the source is already tearing down).
 func forwardPendingFeed(
 	srcCtx context.Context,
-	upstreamId string,
-	in chan *protocol.WsResponse,
-	merged chan<- *protocol.WsResponse,
+	in chan protocol.SubResponse,
+	merged chan<- protocol.SubResponse,
 	feedDone chan<- struct{},
 ) {
 	for {
@@ -203,17 +201,13 @@ func forwardPendingFeed(
 		case <-srcCtx.Done():
 			return
 		case r, ok := <-in:
-			if !ok || r.Error != nil {
+			if !ok || r.GetError() != nil {
 				select {
 				case feedDone <- struct{}{}:
 				case <-srcCtx.Done():
 				}
 				return
 			}
-			if r.SubId == "" {
-				continue // upstream's own subscription confirmation
-			}
-			r.UpstreamId = upstreamId
 			select {
 			case merged <- r:
 			case <-srcCtx.Done():
@@ -248,14 +242,14 @@ func newDrpcPendingTxSourceBuilder(
 			return nil, err
 		}
 
-		out := make(chan *protocol.WsResponse, pendingTxBufferSize)
+		out := make(chan protocol.SubResponse, pendingTxBufferSize)
 		go func() {
 			defer close(out)
 			// counting semaphore pattern
 			sem := make(chan struct{}, pendingEnrichConcurrency)
 			var wg sync.WaitGroup
 
-			emit := func(resp *protocol.WsResponse) {
+			emit := func(resp protocol.SubResponse) {
 				select {
 				case out <- resp:
 				case <-srcCtx.Done():
@@ -274,7 +268,7 @@ func newDrpcPendingTxSourceBuilder(
 						// terminal cause so drpc clients fail over rather than stalling.
 						wg.Wait()
 						if cause := inner.Err(); cause != nil {
-							emit(&protocol.WsResponse{Error: cause})
+							emit(&protocol.GenericSubResponse{Error: cause})
 						}
 						return
 					}
@@ -294,8 +288,8 @@ func newDrpcPendingTxSourceBuilder(
 						if tx == nil {
 							return // not found / errored - normal for a dropped pending tx
 						}
-						emit(&protocol.WsResponse{Message: tx, UpstreamId: upstreamId})
-					}(ev.Message)
+						emit(&protocol.GenericSubResponse{Message: tx, UpstreamId: upstreamId})
+					}(ev.GetMessage())
 				}
 			}
 		}()

@@ -39,5 +39,5 @@ func NewStatsService(
 	if statsConfig == nil || !statsConfig.Enabled {
 		return &noopStatsService{}
 	}
-	return NewBaseStatsService(ctx, statsConfig, integrationResolver)
+	return NewGenericStatsService(ctx, statsConfig, integrationResolver)
 }

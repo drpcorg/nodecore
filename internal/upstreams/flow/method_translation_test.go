@@ -12,10 +12,11 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ import (
 
 func bitcoinJsonRpcRequest(t *testing.T, method string, params string) protocol.RequestHolder {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(`5`), Method: method, Params: json.RawMessage(params)}
 	return protocol.NewUpstreamJsonRpcRequest("223", body, false, "bitcoin")
 }
@@ -139,13 +140,13 @@ func TestSatsToBtc(t *testing.T) {
 	assert.Equal(t, "21.12345678", string(satsToBtc(2_112_345_678)))
 }
 
-func bitcoinTestUpstream(connector connectors.ApiConnector, headHeight uint64) *upstreams.BaseUpstream {
+func bitcoinTestUpstream(connector connectors.ApiConnector, headHeight uint64) *upstreams.GenericUpstream {
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	state := protocol.DefaultUpstreamState(mocks.NewMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil)
 	state.HeadData = protocol.NewBlockWithHeight(headHeight)
 	upState.Store(state)
 
-	return upstreams.NewBaseUpstreamWithParams(
+	return upstreams.NewGenericUpstreamWithParams(
 		"id",
 		chains.BITCOIN,
 		[]connectors.ApiConnector{connector},
@@ -155,6 +156,7 @@ func bitcoinTestUpstream(connector connectors.ApiConnector, headHeight uint64) *
 		nil,
 		nil,
 		nil,
+		false,
 	)
 }
 

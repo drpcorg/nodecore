@@ -40,6 +40,11 @@ func TestEthArchiveLabelsDetectorDetectLabelsReturnsArchiveLabel(t *testing.T) {
 			chain:         chains.EVMOS,
 			expectedBlock: eth_labels.EvmosGenesisBlock,
 		},
+		{
+			name:          "uses bittensor evm block",
+			chain:         chains.BITTENSOR,
+			expectedBlock: eth_labels.BittensorEvmBlock,
+		},
 	}
 
 	for _, tt := range tests {

@@ -15,16 +15,12 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/starknet_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/starknet_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/starknet_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
-
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: spec-v0.8 starknet subscriptions are WS-only and
-// out of v1 scope, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("starknet: head subscriptions are not supported")
 
 type StarknetChainSpecificObject struct {
 	ctx             context.Context
@@ -58,7 +54,7 @@ func NewStarknetChainSpecificObject(
 }
 
 func (s *StarknetChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		s.ctx,
 		s.upstreamId,
 		s.pollInterval,
@@ -79,7 +75,7 @@ func (s *StarknetChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			s.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
 }
 
 func (s *StarknetChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
@@ -91,7 +87,7 @@ func (s *StarknetChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBo
 	detectors := []lower_bounds.LowerBoundDetector{
 		starknet_bounds.NewStarknetLowerBoundDetector(s.upstreamId),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		s.ctx,
 		s.upstreamId,
 		s.configuredChain.AverageRemoveSpeed(),
@@ -113,7 +109,7 @@ func (s *StarknetChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (s *StarknetChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain == nil || s.configuredChain.ChainId == "" {
+	if s.configuredChain == nil || s.configuredChain.ChainIdFor(chains.Starknet) == "" {
 		return nil
 	}
 	if s.options != nil && *s.options.DisableChainValidation {
@@ -185,11 +181,11 @@ func (s *StarknetChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 }
 
 func (s *StarknetChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (s *StarknetChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type starknetBlockHeader struct {
@@ -199,3 +195,13 @@ type starknetBlockHeader struct {
 }
 
 var _ chains_specific.ChainSpecific = (*StarknetChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (s *StarknetChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (s *StarknetChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

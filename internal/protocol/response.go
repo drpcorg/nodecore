@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,226 +19,35 @@ type HasResponseHeaders interface {
 	ResponseHeaders() http.Header
 }
 
+// HasResponseTrailers is an optional capability for response holders that
+// carry upstream gRPC trailer metadata. Only the gRPC ingress consumes it -
+// a gRPC client must receive trailers *as* trailers, not folded into the
+// initial metadata. Keys follow gRPC metadata convention (lowercase).
+type HasResponseTrailers interface {
+	ResponseTrailers() map[string][]string
+}
+
+// ResponseMetadata reads the optional transport metadata of a response through
+// the two capabilities above. It takes any because callers hold values behind
+// different interfaces (ResponseHolder, SubResponse).
+func ResponseMetadata(response any) (http.Header, map[string][]string) {
+	var headers http.Header
+	var trailers map[string][]string
+	if headerBearer, ok := response.(HasResponseHeaders); ok {
+		headers = headerBearer.ResponseHeaders()
+	}
+	if trailerBearer, ok := response.(HasResponseTrailers); ok {
+		trailers = trailerBearer.ResponseTrailers()
+	}
+	return headers, trailers
+}
+
 // noStreamHint is embedded by response types that never carry a streaming
 // result hint (subscriptions, ws, errors); it satisfies the GetStreamHint part
 // of ResponseHolder with a nil hint.
 type noStreamHint struct{}
 
 func (noStreamHint) GetStreamHint() StreamHint { return nil }
-
-type SubscriptionEventResponse struct {
-	noStreamHint
-	id    string
-	event []byte
-}
-
-type SubscriptionMessageResponse struct {
-	noStreamHint
-	id      string
-	message []byte
-}
-
-type SubscriptionResultResponse struct {
-	noStreamHint
-	id     string
-	result []byte
-}
-
-type SubscriptionMethodResultResponse struct {
-	noStreamHint
-	id     string
-	method string
-	result []byte
-	subId  json.RawMessage
-}
-
-func NewSubscriptionMethodResultResponse(id, method string, result []byte, subId json.RawMessage) *SubscriptionMethodResultResponse {
-	return &SubscriptionMethodResultResponse{
-		id:     id,
-		method: method,
-		result: result,
-		subId:  subId,
-	}
-}
-
-func (s *SubscriptionMethodResultResponse) ResponseResult() []byte {
-	return s.result
-}
-
-func (s *SubscriptionMethodResultResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (s *SubscriptionMethodResultResponse) ResponseCode() int {
-	return 0
-}
-
-func (s *SubscriptionMethodResultResponse) GetError() *ResponseError {
-	return nil
-}
-
-type jsonRpcWsSubResponse struct {
-	JsonRpc string          `json:"jsonrpc"`
-	Method  string          `json:"method"`
-	Params  jsonRpcWsParams `json:"params"`
-}
-
-func (s *SubscriptionMethodResultResponse) EncodeResponse(_ []byte) io.Reader {
-	resp := jsonRpcWsSubResponse{
-		JsonRpc: "2.0",
-		Method:  s.method,
-		Params: jsonRpcWsParams{
-			Result:       s.result,
-			Subscription: s.subId,
-		},
-	}
-	respBytes, err := sonic.Marshal(resp)
-	if err != nil {
-		return iotest.ErrReader(err)
-	}
-	return bytes.NewReader(respBytes)
-}
-
-func (s *SubscriptionMethodResultResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionMethodResultResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionMethodResultResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionMethodResultResponse) IsEventFrame() bool {
-	return true
-}
-
-func (s *SubscriptionEventResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (s *SubscriptionMessageResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func (s *SubscriptionResultResponse) ResponseResultString() (string, error) {
-	return "", nil
-}
-
-func NewSubscriptionMessageEventResponse(id string, message []byte) *SubscriptionMessageResponse {
-	return &SubscriptionMessageResponse{message: message, id: id}
-}
-
-func NewSubscriptionEventResponse(id string, event []byte) *SubscriptionEventResponse {
-	return &SubscriptionEventResponse{event: event, id: id}
-}
-
-func NewSubscriptionResultEventResponse(id string, result []byte) *SubscriptionResultResponse {
-	return &SubscriptionResultResponse{result: result, id: id}
-}
-
-func (s *SubscriptionEventResponse) IsEventFrame() bool {
-	return true
-}
-
-func (s *SubscriptionMessageResponse) IsEventFrame() bool {
-	return false
-}
-
-func (s *SubscriptionResultResponse) IsEventFrame() bool {
-	return true
-}
-
-func (s *SubscriptionEventResponse) ResponseResult() []byte {
-	return s.event
-}
-
-func (s *SubscriptionMessageResponse) ResponseResult() []byte {
-	return s.message
-}
-
-func (s *SubscriptionResultResponse) ResponseResult() []byte {
-	return s.result
-}
-
-func (s *SubscriptionEventResponse) GetError() *ResponseError {
-	return nil
-}
-
-func (s *SubscriptionMessageResponse) GetError() *ResponseError {
-	return nil
-}
-
-func (s *SubscriptionResultResponse) GetError() *ResponseError {
-	return nil
-}
-
-func (s *SubscriptionEventResponse) EncodeResponse(realId []byte) io.Reader {
-	return bytes.NewReader(s.event)
-}
-
-func (s *SubscriptionMessageResponse) EncodeResponse(realId []byte) io.Reader {
-	return jsonRpcResponseReader(realId, "result", s.message)
-}
-
-func (s *SubscriptionResultResponse) EncodeResponse(realId []byte) io.Reader {
-	return bytes.NewReader(s.result)
-}
-
-func (s *SubscriptionEventResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionMessageResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionResultResponse) HasError() bool {
-	return false
-}
-
-func (s *SubscriptionEventResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionMessageResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionResultResponse) HasStream() bool {
-	return false
-}
-
-func (s *SubscriptionEventResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionMessageResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionResultResponse) Id() string {
-	return s.id
-}
-
-func (s *SubscriptionEventResponse) ResponseCode() int {
-	return 0
-}
-
-func (s *SubscriptionMessageResponse) ResponseCode() int {
-	return 0
-}
-
-func (s *SubscriptionResultResponse) ResponseCode() int {
-	return 0
-}
-
-var _ SubscriptionResponseHolder = (*SubscriptionEventResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionMessageResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionResultResponse)(nil)
-var _ SubscriptionResponseHolder = (*SubscriptionMethodResultResponse)(nil)
 
 type WsJsonRpcResponse struct {
 	noStreamHint
@@ -297,14 +105,15 @@ func (w *WsJsonRpcResponse) ResponseCode() int {
 	return 0
 }
 
-type BaseUpstreamResponse struct {
-	id              string
-	result          []byte
-	error           *ResponseError
-	requestType     RequestType
-	stream          io.Reader
-	responseCode    int
-	responseHeaders http.Header
+type GenericUpstreamResponse struct {
+	id               string
+	result           []byte
+	error            *ResponseError
+	requestType      RequestType
+	stream           io.Reader
+	responseCode     int
+	responseHeaders  http.Header
+	responseTrailers map[string][]string
 	// streamHint carries the single-pass first-chunk analysis (see
 	// AnalyzeFirstChunk) for a streaming response, so the gRPC result-unwrap
 	// consumer can emit the "result" value without re-scanning the chunk. It is
@@ -313,45 +122,54 @@ type BaseUpstreamResponse struct {
 	streamHint StreamHint
 }
 
-func (h *BaseUpstreamResponse) ResponseCode() int {
+func (h *GenericUpstreamResponse) ResponseCode() int {
 	return h.responseCode
 }
 
-func (h *BaseUpstreamResponse) ResponseHeaders() http.Header {
+func (h *GenericUpstreamResponse) ResponseHeaders() http.Header {
 	return h.responseHeaders
 }
 
-func (h *BaseUpstreamResponse) WithResponseHeaders(headers http.Header) *BaseUpstreamResponse {
+func (h *GenericUpstreamResponse) WithResponseHeaders(headers http.Header) *GenericUpstreamResponse {
 	h.responseHeaders = headers
 	return h
 }
 
-func (h *BaseUpstreamResponse) ResponseResultString() (string, error) {
+func (h *GenericUpstreamResponse) ResponseTrailers() map[string][]string {
+	return h.responseTrailers
+}
+
+func (h *GenericUpstreamResponse) WithResponseTrailers(trailers map[string][]string) *GenericUpstreamResponse {
+	h.responseTrailers = trailers
+	return h
+}
+
+func (h *GenericUpstreamResponse) ResponseResultString() (string, error) {
 	if len(h.result) > 0 && h.result[0] == '"' && h.result[len(h.result)-1] == '"' {
 		return string(h.result[1 : len(h.result)-1]), nil
 	}
 	return "", errors.New("result is not a string")
 }
 
-var _ ResponseHolder = (*BaseUpstreamResponse)(nil)
+var _ ResponseHolder = (*GenericUpstreamResponse)(nil)
 
-func (h *BaseUpstreamResponse) Id() string {
+func (h *GenericUpstreamResponse) Id() string {
 	return h.id
 }
 
-func (h *BaseUpstreamResponse) ResponseResult() []byte {
+func (h *GenericUpstreamResponse) ResponseResult() []byte {
 	return h.result
 }
 
-func (h *BaseUpstreamResponse) HasStream() bool {
+func (h *GenericUpstreamResponse) HasStream() bool {
 	return h.stream != nil
 }
 
-func (h *BaseUpstreamResponse) GetError() *ResponseError {
+func (h *GenericUpstreamResponse) GetError() *ResponseError {
 	return h.error
 }
 
-func (h *BaseUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
+func (h *GenericUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	if h.requestType == JsonRpc {
 		if h.HasError() {
 			return jsonRpcResponseReader(realId, "error", h.ResponseResult())
@@ -367,7 +185,7 @@ func (h *BaseUpstreamResponse) EncodeResponse(realId []byte) io.Reader {
 	return bytes.NewReader(h.result)
 }
 
-func (h *BaseUpstreamResponse) HasError() bool {
+func (h *GenericUpstreamResponse) HasError() bool {
 	return h.error != nil
 }
 
@@ -381,8 +199,8 @@ func jsonRpcResponseReader(id []byte, bodyName string, body []byte) io.Reader {
 	)
 }
 
-func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *BaseUpstreamResponse {
-	return &BaseUpstreamResponse{
+func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType RequestType) *GenericUpstreamResponse {
+	return &GenericUpstreamResponse{
 		id:          id,
 		requestType: requestType,
 		stream:      reader,
@@ -392,26 +210,26 @@ func NewHttpUpstreamResponseStream(id string, reader io.Reader, requestType Requ
 // WithStreamHint attaches the first-chunk analysis produced by
 // AnalyzeFirstChunk so the gRPC result-unwrap consumer can emit the result
 // without re-scanning the chunk. A nil hint leaves the response without one.
-func (h *BaseUpstreamResponse) WithStreamHint(hint StreamHint) *BaseUpstreamResponse {
+func (h *GenericUpstreamResponse) WithStreamHint(hint StreamHint) *GenericUpstreamResponse {
 	h.streamHint = hint
 	return h
 }
 
 // GetStreamHint returns the streaming hint, or nil if none was recorded.
-func (h *BaseUpstreamResponse) GetStreamHint() StreamHint {
+func (h *GenericUpstreamResponse) GetStreamHint() StreamHint {
 	return h.streamHint
 }
 
-func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *BaseUpstreamResponse {
-	return &BaseUpstreamResponse{
+func NewSimpleHttpUpstreamResponse(id string, body []byte, requestType RequestType) *GenericUpstreamResponse {
+	return &GenericUpstreamResponse{
 		id:          id,
 		result:      body,
 		requestType: requestType,
 	}
 }
 
-func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *BaseUpstreamResponse {
-	var response *BaseUpstreamResponse
+func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestType RequestType) *GenericUpstreamResponse {
+	var response *GenericUpstreamResponse
 	switch requestType {
 	case JsonRpc:
 		response = parseJsonRpcBody(id, body, responseCode)
@@ -447,31 +265,14 @@ func ResultAsNumber(result []byte) uint64 {
 	return uint64(num)
 }
 
-func NewHttpUpstreamResponseWithError(error *ResponseError) *BaseUpstreamResponse {
-	return &BaseUpstreamResponse{
+func NewHttpUpstreamResponseWithError(error *ResponseError) *GenericUpstreamResponse {
+	return &GenericUpstreamResponse{
 		error: error,
 	}
 }
 
-type WsResponse struct {
-	Id         string
-	SubId      string
-	Message    []byte
-	Type       RequestType
-	Error      *ResponseError
-	Event      []byte
-	UpstreamId string
-	// ParsedEvent is an optional, source-attached pre-parsed view of Message,
-	ParsedEvent ParsedEvent
-}
-
-// ParsedEvent is the pre-parsed view of a WsResponse Message. See WsResponse.ParsedEvent.
-type ParsedEvent interface {
-	Raw() []byte
-}
-
 type JsonRpcWsUpstreamResponse struct {
-	messages chan *WsResponse
+	messages chan SubResponse
 	subOpId  string
 }
 
@@ -479,11 +280,11 @@ func (j *JsonRpcWsUpstreamResponse) OpId() string {
 	return j.subOpId
 }
 
-func (j *JsonRpcWsUpstreamResponse) ResponseChan() chan *WsResponse {
+func (j *JsonRpcWsUpstreamResponse) ResponseChan() chan SubResponse {
 	return j.messages
 }
 
-func NewJsonRpcWsUpstreamResponse(messages chan *WsResponse, subOpId string) *JsonRpcWsUpstreamResponse {
+func NewJsonRpcWsUpstreamResponse(messages chan SubResponse, subOpId string) *JsonRpcWsUpstreamResponse {
 	return &JsonRpcWsUpstreamResponse{
 		messages: messages,
 		subOpId:  subOpId,
@@ -496,6 +297,28 @@ type ReplyError struct {
 	ErrorKind     ResponseErrorKind
 	responseError *ResponseError
 	responseType  RequestType
+	// upstream response metadata may ride on error replies too - e.g. a
+	// RESOURCE_EXHAUSTED carrying rate-limit hints in its trailers
+	responseHeaders  http.Header
+	responseTrailers map[string][]string
+}
+
+func (r *ReplyError) ResponseHeaders() http.Header {
+	return r.responseHeaders
+}
+
+func (r *ReplyError) WithResponseHeaders(headers http.Header) *ReplyError {
+	r.responseHeaders = headers
+	return r
+}
+
+func (r *ReplyError) ResponseTrailers() map[string][]string {
+	return r.responseTrailers
+}
+
+func (r *ReplyError) WithResponseTrailers(trailers map[string][]string) *ReplyError {
+	r.responseTrailers = trailers
+	return r
 }
 
 func (r *ReplyError) ResponseCode() int {

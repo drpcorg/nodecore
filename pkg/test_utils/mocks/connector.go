@@ -5,8 +5,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/integration/drpc"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/mock"
 )
 

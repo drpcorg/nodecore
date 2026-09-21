@@ -23,30 +23,30 @@ type capUpdate struct {
 	caps  mapset.Set[protocol.Cap]
 }
 
-type BaseCapProcessor struct {
+type GenericCapProcessor struct {
 	upstreamId string
 
-	lifecycle  *utils.BaseLifecycle
+	lifecycle  *utils.GenericLifecycle
 	subManager *utils.SubscriptionManager[mapset.Set[protocol.Cap]]
 
 	detectors []CapDetector
 }
 
-func NewBaseCapProcessor(ctx context.Context, upstreamId string, detectors []CapDetector) *BaseCapProcessor {
+func NewGenericCapProcessor(ctx context.Context, upstreamId string, detectors []CapDetector) *GenericCapProcessor {
 	if len(detectors) == 0 {
 		return nil
 	}
 
 	name := fmt.Sprintf("%s_cap_service", upstreamId)
-	return &BaseCapProcessor{
+	return &GenericCapProcessor{
 		upstreamId: upstreamId,
-		lifecycle:  utils.NewBaseLifecycle(name, ctx),
+		lifecycle:  utils.NewGenericLifecycle(name, ctx),
 		subManager: utils.NewSubscriptionManager[mapset.Set[protocol.Cap]](name),
 		detectors:  detectors,
 	}
 }
 
-func (b *BaseCapProcessor) Start() {
+func (b *GenericCapProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		updates := make(chan capUpdate, 100)
 		for i, detector := range b.detectors {
@@ -57,22 +57,22 @@ func (b *BaseCapProcessor) Start() {
 	})
 }
 
-func (b *BaseCapProcessor) Stop() {
+func (b *GenericCapProcessor) Stop() {
 	b.lifecycle.Stop()
 }
 
-func (b *BaseCapProcessor) Running() bool {
+func (b *GenericCapProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *BaseCapProcessor) Subscribe(name string) *utils.Subscription[mapset.Set[protocol.Cap]] {
+func (b *GenericCapProcessor) Subscribe(name string) *utils.Subscription[mapset.Set[protocol.Cap]] {
 	return b.subManager.Subscribe(name)
 }
 
 // consume forwards one detector's snapshots onto the shared updates channel, tagged
 // with the detector index so the aggregator can replace just that detector's slice
 // of the merged set.
-func (b *BaseCapProcessor) consume(ctx context.Context, index int, detector CapDetector, updates chan<- capUpdate) {
+func (b *GenericCapProcessor) consume(ctx context.Context, index int, detector CapDetector, updates chan<- capUpdate) {
 	capsChan := detector.DetectCaps(ctx)
 	for {
 		select {
@@ -93,7 +93,7 @@ func (b *BaseCapProcessor) consume(ctx context.Context, index int, detector CapD
 
 // aggregate keeps the latest snapshot per detector, unions them on every update, and
 // publishes the merged set only when it changes.
-func (b *BaseCapProcessor) aggregate(ctx context.Context, updates <-chan capUpdate) {
+func (b *GenericCapProcessor) aggregate(ctx context.Context, updates <-chan capUpdate) {
 	latest := make([]mapset.Set[protocol.Cap], len(b.detectors))
 	for i := range latest {
 		latest[i] = mapset.NewThreadUnsafeSet[protocol.Cap]()
@@ -128,4 +128,4 @@ func (b *BaseCapProcessor) aggregate(ctx context.Context, updates <-chan capUpda
 	}
 }
 
-var _ CapProcessor = (*BaseCapProcessor)(nil)
+var _ CapProcessor = (*GenericCapProcessor)(nil)

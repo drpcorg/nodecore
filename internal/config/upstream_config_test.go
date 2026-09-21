@@ -6,7 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,6 +82,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			BanDuration: 5 * time.Minute,
 		},
 		HeadConnector:  specs.JsonRpcConnector.String(),
+		HeadMode:       config.HeadModeSubscribe,
 		PollInterval:   1 * time.Minute,
 		ChainName:      "ethereum",
 		FailsafeConfig: &config.FailsafeConfig{},
@@ -106,6 +107,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			DisableSafeBlockDetection:             new(true),
 			DisableFinalizedBlockDetection:        new(false),
 			DisableLabelsDetection:                new(true),
+			DisableMethodsDetection:               new(true),
 			DisableLogIndexValidation:             new(true),
 			DisableLivenessSubscriptionValidation: new(true),
 			ValidateSyncing:                       new(false),
@@ -128,8 +130,9 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
 		HeadConnector: specs.JsonRpcConnector.String(),
+		HeadMode:      config.HeadModeSubscribe,
 		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
+		ChainName:     "tron",
 		Methods: &config.MethodsConfig{
 			BanDuration: 5 * time.Minute,
 		},
@@ -155,6 +158,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			DisableSafeBlockDetection:             new(true),
 			DisableFinalizedBlockDetection:        new(false),
 			DisableLabelsDetection:                new(true),
+			DisableMethodsDetection:               new(true),
 			DisableLogIndexValidation:             new(true),
 			DisableLivenessSubscriptionValidation: new(true),
 			ValidateSyncing:                       new(false),
@@ -177,8 +181,9 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 	expected := &config.Upstream{
 		Id:            "eth-upstream",
 		HeadConnector: specs.RestConnector.String(),
+		HeadMode:      config.HeadModeSubscribe,
 		PollInterval:  1 * time.Minute,
-		ChainName:     "ethereum",
+		ChainName:     "injective",
 		Methods: &config.MethodsConfig{
 			BanDuration: 5 * time.Minute,
 		},
@@ -204,6 +209,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			DisableSafeBlockDetection:             new(true),
 			DisableFinalizedBlockDetection:        new(false),
 			DisableLabelsDetection:                new(true),
+			DisableMethodsDetection:               new(true),
 			DisableLogIndexValidation:             new(true),
 			DisableLivenessSubscriptionValidation: new(true),
 			ValidateSyncing:                       new(false),
@@ -234,6 +240,7 @@ func TestSetStrictMode(t *testing.T) {
 		DisableSafeBlockDetection:             new(false),
 		DisableFinalizedBlockDetection:        new(false),
 		DisableLabelsDetection:                new(false),
+		DisableMethodsDetection:               new(false),
 		DisableLogIndexValidation:             new(false),
 		DisableLivenessSubscriptionValidation: new(false),
 		ValidateSyncing:                       new(true),
@@ -371,6 +378,7 @@ func TestDefaultMode(t *testing.T) {
 		DisableSafeBlockDetection:             new(true),
 		DisableFinalizedBlockDetection:        new(false),
 		DisableLabelsDetection:                new(true),
+		DisableMethodsDetection:               new(true),
 		DisableLogIndexValidation:             new(true),
 		DisableLivenessSubscriptionValidation: new(true),
 		ValidateSyncing:                       new(false),
@@ -434,6 +442,7 @@ func TestSetChainsDefault(t *testing.T) {
 						BanDuration: 5 * time.Minute,
 					},
 					HeadConnector:  specs.JsonRpcConnector.String(),
+					HeadMode:       config.HeadModeSubscribe,
 					PollInterval:   10 * time.Minute,
 					ChainName:      "ethereum",
 					FailsafeConfig: &config.FailsafeConfig{},
@@ -454,6 +463,7 @@ func TestSetChainsDefault(t *testing.T) {
 						DisableSafeBlockDetection:             new(true),
 						DisableFinalizedBlockDetection:        new(false),
 						DisableLabelsDetection:                new(true),
+						DisableMethodsDetection:               new(true),
 						DisableLogIndexValidation:             new(true),
 						DisableLivenessSubscriptionValidation: new(true),
 						ValidateSyncing:                       new(false),
@@ -666,4 +676,113 @@ func TestUpstreamOptionsMergeWithChainsYaml(t *testing.T) {
 	assert.False(t, *reqUp.Options.ValidatePeers)
 	assert.True(t, *reqUp.Options.ValidateCallLimit)
 	assert.Equal(t, int64(2500000), reqUp.Options.CallLimitSize)
+}
+
+func TestEmptyLabelKeyThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/empty-label-key.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: labels must not contain an empty key")
+}
+
+func TestEmptyLabelValueThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/empty-label-value.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: label 'archive' must have a non-empty value")
+}
+
+// the grpc connector dials directly (no SOCKS5 support), so an onion endpoint
+// must be rejected at config time instead of failing at dial time
+func TestOnionEndpointGrpcConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/tor-onion-grpc.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: onion endpoints are not supported for the 'grpc' connector")
+}
+
+func TestHeadModeDefaultsToSubscribe(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-head-connector.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, config.HeadModeSubscribe, appConfig.UpstreamConfig.Upstreams[0].HeadMode)
+}
+
+func TestHeadModePoll(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/head-mode-poll.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, config.HeadModePoll, appConfig.UpstreamConfig.Upstreams[0].HeadMode)
+}
+
+func TestInvalidHeadModeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/invalid-head-mode.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: invalid head-mode 'sometimes', expected 'subscribe' or 'poll'")
+}
+
+// A connector with no settings block keeps the budget the HTTP connector hard-coded before
+// the setting existed.
+func TestConnectorSettingsHttpResponseTimeoutDefaultsToSixtySeconds(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/upstream-options-disable-flags.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	connector := appConfig.UpstreamConfig.Upstreams[0].Connectors[0]
+	assert.Nil(t, connector.Settings)
+	assert.Equal(t, config.DefaultHttpResponseTimeout, connector.HttpResponseTimeout())
+	assert.Equal(t, 60*time.Second, config.DefaultHttpResponseTimeout)
+}
+
+func TestConnectorSettingsHttpResponseTimeoutParsed(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-response-timeout.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	connector := appConfig.UpstreamConfig.Upstreams[0].Connectors[0]
+	require.NotNil(t, connector.Settings)
+	require.NotNil(t, connector.Settings.Http)
+	require.NotNil(t, connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, 120*time.Second, *connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, 120*time.Second, connector.HttpResponseTimeout())
+}
+
+// An explicit 0 means "no client-side budget; only the caller's context ends a stuck
+// exchange" and must survive as 0 instead of being replaced by the default.
+func TestConnectorSettingsHttpResponseTimeoutZeroMeansNoTimeout(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-response-timeout-zero.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	connector := appConfig.UpstreamConfig.Upstreams[0].Connectors[0]
+	require.NotNil(t, connector.Settings)
+	require.NotNil(t, connector.Settings.Http)
+	require.NotNil(t, connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, time.Duration(0), *connector.Settings.Http.ResponseTimeout)
+	assert.Equal(t, time.Duration(0), connector.HttpResponseTimeout())
+}
+
+func TestConnectorSettingsInvalidHttpResponseTimeoutThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-invalid-http-response-timeout.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: http response timeout can't be less than 0")
+}
+
+// http settings on a connector that has no http.Client would be silently ignored, so the
+// config is rejected instead.
+func TestConnectorSettingsHttpOnGrpcConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-on-grpc.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'sui-upstream' validation, cause: http settings are not applicable to the 'grpc' connector")
+}
+
+func TestConnectorSettingsHttpOnWebsocketConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-settings-http-on-websocket.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: http settings are not applicable to the 'websocket' connector")
+}
+
+func TestConnectorNotDeclaredBySpecThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/connector-not-in-spec.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "error during upstream 'eth-upstream' validation, cause: connector 'grpc' is not supported by the 'eth' method spec of chain 'ethereum'")
 }

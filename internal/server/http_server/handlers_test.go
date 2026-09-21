@@ -11,7 +11,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func newRestReq(t *testing.T, method, urlStr string, body io.Reader) *http.Reque
 // short-circuited with parse error.
 func TestRestHandlerAcceptsEmptyBody(t *testing.T) {
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", nil),
 		"exchange",
 	)
@@ -55,7 +56,7 @@ func TestRestHandlerAcceptsEmptyBody(t *testing.T) {
 
 func TestRestHandlerAcceptsValidJsonBody(t *testing.T) {
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(`{"raw":"AAA"}`)),
 		"exchange",
 	)
@@ -66,7 +67,7 @@ func TestRestHandlerAcceptsValidJsonBody(t *testing.T) {
 
 func TestRestHandlerRejectsMalformedJsonBody(t *testing.T) {
 	_, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`)),
 		"exchange",
 	)
@@ -76,7 +77,7 @@ func TestRestHandlerRejectsMalformedJsonBody(t *testing.T) {
 
 func TestRestHandlerRequestDecodePopulatesMatchedTemplate(t *testing.T) {
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", nil),
 		"exchange",
 	)
@@ -99,7 +100,7 @@ func TestRestHandlerRequestDecodePopulatesMatchedTemplate(t *testing.T) {
 func TestRestHandlerRequestDecodeForwardsBody(t *testing.T) {
 	payload := `{"raw":"AAA"}`
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		newRestReq(t, "POST", "/exchange", strings.NewReader(payload)),
 		"exchange",
 	)
@@ -123,7 +124,7 @@ func TestRestHandlerPromotesQueryAndHeadersIntoRequestParams(t *testing.T) {
 	httpReq.Header.Add("X-Multi", "two")
 
 	handler, err := http_server.NewRestHandler(
-		&http_server.Request{Chain: "hyperliquid"},
+		&server_ctx.Request{Chain: "hyperliquid"},
 		httpReq,
 		"exchange",
 	)
@@ -143,4 +144,82 @@ func TestRestHandlerPromotesQueryAndHeadersIntoRequestParams(t *testing.T) {
 	assert.Equal(t, []string{"hello"}, rp.Headers["X-Custom"])
 	assert.Equal(t, []string{"one", "two"}, rp.Headers["X-Multi"],
 		"repeated header values must survive the round-trip")
+}
+
+// The two method-rejection cases live in handlers_utf8_test.go (internal test
+// package) so they can assert the sentinel with errors.Is. The accept-side cases
+// below assert no error, so they stay here.
+
+// Valid multi-byte UTF-8 is not invalid UTF-8. Only malformed byte sequences are
+// rejected, so a non-ASCII but well-formed name must pass.
+func TestJsonRpcHandlerAcceptsMultiByteUtf8Method(t *testing.T) {
+	body := `{"id":1,"jsonrpc":"2.0","method":"eth_日本語","params":[]}`
+
+	handler, err := http_server.NewJsonRpcHandler(
+		&server_ctx.Request{Chain: "ethereum"},
+		strings.NewReader(body),
+		false,
+	)
+
+	require.NoError(t, err, "well-formed multi-byte UTF-8 must not be rejected")
+	assert.NotNil(t, handler)
+}
+
+// The rule is method-only. Junk bytes in params never become a method name or a
+// metric label, so they must flow through untouched.
+func TestJsonRpcHandlerAcceptsNonUtf8Params(t *testing.T) {
+	body := "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[\"\xff\"]}"
+
+	handler, err := http_server.NewJsonRpcHandler(
+		&server_ctx.Request{Chain: "ethereum"},
+		strings.NewReader(body),
+		false,
+	)
+
+	require.NoError(t, err, "invalid bytes outside the method name must not reject the request")
+	assert.NotNil(t, handler)
+}
+
+// Horizon's POST /transactions is application/x-www-form-urlencoded
+// (tx=<base64 XDR>). That body is not JSON and must still reach the upstream.
+func TestRestHandlerAcceptsFormUrlencodedBody(t *testing.T) {
+	req := newRestReq(t, "POST", "/transactions", strings.NewReader("tx=AAAAAgAAAA"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	handler, err := http_server.NewRestHandler(&server_ctx.Request{Chain: "hyperliquid"}, req, "transactions")
+
+	assert.NoError(t, err, "a declared non-JSON body must pass through opaquely")
+	assert.NotNil(t, handler)
+}
+
+func TestRestHandlerStillRejectsMalformedDeclaredJsonBody(t *testing.T) {
+	req := newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`))
+	req.Header.Set("Content-Type", "application/json")
+
+	_, err := http_server.NewRestHandler(&server_ctx.Request{Chain: "hyperliquid"}, req, "exchange")
+
+	assert.Error(t, err, "a body the client says is JSON must still be validated")
+}
+
+// A JSON suffix type (application/problem+json, application/vnd.api+json) is
+// still JSON and must still be validated.
+func TestRestHandlerRejectsMalformedJsonSuffixBody(t *testing.T) {
+	req := newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`))
+	req.Header.Set("Content-Type", "application/vnd.api+json; charset=utf-8")
+
+	_, err := http_server.NewRestHandler(&server_ctx.Request{Chain: "hyperliquid"}, req, "exchange")
+
+	assert.Error(t, err)
+}
+
+// With no Content-Type at all we keep the old strict behavior: an undeclared
+// body is assumed to be JSON.
+func TestRestHandlerRejectsMalformedUndeclaredBody(t *testing.T) {
+	_, err := http_server.NewRestHandler(
+		&server_ctx.Request{Chain: "hyperliquid"},
+		newRestReq(t, "POST", "/exchange", strings.NewReader(`{not json`)),
+		"exchange",
+	)
+
+	assert.Error(t, err)
 }

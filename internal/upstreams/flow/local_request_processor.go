@@ -7,7 +7,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type LocalRequestProcessor struct {
@@ -24,6 +24,24 @@ func (l *LocalRequestProcessor) ProcessRequest(
 ) ProcessedResponse {
 	if !request.SpecMethod().IsLocal() {
 		return &UnaryResponse{processedServerError(request, fmt.Errorf("method '%s' is not local", request.Method()))}
+	}
+
+	chain := chains.GetChain(l.chain.String())
+	var localResult []byte
+	switch request.Method() {
+	case specs.EthChainId:
+		localResult = []byte(fmt.Sprintf(`"%s"`, chain.ChainIdFor(chains.Ethereum)))
+	case specs.NetVersion:
+		localResult = []byte(fmt.Sprintf(`"%s"`, chain.NetVersion))
+	}
+	if localResult != nil {
+		return &UnaryResponse{
+			&protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				RequestId:  request.Id(),
+				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), localResult, request.RequestType()),
+			},
+		}
 	}
 
 	if l.subCtx != nil {
@@ -45,18 +63,11 @@ func (l *LocalRequestProcessor) ProcessRequest(
 			},
 		}
 	} else {
-		chain := chains.GetChain(l.chain.String())
 		var response protocol.ResponseHolder = protocol.NewTotalFailureFromErr(
 			request.Id(),
 			fmt.Errorf("there is no local handler for method '%s'", request.Method()),
 			request.RequestType(),
 		)
-		switch request.Method() {
-		case specs.EthChainId:
-			response = protocol.NewSimpleHttpUpstreamResponse(request.Id(), []byte(fmt.Sprintf(`"%s"`, chain.ChainId)), request.RequestType())
-		case specs.NetVersion:
-			response = protocol.NewSimpleHttpUpstreamResponse(request.Id(), []byte(fmt.Sprintf(`"%s"`, chain.NetVersion)), request.RequestType())
-		}
 		return &UnaryResponse{
 			&protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,

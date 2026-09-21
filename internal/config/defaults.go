@@ -2,10 +2,11 @@ package config
 
 import (
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -46,7 +47,7 @@ func (a *AppConfig) setDefaults() {
 			a.IntegrationConfig.Drpc.setDefaults()
 		}
 	}
-	a.UpstreamConfig.setDefaults()
+	a.UpstreamConfig.setDefaults(a.ServerConfig.GrpcAuthConfig)
 }
 
 func (s *StatsConfig) setDefaults() {
@@ -180,7 +181,7 @@ func (p *PostgresCacheConnectorConfig) setDefaults() {
 		p.ExpiredRemoveInterval = 30 * time.Second
 	}
 	if p.QueryTimeout == nil {
-		p.QueryTimeout = lo.ToPtr(300 * time.Millisecond)
+		p.QueryTimeout = new(300 * time.Millisecond)
 	}
 	if p.CacheTable == "" {
 		p.CacheTable = "cache_rpc"
@@ -189,7 +190,7 @@ func (p *PostgresCacheConnectorConfig) setDefaults() {
 
 func (r *RedisStorageConfig) setDefaults() {
 	if r.DB == nil {
-		r.DB = lo.ToPtr(0)
+		r.DB = new(0)
 	}
 	if r.Timeouts == nil {
 		r.Timeouts = &RedisStorageTimeoutsConfig{}
@@ -206,29 +207,29 @@ func (p *RedisStoragePoolConfig) setDefaults(timeouts *RedisStorageTimeoutsConfi
 		p.Size = 10 * runtime.GOMAXPROCS(0)
 	}
 	if p.PoolTimeout == nil {
-		p.PoolTimeout = lo.ToPtr((*timeouts.ReadTimeout) + (1 * time.Second))
+		p.PoolTimeout = new((*timeouts.ReadTimeout) + (1 * time.Second))
 	}
 	if p.ConnMaxIdleTime == nil {
-		p.ConnMaxIdleTime = lo.ToPtr(30 * time.Minute)
+		p.ConnMaxIdleTime = new(30 * time.Minute)
 	}
 	if p.ConnMaxLifeTime == nil {
-		p.ConnMaxLifeTime = lo.ToPtr(time.Duration(0))
+		p.ConnMaxLifeTime = new(time.Duration(0))
 	}
 }
 
 func (r *RedisStorageTimeoutsConfig) setDefaults() {
 	if r.ConnectTimeout == nil {
-		r.ConnectTimeout = lo.ToPtr(500 * time.Millisecond)
+		r.ConnectTimeout = new(500 * time.Millisecond)
 	}
 	if r.ReadTimeout == nil {
-		r.ReadTimeout = lo.ToPtr(200 * time.Millisecond)
+		r.ReadTimeout = new(200 * time.Millisecond)
 	}
 	if r.WriteTimeout == nil {
-		r.WriteTimeout = lo.ToPtr(200 * time.Millisecond)
+		r.WriteTimeout = new(200 * time.Millisecond)
 	}
 }
 
-func (u *UpstreamConfig) setDefaults() {
+func (u *UpstreamConfig) setDefaults(grpcAuth *GrpcAuthConfig) {
 	if u.Mode == "" {
 		u.Mode = DefaultMode
 	}
@@ -255,6 +256,9 @@ func (u *UpstreamConfig) setDefaults() {
 	for _, upstream := range u.Upstreams {
 		chainDefaults := u.ChainDefaults[upstream.ChainName]
 		upstream.setDefaults(chainDefaults, u.Mode)
+		if !grpcAuth.Disabled() {
+			upstream.setSecureSignedLabel()
+		}
 	}
 	if u.IntegrityConfig == nil {
 		u.IntegrityConfig = &IntegrityConfig{}
@@ -328,6 +332,9 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 			u.HeadConnector = headConnector.String()
 		}
 	}
+	if u.HeadMode == "" {
+		u.HeadMode = HeadModeSubscribe
+	}
 	if u.RateLimitAutoTune != nil {
 		u.RateLimitAutoTune.setDefaults()
 	}
@@ -339,6 +346,59 @@ func (u *Upstream) setDefaults(defaults *ChainDefaults, upstreamMode UpstreamMod
 		}
 		u.PollInterval = pollInterval
 	}
+	u.translateDeprecatedArchiveOption()
+	u.setHasGrpcLabel()
+}
+
+// setHasGrpcLabel advertises that this upstream serves gRPC methods. Connector
+// validation guarantees a grpc connector only exists on a chain whose spec declares
+// grpc, so connector presence is enough. An explicit label always wins.
+func (u *Upstream) setHasGrpcLabel() {
+	hasGrpc := lo.ContainsBy(u.Connectors, func(c *ApiConnectorConfig) bool {
+		return c.GetApiConnectorType() == specs.GrpcConnector
+	})
+	if !hasGrpc {
+		return
+	}
+	if _, set := u.Labels[hasGrpcLabel]; set {
+		return
+	}
+	if u.Labels == nil {
+		u.Labels = UpstreamLabels{}
+	}
+	u.Labels[hasGrpcLabel] = "true"
+}
+
+// translateDeprecatedArchiveOption turns the deprecated options.archive flag into the
+// 'archive' label, so an existing config keeps its override instead of silently losing it
+// to archive auto-detection. An explicit label always wins. It runs after
+// setOptionsDefaults. Only the upstream-level flag is translated: setOptionsDefaults has
+// never merged ArchiveCapability from chain-defaults, and the detector it replaced read the
+// upstream value only, so chain-defaults options.archive never took effect.
+func (u *Upstream) translateDeprecatedArchiveOption() {
+	if u.Options == nil || u.Options.ArchiveCapability == nil {
+		return
+	}
+	log.Warn().Msgf("upstream '%s': options.archive is deprecated, use the '%s' upstream label instead", u.Id, chains.ArchiveLabel)
+	if _, set := u.Labels[chains.ArchiveLabel]; set {
+		return
+	}
+	if u.Labels == nil {
+		u.Labels = UpstreamLabels{}
+	}
+	u.Labels[chains.ArchiveLabel] = strconv.FormatBool(*u.Options.ArchiveCapability)
+}
+
+// setSecureSignedLabel advertises that this instance signs responses, so gRPC
+// clients can select signing-capable providers.
+func (u *Upstream) setSecureSignedLabel() {
+	if _, set := u.Labels[SecureSignedLabel]; set {
+		return
+	}
+	if u.Labels == nil {
+		u.Labels = UpstreamLabels{}
+	}
+	u.Labels[SecureSignedLabel] = "true"
 }
 
 func getDefaultPollInterval(chainName string, upstreamMode UpstreamMode) time.Duration {

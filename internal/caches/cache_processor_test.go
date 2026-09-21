@@ -19,7 +19,7 @@ import (
 func TestCacheProcessorNoPoliciesThenReceiveNothing(t *testing.T) {
 	cacheConfig := memoryCacheConfig(nil, nil)
 	storageRegistry, _ := storages.NewStorageRegistry([]config.AppStorageConfig{})
-	cacheProcessor, err := NewBaseCacheProcessor(nil, cacheConfig, storageRegistry)
+	cacheProcessor, err := NewGenericCacheProcessor(nil, cacheConfig, storageRegistry)
 	assert.NoError(t, err)
 
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("method", nil, chains.ALEPHZERO)
@@ -177,7 +177,7 @@ func TestCacheProcessorNoResponseFromConnectorsThenNothing(t *testing.T) {
 }
 
 func createCacheProcessor(policies []*CachePolicy, timeout time.Duration) CacheProcessor {
-	return &BaseCacheProcessor{
+	return &GenericCacheProcessor{
 		policies:       policies,
 		receiveTimeout: timeout,
 	}

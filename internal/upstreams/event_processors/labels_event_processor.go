@@ -11,7 +11,7 @@ import (
 )
 
 type LabelsEventProcessor struct {
-	lifecycle       *utils.BaseLifecycle
+	lifecycle       *utils.GenericLifecycle
 	upstreamId      string
 	emitter         Emitter
 	labelsProcessor labels.LabelsProcessor
@@ -69,7 +69,7 @@ func NewLabelsEventProcessor(
 	}
 
 	return &LabelsEventProcessor{
-		lifecycle:       utils.NewBaseLifecycle(fmt.Sprintf("%s_labels_event_processor", upstreamId), ctx),
+		lifecycle:       utils.NewGenericLifecycle(fmt.Sprintf("%s_labels_event_processor", upstreamId), ctx),
 		upstreamId:      upstreamId,
 		labelsProcessor: labelsProcessor,
 	}

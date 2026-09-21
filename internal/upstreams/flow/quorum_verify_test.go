@@ -20,7 +20,7 @@ import (
 )
 
 func TestVerifyQuorumSignatures_NoRegistry_IsNoop(t *testing.T) {
-	flow := &BaseExecutionFlow{quorumRegistry: nil}
+	flow := &GenericExecutionFlow{quorumRegistry: nil}
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, 0)
 	resp := protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc)
 	wrapper := &protocol.ResponseHolderWrapper{RequestId: "1", Response: resp}
@@ -33,7 +33,7 @@ func TestVerifyQuorumSignatures_NoRegistry_IsNoop(t *testing.T) {
 
 func TestVerifyQuorumSignatures_NoParamsInCtx_IsNoop(t *testing.T) {
 	reg, _, _ := newTestSigner(t, "provider-a")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 	req, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_test", nil, 0)
 	resp := protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc)
 	wrapper := &protocol.ResponseHolderWrapper{RequestId: "1", Response: resp}
@@ -45,7 +45,7 @@ func TestVerifyQuorumSignatures_NoParamsInCtx_IsNoop(t *testing.T) {
 
 func TestVerifyQuorumSignatures_ValidSignatures_Passthrough(t *testing.T) {
 	reg, key, providerID := newTestSigner(t, "drpc-core@US-West#1")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	result := []byte(`"0xdeadbeef"`)
 	headers := http.Header{}
@@ -72,7 +72,7 @@ func TestVerifyQuorumSignatures_ValidSignatures_Passthrough(t *testing.T) {
 
 func TestVerifyQuorumSignatures_TamperedResult_ReplacesWithError(t *testing.T) {
 	reg, key, providerID := newTestSigner(t, "drpc-core@US-West#1")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	signedOver := []byte(`"0xoriginal"`)
 	sig := signResult(t, key, 1, "node-0", signedOver)
@@ -98,7 +98,7 @@ func TestVerifyQuorumSignatures_UnknownProvider_ReplacesWithError(t *testing.T) 
 	// Registry only knows about provider-b; the signed header claims provider-a.
 	_, key, _ := newTestSigner(t, "provider-a")
 	reg, _, _ := newTestSigner(t, "provider-b")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	result := []byte(`"0x1"`)
 	sig := signResult(t, key, 1, "node-0", result)
@@ -121,7 +121,7 @@ func TestVerifyQuorumSignatures_UnknownProvider_ReplacesWithError(t *testing.T) 
 
 func TestVerifyQuorumSignatures_InsufficientSignatures_ReplacesWithError(t *testing.T) {
 	reg, key, providerID := newTestSigner(t, "provider-a")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	result := []byte(`"0x1"`)
 	sig := signResult(t, key, 1, "node-0", result)
@@ -145,7 +145,7 @@ func TestVerifyQuorumSignatures_InsufficientSignatures_ReplacesWithError(t *test
 
 func TestVerifyQuorumSignatures_MissingSignatures_ReplacesWithError(t *testing.T) {
 	reg, _, _ := newTestSigner(t, "provider-a")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	resp := protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc).
 		WithResponseHeaders(http.Header{"Content-Type": []string{"application/json"}})
@@ -161,7 +161,7 @@ func TestVerifyQuorumSignatures_MissingSignatures_ReplacesWithError(t *testing.T
 
 func TestVerifyQuorumSignatures_RequestIDMismatch_ReplacesWithError(t *testing.T) {
 	reg, key, providerID := newTestSigner(t, "provider-a")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	result := []byte(`"0x1"`)
 	sig := signResult(t, key, 1, "node-0", result)
@@ -185,7 +185,7 @@ func TestVerifyQuorumSignatures_RequestIDMismatch_ReplacesWithError(t *testing.T
 
 func TestVerifyQuorumSignatures_StreamResponse_RejectsAsNotSupported(t *testing.T) {
 	reg, _, _ := newTestSigner(t, "provider-a")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	// HttpUpstreamResponseStream has HasStream() == true regardless of the body.
 	resp := protocol.NewHttpUpstreamResponseStream("1", strings.NewReader("stream-body"), protocol.JsonRpc)
@@ -202,7 +202,7 @@ func TestVerifyQuorumSignatures_StreamResponse_RejectsAsNotSupported(t *testing.
 
 func TestVerifyQuorumSignatures_ResponseAlreadyHasError_SkipsVerification(t *testing.T) {
 	reg, _, _ := newTestSigner(t, "provider-a")
-	flow := &BaseExecutionFlow{quorumRegistry: reg}
+	flow := &GenericExecutionFlow{quorumRegistry: reg}
 
 	upstreamErr := protocol.ServerError()
 	resp := protocol.NewReplyError("1", upstreamErr, protocol.JsonRpc, protocol.PartialFailure)

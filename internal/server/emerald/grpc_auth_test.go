@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

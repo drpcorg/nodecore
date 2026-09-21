@@ -14,35 +14,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewBaseSettingsEventProcessorReturnsNilForNilValidator(t *testing.T) {
-	processor := event_processors.NewBaseSettingsEventProcessor(context.Background(), "upstream-1", testUpstreamOptions(), nil)
+func TestNewGenericSettingsEventProcessorReturnsNilForNilValidator(t *testing.T) {
+	processor := event_processors.NewGenericSettingsEventProcessor(context.Background(), "upstream-1", testUpstreamOptions(), nil)
 
 	assert.Nil(t, processor)
 }
 
-func TestNewBaseSettingsEventProcessorReturnsNilWhenValidationDisabled(t *testing.T) {
+func TestNewGenericSettingsEventProcessorReturnsNilWhenValidationDisabled(t *testing.T) {
 	options := testUpstreamOptions()
 	*options.DisableValidation = true
 	validator := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{mocks.NewSettingsValidatorMock()})
 
-	processor := event_processors.NewBaseSettingsEventProcessor(context.Background(), "upstream-1", options, validator)
+	processor := event_processors.NewGenericSettingsEventProcessor(context.Background(), "upstream-1", options, validator)
 
 	assert.Nil(t, processor)
 }
 
-func TestNewBaseSettingsEventProcessorReturnsNilWhenSettingsValidationDisabled(t *testing.T) {
+func TestNewGenericSettingsEventProcessorReturnsNilWhenSettingsValidationDisabled(t *testing.T) {
 	options := testUpstreamOptions()
 	*options.DisableSettingsValidation = true
 	validator := validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{mocks.NewSettingsValidatorMock()})
 
-	processor := event_processors.NewBaseSettingsEventProcessor(context.Background(), "upstream-1", options, validator)
+	processor := event_processors.NewGenericSettingsEventProcessor(context.Background(), "upstream-1", options, validator)
 
 	assert.Nil(t, processor)
 }
 
-func TestBaseSettingsEventProcessorType(t *testing.T) {
+func TestGenericSettingsEventProcessorType(t *testing.T) {
 	validatorMock := mocks.NewSettingsValidatorMock()
-	processor := event_processors.NewBaseSettingsEventProcessor(
+	processor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"upstream-1",
 		testUpstreamOptions(),
@@ -53,9 +53,9 @@ func TestBaseSettingsEventProcessorType(t *testing.T) {
 	assert.Equal(t, event_processors.SettingsValidatorProcessorType, processor.Type())
 }
 
-func TestBaseSettingsEventProcessorRunningInitiallyFalse(t *testing.T) {
+func TestGenericSettingsEventProcessorRunningInitiallyFalse(t *testing.T) {
 	validatorMock := mocks.NewSettingsValidatorMock()
-	processor := event_processors.NewBaseSettingsEventProcessor(
+	processor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"upstream-1",
 		testUpstreamOptions(),
@@ -66,10 +66,10 @@ func TestBaseSettingsEventProcessorRunningInitiallyFalse(t *testing.T) {
 	assert.False(t, processor.Running())
 }
 
-func TestBaseSettingsEventProcessorValidateReturnsReducedResult(t *testing.T) {
+func TestGenericSettingsEventProcessorValidateReturnsReducedResult(t *testing.T) {
 	validator1 := mocks.NewSettingsValidatorMock()
 	validator2 := mocks.NewSettingsValidatorMock()
-	processor := event_processors.NewBaseSettingsEventProcessor(
+	processor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
 		"upstream-1",
 		testUpstreamOptions(),
@@ -85,12 +85,12 @@ func TestBaseSettingsEventProcessorValidateReturnsReducedResult(t *testing.T) {
 	validator2.AssertExpectations(t)
 }
 
-func TestBaseSettingsEventProcessorStartFollowsCurrentValidationStateTransitions(t *testing.T) {
+func TestGenericSettingsEventProcessorStartFollowsCurrentValidationStateTransitions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	validator := mocks.NewSettingsValidatorMock()
-	processor := event_processors.NewBaseSettingsEventProcessor(
+	processor := event_processors.NewGenericSettingsEventProcessor(
 		ctx,
 		"upstream-1",
 		testUpstreamOptionsWithInterval(20*time.Millisecond),
@@ -153,7 +153,7 @@ func TestBaseSettingsEventProcessorStartFollowsCurrentValidationStateTransitions
 	validator.AssertExpectations(t)
 }
 
-func TestBaseSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *testing.T) {
+func TestGenericSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *testing.T) {
 	tests := []struct {
 		name   string
 		result validations.ValidationSettingResult
@@ -174,7 +174,7 @@ func TestBaseSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *test
 			defer cancel()
 
 			validator := mocks.NewSettingsValidatorMock()
-			processor := event_processors.NewBaseSettingsEventProcessor(
+			processor := event_processors.NewGenericSettingsEventProcessor(
 				ctx,
 				"upstream-1",
 				testUpstreamOptions(),
@@ -209,12 +209,12 @@ func TestBaseSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *test
 	}
 }
 
-func TestBaseSettingsEventProcessorStartEmitsFatalErrorAfterValidState(t *testing.T) {
+func TestGenericSettingsEventProcessorStartEmitsFatalErrorAfterValidState(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	validator := mocks.NewSettingsValidatorMock()
-	processor := event_processors.NewBaseSettingsEventProcessor(
+	processor := event_processors.NewGenericSettingsEventProcessor(
 		ctx,
 		"upstream-1",
 		testUpstreamOptionsWithInterval(20*time.Millisecond),
@@ -255,35 +255,35 @@ func TestBaseSettingsEventProcessorStartEmitsFatalErrorAfterValidState(t *testin
 	validator.AssertExpectations(t)
 }
 
-func TestNewBaseHealthEventProcessorReturnsNilForNilValidator(t *testing.T) {
-	processor := event_processors.NewBaseHealthEventProcessor(context.Background(), "upstream-1", testUpstreamOptions(), nil)
+func TestNewGenericHealthEventProcessorReturnsNilForNilValidator(t *testing.T) {
+	processor := event_processors.NewGenericHealthEventProcessor(context.Background(), "upstream-1", testUpstreamOptions(), nil)
 
 	assert.Nil(t, processor)
 }
 
-func TestNewBaseHealthEventProcessorReturnsNilWhenValidationDisabled(t *testing.T) {
+func TestNewGenericHealthEventProcessorReturnsNilWhenValidationDisabled(t *testing.T) {
 	options := testUpstreamOptions()
 	*options.DisableValidation = true
 	validator := validations.NewHealthValidationProcessor([]validations.Validator[protocol.AvailabilityStatus]{mocks.NewHealthValidatorMock()})
 
-	processor := event_processors.NewBaseHealthEventProcessor(context.Background(), "upstream-1", options, validator)
+	processor := event_processors.NewGenericHealthEventProcessor(context.Background(), "upstream-1", options, validator)
 
 	assert.Nil(t, processor)
 }
 
-func TestNewBaseHealthEventProcessorReturnsNilWhenHealthValidationDisabled(t *testing.T) {
+func TestNewGenericHealthEventProcessorReturnsNilWhenHealthValidationDisabled(t *testing.T) {
 	options := testUpstreamOptions()
 	*options.DisableHealthValidation = true
 	validator := validations.NewHealthValidationProcessor([]validations.Validator[protocol.AvailabilityStatus]{mocks.NewHealthValidatorMock()})
 
-	processor := event_processors.NewBaseHealthEventProcessor(context.Background(), "upstream-1", options, validator)
+	processor := event_processors.NewGenericHealthEventProcessor(context.Background(), "upstream-1", options, validator)
 
 	assert.Nil(t, processor)
 }
 
-func TestBaseHealthEventProcessorType(t *testing.T) {
+func TestGenericHealthEventProcessorType(t *testing.T) {
 	validatorMock := mocks.NewHealthValidatorMock()
-	processor := event_processors.NewBaseHealthEventProcessor(
+	processor := event_processors.NewGenericHealthEventProcessor(
 		context.Background(),
 		"upstream-1",
 		testUpstreamOptions(),
@@ -294,9 +294,9 @@ func TestBaseHealthEventProcessorType(t *testing.T) {
 	assert.Equal(t, event_processors.HealthValidatorProcessorType, processor.Type())
 }
 
-func TestBaseHealthEventProcessorRunningInitiallyFalse(t *testing.T) {
+func TestGenericHealthEventProcessorRunningInitiallyFalse(t *testing.T) {
 	validatorMock := mocks.NewHealthValidatorMock()
-	processor := event_processors.NewBaseHealthEventProcessor(
+	processor := event_processors.NewGenericHealthEventProcessor(
 		context.Background(),
 		"upstream-1",
 		testUpstreamOptions(),
@@ -307,10 +307,10 @@ func TestBaseHealthEventProcessorRunningInitiallyFalse(t *testing.T) {
 	assert.False(t, processor.Running())
 }
 
-func TestBaseHealthEventProcessorValidateReturnsReducedStatus(t *testing.T) {
+func TestGenericHealthEventProcessorValidateReturnsReducedStatus(t *testing.T) {
 	validator1 := mocks.NewHealthValidatorMock()
 	validator2 := mocks.NewHealthValidatorMock()
-	processor := event_processors.NewBaseHealthEventProcessor(
+	processor := event_processors.NewGenericHealthEventProcessor(
 		context.Background(),
 		"upstream-1",
 		testUpstreamOptions(),
@@ -326,14 +326,14 @@ func TestBaseHealthEventProcessorValidateReturnsReducedStatus(t *testing.T) {
 	validator2.AssertExpectations(t)
 }
 
-func TestBaseHealthEventProcessorStartEmitsStatusEvents(t *testing.T) {
+func TestGenericHealthEventProcessorStartEmitsStatusEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	validator := mocks.NewHealthValidatorMock()
 	options := testUpstreamOptions()
 	options.ValidationInterval = 50 * time.Millisecond
-	processor := event_processors.NewBaseHealthEventProcessor(
+	processor := event_processors.NewGenericHealthEventProcessor(
 		ctx,
 		"upstream-1",
 		options,
@@ -366,14 +366,14 @@ func TestBaseHealthEventProcessorStartEmitsStatusEvents(t *testing.T) {
 	validator.AssertExpectations(t)
 }
 
-func TestBaseHealthEventProcessorStopStopsLifecycle(t *testing.T) {
+func TestGenericHealthEventProcessorStopStopsLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	validator := mocks.NewHealthValidatorMock()
 	options := testUpstreamOptions()
 	options.ValidationInterval = 50 * time.Millisecond
-	processor := event_processors.NewBaseHealthEventProcessor(
+	processor := event_processors.NewGenericHealthEventProcessor(
 		ctx,
 		"upstream-1",
 		options,

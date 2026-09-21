@@ -12,15 +12,15 @@ import (
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestObserverConnectorSuccessfulResponse(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 	executor := resilience.CreateUpstreamExecutor()
 	connectorMock := mocks.NewConnectorMock()
@@ -47,7 +47,7 @@ func TestObserverConnectorSuccessfulResponse(t *testing.T) {
 }
 
 func TestObserverConnectorRetryRequest(t *testing.T) {
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 	executor := resilience.CreateUpstreamExecutor(
 		resilience.CreateUpstreamRetryPolicy(&config.RetryConfig{Attempts: 3, Delay: 10 * time.Millisecond}),
@@ -133,7 +133,7 @@ func TestObserverConnectorRetryableNonRetryableErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(te *testing.T) {
-			tracker := dimensions.NewBaseDimensionTracker()
+			tracker := dimensions.NewGenericDimensionTracker()
 			hooks := []protocol.ResponseReceivedHook{dimensions.NewDimensionHook(tracker)}
 			executor := resilience.CreateUpstreamExecutor()
 			connectorMock := mocks.NewConnectorMock()

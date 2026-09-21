@@ -14,12 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/proxy"
 )
@@ -57,10 +59,14 @@ var defaultResponseHeaderDeny = []string{
 // defaultRequestHeaderDeny is the request-side mirror of the response deny
 // list: RFC 7230 §6.1 hop-by-hop headers plus Host and Content-Length (both
 // owned by the transport for the *outgoing* request) and Accept-Encoding.
-// Accept-Encoding must stay with the transport: forwarding the client's value
-// disables Go's transparent decompression, so a gzip upstream body would ride
-// through unmarked (Content-Encoding is stripped from responses) and get
-// compressed a second time by the server gzip middleware (issue #268).
+//
+// Accept-Encoding belongs to this hop alone. The two hops compress
+// independently - the connector decodes whatever the node sends and the
+// server re-encodes for the client - so a client's preference says nothing
+// about what this connector should ask a node for. Forwarding it is also how
+// issue #268 happened: the upstream's compressed body lost its
+// Content-Encoding to the response deny list and was then compressed a second
+// time on the way out.
 var defaultRequestHeaderDeny = mapset.NewThreadUnsafeSet(
 	"Connection",
 	"Keep-Alive",
@@ -104,6 +110,11 @@ func NewHttpConnectorWithDefaultClient(
 	}
 }
 
+// NewHttpConnector builds an HTTP connector for the upstream. The client budget for one
+// exchange - dial, headers and streaming the whole body - comes from the connector's own
+// http settings (config.ConnectorSettings) and becomes http.Client.Timeout; 0 disables that
+// budget so only the request context (the caller's deadline) ends a stuck or slow exchange.
+// The transport-level header/dial timeouts in utils.DefaultHttpTransport still apply.
 func NewHttpConnector(
 	connectorConfig *config.ApiConnectorConfig,
 	connectorType specs.ApiConnectorType,
@@ -116,7 +127,7 @@ func NewHttpConnector(
 	}
 	transport := utils.DefaultHttpTransport()
 	client := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: connectorConfig.HttpResponseTimeout(),
 	}
 	customCA, err := utils.GetCustomCAPool(connectorConfig.Ca)
 	if err != nil {
@@ -175,10 +186,17 @@ func (h *HttpConnector) SubscribeStates(_ string) *utils.Subscription[protocol.S
 // and applying its own URL/header semantics; the shared dispatch helper
 // only handles network execution and response framing.
 func (h *HttpConnector) SendRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
-	if h.GetType() == specs.JsonRpcConnector {
+	switch h.GetType() {
+	case specs.JsonRpcConnector:
 		return h.sendJsonRpc(ctx, request)
+	case specs.TendermintConnector:
+		if request.RequestType() == protocol.JsonRpc {
+			return h.sendJsonRpc(ctx, request)
+		}
+		return h.sendRest(ctx, request)
+	default:
+		return h.sendRest(ctx, request)
 	}
-	return h.sendRest(ctx, request)
 }
 
 // sendJsonRpc forwards a JSON-RPC call. Always POST to the configured
@@ -260,7 +278,7 @@ func (h *HttpConnector) sendRest(ctx context.Context, request protocol.RequestHo
 	}
 	h.applyConfigHeaders(req)
 	if rp != nil {
-		h.applyClientHeaders(req, rp.Headers)
+		h.applyClientHeaders(req, rp.Headers, body)
 	}
 
 	// REST bodies are opaque pass-through; if the caller asked for streaming
@@ -275,6 +293,48 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 	for k, v := range h.additionalHeaders {
 		req.Header.Set(k, v)
 	}
+	// Go's transport would negotiate gzip on its own, but only gzip, and only
+	// while no Accept-Encoding is set. Asking for zstd here therefore also
+	// takes over decoding the answer - see decodeResponseBody. An operator who
+	// pinned the header in the connector config keeps it: a node that
+	// mishandles a coding is exactly what that setting is for.
+	if req.Header.Get(acceptEncodingHeader) == "" {
+		req.Header.Set(acceptEncodingHeader, compression.Offer)
+	}
+}
+
+const acceptEncodingHeader = "Accept-Encoding"
+
+// decodeResponseBody wraps the response body in the decoder its
+// Content-Encoding calls for. The returned reader owns both the codec and the
+// body: closing it releases the pooled decoder and then the connection.
+func decodeResponseBody(resp *http.Response) (io.ReadCloser, error) {
+	decoded, err := compression.WrapReader(resp.Header.Get("Content-Encoding"), resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &decodedBody{Reader: decoded, decoder: decoded, raw: resp.Body}, nil
+}
+
+// decodedBody ties the lifetime of a pooled decoder to the response body it
+// decodes, so neither the buffered nor the streaming path has to remember
+// there are two things to close, or which order they go in.
+type decodedBody struct {
+	io.Reader
+	decoder io.Closer
+	raw     io.Closer
+}
+
+// Close closes the raw body before the decoder, not after. A streamed
+// response can be torn down from the consuming goroutine while the producing
+// one is still parked in Read, and closing the raw body is what lets that
+// read return - the decoder cannot go back to the pool until it has.
+func (d *decodedBody) Close() error {
+	err := d.raw.Close()
+	if decoderErr := d.decoder.Close(); err == nil {
+		err = decoderErr
+	}
+	return err
 }
 
 // applyClientHeaders forwards per-request client headers onto the upstream
@@ -286,7 +346,7 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 // via http.CanonicalHeaderKey; without this, a config
 // "Authorization" + a client "authorization" would slip past as distinct
 // strings and both end up on the wire after req.Header.Add canonicalises.
-func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string) {
+func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string][]string, body []byte) {
 	for k, vs := range headers {
 		canonical := http.CanonicalHeaderKey(k)
 		if defaultRequestHeaderDeny.Contains(canonical) {
@@ -295,10 +355,44 @@ func (h *HttpConnector) applyClientHeaders(req *http.Request, headers map[string
 		if _, taken := h.additionalHeaders[canonical]; taken {
 			continue
 		}
+		if canonical == contentTypeHeader && len(vs) > 0 {
+			// Content-Type is a singleton field, so a forwarded client value must
+			// REPLACE the JSON default applyConfigHeaders pre-set rather than stack
+			// behind it: upstreams resolve the field with Header.Get, which returns
+			// the first value, and two values is malformed per RFC 9110.
+			if clientContentTypeWins(vs[0], body) {
+				req.Header.Set(canonical, vs[0])
+			}
+			continue
+		}
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}
 	}
+}
+
+const contentTypeHeader = "Content-Type"
+
+// clientContentTypeWins decides whether to believe a client's Content-Type over
+// the connector's application/json default.
+//
+// That default is a *guess* about an opaque REST body, and for every REST family
+// before Horizon it was a load-bearing one: `curl -d` defaults to
+// application/x-www-form-urlencoded and a browser `fetch` with a JSON.stringify
+// body defaults to text/plain, neither chosen by the developer, and grpc-gateway
+// (Cosmos LCD) / Aptos answer 415 for a non-JSON type. Those clients worked only
+// because the default masked their header.
+//
+// So: if the client already declares JSON the two agree and there is nothing to
+// decide (and no body scan to pay for). Otherwise the body settles it - a body
+// that parses as JSON proves the default right, and one that does not leaves the
+// client's declaration as the only information available, which is what makes
+// Horizon's form-encoded POST /transactions work.
+func clientContentTypeWins(clientContentType string, body []byte) bool {
+	if strings.Contains(clientContentType, "json") {
+		return true
+	}
+	return !sonic.Valid(body)
 }
 
 // canonicalizeHeaders normalises configured-header keys via
@@ -405,20 +499,41 @@ func (h *HttpConnector) dispatch(
 		)
 	}
 
+	// Decoding happens before anything reads the body, so the buffered and
+	// streaming paths downstream only ever see plain bytes - which is what
+	// they must be, since Content-Encoding is stripped from the headers this
+	// response carries onward.
+	body, err := decodeResponseBody(resp)
+	if err != nil {
+		utils.CloseBodyReader(ctx, resp.Body)
+		// Both codings read the head of the body to validate it, so a client
+		// that walked away lands here as a read failure. That is nobody's
+		// fault upstream: reported as a partial failure it would penalise a
+		// healthy node and retry a request with no one left to answer.
+		if ctx.Err() != nil {
+			return protocol.NewTotalFailure(request, protocol.CtxError(fmt.Errorf("upstream %s: %v", h.upstreamId, ctx.Err())))
+		}
+		zerolog.Ctx(ctx).Warn().Err(err).Str("upstream", h.upstreamId).Msg("cannot decode the upstream response body")
+		return protocol.NewPartialFailure(
+			request,
+			protocol.ServerErrorWithCause(fmt.Errorf("cannot decode the response from upstream %s", h.upstreamId)),
+		)
+	}
+
 	if request.IsStream() && isSuccessStatus(resp.StatusCode) && !quorumRequested {
-		bufReader := bufio.NewReaderSize(resp.Body, protocol.MaxChunkSize)
+		bufReader := bufio.NewReaderSize(body, protocol.MaxChunkSize)
 		if decision := allowStream(bufReader); decision.stream {
 			zerolog.Ctx(ctx).Debug().Msgf("streaming response of method %s", request.Method())
-			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, resp.Body), request.RequestType()).
+			streamResp := protocol.NewHttpUpstreamResponseStream(request.Id(), protocol.NewCloseReader(ctx, bufReader, body), request.RequestType()).
 				WithStreamHint(decision.hint)
 			return streamResp.WithResponseHeaders(h.filterResponseHeaders(resp.Header))
 		}
-		defer utils.CloseBodyReader(ctx, resp.Body)
+		defer utils.CloseBodyReader(ctx, body)
 		return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, bufReader)
 	}
 
-	defer utils.CloseBodyReader(ctx, resp.Body)
-	return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, resp.Body)
+	defer utils.CloseBodyReader(ctx, body)
+	return h.receiveWholeResponse(ctx, request, resp.StatusCode, resp.Header, body)
 }
 
 func (h *HttpConnector) receiveWholeResponse(
@@ -483,6 +598,13 @@ func encodeMultiValuedQuery(params map[string][]string) string {
 // compare the original path bytes in signature pre-images.
 func joinEndpointAndPath(endpoint, path string) string {
 	base, query, hasQuery := strings.Cut(endpoint, "?")
+	// The configured endpoint may or may not carry a trailing slash, and every
+	// path template starts with one. Concatenating blindly would send
+	// "//health" - or a bare "//" for a root template like Horizon's GET#/ -
+	// and "//" is a different path to the upstream than "/".
+	if strings.HasSuffix(base, "/") && strings.HasPrefix(path, "/") {
+		base = strings.TrimSuffix(base, "/")
+	}
 	full := base + path
 	if hasQuery && query != "" {
 		full += "?" + query

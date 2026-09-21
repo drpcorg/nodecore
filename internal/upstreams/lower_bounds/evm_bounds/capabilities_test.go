@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/evm_bounds"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
@@ -41,9 +42,9 @@ func expectCapabilities(connector *mocks.ConnectorMock, response protocol.Respon
 		Return(response)
 }
 
-func evmCapabilitiesDetectors(connector *mocks.ConnectorMock) []*evm_bounds.EvmLowerBoundDetector {
+func evmCapabilitiesDetectors(connector *mocks.ConnectorMock) []lower_bounds.LowerBoundDetector {
 	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
-	return []*evm_bounds.EvmLowerBoundDetector{
+	return []lower_bounds.LowerBoundDetector{
 		evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities),
 		evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities),
 		evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities),
@@ -55,6 +56,7 @@ func evmCapabilitiesDetectors(connector *mocks.ConnectorMock) []*evm_bounds.EvmL
 func TestEvmCapabilitiesServeAllBoundTypesWithSingleCall(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, evmOK(evmCapabilitiesFixture)).Once()
+	expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(protocol.NotSupportedMethodError("debug_proofsSyncStatus"))).Once()
 
 	detectors := evmCapabilitiesDetectors(connector)
 
@@ -77,8 +79,9 @@ func TestEvmCapabilitiesServeAllBoundTypesWithSingleCall(t *testing.T) {
 		protocol.ProofBound:    200,
 	}
 	assert.Equal(t, expected, bounds)
-	// the single eth_capabilities call is the only upstream request: no probes, no searches
-	assert.Len(t, connector.Calls, 1)
+	// one eth_capabilities call plus the proof detector's rejected sync status: no probes, no searches
+	assert.Equal(t, 1, countRequests(connector, "eth_capabilities"))
+	assert.Len(t, connector.Calls, 2)
 	connector.AssertExpectations(t)
 }
 
@@ -86,13 +89,14 @@ func TestEvmCapabilitiesServeAllBoundTypesWithSingleCall(t *testing.T) {
 func TestEvmCapabilitiesConcurrentDetectorsShareOneFetch(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, evmOK(evmCapabilitiesFixture)).Once()
+	expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(protocol.NotSupportedMethodError("debug_proofsSyncStatus"))).Once()
 
 	detectors := evmCapabilitiesDetectors(connector)
 
 	var wg sync.WaitGroup
 	for _, detector := range detectors {
 		wg.Add(1)
-		go func(d *evm_bounds.EvmLowerBoundDetector) {
+		go func(d lower_bounds.LowerBoundDetector) {
 			defer wg.Done()
 			result, err := d.DetectLowerBound(context.Background())
 			assert.NoError(t, err)
@@ -101,7 +105,8 @@ func TestEvmCapabilitiesConcurrentDetectorsShareOneFetch(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.Len(t, connector.Calls, 1)
+	assert.Equal(t, 1, countRequests(connector, "eth_capabilities"))
+	assert.Len(t, connector.Calls, 2)
 	connector.AssertExpectations(t)
 }
 
@@ -310,6 +315,7 @@ func TestEvmCapabilitiesPartialResponseFallsBackPerDetector(t *testing.T) {
 	  "blocks": {"disabled":false,"oldestBlock":"0x0"}
 	}`
 	expectCapabilities(connector, evmOK(fixtureWithoutProofs)).Once()
+	expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(protocol.NotSupportedMethodError("debug_proofsSyncStatus"))).Once()
 	expectLatest(connector, "0x3")
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getProof"))).

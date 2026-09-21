@@ -2,6 +2,7 @@ package starknet_specific_test
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"strings"
 	"testing"
 
@@ -18,13 +19,13 @@ import (
 func TestStarknetSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewStarknetChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "starknet: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestStarknetParseSubscriptionBlock(t *testing.T) {
 	block, err := test_utils.NewStarknetChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "starknet: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestStarknetParseBlock(t *testing.T) {

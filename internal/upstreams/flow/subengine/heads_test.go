@@ -10,9 +10,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,15 +99,15 @@ func TestNewHeadsSourceForwardsSubscriptionBlocks(t *testing.T) {
 	header := []byte(`{"number":"0x1","hash":"0xaa"}`)
 	chainSup.publishHead(protocol.Block{Height: 1, RawData: header}, "up1")
 	first := <-src.Events
-	assert.Equal(t, "up1", first.UpstreamId)
-	assert.Equal(t, header, first.Message) // forwarded verbatim
+	assert.Equal(t, "up1", first.GetUpstreamId())
+	assert.Equal(t, header, first.GetMessage()) // forwarded verbatim
 
 	// a polled head (no RawData) is skipped; the next subscription block arrives
 	chainSup.publishHead(protocol.Block{Height: 2}, "up2")
 	next := []byte(`{"number":"0x3"}`)
 	chainSup.publishHead(protocol.Block{Height: 3, RawData: next}, "up1")
 	second := <-src.Events
-	assert.Equal(t, next, second.Message)
+	assert.Equal(t, next, second.GetMessage())
 }
 
 // When NewHeadsCap disappears from the chain (the last ws-head upstream left),
@@ -135,7 +135,7 @@ func TestNewHeadsSourceTerminatesOnCapLoss(t *testing.T) {
 
 	select {
 	case terminal := <-src.Events:
-		require.NotNil(t, terminal.Error)
+		require.NotNil(t, terminal.GetError())
 	case <-time.After(time.Second):
 		t.Fatal("expected a terminal frame on NewHeadsCap loss")
 	}
@@ -159,7 +159,7 @@ func TestNewHeadsSourceTerminatesWhenCapAbsentAtStart(t *testing.T) {
 
 	select {
 	case terminal := <-src.Events:
-		require.NotNil(t, terminal.Error)
+		require.NotNil(t, terminal.GetError())
 	case <-time.After(time.Second):
 		t.Fatal("expected an immediate terminal frame when NewHeadsCap is absent at start")
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/aztec_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/aztec_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/aztec_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -67,7 +68,7 @@ func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			a.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AztecChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -83,7 +84,7 @@ func (a *AztecChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 			a.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		a.ctx,
 		a.upstreamId,
 		a.configuredChain.AverageRemoveSpeed(),
@@ -103,7 +104,7 @@ func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Aztec) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {
@@ -185,11 +186,21 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 }
 
 func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("aztec does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AztecChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("aztec does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 var _ chains_specific.ChainSpecific = (*AztecChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (a *AztecChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (a *AztecChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

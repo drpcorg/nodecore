@@ -34,20 +34,20 @@ func (w *WsProcessorMock) Running() bool {
 	return args.Get(0).(bool)
 }
 
-func (w *WsProcessorMock) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (*protocol.WsResponse, error) {
+func (w *WsProcessorMock) SendRpcRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (protocol.SubResponse, error) {
 	args := w.Called(ctx, upstreamRequest)
-	var resp *protocol.WsResponse
+	var resp protocol.SubResponse
 	if args.Get(0) != nil {
-		resp = args.Get(0).(*protocol.WsResponse)
+		resp = args.Get(0).(protocol.SubResponse)
 	}
 	return resp, args.Error(1)
 }
 
-func (w *WsProcessorMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan *protocol.WsResponse, string, error) {
+func (w *WsProcessorMock) SendWsRequest(ctx context.Context, upstreamRequest protocol.RequestHolder) (chan protocol.SubResponse, string, error) {
 	args := w.Called(ctx, upstreamRequest)
-	var ch chan *protocol.WsResponse
+	var ch chan protocol.SubResponse
 	if args.Get(0) != nil {
-		ch = args.Get(0).(chan *protocol.WsResponse)
+		ch = args.Get(0).(chan protocol.SubResponse)
 	}
 	var opID string
 	if args.Get(1) != nil {

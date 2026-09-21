@@ -34,23 +34,23 @@ func assertNoLabel(t *testing.T, ch <-chan lo.Tuple2[string, string], timeout ti
 	}
 }
 
-func startLabelsProcessor(t *testing.T, processor *labels.BaseLabelsProcessor) {
+func startLabelsProcessor(t *testing.T, processor *labels.GenericLabelsProcessor) {
 	t.Helper()
 
 	processor.Start()
 	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
 }
 
-func stopLabelsProcessor(t *testing.T, processor *labels.BaseLabelsProcessor) {
+func stopLabelsProcessor(t *testing.T, processor *labels.GenericLabelsProcessor) {
 	t.Helper()
 
 	processor.Stop()
 	require.Eventually(t, func() bool { return !processor.Running() }, time.Second, 10*time.Millisecond)
 }
 
-func TestNewBaseLabelsProcessorImplementsLabelsProcessor(t *testing.T) {
+func TestNewGenericLabelsProcessorImplementsLabelsProcessor(t *testing.T) {
 	detector := mocks.NewLabelsDetectorMock()
-	processor := labels.NewBaseLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Second)
+	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Second)
 
 	require.NotNil(t, processor)
 
@@ -59,15 +59,15 @@ func TestNewBaseLabelsProcessorImplementsLabelsProcessor(t *testing.T) {
 	assert.False(t, processor.Running())
 }
 
-func TestNewBaseLabelsProcessorReturnsNilWhenNoDetectorsProvided(t *testing.T) {
-	processor := labels.NewBaseLabelsProcessor(context.Background(), "up-1", nil, time.Second)
+func TestNewGenericLabelsProcessorReturnsNilWhenNoDetectorsProvided(t *testing.T) {
+	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", nil, time.Second)
 
 	assert.Nil(t, processor)
 }
 
-func TestBaseLabelsProcessorSubscribeReturnsSubscription(t *testing.T) {
+func TestGenericLabelsProcessorSubscribeReturnsSubscription(t *testing.T) {
 	detector := mocks.NewLabelsDetectorMock()
-	processor := labels.NewBaseLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Second)
+	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Second)
 
 	sub := processor.Subscribe("sub-1")
 	defer sub.Unsubscribe()
@@ -76,14 +76,14 @@ func TestBaseLabelsProcessorSubscribeReturnsSubscription(t *testing.T) {
 	require.NotNil(t, sub.Events)
 }
 
-func TestBaseLabelsProcessorPublishesLabelsOnStart(t *testing.T) {
+func TestGenericLabelsProcessorPublishesLabelsOnStart(t *testing.T) {
 	detector := mocks.NewLabelsDetectorMock()
 	detector.On("DetectLabels").Return(map[string]string{
 		"client_version": "1.18.23",
 		"client_type":    "solana",
 	}).Once()
 
-	processor := labels.NewBaseLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Hour)
+	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Hour)
 	sub := processor.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -103,7 +103,7 @@ func TestBaseLabelsProcessorPublishesLabelsOnStart(t *testing.T) {
 	detector.AssertExpectations(t)
 }
 
-func TestBaseLabelsProcessorPublishesLabelsFromMultipleDetectors(t *testing.T) {
+func TestGenericLabelsProcessorPublishesLabelsFromMultipleDetectors(t *testing.T) {
 	firstDetector := mocks.NewLabelsDetectorMock()
 	firstDetector.On("DetectLabels").Return(map[string]string{
 		"client_version": "1.18.23",
@@ -114,7 +114,7 @@ func TestBaseLabelsProcessorPublishesLabelsFromMultipleDetectors(t *testing.T) {
 		"client_type": "solana",
 	}).Once()
 
-	processor := labels.NewBaseLabelsProcessor(
+	processor := labels.NewGenericLabelsProcessor(
 		context.Background(),
 		"up-1",
 		[]labels.LabelsDetector{firstDetector, secondDetector},
@@ -140,7 +140,7 @@ func TestBaseLabelsProcessorPublishesLabelsFromMultipleDetectors(t *testing.T) {
 	secondDetector.AssertExpectations(t)
 }
 
-func TestBaseLabelsProcessorPollsDetectorAgainAfterDelay(t *testing.T) {
+func TestGenericLabelsProcessorPollsDetectorAgainAfterDelay(t *testing.T) {
 	detector := mocks.NewLabelsDetectorMock()
 	detector.On("DetectLabels").Return(map[string]string{
 		"client_version": "1.18.23",
@@ -150,7 +150,7 @@ func TestBaseLabelsProcessorPollsDetectorAgainAfterDelay(t *testing.T) {
 	}).Once()
 	detector.On("DetectLabels").Return(map[string]string(nil)).Maybe()
 
-	processor := labels.NewBaseLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, 20*time.Millisecond)
+	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, 20*time.Millisecond)
 	sub := processor.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 
@@ -165,7 +165,7 @@ func TestBaseLabelsProcessorPollsDetectorAgainAfterDelay(t *testing.T) {
 	detector.AssertExpectations(t)
 }
 
-func TestBaseLabelsProcessorSkipsEmptyKeysAndValues(t *testing.T) {
+func TestGenericLabelsProcessorSkipsEmptyKeysAndValues(t *testing.T) {
 	detector := mocks.NewLabelsDetectorMock()
 	detector.On("DetectLabels").Return(map[string]string{
 		"":               "ignored",
@@ -173,7 +173,7 @@ func TestBaseLabelsProcessorSkipsEmptyKeysAndValues(t *testing.T) {
 		"client_version": "1.18.23",
 	}).Once()
 
-	processor := labels.NewBaseLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Hour)
+	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Hour)
 	sub := processor.Subscribe("sub-1")
 	defer sub.Unsubscribe()
 

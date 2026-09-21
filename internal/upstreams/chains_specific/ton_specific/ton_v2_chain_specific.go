@@ -49,7 +49,7 @@ func (t *TonV2ChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			t.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.labelsDelay)
+	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.labelsDelay)
 }
 
 func (t *TonV2ChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
@@ -64,7 +64,7 @@ func (t *TonV2ChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (t *TonV2ChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if t.configuredChain == nil || t.configuredChain.ChainId == "" {
+	if t.configuredChain == nil || t.configuredChain.ChainIdFor(chains.Ton) == "" {
 		return nil
 	}
 	if t.options != nil && *t.options.DisableChainValidation {

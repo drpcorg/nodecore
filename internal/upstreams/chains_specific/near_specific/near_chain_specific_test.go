@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
@@ -18,13 +19,13 @@ import (
 func TestNearSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewNearChainSpecific(context.Background(), nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "near: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestNearParseSubscriptionBlock(t *testing.T) {
 	block, err := test_utils.NewNearChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "near: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestNearParseBlock(t *testing.T) {

@@ -8,22 +8,21 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	"github.com/samber/lo"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
 			ChainDefaults: map[string]*config.ChainDefaults{
-				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{Broadcast: lo.ToPtr(true)}},
+				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{Broadcast: new(true)}},
 			},
 		}},
 	}
@@ -35,14 +34,14 @@ func TestCreateRequestProcessorUsesFanoutForDispatchMethods(t *testing.T) {
 }
 
 func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
 			ChainDefaults: map[string]*config.ChainDefaults{
-				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{MaximumValue: lo.ToPtr(true)}},
+				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{MaximumValue: new(true)}},
 			},
 		}},
 	}
@@ -54,9 +53,9 @@ func TestCreateRequestProcessorUsesFanoutForMaximumValueDispatchMethods(t *testi
 }
 
 func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
@@ -73,11 +72,11 @@ func TestCreateRequestProcessorKeepsUnaryForFanoutDispatchDisabled(t *testing.T)
 }
 
 func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", chains.ETHEREUM).Return(nil).Once()
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain:              chains.ETHEREUM,
 		upstreamSupervisor: upSupervisor,
 	}
@@ -92,9 +91,9 @@ func TestCreateStrategyRejectsQuorumForDispatchMethods(t *testing.T) {
 }
 
 func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain:     chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{IntegrityConfig: &config.IntegrityConfig{}}},
 	}
@@ -108,9 +107,9 @@ func TestCreateRequestProcessorKeepsUnaryForDefaultMethods(t *testing.T) {
 }
 
 func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
@@ -127,14 +126,14 @@ func TestCreateRequestProcessorKeepsUnaryForNotNullDispatchDisabled(t *testing.T
 }
 
 func TestCreateRequestProcessorUsesNotNullWhenEnabled(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
-	exec := &BaseExecutionFlow{
+	exec := &GenericExecutionFlow{
 		chain: chains.ETHEREUM,
 		appConfig: &config.AppConfig{UpstreamConfig: &config.UpstreamConfig{
 			IntegrityConfig: &config.IntegrityConfig{},
 			ChainDefaults: map[string]*config.ChainDefaults{
-				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{NotNull: lo.ToPtr(true)}},
+				chains.ETHEREUM.String(): {Dispatch: &config.DispatchOptions{NotNull: new(true)}},
 			},
 		}},
 	}

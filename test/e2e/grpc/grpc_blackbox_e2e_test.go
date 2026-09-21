@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
 	"github.com/drpcorg/nodecore/test/e2e/internal/harness"
+	"github.com/drpcorg/public/pkg/dshackle"
 )
 
 const (

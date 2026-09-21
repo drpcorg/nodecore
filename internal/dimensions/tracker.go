@@ -87,19 +87,19 @@ type DimensionTracker interface {
 	GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions
 }
 
-type BaseDimensionTracker struct {
+type GenericDimensionTracker struct {
 	upstreamDimensionsMap *utils.CMap[upstreamDimensionKey, *UpstreamDimensions]
 	chainDimensionsMap    *utils.CMap[chainDimensionKey, *ChainDimensions]
 }
 
-func NewBaseDimensionTracker() DimensionTracker {
-	return &BaseDimensionTracker{
+func NewGenericDimensionTracker() DimensionTracker {
+	return &GenericDimensionTracker{
 		upstreamDimensionsMap: utils.NewCMap[upstreamDimensionKey, *UpstreamDimensions](),
 		chainDimensionsMap:    utils.NewCMap[chainDimensionKey, *ChainDimensions](),
 	}
 }
 
-func (d *BaseDimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, method string) *FullDimensions {
+func (d *GenericDimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, method string) *FullDimensions {
 	upstreamKey := newUpstreamDimensionKey(chain, upstreamId, method)
 	chainKey := newChainDimensionKey(chain, upstreamId)
 
@@ -115,7 +115,7 @@ func (d *BaseDimensionTracker) GetAllDimensions(chain chains.Chain, upstreamId, 
 	}
 }
 
-func (d *BaseDimensionTracker) GetUpstreamDimensions(chain chains.Chain, upstreamId, method string) *UpstreamDimensions {
+func (d *GenericDimensionTracker) GetUpstreamDimensions(chain chains.Chain, upstreamId, method string) *UpstreamDimensions {
 	upstreamKey := newUpstreamDimensionKey(chain, upstreamId, method)
 	upstreamDimensions, _ := d.upstreamDimensionsMap.LoadOrStoreLazy(upstreamKey, func() *UpstreamDimensions {
 		return newUpstreamDimensions(upstreamKey)
@@ -123,7 +123,7 @@ func (d *BaseDimensionTracker) GetUpstreamDimensions(chain chains.Chain, upstrea
 	return upstreamDimensions
 }
 
-func (d *BaseDimensionTracker) GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions {
+func (d *GenericDimensionTracker) GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions {
 	chainKey := newChainDimensionKey(chain, upstreamId)
 
 	chainDimensions, _ := d.chainDimensionsMap.LoadOrStoreLazy(chainKey, func() *ChainDimensions {
@@ -132,4 +132,4 @@ func (d *BaseDimensionTracker) GetChainDimensions(chain chains.Chain, upstreamId
 	return chainDimensions
 }
 
-var _ DimensionTracker = (*BaseDimensionTracker)(nil)
+var _ DimensionTracker = (*GenericDimensionTracker)(nil)

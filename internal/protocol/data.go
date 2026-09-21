@@ -13,8 +13,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/errors_config"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type ResponseReceivedHook interface {
@@ -66,7 +66,7 @@ func GetResponseType(wrapper *ResponseHolderWrapper, err error) ResultType {
 			} else {
 				return ResultTotalFailure
 			}
-		case *BaseUpstreamResponse:
+		case *GenericUpstreamResponse:
 			if response.HasError() {
 				return ResultOkWithError
 			}
@@ -85,7 +85,13 @@ func IsRetryable(response ResponseHolder) bool {
 	shouldRetry := false
 
 	switch resp := response.(type) {
-	case *BaseUpstreamResponse:
+	case *GenericUpstreamResponse:
+		// gRPC errors made the retryable/not-retryable call at construction
+		// (closed code model); the message patterns are JSON-RPC vocabulary
+		// and must not run against upstream gRPC status messages
+		if IsGrpcErrorNotRetryable(response.GetError()) {
+			return false
+		}
 		shouldRetry = response.HasError() && errors_config.IsRetryable(response.GetError().Message)
 	case *ReplyError:
 		shouldRetry = resp.ErrorKind == PartialFailure
@@ -188,9 +194,13 @@ type ResponseHolder interface {
 	Id() string
 }
 
+// SubscriptionResponseHolder is a client-facing frame of a subscription or
+// stream: an event carrying a payload, or the clean end of a bounded stream.
 type SubscriptionResponseHolder interface {
 	ResponseHolder
-	IsEventFrame() bool
+	// IsEnd reports the final frame of a stream that completed cleanly. It
+	// carries no payload, only the trailers the upstream closed with.
+	IsEnd() bool
 }
 
 type RequestBlockTag int
@@ -277,8 +287,22 @@ type RequestUnsupportedSelector struct {
 
 func (RequestUnsupportedSelector) isRequestSelector() {}
 
+// SubResponse is one event of an upstream subscription/stream: a data
+// notification (GetMessage), a terminal error (GetError), or a clean end of
+// the stream (IsEnd - a bounded gRPC stream completing; it may carry trailers).
+// Implementations are transport-specific; consumers use only these accessors.
+// Producers must stamp every event with the originating upstream id
+// (GetUpstreamId) - there is no setter, and consumers forward events as-is.
+type SubResponse interface {
+	GetMessage() []byte
+	GetError() *ResponseError
+	GetUpstreamId() string
+	GetParsedEvent() ParsedEvent
+	IsEnd() bool
+}
+
 type UpstreamSubscriptionResponse interface {
-	ResponseChan() chan *WsResponse
+	ResponseChan() chan SubResponse
 	OpId() string
 }
 

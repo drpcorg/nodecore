@@ -1,23 +1,20 @@
 package emerald
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/dshackle"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -26,20 +23,24 @@ import (
 
 const defaultNativeSubscribeHeartbeat = 30 * time.Second
 
-var errSubscribeMappingNotSupported = errors.New("unsupported subscribe method mapping")
-
 type GrpcBlockchainService struct {
 	dshackle.UnimplementedBlockchainServer
 
 	appCtx            *server_ctx.ApplicationServerContext
 	sessionAuth       *grpcSessionAuth
+	signer            signature.ResponseSigner
 	heartbeatInterval time.Duration
 }
 
-func NewGrpcBlockchainService(appCtx *server_ctx.ApplicationServerContext, sessionAuth *grpcSessionAuth) *GrpcBlockchainService {
+func NewGrpcBlockchainService(
+	appCtx *server_ctx.ApplicationServerContext,
+	sessionAuth *grpcSessionAuth,
+	signer signature.ResponseSigner,
+) *GrpcBlockchainService {
 	return &GrpcBlockchainService{
 		appCtx:            appCtx,
 		sessionAuth:       sessionAuth,
+		signer:            signer,
 		heartbeatInterval: defaultNativeSubscribeHeartbeat,
 	}
 }
@@ -77,21 +78,23 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		return err
 	}
 	if request == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil")), flow.NoUpstream, nil, nil))
+		// no items to correlate with or to pick a vocabulary from: this is the
+		// one failure a client can only observe as id 0 with a nodecore code
+		return stream.Send(withNoUpstreamId(nativeCallErrorItem(0, protocol.ClientError(fmt.Errorf("request is nil")), nil)))
 	}
 	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
+		return sendRequestFailure(stream, request, protocol.NoAvailableUpstreamsError())
 	}
 
 	configuredChain, chainSupervisor := s.resolveChain(request.GetChain())
 	if configuredChain == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.WrongChainError(strconv.Itoa(int(request.GetChain()))), flow.NoUpstream, nil, nil))
+		return sendRequestFailure(stream, request, protocol.WrongChainError(strconv.Itoa(int(request.GetChain()))))
 	}
 	if chainSupervisor == nil {
-		return stream.Send(nativeCallErrorItem(0, protocol.NoAvailableUpstreamsError(), flow.NoUpstream, nil, nil))
+		return sendRequestFailure(stream, request, protocol.NoAvailableUpstreamsError())
 	}
 
-	requests, adapters, preResponses := s.buildNativeCallRequests(configuredChain, request)
+	requests, items, preResponses := s.buildNativeCallRequests(configuredChain, request)
 	for _, preResponse := range preResponses {
 		if err := stream.Send(preResponse); err != nil {
 			return err
@@ -101,7 +104,7 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		return nil
 	}
 
-	executionFlow := flow.NewBaseExecutionFlow(
+	executionFlow := flow.NewGenericExecutionFlow(
 		configuredChain.Chain,
 		s.appCtx.UpstreamSupervisor,
 		s.appCtx.CacheProcessor,
@@ -119,11 +122,23 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 	go executionFlow.Execute(stream.Context(), requests)
 
 	for wrapper := range executionFlow.GetResponses() {
-		adapter, ok := adapters[wrapper.RequestId]
+		item, ok := items[wrapper.RequestId]
 		if !ok {
-			adapter = jsonRpcNativeCallAdapter{}
+			// Without the originating item we don't know its nonce, so a success
+			// here could silently drop a signature the client asked for. The item
+			// kind is unknown too (this lookup is what failed), so - as a
+			// documented exception to the per-kind error vocabulary - the failure
+			// is rendered with the nodecore code 500. Defensive: the flow only
+			// answers ids this loop built.
+			log.Warn().Msgf("no request found for id %s, cannot build a reply", wrapper.RequestId)
+			replyItem := nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerError(), nil)
+			replyItem.UpstreamId = wrapper.UpstreamId
+			if err := stream.Send(replyItem); err != nil {
+				return err
+			}
+			continue
 		}
-		if err := adapter.SendReply(stream, wrapper, request.GetChunkSize()); err != nil {
+		if err := item.adapter.SendReply(stream, wrapper, item.nonce, s.signer); err != nil {
 			return err
 		}
 	}
@@ -154,19 +169,20 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Unimplemented, fmt.Sprintf("subscribe %s is not supported for chain %d", request.GetMethod(), request.GetChain()))
 	}
 
-	mappedMethod, mappedPayload, err := mapNativeSubscribeMethod(configuredChain.MethodSpec, chainSupervisor, request.GetMethod(), request.GetPayload())
+	adapter := subscribeAdapterFor(configuredChain.MethodSpec, request.GetMethod())
+	subscribeRequest, err := adapter.BuildRequest(configuredChain, chainSupervisor, request)
 	if err != nil {
-		if errors.Is(err, errSubscribeMappingNotSupported) {
-			return status.Error(codes.Unimplemented, err.Error())
-		}
+		return err
+	}
+
+	nonce := request.GetNonce()
+	if err := signingUnavailable(nonce, s.signer); err != nil {
+		log.Warn().Msg("a subscription requested a signature but response signing is not configured")
 		return status.Error(codes.Internal, err.Error())
 	}
 
-	jsonRpcRequestBody := protocol.JsonRpcRequestBody{Id: []byte("0"), Method: mappedMethod, Params: mappedPayload}
-	subscribeRequest := protocol.NewUpstreamJsonRpcRequest("0", jsonRpcRequestBody, true, configuredChain.MethodSpec, mapDshackleSelectors([]*dshackle.Selector{request.GetSelector()})...)
 	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
-
-	executionFlow := flow.NewBaseExecutionFlow(
+	executionFlow := flow.NewGenericExecutionFlow(
 		configuredChain.Chain,
 		s.appCtx.UpstreamSupervisor,
 		s.appCtx.CacheProcessor,
@@ -180,7 +196,23 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 
 	go executionFlow.Execute(stream.Context(), []protocol.RequestHolder{subscribeRequest})
 
-	ticker := time.NewTicker(s.heartbeatInterval)
+	return serveNativeSubscribe(stream, executionFlow.GetResponses(), adapter, nonce, s.signer, s.heartbeatInterval)
+}
+
+// serveNativeSubscribe forwards the flow's responses through the adapter until
+// the client goes away, the flow closes the channel, or the adapter reports
+// the subscription over. Heartbeats keep an idle stream visibly alive; they
+// carry nothing but the flag. A nil wrapper or response is a flow bug and is
+// reported as Internal.
+func serveNativeSubscribe(
+	stream dshackle.Blockchain_NativeSubscribeServer,
+	responses <-chan *protocol.ResponseHolderWrapper,
+	adapter nativeSubscribeAdapter,
+	nonce uint64,
+	signer signature.ResponseSigner,
+	heartbeatInterval time.Duration,
+) error {
+	ticker := time.NewTicker(heartbeatInterval)
 	defer ticker.Stop()
 	lastSent := time.Now()
 
@@ -188,34 +220,23 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		select {
 		case <-stream.Context().Done():
 			return nil
-		case wrapper, ok := <-executionFlow.GetResponses():
+		case wrapper, ok := <-responses:
 			if !ok {
 				return nil
 			}
 			if wrapper == nil || wrapper.Response == nil {
 				return status.Error(codes.Internal, "subscription response is empty")
 			}
-			if wrapper.Response.HasError() {
-				return mapNativeSubscribeError(wrapper.Response.GetError())
-			}
-
-			subscriptionResponse, ok := wrapper.Response.(protocol.SubscriptionResponseHolder)
-			if !ok {
-				return status.Error(codes.Internal, "unexpected subscription response type")
-			}
-			if !subscriptionResponse.IsEventFrame() {
-				continue
-			}
-
-			if err := stream.Send(&dshackle.NativeSubscribeReplyItem{
-				Payload:    subscriptionResponse.ResponseResult(),
-				UpstreamId: wrapper.UpstreamId,
-			}); err != nil {
+			done, err := adapter.SendReply(stream, wrapper, nonce, signer)
+			if err != nil {
 				return err
+			}
+			if done {
+				return nil
 			}
 			lastSent = time.Now()
 		case <-ticker.C:
-			if time.Since(lastSent) >= s.heartbeatInterval {
+			if time.Since(lastSent) >= heartbeatInterval {
 				if err := stream.Send(&dshackle.NativeSubscribeReplyItem{Heartbeat: true}); err != nil {
 					return err
 				}
@@ -236,69 +257,51 @@ func (s *GrpcBlockchainService) resolveChain(chainRef dshackle.ChainRef) (*chain
 	return configuredChain, s.appCtx.UpstreamSupervisor.GetChainSupervisor(configuredChain.Chain)
 }
 
+// nativeCallItem is what a request id resolves to while replies stream back:
+// the adapter that built the request and the nonce the client asked us to sign
+// the reply with (0 meaning "do not sign").
+type nativeCallItem struct {
+	adapter nativeCallAdapter
+	nonce   uint64
+}
+
 func (s *GrpcBlockchainService) buildNativeCallRequests(
 	configuredChain *chains.ConfiguredChain,
 	request *dshackle.NativeCallRequest,
-) ([]protocol.RequestHolder, map[string]nativeCallAdapter, []*dshackle.NativeCallReplyItem) {
+) ([]protocol.RequestHolder, map[string]nativeCallItem, []*dshackle.NativeCallReplyItem) {
 	requests := make([]protocol.RequestHolder, 0, len(request.GetItems()))
-	adapters := make(map[string]nativeCallAdapter, len(request.GetItems()))
+	items := make(map[string]nativeCallItem, len(request.GetItems()))
 	preResponses := make([]*dshackle.NativeCallReplyItem, 0)
 
 	for _, item := range request.GetItems() {
 		adapter := adapterFor(item)
+		if err := signingUnavailable(item.GetNonce(), s.signer); err != nil {
+			log.Warn().Msgf("item %d requested a signature but response signing is not configured", item.GetId())
+			preResponses = append(preResponses, withNoUpstreamId(adapter.ErrorItem(item.GetId(), protocol.ServerErrorWithCause(err), nil)))
+			continue
+		}
 		builtRequest, failure := adapter.BuildRequest(configuredChain, item, request.GetSelector(), request.GetChunkSize())
 		if failure != nil {
 			preResponses = append(preResponses, failure)
 			continue
 		}
 		requests = append(requests, builtRequest)
-		adapters[builtRequest.Id()] = adapter
+		items[builtRequest.Id()] = nativeCallItem{adapter: adapter, nonce: item.GetNonce()}
 	}
 
-	return requests, adapters, preResponses
+	return requests, items, preResponses
 }
 
-func nativeCallSuccessItems(
-	requestID uint32,
-	upstreamID string,
-	payload []byte,
-	chunkSize uint32,
-	headers http.Header,
-) []*dshackle.NativeCallReplyItem {
-	responseHeaders := mapHeaders(headers)
-	if chunkSize == 0 || len(payload) <= int(chunkSize) {
-		return []*dshackle.NativeCallReplyItem{
-			{
-				Id:              requestID,
-				Succeed:         true,
-				Payload:         payload,
-				UpstreamId:      upstreamID,
-				ResponseHeaders: responseHeaders,
-			},
-		}
+// nativeCallSuccessItem builds the reply for a fully-buffered response. A
+// buffered response is always a single unchunked item however large: chunk_size
+// selects a streaming request, it is not a framing size for in-memory payloads.
+// Chunked replies come from streamNativeCallBody instead.
+func nativeCallSuccessItem(requestID uint32, payload []byte) *dshackle.NativeCallReplyItem {
+	return &dshackle.NativeCallReplyItem{
+		Id:      requestID,
+		Succeed: true,
+		Payload: payload,
 	}
-
-	replyItems := make([]*dshackle.NativeCallReplyItem, 0, len(payload)/int(chunkSize)+1)
-	for start := 0; start < len(payload); start += int(chunkSize) {
-		end := start + int(chunkSize)
-		if end > len(payload) {
-			end = len(payload)
-		}
-		item := &dshackle.NativeCallReplyItem{
-			Id:         requestID,
-			Succeed:    true,
-			Payload:    payload[start:end],
-			Chunked:    true,
-			FinalChunk: end == len(payload),
-		}
-		// Response-level metadata travels on the first chunk only.
-		if start == 0 {
-			item.UpstreamId = upstreamID
-			item.ResponseHeaders = responseHeaders
-		}
-		replyItems = append(replyItems, item)
-	}
-	return replyItems
 }
 
 // nativeCallChunkEmitter forwards a byte stream to the client as
@@ -364,24 +367,16 @@ func (e *nativeCallChunkEmitter) Finish() error {
 	return e.WriteChunk(nil, true)
 }
 
-func nativeCallErrorItem(
-	requestID uint32,
-	responseError *protocol.ResponseError,
-	upstreamID string,
-	errorAsIs []byte,
-	headers http.Header,
-) *dshackle.NativeCallReplyItem {
+func nativeCallErrorItem(requestID uint32, responseError *protocol.ResponseError, errorAsIs []byte) *dshackle.NativeCallReplyItem {
 	if responseError == nil {
 		responseError = protocol.ServerError()
 	}
 
 	replyItem := &dshackle.NativeCallReplyItem{
-		Id:              requestID,
-		Succeed:         false,
-		ErrorMessage:    responseError.Message,
-		ItemErrorCode:   int32(responseError.Code),
-		UpstreamId:      upstreamID,
-		ResponseHeaders: mapHeaders(headers),
+		Id:            requestID,
+		Succeed:       false,
+		ErrorMessage:  responseError.Message,
+		ItemErrorCode: int32(responseError.Code),
 	}
 	if responseError.Data != nil {
 		replyItem.ErrorData = nativeCallErrorData(responseError.Data)
@@ -393,7 +388,24 @@ func nativeCallErrorItem(
 	return replyItem
 }
 
-func mapHeaders(headers http.Header) []*dshackle.KeyValue {
+// sendRequestFailure answers a request-level failure (unknown chain, no
+// upstreams) once per item, each in its own kind's error vocabulary and under
+// its own id - a gRPC item must see a canonical code, and id 0 would match
+// nothing the client sent.
+func sendRequestFailure(
+	stream dshackle.Blockchain_NativeCallServer,
+	request *dshackle.NativeCallRequest,
+	responseError *protocol.ResponseError,
+) error {
+	for _, item := range request.GetItems() {
+		if err := stream.Send(withNoUpstreamId(adapterFor(item).ErrorItem(item.GetId(), responseError, nil))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mapHeaders[M ~map[string][]string](headers M) []*dshackle.KeyValue {
 	keyValueHeaders := make([]*dshackle.KeyValue, 0, len(headers))
 	for key, values := range headers {
 		for _, value := range values {
@@ -430,95 +442,7 @@ func parseCallItemID(requestID string) uint32 {
 	return uint32(id)
 }
 
-func mapNativeSubscribeMethod(
-	methodSpecName string,
-	chainSupervisor upstreams.ChainSupervisor,
-	requestedMethod string,
-	payload []byte,
-) (string, []byte, error) {
-	if supportsNativeSubscribeMethod(methodSpecName, requestedMethod) {
-		return normalizeNativeSubscribePayload(requestedMethod, payload)
-	}
-	if !supportsEthSubscribeFallback(methodSpecName, chainSupervisor) {
-		return "", nil, fmt.Errorf("%w: subscribe %s is not supported for chain spec %s", errSubscribeMappingNotSupported, requestedMethod, methodSpecName)
-	}
-	return mapToEthSubscribeFallback(requestedMethod, payload)
-}
-
-func supportsNativeSubscribeMethod(methodSpecName string, requestedMethod string) bool {
-	return specs.IsSubscribeMethod(methodSpecName, requestedMethod)
-}
-
 func subscribeMethodSupported(chainSupervisor upstreams.ChainSupervisor, method string) bool {
 	subMethods := chainSupervisor.GetChainState().SubMethods
 	return subMethods != nil && subMethods.ContainsOne(method)
-}
-
-func normalizeNativeSubscribePayload(requestedMethod string, payload []byte) (string, []byte, error) {
-	if len(payload) == 0 {
-		return requestedMethod, []byte("[]"), nil
-	}
-	if !json.Valid(payload) {
-		return "", nil, fmt.Errorf("invalid subscribe payload format")
-	}
-	return requestedMethod, payload, nil
-}
-
-func supportsEthSubscribeFallback(methodSpecName string, chainSupervisor upstreams.ChainSupervisor) bool {
-	ethSubscribeSupported := specs.IsSubscribeMethod(methodSpecName, "eth_subscribe")
-	if !ethSubscribeSupported && chainSupervisor != nil {
-		ethSubscribeSupported = chainSupervisor.GetMethod("eth_subscribe") != nil
-	}
-	return ethSubscribeSupported
-}
-
-func mapToEthSubscribeFallback(requestedMethod string, payload []byte) (string, []byte, error) {
-	mappedParams, err := mapEthSubscribeParams(requestedMethod, payload)
-	if err != nil {
-		return "", nil, err
-	}
-	return "eth_subscribe", mappedParams, nil
-}
-
-func mapEthSubscribeParams(requestedMethod string, payload []byte) ([]byte, error) {
-	methodRaw, _ := sonic.Marshal(requestedMethod)
-	params := []json.RawMessage{methodRaw}
-
-	// dproxy NativeSubscribe sends Method as the concrete subscription type and
-	// Payload as that type's single parameter payload. For example:
-	//   Method="logs", Payload={...} -> eth_subscribe params ["logs", {...}]
-	//   Method="newHeads", Payload=null -> eth_subscribe params ["newHeads"]
-	if len(payload) > 0 && string(payload) != "null" {
-		if !json.Valid(payload) {
-			return nil, fmt.Errorf("invalid subscribe payload format")
-		}
-		params = append(params, append(json.RawMessage(nil), payload...))
-	}
-
-	result, err := sonic.Marshal(params)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func mapNativeSubscribeError(responseError *protocol.ResponseError) error {
-	if responseError == nil {
-		return status.Error(codes.Internal, "internal server error")
-	}
-
-	switch responseError.Code {
-	case protocol.NoAvailableUpstreams, protocol.WrongChain:
-		return status.Error(codes.Unavailable, responseError.Message)
-	case protocol.NoSupportedMethod:
-		return status.Error(codes.Unimplemented, responseError.Message)
-	case protocol.AuthErrorCode:
-		return status.Error(codes.Unauthenticated, responseError.Message)
-	default:
-		if strings.Contains(strings.ToLower(responseError.Message), "subscription request") &&
-			strings.Contains(strings.ToLower(responseError.Message), "unable to process") {
-			return status.Error(codes.Unimplemented, responseError.Message)
-		}
-		return status.Error(codes.Internal, responseError.Message)
-	}
 }

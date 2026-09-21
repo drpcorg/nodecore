@@ -15,16 +15,12 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/near_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/near_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/near_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
-
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: nearcore's JSON-RPC is HTTP request/response only,
-// there is no subscription transport at all, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("near: head subscriptions are not supported")
 
 type NearChainSpecificObject struct {
 	ctx             context.Context
@@ -58,7 +54,7 @@ func NewNearChainSpecificObject(
 }
 
 func (n *NearChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		n.ctx,
 		n.upstreamId,
 		n.pollInterval,
@@ -79,7 +75,7 @@ func (n *NearChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			n.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
+	return labels.NewGenericLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
 }
 
 func (n *NearChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
@@ -96,7 +92,7 @@ func (n *NearChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundP
 			n.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		n.ctx,
 		n.upstreamId,
 		n.configuredChain.AverageRemoveSpeed(),
@@ -123,7 +119,7 @@ func (n *NearChainSpecificObject) HealthValidators() []validations.Validator[pro
 }
 
 func (n *NearChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if n.configuredChain == nil || n.configuredChain.ChainId == "" {
+	if n.configuredChain == nil || n.configuredChain.ChainIdFor(chains.Near) == "" {
 		return nil
 	}
 	if n.options != nil && *n.options.DisableChainValidation {
@@ -193,11 +189,11 @@ func (n *NearChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block,
 }
 
 func (n *NearChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (n *NearChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type nearBlock struct {
@@ -211,3 +207,13 @@ type nearBlockHeader struct {
 }
 
 var _ chains_specific.ChainSpecific = (*NearChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (n *NearChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (n *NearChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

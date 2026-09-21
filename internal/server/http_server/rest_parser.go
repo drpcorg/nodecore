@@ -2,10 +2,12 @@ package http_server
 
 import (
 	"net/http"
+	"unicode/utf8"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 // reservedQueryParams names every query-string key that nodecore consumes for
@@ -31,8 +33,8 @@ var reservedQueryParams = mapset.NewThreadUnsafeSet[string](
 //     reservedQueryParams stripped so nodecore's own control plane never
 //     leaks downstream.
 //
-// Returns errRestPathNotFound when the spec has REST routes but the path
-// matches none of them. The HTTP layer maps that to a 404 / parse error.
+// Returns errNonUtf8Method when the resulting methodTemplate is not valid
+// UTF-8, which can only happen on the fallback branch above.
 func parseRestRequest(req *http.Request, restPath, specName string) (
 	methodTemplate string,
 	requestParams *protocol.RequestParams,
@@ -50,29 +52,22 @@ func parseRestRequest(req *http.Request, restPath, specName string) (
 		methodTemplate = fullPath
 	}
 
+	// One check covers both switch branches. The matched-template branch passes
+	// trivially - templates come from the embedded spec JSON - so in practice this
+	// only ever rejects the "<VERB>#/<restPath>" fallback, where the client's bytes
+	// become the method name. Wildcard captures, headers, and query values are not
+	// checked: they never become a method name or a metric label.
+	if !utf8.ValidString(methodTemplate) {
+		return "", nil, errNonUtf8Method
+	}
+
 	requestParams = &protocol.RequestParams{
 		PathParams:  params,
-		Headers:     cloneHeaders(req.Header),
+		Headers:     server_ctx.SanitizeForwardedHeaders(req.Header),
 		QueryParams: filteredQuery(req.URL.Query()),
 	}
 
 	return methodTemplate, requestParams, nil
-}
-
-// cloneHeaders deep-copies http.Header into the protocol-level map. The
-// http.Header type is already map[string][]string under the hood; we copy
-// the slices so later mutation of either side doesn't bleed into the other.
-func cloneHeaders(src http.Header) map[string][]string {
-	if len(src) == 0 {
-		return nil
-	}
-	out := make(map[string][]string, len(src))
-	for k, vs := range src {
-		copied := make([]string, len(vs))
-		copy(copied, vs)
-		out[k] = copied
-	}
-	return out
 }
 
 // filteredQuery returns the request query with reservedQueryParams removed,

@@ -74,7 +74,7 @@ func newLogsSourceBuilder(
 			return caps == nil || !caps.Contains(protocol.LogsCap)
 		}
 
-		out := make(chan *protocol.WsResponse, logsBufferSize)
+		out := make(chan protocol.SubResponse, logsBufferSize)
 		updates := make(chan subengine.BlockUpdate, 64)
 
 		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates)
@@ -84,7 +84,7 @@ func newLogsSourceBuilder(
 			cache := newLogCache(logsCacheSize)
 
 			if logsLost() {
-				out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+				out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 				return
 			}
 
@@ -97,7 +97,7 @@ func newLogsSourceBuilder(
 						return
 					}
 					if logsLost() {
-						out <- &protocol.WsResponse{Error: protocol.WsTotalFailureError()}
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
 						return
 					}
 					switch update.Kind {
@@ -116,7 +116,7 @@ func newLogsSourceBuilder(
 						cache.put(update.Block.Hash.ToHex(), parsed)
 						for _, pl := range parsed {
 							select {
-							case out <- &protocol.WsResponse{Message: pl.raw, UpstreamId: upstreamId, ParsedEvent: pl}:
+							case out <- &protocol.GenericSubResponse{Message: pl.raw, UpstreamId: upstreamId, ParsedEvent: pl}:
 							case <-srcCtx.Done():
 								return
 							}
@@ -135,7 +135,7 @@ func newLogsSourceBuilder(
 						// address/topic matching, so per-client filters still apply.
 						for _, pl := range cached {
 							select {
-							case out <- &protocol.WsResponse{Message: setRemovedTrue(pl.raw), ParsedEvent: pl}:
+							case out <- &protocol.GenericSubResponse{Message: setRemovedTrue(pl.raw), ParsedEvent: pl}:
 							case <-srcCtx.Done():
 								return
 							}

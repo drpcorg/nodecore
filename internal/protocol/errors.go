@@ -9,7 +9,7 @@ const (
 	NoAvailableUpstreams
 	WrongChain
 	CtxErrorCode
-	WsTotalFailure
+	SubscribeTotalFailure
 	NoApiConnectors
 	ClientErrorCode         = 400
 	AuthErrorCode           = 403
@@ -132,6 +132,18 @@ func NotSupportedMethodError(method string) *ResponseError {
 	}
 }
 
+// MethodNotAvailableOverTransportError answers a method that exists on the
+// chain but is bound to connector types that cannot carry this request's wire
+// shape (a gRPC method called over JSON-RPC, for example). It shares the code of
+// NotSupportedMethodError so the observer and error classification keep
+// treating it as a client-side rejection rather than an upstream failure.
+func MethodNotAvailableOverTransportError(method string, requestType RequestType) *ResponseError {
+	return &ResponseError{
+		Message: fmt.Sprintf("the method %s is not available over %s", method, requestType.String()),
+		Code:    NoSupportedMethod,
+	}
+}
+
 func RateLimitError() *ResponseError {
 	return &ResponseError{
 		Message: "rate limit exceeded",
@@ -146,22 +158,22 @@ func WrongChainError(chain string) *ResponseError {
 	}
 }
 
-func WsTotalFailureError() *ResponseError {
+func SubscribeTotalFailureError() *ResponseError {
 	return &ResponseError{
-		Message: "websocket total failure",
-		Code:    WsTotalFailure,
+		Message: "subscription total failure",
+		Code:    SubscribeTotalFailure,
 	}
 }
 
-// WsSubscriberTooSlowError is the terminal error delivered to a subscriber that
+// SubscriberTooSlowError is the terminal error delivered to a subscriber that
 // could not keep up with the shared source's fan-out (its buffer overflowed).
-// It uses the WsTotalFailure code so the client treats it like any other
-// terminal failure and can resubscribe, but carries a distinct message so the
-// cause is visible in logs.
-func WsSubscriberTooSlowError() *ResponseError {
+// It uses the SubscribeTotalFailure code so the client treats it like any
+// other terminal failure and can resubscribe, but carries a distinct message
+// so the cause is visible in logs.
+func SubscriberTooSlowError() *ResponseError {
 	return &ResponseError{
 		Message: "subscription dropped: subscriber too slow to keep up",
-		Code:    WsTotalFailure,
+		Code:    SubscribeTotalFailure,
 	}
 }
 

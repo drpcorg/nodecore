@@ -8,18 +8,18 @@ A fault-tolerant, API-agnostic RPC load balancer for blockchain APIs.
 
 nodecore sits in front of your blockchain RPC providers and intelligently distributes requests across them, optimizing for performance metrics such as latency, throughput, and error rate. It continuously scores upstreams in real time and routes each request to the one best able to serve it — with caching, hedging, retries, rate-limiting, and quorum verification layered in.
 
-nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It speaks JSON-RPC, WebSocket, and REST interfaces, so it can front any blockchain API rather than only EVM JSON-RPC.
+nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It speaks JSON-RPC, WebSocket, REST, and gRPC interfaces, so it can front any blockchain API rather than only EVM JSON-RPC.
 
 ### Supported chains, methods & interfaces
 
-- **Interfaces** — `json-rpc` (over HTTP), `websocket`, and `rest` upstream connectors. The set available for a given chain is declared by that chain's [method spec](docs/nodecore/11-method-specs.md).
-- **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
-- **Methods** — per-chain RPC behavior is data-driven via [method specs](docs/nodecore/11-method-specs.md), covering standard EVM/Solana methods, subscriptions, and EVM filter methods. Methods unsupported by an upstream are automatically banned for it to avoid wasted requests.
+- **Interfaces** — `json-rpc` (over HTTP), `websocket`, `rest`, `tendermint`, and `grpc` upstream connectors. The set available for a given chain is declared by that chain's [method spec](docs/nodecore/11-method-specs.md).
+- **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), Cosmos SDK (CometBFT RPC + LCD REST), Polkadot/Substrate (polkadot, kusama, vara, avail, asset hubs and more), Stellar (stellar-rpc + Horizon), Sui (native gRPC, `sui.rpc.v2`), Celestia (DA node JSON-RPC: `header.*`, `blob.*`, `share.*`, plus the consensus node over CometBFT RPC, LCD REST and gRPC), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
+- **Methods** — per-chain RPC behavior is data-driven via [method specs](docs/nodecore/11-method-specs.md), covering standard EVM/Solana methods, subscriptions, and EVM filter methods. The specs themselves (and the generated Sui protobuf types) are maintained in the separate [`drpcorg/public`](https://github.com/drpcorg/public) module, shared across drpc services and pinned in `go.mod`; to add or change a method, contribute there and bump the dependency. Methods unsupported by an upstream are automatically banned for it to avoid wasted requests.
 
 ## Key features
 
 - **Intelligent routing** — dynamically selects the most suitable upstream based on real-time performance metrics (latency, error rate, availability) for optimal speed, reliability, and fault-tolerance. See [Upstream config](docs/nodecore/05-upstream-config.md).
-- **API/protocol-agnostic** — JSON-RPC, WebSocket, and REST interfaces across EVM, Solana, Algorand, Aztec, Aptos, Bitcoin, NEAR, Starknet, TON, and the Ethereum/Gnosis Beacon Chain, all driven by data-defined [method specs](docs/nodecore/11-method-specs.md). EVM filter methods (`eth_newFilter`, `eth_getFilterLogs`, etc.) are routed only to the upstream where the filter was created.
+- **API/protocol-agnostic** — JSON-RPC, WebSocket, REST, and gRPC interfaces across EVM, Solana, Algorand, Aztec, Aptos, Bitcoin, NEAR, Starknet, TON, Cosmos SDK, Polkadot/Substrate, Stellar, Sui, Celestia, and the Ethereum/Gnosis Beacon Chain, all driven by data-defined [method specs](docs/nodecore/11-method-specs.md). Cosmos chains are reachable over both shapes of the CometBFT RPC (JSON-RPC and URI calls) plus the LCD REST API. EVM filter methods (`eth_newFilter`, `eth_getFilterLogs`, etc.) are routed only to the upstream where the filter was created. Sui is served over native gRPC with full server reflection — grpcurl and Postman work against nodecore as against a node. See [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md).
 - **Subscriptions** — WebSocket subscriptions are aggregated so many identical client subscriptions share one upstream stream, with optional local synthesis of EVM topics (`newHeads`, `logs`, pending transactions). See [Subscriptions](docs/nodecore/13-subscriptions.md).
 - **Caching** — minimizes redundant traffic by caching frequent requests across in-memory/Redis/Postgres backends with configurable policies. See [Cache](docs/nodecore/04-cache.md).
 - **Failsafe mechanisms** — request hedging (duplicate slow requests to multiple upstreams) and configurable automatic retries. See [Upstream config](docs/nodecore/05-upstream-config.md).
@@ -27,11 +27,12 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 - **Quorum** — request and verify independently-signed responses from upstreams before returning data to the client. See [Quorum](docs/nodecore/10-quorum.md).
 - **Flexible authentication** — token-based and JWT authentication, plus scoped access keys with fine-grained restrictions (IP, method, and contract address whitelists). See [Auth](docs/nodecore/03-auth.md).
 - **Observability** — Prometheus [metrics](docs/nodecore/08-prometheus-metrics.md) and a public [gRPC API](docs/nodecore/12-grpc-server.md) for querying upstream and chain state.
+- **Compression** — gzip and zstd on both hops: client requests and responses are negotiated per request, and upstream responses are requested compressed and decoded on arrival. No configuration. See [Compression](docs/nodecore/15-compression.md).
 - **Streaming-first architecture** — responses can be streamed to minimize memory footprint and handle large payloads efficiently.
 
 ## Quick start
 
-Run with Docker, mounting your config:
+Run with Docker, mounting your config. Images are published to Docker Hub as [`drpcorg/nodecore`](https://hub.docker.com/r/drpcorg/nodecore):
 
 ```bash
 docker run -p 9090:9090 -v /path/to/config:/nodecore.yml drpcorg/nodecore
@@ -72,13 +73,11 @@ curl --location 'http://localhost:9090/queries/ethereum' \
 
 ## Build from source
 
-1. Clone the repository **with submodules** (required — builds fail without them):
+1. Clone the repository:
 
    ```bash
-   git clone --recursive https://github.com/drpcorg/nodecore.git
+   git clone https://github.com/drpcorg/nodecore.git
    ```
-
-   If you already cloned without `--recursive`, run `git submodule update --init --recursive`.
 
 2. Build the binary (this runs `make generate-networks` automatically):
 
@@ -114,14 +113,18 @@ Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical conf
 | [Integration](docs/nodecore/09-integration.md) | DRPC platform integration |
 | [Quorum](docs/nodecore/10-quorum.md) | Signed-response quorum verification |
 | [Method specs](docs/nodecore/11-method-specs.md) | Per-chain method definitions and how to extend them |
-| [gRPC API](docs/nodecore/12-grpc-server.md) | Public gRPC API for upstream and chain state |
+| [gRPC API](docs/nodecore/12-grpc-server.md) | Public gRPC API for upstream and chain state (dshackle-compatible) |
 | [Subscriptions](docs/nodecore/13-subscriptions.md) | Subscription aggregation and local synthesis |
+| [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md) | Native gRPC chain traffic: metadata contract, auth, reflection |
+| [Compression](docs/nodecore/15-compression.md) | gzip/zstd on the client and upstream hops |
 
 ## Integrations
 
 nodecore can be integrated with external platforms to provide additional functionality — for example, DRPC for centralized key management and analytics. See [Integration](docs/nodecore/09-integration.md).
 
 ## Deployment
+
+Container images are on Docker Hub: [`drpcorg/nodecore`](https://hub.docker.com/r/drpcorg/nodecore).
 
 The Helm chart and deployment instructions are in [`chart/nodecore`](./chart/nodecore). It is also published as an OCI artifact to the GitHub Container Registry (GHCR).
 

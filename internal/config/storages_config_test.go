@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -105,7 +104,7 @@ func TestPostgresDefaults(t *testing.T) {
 	expected := &config.PostgresCacheConnectorConfig{
 		StorageName:           "postgres-storage-defaults",
 		ExpiredRemoveInterval: 30 * time.Second,
-		QueryTimeout:          lo.ToPtr(300 * time.Millisecond),
+		QueryTimeout:          new(300 * time.Millisecond),
 		CacheTable:            "cache_rpc",
 	}
 
@@ -121,7 +120,7 @@ func TestPostgresFullCustom(t *testing.T) {
 	expected := &config.PostgresCacheConnectorConfig{
 		StorageName:           "postgres-storage-custom",
 		ExpiredRemoveInterval: 1 * time.Minute,
-		QueryTimeout:          lo.ToPtr(2 * time.Second),
+		QueryTimeout:          new(2 * time.Second),
 		CacheTable:            "cache_custom",
 	}
 

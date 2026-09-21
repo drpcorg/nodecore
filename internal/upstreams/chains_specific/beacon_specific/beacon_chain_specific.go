@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/beacon_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/beacon_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -64,7 +65,7 @@ func NewBeaconChainSpecificObject(
 // GetFinalizedBlock (GET /eth/v1/beacon/headers/finalized). Safe-block detection
 // is disabled - beacon has no "safe" head and doesn't implement GetSafeBlock.
 func (b *BeaconChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.pollInterval,
@@ -94,7 +95,7 @@ func (b *BeaconChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	labelsDetectors := []labels.LabelsDetector{
 		labels.NewClientLabelDetectorHandler(b.upstreamId, b.connector, clientDetector, b.internalTimeout),
 	}
-	return labels.NewBaseLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
 }
 
 func (b *BeaconChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -104,7 +105,7 @@ func (b *BeaconChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoun
 		b.internalTimeout,
 		b.connector,
 	)
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		b.ctx,
 		b.upstreamId,
 		b.configuredChain.AverageRemoveSpeed(),
@@ -186,11 +187,11 @@ func (b *BeaconChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bloc
 }
 
 func (b *BeaconChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("beacon chain does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (b *BeaconChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("beacon chain does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func hashOrEmpty(value string) blockchain.HashId {
@@ -213,3 +214,13 @@ type beaconHeaderResponse struct {
 }
 
 var _ chains_specific.ChainSpecific = (*BeaconChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (b *BeaconChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (b *BeaconChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

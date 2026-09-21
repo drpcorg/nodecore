@@ -14,25 +14,25 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
 
 type upstreamCtx struct {
 	cancelFunc    context.CancelFunc
-	mainLifecycle *utils.BaseLifecycle
+	mainLifecycle *utils.GenericLifecycle
 }
 
-func newUpstreamCtx(cancelFunc context.CancelFunc, mainLifecycle *utils.BaseLifecycle) *upstreamCtx {
+func newUpstreamCtx(cancelFunc context.CancelFunc, mainLifecycle *utils.GenericLifecycle) *upstreamCtx {
 	return &upstreamCtx{
 		cancelFunc:    cancelFunc,
 		mainLifecycle: mainLifecycle,
 	}
 }
 
-type BaseUpstream struct {
+type GenericUpstream struct {
 	id               string
 	configuredChain  *chains.ConfiguredChain
 	vendorType       UpstreamVendor
@@ -49,6 +49,9 @@ type BaseUpstream struct {
 	headLag atomic.Int64
 
 	processorAggregator *event_processors.UpstreamProcessorAggregator
+	// pauseHeadWhileSyncing is the chain family's answer to ChainSpecific.PauseHeadWhileSyncing,
+	// captured at construction so the state pipeline does not need the chain-specific itself
+	pauseHeadWhileSyncing bool
 }
 
 // groupLabelsFromConfig builds the immutable set of config-defined group-labels
@@ -60,35 +63,40 @@ func groupLabelsFromConfig(conf *config.Upstream) mapset.Set[string] {
 	return mapset.NewThreadUnsafeSet(conf.GroupLabels...)
 }
 
-var _ Upstream = (*BaseUpstream)(nil)
+var _ Upstream = (*GenericUpstream)(nil)
 
-func NewBaseUpstream(
+func NewGenericUpstream(
 	ctx context.Context,
 	cancelFunc context.CancelFunc,
 	conf *config.Upstream,
 	configuredChain *chains.ConfiguredChain,
 	upstreamIndex int,
 	creationData *upstreamCreationData,
-) (*BaseUpstream, error) {
+) (*GenericUpstream, error) {
 	upstreamIndexHex := fmt.Sprintf("%05x", upstreamIndex)
 
 	upState := utils.NewAtomic[protocol.UpstreamState]()
-	upState.Store(
-		protocol.DefaultUpstreamState(
-			creationData.upstreamMethods,
-			mapset.NewThreadUnsafeSet[protocol.Cap](),
-			upstreamIndexHex,
-			creationData.rt,
-			creationData.autoTune,
-		),
+	initialState := protocol.DefaultUpstreamState(
+		creationData.upstreamMethods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		upstreamIndexHex,
+		creationData.rt,
+		creationData.autoTune,
 	)
+	// Config-defined labels are seeds: they are published before any detector runs and
+	// survive when label detection is disabled, but a detector that owns the same key
+	// overwrites them on its first round.
+	for label, value := range conf.Labels {
+		initialState.Labels.AddLabel(label, value)
+	}
+	upState.Store(initialState)
 	stateChan := make(chan protocol.AbstractUpstreamStateEvent, 1000)
 	emitter := func(event protocol.AbstractUpstreamStateEvent) {
 		stateChan <- event
 	}
 
-	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
-	upstream := &BaseUpstream{
+	mainLifecycle := utils.NewGenericLifecycle(fmt.Sprintf("%s_main_upstream", conf.Id), ctx)
+	upstream := &GenericUpstream{
 		id:               conf.Id,
 		configuredChain:  configuredChain,
 		vendorType:       getUpstreamVendor(conf.Connectors),
@@ -103,20 +111,22 @@ func NewBaseUpstream(
 		emitter:          emitter,
 	}
 
-	chainSpecific, err := getChainSpecific(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
+	specifics, err := getUpstreamSpecifics(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
 	if err != nil {
 		return nil, err
 	}
-	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific)
+	upstream.pauseHeadWhileSyncing = specifics.probe.PauseHeadWhileSyncing()
+	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, specifics.head)
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
-			CreateBlockEventProcessor(ctx, conf, chainSpecific, configuredChain),
+			CreateBlockEventProcessor(ctx, conf, specifics.probe, configuredChain),
 			CreateHeadEventProcessor(ctx, conf, configuredChain.Chain, headProcessor),
-			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
-			CreateHealthEventProcessor(ctx, conf, chainSpecific),
-			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
-			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
-			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
+			CreateLowerBoundsEventProcessor(ctx, conf, specifics.probe),
+			CreateHealthEventProcessor(ctx, conf, specifics.probe),
+			CreateSettingsEventProcessor(ctx, conf, specifics.probe),
+			CreateLabelsEventProcessor(ctx, conf, specifics.probe),
+			CreateMethodsEventProcessor(ctx, conf, specifics.probe),
+			CreateCapEventProcessor(ctx, conf, specifics.probe, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)
@@ -125,7 +135,7 @@ func NewBaseUpstream(
 	return upstream, nil
 }
 
-func NewBaseUpstreamWithParams(
+func NewGenericUpstreamWithParams(
 	id string,
 	chain chains.Chain,
 	apiConnectors []connectors.ApiConnector,
@@ -135,7 +145,8 @@ func NewBaseUpstreamWithParams(
 	processorAggregator *event_processors.UpstreamProcessorAggregator,
 	stateChan *chan protocol.AbstractUpstreamStateEvent,
 	emitter *event_processors.Emitter,
-) *BaseUpstream {
+	pauseHeadWhileSyncing bool,
+) *GenericUpstream {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	if stateChan == nil {
@@ -152,24 +163,25 @@ func NewBaseUpstreamWithParams(
 	}
 	processorAggregator.SetEmitter(*emitter)
 
-	mainLifecycle := utils.NewBaseLifecycle(fmt.Sprintf("%s_main_upstream", id), ctx)
-	return &BaseUpstream{
-		id:                  id,
-		configuredChain:     chains.GetChain(chain.String()),
-		upstreamCtx:         newUpstreamCtx(cancel, mainLifecycle),
-		upstreamState:       upState,
-		apiConnectors:       apiConnectors,
-		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
-		upstreamIndexHex:    index,
-		upConfig:            upConfig,
-		groupLabels:         groupLabelsFromConfig(upConfig),
-		processorAggregator: processorAggregator,
-		stateChan:           *stateChan,
-		emitter:             *emitter,
+	mainLifecycle := utils.NewGenericLifecycle(fmt.Sprintf("%s_main_upstream", id), ctx)
+	return &GenericUpstream{
+		id:                    id,
+		configuredChain:       chains.GetChain(chain.String()),
+		upstreamCtx:           newUpstreamCtx(cancel, mainLifecycle),
+		upstreamState:         upState,
+		apiConnectors:         apiConnectors,
+		subManager:            utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
+		upstreamIndexHex:      index,
+		upConfig:              upConfig,
+		groupLabels:           groupLabelsFromConfig(upConfig),
+		processorAggregator:   processorAggregator,
+		stateChan:             *stateChan,
+		emitter:               *emitter,
+		pauseHeadWhileSyncing: pauseHeadWhileSyncing,
 	}
 }
 
-func (u *BaseUpstream) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
+func (u *GenericUpstream) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
 	predicted := int64(0)
 	if u.processorAggregator != nil {
 		predicted = u.processorAggregator.PredictLowerBound(boundType, timeOffset)
@@ -183,27 +195,27 @@ func (u *BaseUpstream) PredictLowerBound(boundType protocol.LowerBoundType, time
 	return predicted
 }
 
-func (u *BaseUpstream) GetCurrentHeadHeight() uint64 {
+func (u *GenericUpstream) GetCurrentHeadHeight() uint64 {
 	state := u.GetUpstreamState()
 	return state.HeadData.Height
 }
 
-func (u *BaseUpstream) GetId() string {
+func (u *GenericUpstream) GetId() string {
 	return u.id
 }
 
-func (u *BaseUpstream) GetChain() chains.Chain {
+func (u *GenericUpstream) GetChain() chains.Chain {
 	return u.configuredChain.Chain
 }
 
-func (u *BaseUpstream) GetGroupLabels() mapset.Set[string] {
+func (u *GenericUpstream) GetGroupLabels() mapset.Set[string] {
 	if u.groupLabels == nil {
 		return mapset.NewThreadUnsafeSet[string]()
 	}
 	return u.groupLabels
 }
 
-func (u *BaseUpstream) Start() {
+func (u *GenericUpstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
 		u.startConnectors(ctx)
 
@@ -234,7 +246,7 @@ func (u *BaseUpstream) Start() {
 	})
 }
 
-func (u *BaseUpstream) Stop() {
+func (u *GenericUpstream) Stop() {
 	u.upstreamCtx.mainLifecycle.Stop()
 	u.upstreamCtx.cancelFunc()
 	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
@@ -245,53 +257,55 @@ func (u *BaseUpstream) Stop() {
 	}
 }
 
-func (u *BaseUpstream) Running() bool {
+func (u *GenericUpstream) Running() bool {
 	return u.upstreamCtx.mainLifecycle.Running()
 }
 
-func (u *BaseUpstream) PartialStop() {
+func (u *GenericUpstream) PartialStop() {
 	u.processorAggregator.StopProcessor(event_processors.BlockEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.HealthValidatorProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.LabelsProcessorType)
 	u.processorAggregator.StopProcessor(event_processors.CapEventProcessorType)
+	u.processorAggregator.StopProcessor(event_processors.MethodsEventProcessorType)
 }
 
-func (u *BaseUpstream) Resume() {
+func (u *GenericUpstream) Resume() {
 	u.processorAggregator.StartProcessor(event_processors.HeadEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.BlockEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.HealthValidatorProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LowerBoundEventProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.LabelsProcessorType)
 	u.processorAggregator.StartProcessor(event_processors.CapEventProcessorType)
+	u.processorAggregator.StartProcessor(event_processors.MethodsEventProcessorType)
 }
 
-func (u *BaseUpstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
+func (u *GenericUpstream) Subscribe(name string) *utils.Subscription[protocol.UpstreamEvent] {
 	return u.subManager.Subscribe(name)
 }
 
-func (u *BaseUpstream) GetUpstreamState() protocol.UpstreamState {
+func (u *GenericUpstream) GetUpstreamState() protocol.UpstreamState {
 	return u.upstreamState.Load()
 }
 
-func (u *BaseUpstream) GetVendorType() UpstreamVendor {
+func (u *GenericUpstream) GetVendorType() UpstreamVendor {
 	return u.vendorType
 }
 
-func (u *BaseUpstream) UpdateHead(height, slot uint64) {
+func (u *GenericUpstream) UpdateHead(height, slot uint64) {
 	u.processorAggregator.UpdateHead(event_processors.NewHeadUpdateData(height, slot))
 }
 
-func (u *BaseUpstream) UpdateBlock(block protocol.Block, blockType protocol.BlockType) {
-	u.processorAggregator.UpdateBlock(event_processors.NewBaseBlockUpdateData(block, blockType))
+func (u *GenericUpstream) UpdateBlock(block protocol.Block, blockType protocol.BlockType) {
+	u.processorAggregator.UpdateBlock(event_processors.NewGenericBlockUpdateData(block, blockType))
 }
 
-func (u *BaseUpstream) UpdateLowerBound(data protocol.LowerBoundData) {
+func (u *GenericUpstream) UpdateLowerBound(data protocol.LowerBoundData) {
 	u.emitter(&protocol.LowerBoundUpstreamStateEvent{Data: data})
 }
 
-func (u *BaseUpstream) UpdateHeadLag(lag int64) {
+func (u *GenericUpstream) UpdateHeadLag(lag int64) {
 	if lag < 0 {
 		lag = 0
 	}
@@ -299,25 +313,33 @@ func (u *BaseUpstream) UpdateHeadLag(lag int64) {
 	u.emitter(&protocol.StatusUpstreamStateEvent{Lag: new(lag)})
 }
 
-func (u *BaseUpstream) BanMethod(method string) {
+func (u *GenericUpstream) BanMethod(method string) {
 	u.emitter(&protocol.BanMethodUpstreamStateEvent{Method: method})
 }
 
-func (u *BaseUpstream) GetConnector(connectorType specs.ApiConnectorType) connectors.ApiConnector {
+func (u *GenericUpstream) GetConnector(connectorType specs.ApiConnectorType) connectors.ApiConnector {
 	connector, _ := lo.Find(u.apiConnectors, func(item connectors.ApiConnector) bool {
 		return item.GetType() == connectorType
 	})
 	return connector
 }
 
-func (u *BaseUpstream) GetHashIndex() string {
+func (u *GenericUpstream) GetHashIndex() string {
 	return u.upstreamIndexHex
 }
 
-func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) methods.Methods {
+// newUpstreamMethods rebuilds the upstream's method set from the chain spec. Composition
+// order is spec - unsupported - config disable - banned + config enable:
+// methods.NewUpstreamMethods removes everything disabled before adding anything enabled,
+// so putting both runtime subtractions in DisableMethods leaves config enable as the last
+// word - the same precedence the ban path grants it.
+//
+// bannedMethods and unsupportedMethods stay separate sets in the caller: an unban must
+// restore only what a ban took away, never what detection found missing.
+func (u *GenericUpstream) newUpstreamMethods(bannedMethods, unsupportedMethods mapset.Set[string]) methods.Methods {
 	newConfig := &config.MethodsConfig{
 		EnableMethods:  u.upConfig.Methods.EnableMethods,
-		DisableMethods: lo.Union(bannedMethods.ToSlice(), u.upConfig.Methods.DisableMethods),
+		DisableMethods: lo.Union(bannedMethods.ToSlice(), unsupportedMethods.ToSlice(), u.upConfig.Methods.DisableMethods),
 	}
 	connectorTypes := lo.Map(u.apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
 		return item.GetType()
@@ -326,7 +348,7 @@ func (u *BaseUpstream) newUpstreamMethods(bannedMethods mapset.Set[string]) meth
 	return newMethods
 }
 
-func (u *BaseUpstream) startConnectors(_ context.Context) {
+func (u *GenericUpstream) startConnectors(_ context.Context) {
 	// Capabilities derived from connector state (WsCap, NewHeads/Logs, PendingTx) are
 	// now produced by the cap pipeline (caps.CapProcessor + CapDetectors), which
 	// subscribes to the connectors' state streams itself. Here we only start them.

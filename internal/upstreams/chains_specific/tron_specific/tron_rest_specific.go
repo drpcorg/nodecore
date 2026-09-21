@@ -18,11 +18,12 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/tron_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/tron_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/tron_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type TronRestSpecific struct {
@@ -35,7 +36,7 @@ type TronRestSpecific struct {
 }
 
 func (t *TronRestSpecific) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,
@@ -108,11 +109,11 @@ func (t *TronRestSpecific) ParseBlock(bytes []byte) (protocol.Block, error) {
 }
 
 func (t *TronRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, nil
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *TronRestSpecific) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, nil
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *TronRestSpecific) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
@@ -141,7 +142,7 @@ func (t *TronRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcesso
 		tron_bounds.NewTronLowerBoundDetector(t.upstreamId, t.chain.Chain, t.options.InternalTimeout, t.connector),
 	}
 
-	return lower_bounds.NewBaseLowerBoundProcessor(t.ctx, t.upstreamId, t.chain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(t.ctx, t.upstreamId, t.chain.AverageRemoveSpeed(), detectors)
 }
 
 func (t *TronRestSpecific) LabelsProcessor() labels.LabelsProcessor {
@@ -153,7 +154,7 @@ func (t *TronRestSpecific) LabelsProcessor() labels.LabelsProcessor {
 			t.options.InternalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
 }
 
 type TronRestBlock struct {
@@ -201,6 +202,7 @@ func NewTronSpecific(
 	chain *chains.ConfiguredChain,
 	pollInterval time.Duration,
 	options *chains.Options,
+	manualLabels map[string]string,
 ) (chains_specific.ChainSpecific, error) {
 	if connector == nil {
 		return nil, fmt.Errorf("no connector specified")
@@ -209,10 +211,20 @@ func NewTronSpecific(
 	case specs.RestConnector:
 		return newTronRestSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.JsonRpcConnector:
-		return evm_specific.NewEvmChainSpecific(ctx, upstreamId, connector, []connectors.ApiConnector{connector}, chain, pollInterval, options), nil
+		return evm_specific.NewEvmChainSpecific(ctx, upstreamId, connector, []connectors.ApiConnector{connector}, chain, pollInterval, options, manualLabels), nil
 	default:
 		return nil, fmt.Errorf("tron specific supports only json-rpc or rest connector but not %s", connector.GetType())
 	}
 }
 
 var _ chains_specific.ChainSpecific = (*TronRestSpecific)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (t *TronRestSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (t *TronRestSpecific) PauseHeadWhileSyncing() bool {
+	return false
+}

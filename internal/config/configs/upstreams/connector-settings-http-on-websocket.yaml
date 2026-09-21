@@ -1,0 +1,12 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+        - type: websocket
+          url: wss://test.com
+          settings:
+            http:
+              response-timeout: 30s

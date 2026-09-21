@@ -7,7 +7,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/caches"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/storages"
-	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,7 +38,7 @@ func TestPostgresConnectorCantCreatePool(t *testing.T) {
 		"id",
 		&config.PostgresCacheConnectorConfig{
 			StorageName:           "test-postgres",
-			QueryTimeout:          lo.ToPtr(1 * time.Second),
+			QueryTimeout:          new(1 * time.Second),
 			CacheTable:            "cache_table",
 			ExpiredRemoveInterval: 1 * time.Hour,
 		},

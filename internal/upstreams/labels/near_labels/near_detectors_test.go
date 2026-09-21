@@ -23,7 +23,7 @@ func TestNearClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	body, err := request.Body()
 	require.NoError(t, err)
 
-	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"status","params":[]}`, string(body))
+	assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"status","params":[]}`, string(body))
 }
 
 func TestNearClientLabelsDetectorClientVersionAndType(t *testing.T) {

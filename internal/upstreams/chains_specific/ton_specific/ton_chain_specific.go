@@ -2,7 +2,6 @@ package ton_specific
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -11,16 +10,12 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
-
-// errUnsupportedHeadSubscriptions is returned by SubscribeHeadRequest and
-// ParseSubscriptionBlock: neither the v2 HTTP API nor the v3 indexer has any
-// subscription transport, so head tracking is poll-only.
-var errUnsupportedHeadSubscriptions = fmt.Errorf("ton: head subscriptions are not supported")
 
 // NewTonChainSpecificObject picks the specific object from the PRIMARY
 // (internal-request) connector: rest-indexer means the v3 API drives all
@@ -96,7 +91,7 @@ func newTonBaseChainSpecificObject(
 // processor; the masterchain is BFT-final, so it tracks the same head the
 // head processor sees, and there is no "safe" block concept.
 func (t *tonBaseChainSpecificObject) newTonBlockProcessor(chainSpecific blocks.BlockChainSpecific) blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		t.ctx,
 		t.upstreamId,
 		t.pollInterval,
@@ -120,11 +115,11 @@ func (t *tonBaseChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBou
 }
 
 func (t *tonBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, errUnsupportedHeadSubscriptions
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (t *tonBaseChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, errUnsupportedHeadSubscriptions
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 type tonBlockIdExt struct {
@@ -143,4 +138,14 @@ func tonBlockFromIdExt(last tonBlockIdExt) protocol.Block {
 		blockchain.NewHashIdFromString(last.RootHash),
 		blockchain.EmptyHash,
 	)
+}
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (t *tonBaseChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (t *tonBaseChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

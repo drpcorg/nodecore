@@ -150,6 +150,7 @@ func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
 	tests := []struct {
 		name      string
 		responder func()
+		timeout   time.Duration
 		err       string
 	}{
 		{
@@ -161,7 +162,8 @@ func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
 					return resp, nil
 				})
 			},
-			err: `couldn't get owner: couldn't execute request GET http://localhost:8080/nodecore/owners/id: Get "http://localhost:8080/nodecore/owners/id": context deadline exceeded`,
+			timeout: 1 * time.Millisecond,
+			err:     `couldn't get owner: couldn't execute request GET http://localhost:8080/nodecore/owners/id: Get "http://localhost:8080/nodecore/owners/id": context deadline exceeded`,
 		},
 		{
 			name: "some other error owner",
@@ -170,7 +172,10 @@ func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
 					return nil, errors.New("some err")
 				})
 			},
-			err: `couldn't get owner: couldn't execute request GET http://localhost:8080/nodecore/owners/id: Get "http://localhost:8080/nodecore/owners/id": some err`,
+			// the deadline is irrelevant here and must not race the responder,
+			// or a scheduling hiccup turns "some err" into a deadline error
+			timeout: 10 * time.Second,
+			err:     `couldn't get owner: couldn't execute request GET http://localhost:8080/nodecore/owners/id: Get "http://localhost:8080/nodecore/owners/id": some err`,
 		},
 	}
 
@@ -181,7 +186,7 @@ func TestDrpcHttpConnectorOwnerRequestErrorThenRetryableErr(t *testing.T) {
 
 			test.responder()
 
-			connector := getDrpcHttpConnectorWithTimeout(1 * time.Millisecond)
+			connector := getDrpcHttpConnectorWithTimeout(test.timeout)
 			err := connector.OwnerExists("id", "token")
 
 			var expectedErr *protocol.ClientRetryableError
@@ -196,6 +201,7 @@ func TestDrpcHttpConnectorLoadKeysRequestErrorThenRetryableErr(t *testing.T) {
 	tests := []struct {
 		name      string
 		responder func()
+		timeout   time.Duration
 		err       string
 	}{
 		{
@@ -207,7 +213,8 @@ func TestDrpcHttpConnectorLoadKeysRequestErrorThenRetryableErr(t *testing.T) {
 					return resp, nil
 				})
 			},
-			err: `couldn't load keys: couldn't execute request GET http://localhost:8080/nodecore/owners/id/keys: Get "http://localhost:8080/nodecore/owners/id/keys": context deadline exceeded`,
+			timeout: 1 * time.Millisecond,
+			err:     `couldn't load keys: couldn't execute request GET http://localhost:8080/nodecore/owners/id/keys: Get "http://localhost:8080/nodecore/owners/id/keys": context deadline exceeded`,
 		},
 		{
 			name: "some other error keys",
@@ -216,7 +223,10 @@ func TestDrpcHttpConnectorLoadKeysRequestErrorThenRetryableErr(t *testing.T) {
 					return nil, errors.New("some err")
 				})
 			},
-			err: `couldn't load keys: couldn't execute request GET http://localhost:8080/nodecore/owners/id/keys: Get "http://localhost:8080/nodecore/owners/id/keys": some err`,
+			// the deadline is irrelevant here and must not race the responder,
+			// or a scheduling hiccup turns "some err" into a deadline error
+			timeout: 10 * time.Second,
+			err:     `couldn't load keys: couldn't execute request GET http://localhost:8080/nodecore/owners/id/keys: Get "http://localhost:8080/nodecore/owners/id/keys": some err`,
 		},
 	}
 
@@ -227,7 +237,7 @@ func TestDrpcHttpConnectorLoadKeysRequestErrorThenRetryableErr(t *testing.T) {
 
 			test.responder()
 
-			connector := getDrpcHttpConnectorWithTimeout(1 * time.Millisecond)
+			connector := getDrpcHttpConnectorWithTimeout(test.timeout)
 			keys, err := connector.LoadOwnerKeys("id", "token")
 
 			var expectedErr *protocol.ClientRetryableError

@@ -9,16 +9,15 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *BaseExecutionFlow {
+func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *GenericExecutionFlow {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -29,7 +28,7 @@ func newStrategyExec(t *testing.T, upstreamConfig *config.UpstreamConfig) *BaseE
 		CalculationInterval:     1 * time.Minute,
 	})
 
-	return &BaseExecutionFlow{
+	return &GenericExecutionFlow{
 		chain:              chains.ETHEREUM,
 		upstreamSupervisor: upSupervisor,
 		registry:           registry,
@@ -52,7 +51,7 @@ func TestCreateStrategyUsesBaseWhenConfigured(t *testing.T) {
 
 	strategy := exec.createStrategy(context.Background(), request)
 
-	assert.IsType(t, &BaseStrategy{}, strategy)
+	assert.IsType(t, &GenericStrategy{}, strategy)
 }
 
 func TestCreateStrategyPerChainOverrideWinsOverGlobal(t *testing.T) {

@@ -1,6 +1,7 @@
 package emerald
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -10,15 +11,20 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	spb "google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // subMethodsChainSupervisor is a ChainSupervisor stub exposing a fixed
@@ -49,7 +55,7 @@ func TestSubscribeMethodSupported(t *testing.T) {
 }
 
 func TestMapNativeSubscribeMethod(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	t.Run("uses native subscribe method as is", func(te *testing.T) {
 		method, payload, err := mapNativeSubscribeMethod("eth", nil, "eth_subscribe", []byte(`["newHeads"]`))
@@ -93,7 +99,7 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 
 	request := &dshackle.NativeCallRequest{
@@ -124,7 +130,7 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	require.Len(t, adapters, 2)
 
 	assert.Equal(t, protocol.Rest, requests[0].RequestType())
-	assert.IsType(t, restNativeCallAdapter{}, adapters[requests[0].Id()])
+	assert.IsType(t, restNativeCallAdapter{}, adapters[requests[0].Id()].adapter)
 	// Method is the canonical name as sent by the gRPC client; query
 	// params live on RequestParams now, not baked into the path.
 	assert.Equal(t, "GET#/v1/blocks/123", requests[0].Method())
@@ -132,12 +138,12 @@ func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
 	assert.Equal(t, []string{"true"}, restReq.RequestParams().QueryParams["verbose"])
 
 	assert.Equal(t, protocol.JsonRpc, requests[1].RequestType())
-	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()])
+	assert.IsType(t, jsonRpcNativeCallAdapter{}, adapters[requests[1].Id()].adapter)
 	assert.Equal(t, []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "region", Values: []string{"us"}}}, requests[1].Selectors())
 }
 
 func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 
 	request := &dshackle.NativeCallRequest{
@@ -161,7 +167,7 @@ func TestBuildNativeCallRequestsRejectsMalformedJsonRpcPayload(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsRejectsMalformedRestMethod(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "algorand"}
 
 	request := &dshackle.NativeCallRequest{
@@ -185,7 +191,7 @@ func TestBuildNativeCallRequestsRejectsMalformedRestMethod(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsMarksStreamMethods(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		ChunkSize: 100,
@@ -212,7 +218,7 @@ func TestStreamNativeCallBodyUnwrapsJsonRpcResult(t *testing.T) {
 	stream := &testNativeCallStream{ctx: context.Background()}
 	a := protocol.AnalyzeChunk([]byte(body))
 
-	err := streamNativeCallBody(7, "upstream-1", "erigon/2.60", nil, reader, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
+	err := streamNativeCallBody(stream, reader, unwrapJsonRpcResultStream, protocol.JsonRpcResultStreamHint{ResultStart: a.ResultStart, Counter: a.Counter}, replyMeta{requestID: 7, upstreamID: "upstream-1", upstreamNodeVersion: "erigon/2.60"})
 	require.NoError(t, err)
 	// The whole result arrives in one read and ends within it, so end-of-stream
 	// is folded into that single data frame - no trailing empty frame.
@@ -231,7 +237,7 @@ func TestStreamNativeCallBodyPassesThroughRestBody(t *testing.T) {
 	reader := strings.NewReader(`{"hello":"world"}`)
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, passThroughStream, -1, protocol.ResultCounter{}, nil, stream)
+	err := streamNativeCallBody(stream, reader, passThroughStream, protocol.NoJsonRpcResultStreamHint, replyMeta{requestID: 7, upstreamID: "upstream-1"})
 	require.NoError(t, err)
 	// The whole body is forwarded as a single frame plus the terminal empty frame.
 	require.Len(t, stream.sent, 2)
@@ -262,7 +268,7 @@ func TestStreamNativeCallBodyEmitsTerminalEmptyFinalChunkFallback(t *testing.T) 
 	stream := &testNativeCallStream{ctx: context.Background()}
 	a := protocol.AnalyzeChunk([]byte(body)[:protocol.MaxChunkSize])
 
-	err := streamNativeCallBody(7, "upstream-1", "", nil, reader, unwrapJsonRpcResultStream, a.ResultStart, a.Counter, nil, stream)
+	err := streamNativeCallBody(stream, reader, unwrapJsonRpcResultStream, protocol.JsonRpcResultStreamHint{ResultStart: a.ResultStart, Counter: a.Counter}, replyMeta{requestID: 7, upstreamID: "upstream-1"})
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 3)
 
@@ -378,24 +384,24 @@ func TestNativeCallChunkEmitterSingleFinalFrameCarriesFirst(t *testing.T) {
 	assert.True(t, got[0].final)
 }
 
-func TestNativeCallSuccessItemsChunking(t *testing.T) {
-	items := nativeCallSuccessItems(7, "upstream-1", []byte("0123456789"), 4, nil)
-	require.Len(t, items, 3)
+// dshackle never slices a buffered payload: chunk_size only selects a stream
+// request. A buffered response is one unchunked item however large.
+func TestSendReplySendsBufferedPayloadAsSingleUnchunkedItem(t *testing.T) {
+	payload := bytes.Repeat([]byte("a"), 10_000)
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId: "upstream-1",
+		RequestId:  "1",
+		Response:   protocol.NewSimpleHttpUpstreamResponse("1", payload, protocol.JsonRpc),
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
 
-	assert.True(t, items[0].GetChunked())
-	assert.False(t, items[0].GetFinalChunk())
-	assert.Equal(t, "0123", string(items[0].GetPayload()))
-	assert.Equal(t, "upstream-1", items[0].GetUpstreamId())
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
+	require.NoError(t, err)
 
-	assert.True(t, items[1].GetChunked())
-	assert.False(t, items[1].GetFinalChunk())
-	assert.Equal(t, "4567", string(items[1].GetPayload()))
-	assert.Empty(t, items[1].GetUpstreamId(), "metadata is stamped on the first chunk only")
-
-	assert.True(t, items[2].GetChunked())
-	assert.True(t, items[2].GetFinalChunk())
-	assert.Equal(t, "89", string(items[2].GetPayload()))
-	assert.Empty(t, items[2].GetUpstreamId(), "metadata is stamped on the first chunk only")
+	require.Len(t, stream.sent, 1)
+	assert.False(t, stream.sent[0].GetChunked())
+	assert.Equal(t, payload, stream.sent[0].GetPayload())
+	assert.Equal(t, "upstream-1", stream.sent[0].GetUpstreamId())
 }
 
 func TestNativeCallSendReplyReturnsSuccessItemWithResponseUpstreamId(t *testing.T) {
@@ -407,7 +413,7 @@ func TestNativeCallSendReplyReturnsSuccessItemWithResponseUpstreamId(t *testing.
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 1)
 
@@ -427,7 +433,7 @@ func TestNativeCallSendReplyReturnsErrorItemWithResponseUpstreamId(t *testing.T)
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	err := jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 1)
 
@@ -457,7 +463,7 @@ func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
 	}
 	stream := &testNativeCallStream{ctx: context.Background()}
 
-	err := restNativeCallAdapter{}.SendReply(stream, wrapper, 0)
+	err := restNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner())
 	require.NoError(t, err)
 	require.Len(t, stream.sent, 1)
 
@@ -475,7 +481,7 @@ func TestSendReplyForwardsResponseHeadersOnUnarySuccess(t *testing.T) {
 }
 
 func TestNativeCallUnauthenticated(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)))
+	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)), signature.NewDisabledSigner())
 	stream := &testNativeCallStream{ctx: context.Background()}
 
 	err := service.NativeCall(&dshackle.NativeCallRequest{}, stream)
@@ -491,7 +497,7 @@ func TestNativeCallUnauthenticated(t *testing.T) {
 }
 
 func TestNativeSubscribeUnauthenticated(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)))
+	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)), signature.NewDisabledSigner())
 	stream := &testNativeSubscribeStream{ctx: context.Background()}
 
 	err := service.NativeSubscribe(&dshackle.NativeSubscribeRequest{}, stream)
@@ -565,7 +571,7 @@ func (t *testNativeSubscribeStream) RecvMsg(_ any) error {
 }
 
 func TestBuildNativeCallRequestsPropagatesRequestSelectorToJsonRpcAndRestItems(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}},
@@ -595,7 +601,7 @@ func TestBuildNativeCallRequestsPropagatesRequestSelectorToJsonRpcAndRestItems(t
 }
 
 func TestBuildNativeCallRequestsAppendsRequestAndItemSelectors(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_LabelSelector{LabelSelector: &dshackle.LabelSelector{Name: "region", Value: []string{"us"}}}},
@@ -618,7 +624,7 @@ func TestBuildNativeCallRequestsAppendsRequestAndItemSelectors(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsRejectsConflictingRequestAndItemSortSelectorsAtMapping(t *testing.T) {
-	service := NewGrpcBlockchainService(nil, nil)
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "eth"}
 	request := &dshackle.NativeCallRequest{
 		Selector: &dshackle.Selector{SelectorType: &dshackle.Selector_HeightSelector{HeightSelector: &dshackle.HeightSelector{HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_SAFE}}}},
@@ -638,4 +644,397 @@ func TestBuildNativeCallRequestsRejectsConflictingRequestAndItemSortSelectorsAtM
 	assert.False(t, failures[0].GetSucceed())
 	assert.Equal(t, int32(400), failures[0].GetItemErrorCode())
 	assert.Contains(t, failures[0].GetErrorMessage(), "conflicting selector sort hints")
+}
+
+func flattenKeyValues(items []*dshackle.KeyValue) map[string][]string {
+	out := make(map[string][]string, len(items))
+	for _, kv := range items {
+		out[kv.GetKey()] = append(out[kv.GetKey()], kv.GetValue())
+	}
+	return out
+}
+
+func TestSendReplyForwardsTrailersOnSuccess(t *testing.T) {
+	resp := protocol.NewGrpcUpstreamResponse("7", []byte{0x0a, 0x01, 0x41}).
+		WithResponseHeaders(http.Header{"content-type": {"application/grpc"}}).
+		WithResponseTrailers(map[string][]string{"x-ratelimit-remaining": {"99"}})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "7", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, restNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+
+	assert.Equal(t, []string{"application/grpc"}, flattenKeyValues(stream.sent[0].GetResponseHeaders())["content-type"])
+	assert.Equal(t, []string{"99"}, flattenKeyValues(stream.sent[0].GetResponseTrailers())["x-ratelimit-remaining"])
+}
+
+// A retryable upstream error surfaces as *ReplyError, which carries metadata
+// too (RESOURCE_EXHAUSTED with rate-limit hints). Both must reach the client.
+func TestSendReplyForwardsHeadersAndTrailersOnReplyError(t *testing.T) {
+	request := protocol.NewUpstreamGrpcRequest("7", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	resp := protocol.NewGrpcUpstreamErrorResponse(request, &protocol.GrpcStatus{Code: codes.ResourceExhausted, Message: "slow down"}).(*protocol.ReplyError).
+		WithResponseHeaders(http.Header{"x-upstream": {"a"}}).
+		WithResponseTrailers(map[string][]string{"retry-after-ms": {"250"}})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "7", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, restNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+
+	assert.False(t, stream.sent[0].GetSucceed())
+	assert.Equal(t, []string{"a"}, flattenKeyValues(stream.sent[0].GetResponseHeaders())["x-upstream"])
+	assert.Equal(t, []string{"250"}, flattenKeyValues(stream.sent[0].GetResponseTrailers())["retry-after-ms"])
+}
+
+func TestSendReplyLeavesTrailersEmptyForJsonRpc(t *testing.T) {
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId: "upstream-1",
+		RequestId:  "1",
+		Response:   protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc),
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.Empty(t, stream.sent[0].GetResponseTrailers())
+}
+
+func grpcItem(id uint32, method string, payload []byte, md ...*dshackle.KeyValue) *dshackle.NativeCallItem {
+	return &dshackle.NativeCallItem{
+		Id:     id,
+		Method: method,
+		Data:   &dshackle.NativeCallItem_GrpcData{GrpcData: &dshackle.GrpcData{Payload: payload, Metadata: md}},
+	}
+}
+
+func TestBuildNativeCallRequestsBuildsGrpcRequest(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	configuredChain := &chains.ConfiguredChain{MethodSpec: "sui"}
+	request := &dshackle.NativeCallRequest{
+		ChunkSize: 1024, // ignored for gRPC: a unary reply is one message
+		Items: []*dshackle.NativeCallItem{
+			grpcItem(5, "/sui.rpc.v2.LedgerService/GetObject", []byte{0x0a, 0x02, 0x68, 0x69},
+				&dshackle.KeyValue{Key: "x-client", Value: "a"},
+				&dshackle.KeyValue{Key: "x-nodecore-key", Value: "secret"},
+				&dshackle.KeyValue{Key: "authorization", Value: "Bearer t"}),
+		},
+	}
+
+	requests, items, failures := service.buildNativeCallRequests(configuredChain, request)
+	require.Empty(t, failures)
+	require.Len(t, requests, 1)
+	assert.IsType(t, grpcNativeCallAdapter{}, items[requests[0].Id()].adapter)
+
+	grpcReq, ok := requests[0].(*protocol.UpstreamGrpcRequest)
+	require.True(t, ok)
+	assert.Equal(t, protocol.Grpc, grpcReq.RequestType())
+	assert.Equal(t, "5", grpcReq.Id())
+	assert.Equal(t, "/sui.rpc.v2.LedgerService/GetObject", grpcReq.Method())
+	body, err := grpcReq.Body()
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0x0a, 0x02, 0x68, 0x69}, body)
+	assert.False(t, grpcReq.IsStream())
+	// reserved credential metadata never reaches an upstream
+	assert.Equal(t, map[string][]string{"x-client": {"a"}}, grpcReq.RequestParams().Headers)
+}
+
+func TestBuildNativeCallRequestsGrpcUnknownMethodIsUnimplemented(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(3, "/sui.rpc.v2.LedgerService/Nope", nil)}}
+
+	requests, _, failures := service.buildNativeCallRequests(&chains.ConfiguredChain{MethodSpec: "sui"}, request)
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, uint32(3), failures[0].GetId())
+	assert.False(t, failures[0].GetSucceed())
+	assert.Equal(t, int32(codes.Unimplemented), failures[0].GetItemErrorCode())
+	assert.Contains(t, failures[0].GetErrorMessage(), "/sui.rpc.v2.LedgerService/Nope")
+}
+
+func TestBuildNativeCallRequestsGrpcServerStreamMethodIsRejected(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(4, "/sui.rpc.v2.LedgerService/ListTransactions", nil)}}
+
+	requests, _, failures := service.buildNativeCallRequests(&chains.ConfiguredChain{MethodSpec: "sui"}, request)
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, int32(codes.InvalidArgument), failures[0].GetItemErrorCode())
+	assert.Contains(t, failures[0].GetErrorMessage(), "NativeSubscribe")
+}
+
+func TestBuildNativeCallRequestsGrpcMissingDataIsInvalidArgument(t *testing.T) {
+	// an empty GrpcData is a valid empty request message; only a nil oneof
+	// branch can be "missing", which adapterFor never routes here - so the
+	// guard is exercised directly
+	_, failure := grpcNativeCallAdapter{}.BuildRequest(&chains.ConfiguredChain{MethodSpec: "sui"},
+		&dshackle.NativeCallItem{Id: 9, Method: "/sui.rpc.v2.LedgerService/GetObject"}, nil, 0)
+	require.NotNil(t, failure)
+	assert.Equal(t, int32(codes.InvalidArgument), failure.GetItemErrorCode())
+}
+
+func TestBuildNativeCallRequestsGrpcSigningUnavailableIsInternal(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	item := grpcItem(6, "/sui.rpc.v2.LedgerService/GetObject", nil)
+	item.Nonce = 42
+	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{item}}
+
+	requests, _, failures := service.buildNativeCallRequests(&chains.ConfiguredChain{MethodSpec: "sui"}, request)
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, int32(codes.Internal), failures[0].GetItemErrorCode())
+}
+
+func TestGrpcSendReplySuccessIsOneUnchunkedItemWithMetadata(t *testing.T) {
+	message := bytes.Repeat([]byte{0x0a}, 5_000)
+	resp := protocol.NewGrpcUpstreamResponse("5", message).
+		WithResponseHeaders(http.Header{"content-type": {"application/grpc"}}).
+		WithResponseTrailers(map[string][]string{"x-ratelimit-remaining": {"99"}})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "5", Response: resp, UpstreamNodeVersion: "sui-node/1.50.0"}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, grpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+
+	item := stream.sent[0]
+	assert.True(t, item.GetSucceed())
+	assert.False(t, item.GetChunked())
+	assert.Equal(t, message, item.GetPayload())
+	assert.Equal(t, uint32(5), item.GetId())
+	assert.Equal(t, "sui-1", item.GetUpstreamId())
+	assert.Equal(t, "sui-node/1.50.0", item.GetUpstreamNodeVersion())
+	assert.Equal(t, []string{"application/grpc"}, flattenKeyValues(item.GetResponseHeaders())["content-type"])
+	assert.Equal(t, []string{"99"}, flattenKeyValues(item.GetResponseTrailers())["x-ratelimit-remaining"])
+}
+
+func TestGrpcSendReplyUpstreamStatusWithDetailsRidesVerbatim(t *testing.T) {
+	upstreamStatus, err := status.New(codes.NotFound, "object not found").
+		WithDetails(&errdetails.ErrorInfo{Reason: "OBJECT_PRUNED", Domain: "sui.io"})
+	require.NoError(t, err)
+	statusProto, err := proto.Marshal(upstreamStatus.Proto())
+	require.NoError(t, err)
+
+	request := protocol.NewUpstreamGrpcRequest("5", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	resp := protocol.NewGrpcUpstreamErrorResponse(request, &protocol.GrpcStatus{Code: codes.NotFound, Message: "object not found", StatusProto: statusProto})
+	resp.(*protocol.GenericUpstreamResponse).WithResponseTrailers(map[string][]string{"x-trace": {"abc"}})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "5", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, grpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+
+	item := stream.sent[0]
+	assert.False(t, item.GetSucceed())
+	assert.Equal(t, int32(codes.NotFound), item.GetItemErrorCode())
+	assert.Equal(t, "object not found", item.GetErrorMessage())
+	assert.Empty(t, item.GetErrorData())
+	assert.Equal(t, []string{"abc"}, flattenKeyValues(item.GetResponseTrailers())["x-trace"])
+
+	var decoded spb.Status
+	require.NoError(t, proto.Unmarshal(item.GetErrorAsIs(), &decoded))
+	replayed := status.FromProto(&decoded)
+	assert.Equal(t, codes.NotFound, replayed.Code())
+	require.Len(t, replayed.Details(), 1)
+	assert.Equal(t, "OBJECT_PRUNED", replayed.Details()[0].(*errdetails.ErrorInfo).Reason)
+}
+
+func TestGrpcSendReplyUpstreamStatusWithoutDetailsHasNoErrorAsIs(t *testing.T) {
+	request := protocol.NewUpstreamGrpcRequest("5", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	resp := protocol.NewGrpcUpstreamErrorResponse(request, &protocol.GrpcStatus{Code: codes.InvalidArgument, Message: "bad digest"})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "5", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, grpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.Equal(t, int32(codes.InvalidArgument), stream.sent[0].GetItemErrorCode())
+	assert.Equal(t, "bad digest", stream.sent[0].GetErrorMessage())
+	assert.Empty(t, stream.sent[0].GetErrorAsIs())
+	assert.Empty(t, stream.sent[0].GetErrorData())
+}
+
+func TestGrpcSendReplyNodecoreErrorIsMappedToCanonicalCode(t *testing.T) {
+	request := protocol.NewUpstreamGrpcRequest("5", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	resp := protocol.NewTotalFailure(request, protocol.NoAvailableUpstreamsError())
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: flow.NoUpstream, RequestId: "5", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, grpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.Equal(t, int32(codes.Unavailable), stream.sent[0].GetItemErrorCode())
+	assert.Equal(t, protocol.NoAvailableUpstreamsError().Message, stream.sent[0].GetErrorMessage())
+	assert.Empty(t, stream.sent[0].GetErrorAsIs())
+}
+
+// JSON-RPC items must keep their current error vocabulary (nodecore codes,
+// error_data) - the gRPC renderer applies to gRPC items only.
+func TestJsonRpcSendReplyKeepsNodecoreErrorCodes(t *testing.T) {
+	wrapper := &protocol.ResponseHolderWrapper{
+		UpstreamId: flow.NoUpstream,
+		RequestId:  "1",
+		Response:   protocol.NewHttpUpstreamResponseWithError(protocol.NoAvailableUpstreamsError()),
+	}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.Equal(t, int32(protocol.NoAvailableUpstreams), stream.sent[0].GetItemErrorCode())
+}
+
+// A grpc_data item naming a method the chain serves over JSON-RPC must be
+// rejected at the edge: routed on, its proto bytes would reach the HTTP
+// connector, which cannot build a response of type Grpc.
+func TestBuildNativeCallRequestsGrpcItemForJsonRpcMethodIsUnimplemented(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(8, "eth_chainId", []byte{0x0a})}}
+
+	requests, _, failures := service.buildNativeCallRequests(&chains.ConfiguredChain{MethodSpec: "eth"}, request)
+	require.Empty(t, requests)
+	require.Len(t, failures, 1)
+	assert.Equal(t, int32(codes.Unimplemented), failures[0].GetItemErrorCode())
+	assert.Contains(t, failures[0].GetErrorMessage(), "eth_chainId")
+}
+
+// A streamed JSON-RPC response without an unwrap hint must surface as an
+// error item, never as a truncated success.
+func TestSendReplyStreamWithoutHintIsAnError(t *testing.T) {
+	resp := protocol.NewHttpUpstreamResponseStream("1", strings.NewReader(`{"jsonrpc":"2.0","id":1,"result":[1,2,3]}`), protocol.JsonRpc)
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "upstream-1", RequestId: "1", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, jsonRpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.False(t, stream.sent[0].GetSucceed())
+	assert.Contains(t, stream.sent[0].GetErrorMessage(), "result field is missing")
+}
+
+// A request-level failure (here: no upstream supervisor) must answer every
+// item under its own id and in its own kind's error vocabulary - a gRPC item
+// with a canonical code, a JSON-RPC item with a nodecore code.
+func TestNativeCallRequestFailureIsRenderedPerItem(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	err := service.NativeCall(&dshackle.NativeCallRequest{
+		Chain: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET,
+		Items: []*dshackle.NativeCallItem{
+			grpcItem(3, "/sui.rpc.v2.LedgerService/GetObject", nil),
+			{Id: 7, Method: "eth_chainId", Data: &dshackle.NativeCallItem_Payload{Payload: []byte(`[]`)}},
+		},
+	}, stream)
+	require.NoError(t, err)
+	require.Len(t, stream.sent, 2)
+
+	grpcFailure, jsonRpcFailure := stream.sent[0], stream.sent[1]
+	assert.Equal(t, uint32(3), grpcFailure.GetId())
+	assert.Equal(t, int32(codes.Unavailable), grpcFailure.GetItemErrorCode())
+	assert.Equal(t, uint32(7), jsonRpcFailure.GetId())
+	assert.Equal(t, int32(protocol.NoAvailableUpstreams), jsonRpcFailure.GetItemErrorCode())
+	for _, failure := range stream.sent {
+		assert.False(t, failure.GetSucceed())
+		assert.Equal(t, flow.NoUpstream, failure.GetUpstreamId())
+	}
+}
+
+// StatusProto bytes that do not unmarshal must not reach the wire: the
+// contract tells the client to prefer status.FromProto(error_as_is).
+func TestGrpcSendReplyDropsUnparseableStatusProto(t *testing.T) {
+	request := protocol.NewUpstreamGrpcRequest("5", "/sui.rpc.v2.LedgerService/GetObject", nil, nil, "sui")
+	resp := protocol.NewGrpcUpstreamErrorResponse(request, &protocol.GrpcStatus{
+		Code:        codes.NotFound,
+		Message:     "object not found",
+		StatusProto: []byte{0xff}, // invalid wire tag
+	})
+	wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "sui-1", RequestId: "5", Response: resp}
+	stream := &testNativeCallStream{ctx: context.Background()}
+
+	require.NoError(t, grpcNativeCallAdapter{}.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+	require.Len(t, stream.sent, 1)
+	assert.Empty(t, stream.sent[0].GetErrorAsIs())
+	assert.Equal(t, int32(codes.NotFound), stream.sent[0].GetItemErrorCode())
+	assert.Equal(t, "object not found", stream.sent[0].GetErrorMessage())
+}
+
+// countingAdapter is a nativeSubscribeAdapter that records replies and answers
+// with a scripted (done, err) per call.
+type countingAdapter struct {
+	replies []*protocol.ResponseHolderWrapper
+	done    bool
+	err     error
+}
+
+func (a *countingAdapter) BuildRequest(*chains.ConfiguredChain, upstreams.ChainSupervisor, *dshackle.NativeSubscribeRequest) (protocol.RequestHolder, error) {
+	return nil, nil
+}
+
+func (a *countingAdapter) SendReply(_ dshackle.Blockchain_NativeSubscribeServer, wrapper *protocol.ResponseHolderWrapper, _ uint64, _ signature.ResponseSigner) (bool, error) {
+	a.replies = append(a.replies, wrapper)
+	return a.done, a.err
+}
+
+func TestServeNativeSubscribeForwardsUntilChannelCloses(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{}
+	responses := make(chan *protocol.ResponseHolderWrapper, 2)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`2`))}
+	close(responses)
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.NoError(t, err)
+	assert.Len(t, adapter.replies, 2)
+	assert.Empty(t, stream.sent, "the scripted adapter sends nothing itself")
+}
+
+func TestServeNativeSubscribeStopsWhenAdapterIsDone(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{done: true}
+	responses := make(chan *protocol.ResponseHolderWrapper, 2)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`2`))}
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.NoError(t, err)
+	assert.Len(t, adapter.replies, 1, "done stops the loop before the second wrapper")
+}
+
+func TestServeNativeSubscribeReturnsAdapterError(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{done: true, err: status.Error(codes.Unavailable, "gone")}
+	responses := make(chan *protocol.ResponseHolderWrapper, 1)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestServeNativeSubscribeEmptyWrapperIsInternal(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	responses := make(chan *protocol.ResponseHolderWrapper, 1)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0"}
+
+	err := serveNativeSubscribe(stream, responses, &countingAdapter{}, 0, signature.NewDisabledSigner(), time.Hour)
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+func TestServeNativeSubscribeSendsHeartbeatsWithoutGrpcData(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	stream := &testNativeSubscribeStream{ctx: ctx}
+	responses := make(chan *protocol.ResponseHolderWrapper)
+
+	err := serveNativeSubscribe(stream, responses, &countingAdapter{}, 0, signature.NewDisabledSigner(), 20*time.Millisecond)
+	require.NoError(t, err, "ctx expiry is a clean end")
+	require.NotEmpty(t, stream.sent)
+	for _, item := range stream.sent {
+		assert.True(t, item.GetHeartbeat())
+		assert.Nil(t, item.GetGrpcData())
+		assert.Nil(t, item.GetSignature())
+	}
 }

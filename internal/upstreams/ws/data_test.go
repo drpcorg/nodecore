@@ -21,10 +21,10 @@ func TestNewRequestFrame(t *testing.T) {
 	assert.Equal(t, body, frame.Body)
 }
 
-func TestNewBaseRequestOp(t *testing.T) {
+func TestNewGenericRequestOp(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	require.NotNil(t, op.GetChannel(ws.MessageResponse))
 	require.NotNil(t, op.GetChannel(ws.MessageInternal))
@@ -38,17 +38,17 @@ func TestNewBaseRequestOp(t *testing.T) {
 	assert.True(t, op.ShouldDoOnClose())
 }
 
-func TestNewBaseRequestOpUsesSmallBufferForUnaryRequests(t *testing.T) {
-	op := ws.NewBaseRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(ws.RequestOperation) {})
+func TestNewGenericRequestOpUsesSmallBufferForUnaryRequests(t *testing.T) {
+	op := ws.NewGenericRequestOp(context.Background(), "request-1", "eth_blockNumber", "", func(ws.RequestOperation) {})
 
 	assert.Equal(t, 50, cap(op.GetChannel(ws.MessageResponse)))
 	assert.Equal(t, 50, cap(op.GetChannel(ws.MessageInternal)))
 }
 
-func TestBaseRequestOpWriteResponse(t *testing.T) {
+func TestGenericRequestOpWriteResponse(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 	message := &protocol.WsResponse{Id: "1", Type: protocol.Ws}
 
 	op.Write(message, ws.MessageResponse)
@@ -61,10 +61,10 @@ func TestBaseRequestOpWriteResponse(t *testing.T) {
 	}
 }
 
-func TestBaseRequestOpWriteInternal(t *testing.T) {
+func TestGenericRequestOpWriteInternal(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 	message := &protocol.WsResponse{Id: "1", Type: protocol.Ws}
 
 	op.Write(message, ws.MessageInternal)
@@ -77,10 +77,10 @@ func TestBaseRequestOpWriteInternal(t *testing.T) {
 	}
 }
 
-func TestBaseRequestOpWriteResponseDropsWhenChannelIsFull(t *testing.T) {
+func TestGenericRequestOpWriteResponseDropsWhenChannelIsFull(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 	responseChan := op.GetChannel(ws.MessageResponse)
 	for i := 0; i < cap(responseChan); i++ {
 		responseChan <- &protocol.WsResponse{Id: "filler"}
@@ -92,10 +92,10 @@ func TestBaseRequestOpWriteResponseDropsWhenChannelIsFull(t *testing.T) {
 	assert.Len(t, responseChan, cap(responseChan))
 }
 
-func TestBaseRequestOpWriteInternalDropsWhenChannelIsFull(t *testing.T) {
+func TestGenericRequestOpWriteInternalDropsWhenChannelIsFull(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 	internalChan := op.GetChannel(ws.MessageInternal)
 	for i := 0; i < cap(internalChan); i++ {
 		internalChan <- &protocol.WsResponse{Id: "filler"}
@@ -107,10 +107,10 @@ func TestBaseRequestOpWriteInternalDropsWhenChannelIsFull(t *testing.T) {
 	assert.Len(t, internalChan, cap(internalChan))
 }
 
-func TestBaseRequestOpSetSubID(t *testing.T) {
+func TestGenericRequestOpSetSubID(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.SetSubID([]byte(`"0xsub"`))
 
@@ -118,19 +118,19 @@ func TestBaseRequestOpSetSubID(t *testing.T) {
 	assert.Equal(t, []byte(`"0xsub"`), op.SubIdBytes())
 }
 
-func TestBaseRequestOpSetSkipDoOnClose(t *testing.T) {
+func TestGenericRequestOpSetSkipDoOnClose(t *testing.T) {
 	ctx := context.Background()
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.SetSkipDoOnClose()
 
 	assert.False(t, op.ShouldDoOnClose())
 }
 
-func TestBaseRequestOpCancelClosesDoneChannel(t *testing.T) {
+func TestGenericRequestOpCancelClosesDoneChannel(t *testing.T) {
 	ctx := context.Background()
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.Cancel()
 
@@ -141,11 +141,11 @@ func TestBaseRequestOpCancelClosesDoneChannel(t *testing.T) {
 	}
 }
 
-func TestBaseRequestOpCancelMarksCompletedAndClosesResponseChannel(t *testing.T) {
+func TestGenericRequestOpCancelMarksCompletedAndClosesResponseChannel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	op := ws.NewBaseRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+	op := ws.NewGenericRequestOp(ctx, "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
 
 	op.Cancel()
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
@@ -16,11 +17,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/evm_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods/evm_methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/samber/lo"
 )
@@ -33,10 +36,11 @@ type EvmChainSpecificObject struct {
 	allConnectors []connectors.ApiConnector
 	chain         *chains.ConfiguredChain
 	options       *chains.Options
+	manualLabels  map[string]string
 }
 
 func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
-	return blocks.NewBaseBlockProcessor(
+	return blocks.NewGenericBlockProcessor(
 		e.ctx,
 		e.upstreamId,
 		e.pollInterval,
@@ -49,6 +53,10 @@ func (e *EvmChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	return labels.NewGenericLabelsProcessor(e.ctx, e.upstreamId, e.labelsDetectors(), e.options.ValidationInterval*5)
+}
+
+func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 	restAdditional, _ := lo.Find(e.allConnectors, func(c connectors.ApiConnector) bool {
 		return c.GetType() == specs.RestAdditional
 	})
@@ -66,17 +74,78 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
 		eth_labels.NewEthAllInfoLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, restAdditional),
-		archiveLabelsDetector(e),
+	}
+	if !archiveDetectionSuppressed(e.manualLabels) {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
+	}
+	if e.hasMethod("eth_getProof") {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthHistoricalProofsLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
 	}
 
-	return labels.NewBaseLabelsProcessor(e.ctx, e.upstreamId, labelsDetectors, e.options.ValidationInterval*5)
+	return labelsDetectors
 }
 
-func archiveLabelsDetector(e *EvmChainSpecificObject) labels.LabelsDetector {
-	if e.options.ArchiveCapability != nil && !*e.options.ArchiveCapability {
-		return labels.NewStaticLabelsDetector(map[string]string{"archive": "false"})
+// MethodsProcessor detects which of the chain spec's methods this node actually serves.
+//
+// The two detectors are peers rather than stages: rpc_modules attributes methods to modules
+// wholesale, while the probes settle the handful of methods a present module does not
+// guarantee. Their verdicts are unioned, so an inconclusive probe can never resurrect a
+// method whose module the node does not report - ordering them buys nothing.
+func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	base := e.detectableMethods()
+	detectors := []methods.MethodsDetector{
+		evm_methods.NewRpcModulesDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
+		evm_methods.NewMethodProbeDetector(e.upstreamId, e.chain.Chain, e.connector, e.options.InternalTimeout, base),
 	}
-	return eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector)
+
+	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, methods.DetectionInterval)
+}
+
+// PauseHeadWhileSyncing is true for EVM nodes: a syncing execution client streams
+// newHeads at replay speed, and nothing downstream consumes those heads.
+func (e *EvmChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return true
+}
+
+// detectableMethods is the set of spec methods the detectors above may form an opinion
+// about - the chain spec's methods restricted to the connectors that speak JSON-RPC.
+func (e *EvmChainSpecificObject) detectableMethods() mapset.Set[string] {
+	return methods.DetectableMethods(e.chain.MethodSpec, detectableConnectorTypes(e.allConnectors))
+}
+
+// detectableConnectorTypes narrows the upstream's connectors to the ones both detectors
+// reason about. Their whole evidence base is JSON-RPC: rpc_modules is asked over the
+// internal JSON-RPC connector and attributes a method by its module prefix, and the probes
+// are JSON-RPC calls. A method served by any other connector - a REST path from a
+// rest-additional spec, say - is invisible to that evidence, yet moduleOf would happily
+// read the segment before the first underscore of "GET#/api/v1/node_info" as a module,
+// find no node reporting it, and strip the method. Feeding those methods in at all is the
+// bug; leaving them out is the fix.
+func detectableConnectorTypes(apiConnectors []connectors.ApiConnector) []specs.ApiConnectorType {
+	types := lo.Map(apiConnectors, func(item connectors.ApiConnector, index int) specs.ApiConnectorType {
+		return item.GetType()
+	})
+
+	return lo.Filter(types, func(connectorType specs.ApiConnectorType, index int) bool {
+		// Websocket counts: its methods (eth_subscribe and friends) are JSON-RPC in shape and
+		// carry a real module prefix, so module attribution holds for them too.
+		return connectorType == specs.JsonRpcConnector || connectorType == specs.WebsocketConnector
+	})
+}
+
+// archiveDetectionSuppressed reports whether the upstream's manual 'archive' label
+// pins the value to false. In that case the runtime archive probe must not run, so
+// the configured value - seeded into the upstream state at construction - stands for
+// the process lifetime. Any other value (including "true") lets the detector run and
+// publish what it finds.
+func archiveDetectionSuppressed(manualLabels map[string]string) bool {
+	return manualLabels[chains.ArchiveLabel] == "false"
 }
 
 func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -91,7 +160,7 @@ func (e *EvmChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 	if e.hasMethod("eth_getProof") {
 		detectors = append(detectors, evm_bounds.NewEvmProofLowerBoundDetector(e.upstreamId, e.chain, e.options.InternalTimeout, e.connector).WithCapabilities(capabilities))
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(e.ctx, e.upstreamId, e.chain.AverageRemoveSpeed(), detectors)
 }
 
 func (e *EvmChainSpecificObject) hasMethod(methodName string) bool {
@@ -231,6 +300,7 @@ func NewEvmChainSpecific(
 	chain *chains.ConfiguredChain,
 	pollInterval time.Duration,
 	options *chains.Options,
+	manualLabels map[string]string,
 ) *EvmChainSpecificObject {
 	return &EvmChainSpecificObject{
 		ctx:           ctx,
@@ -240,6 +310,7 @@ func NewEvmChainSpecific(
 		chain:         chain,
 		options:       options,
 		pollInterval:  pollInterval,
+		manualLabels:  manualLabels,
 	}
 }
 

@@ -15,8 +15,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -99,7 +99,7 @@ type ExecutionFlow interface {
 	AddHooks(hooks ...any)
 }
 
-type BaseExecutionFlow struct {
+type GenericExecutionFlow struct {
 	chain              chains.Chain
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	wg                 sync.WaitGroup
@@ -116,7 +116,7 @@ type BaseExecutionFlow struct {
 	}
 }
 
-func NewBaseExecutionFlow(
+func NewGenericExecutionFlow(
 	chain chains.Chain,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	cacheProcessor caches.CacheProcessor,
@@ -125,8 +125,8 @@ func NewBaseExecutionFlow(
 	subCtx *SubCtx,
 	quorumRegistry *quorum.Registry,
 	subEngineRegistry *subengine.Registry,
-) *BaseExecutionFlow {
-	return &BaseExecutionFlow{
+) *GenericExecutionFlow {
+	return &GenericExecutionFlow{
 		chain:              chain,
 		cacheProcessor:     cacheProcessor,
 		upstreamSupervisor: upstreamSupervisor,
@@ -139,11 +139,11 @@ func NewBaseExecutionFlow(
 	}
 }
 
-func (e *BaseExecutionFlow) GetResponses() chan *protocol.ResponseHolderWrapper {
+func (e *GenericExecutionFlow) GetResponses() chan *protocol.ResponseHolderWrapper {
 	return e.responseChan
 }
 
-func (e *BaseExecutionFlow) Execute(ctx context.Context, requests []protocol.RequestHolder) {
+func (e *GenericExecutionFlow) Execute(ctx context.Context, requests []protocol.RequestHolder) {
 	defer close(e.responseChan)
 	e.wg.Add(len(requests))
 
@@ -154,7 +154,7 @@ func (e *BaseExecutionFlow) Execute(ctx context.Context, requests []protocol.Req
 	e.wg.Wait()
 }
 
-func (e *BaseExecutionFlow) AddHooks(hooks ...any) {
+func (e *GenericExecutionFlow) AddHooks(hooks ...any) {
 	for _, hook := range hooks {
 		if receiveHook, ok := hook.(protocol.ResponseReceivedHook); ok {
 			e.hooks.receivedHooks = append(e.hooks.receivedHooks, receiveHook)
@@ -162,14 +162,14 @@ func (e *BaseExecutionFlow) AddHooks(hooks ...any) {
 	}
 }
 
-func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol.RequestHolder) UpstreamStrategy {
+func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request protocol.RequestHolder) UpstreamStrategy {
 	chainSupervisor := e.upstreamSupervisor.GetChainSupervisor(e.chain)
 	additionalMatchers := make([]Matcher, 0)
 	matchers, order := buildSelectorRouting(request.Selectors(), e.upstreamSupervisor, chainSupervisor)
 	additionalMatchers = append(additionalMatchers, matchers...)
 	if request.IsSubscribe() {
 		// TODO: calculate rating of subscription methods
-		return NewBaseStrategyWithOptions(chainSupervisor, additionalMatchers, order)
+		return NewGenericStrategyWithOptions(chainSupervisor, additionalMatchers, order)
 	}
 	_, quorumRequested := quorum.FromContext(ctx)
 	stickySend := request.SpecMethod() != nil && request.SpecMethod().IsStickySend()
@@ -216,7 +216,7 @@ func (e *BaseExecutionFlow) createStrategy(ctx context.Context, request protocol
 	}
 	switch e.appConfig.UpstreamConfig.BalancingStrategyFor(e.chain.String()) {
 	case config.BaseBalancingStrategy:
-		return NewBaseStrategyWithOptions(chainSupervisor, additionalMatchers, order)
+		return NewGenericStrategyWithOptions(chainSupervisor, additionalMatchers, order)
 	default: // rating
 		return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
 	}
@@ -256,13 +256,28 @@ func hasHttpConnector(up upstreams.Upstream, requestType protocol.RequestType) b
 	}
 }
 
-func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
+func (e *GenericExecutionFlow) processRequest(ctx context.Context, upstreamStrategy UpstreamStrategy, request protocol.RequestHolder) {
 	go func() {
 		defer e.wg.Done()
 		requestTotalMetric.WithLabelValues(e.chain.String(), request.Method()).Inc()
 
 		if request.SpecMethod() == nil {
 			response := protocol.NewTotalFailure(request, protocol.NotSupportedMethodError(request.Method()))
+			wrapper := &protocol.ResponseHolderWrapper{
+				UpstreamId: NoUpstream,
+				Response:   response,
+				RequestId:  request.Id(),
+			}
+			e.sendResponse(ctx, wrapper, request)
+			return
+		}
+
+		// the method exists but not for this wire shape - a JSON-RPC body sent
+		// to a grpc-only method would otherwise be routed to the grpc connector
+		// and fail there with an opaque decode error (and proto bytes for a
+		// JSON-RPC method would hit an HTTP connector)
+		if !request.RequestType().CanBeServedBy(request.SpecMethod().GetApiConnectorTypes()) {
+			response := protocol.NewTotalFailure(request, protocol.MethodNotAvailableOverTransportError(request.Method(), request.RequestType()))
 			wrapper := &protocol.ResponseHolderWrapper{
 				UpstreamId: NoUpstream,
 				Response:   response,
@@ -317,7 +332,7 @@ func (e *BaseExecutionFlow) processRequest(ctx context.Context, upstreamStrategy
 	}()
 }
 
-func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolder) RequestProcessor {
+func (e *GenericExecutionFlow) createRequestProcessor(request protocol.RequestHolder) RequestProcessor {
 	reqObserver := request.RequestObserver()
 	var requestProcessor RequestProcessor
 
@@ -362,7 +377,7 @@ func (e *BaseExecutionFlow) createRequestProcessor(request protocol.RequestHolde
 	return requestProcessor
 }
 
-func (e *BaseExecutionFlow) dispatchEnabled(policy specs.DispatchPolicy) bool {
+func (e *GenericExecutionFlow) dispatchEnabled(policy specs.DispatchPolicy) bool {
 	if e == nil || e.appConfig == nil || e.appConfig.UpstreamConfig == nil {
 		return false
 	}
@@ -379,7 +394,7 @@ func (e *BaseExecutionFlow) dispatchEnabled(policy specs.DispatchPolicy) bool {
 	}
 }
 
-func (e *BaseExecutionFlow) unsupportedBlockTagError(ctx context.Context, request protocol.RequestHolder) *protocol.ResponseError {
+func (e *GenericExecutionFlow) unsupportedBlockTagError(ctx context.Context, request protocol.RequestHolder) *protocol.ResponseError {
 	configuredChain := chains.GetChain(e.chain.String())
 	settings := configuredChain.Settings
 	param := request.ParseParams(ctx)
@@ -414,7 +429,7 @@ func (e *BaseExecutionFlow) unsupportedBlockTagError(ctx context.Context, reques
 	return nil
 }
 
-func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {
+func (e *GenericExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.ResponseHolderWrapper, request protocol.RequestHolder) {
 	select {
 	case <-ctx.Done():
 		zerolog.Ctx(ctx).Trace().Msgf("request %s has been cancelled, dropping the response", request.Method())
@@ -422,7 +437,7 @@ func (e *BaseExecutionFlow) sendResponse(ctx context.Context, wrapper *protocol.
 	}
 }
 
-func (e *BaseExecutionFlow) responseReceive(ctx context.Context, request protocol.RequestHolder, responseWrapper *protocol.ResponseHolderWrapper) {
+func (e *GenericExecutionFlow) responseReceive(ctx context.Context, request protocol.RequestHolder, responseWrapper *protocol.ResponseHolderWrapper) {
 	for _, hook := range e.hooks.receivedHooks {
 		hook.OnResponseReceived(ctx, request, responseWrapper)
 	}
@@ -438,7 +453,7 @@ func (e *BaseExecutionFlow) responseReceive(ctx context.Context, request protoco
 // that cannot be verified (stream / response without headers) is rejected
 // with QuorumNotSupported: streaming was supposed to be force-disabled by
 // HttpConnector, so reaching either branch indicates a misconfigured path.
-func (e *BaseExecutionFlow) verifyQuorumSignatures(
+func (e *GenericExecutionFlow) verifyQuorumSignatures(
 	ctx context.Context,
 	request protocol.RequestHolder,
 	wrapper *protocol.ResponseHolderWrapper,

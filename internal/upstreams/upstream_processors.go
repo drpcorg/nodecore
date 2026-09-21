@@ -11,7 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 )
 
@@ -21,7 +21,7 @@ func CreateHeadProcessor(
 	headConnector connectors.ApiConnector,
 	chainSpecific chains_specific.ChainSpecific,
 ) blocks.HeadProcessor {
-	return blocks.NewBaseHeadProcessor(ctx, conf, headConnector, chainSpecific)
+	return blocks.NewGenericHeadProcessor(ctx, conf, headConnector, chainSpecific)
 }
 
 func CreateHeadEventProcessor(
@@ -46,7 +46,7 @@ func CreateHealthEventProcessor(
 	if validator == nil {
 		return nil
 	}
-	eventProcessor := event_processors.NewBaseHealthEventProcessor(ctx, conf.Id, conf.Options, validator)
+	eventProcessor := event_processors.NewGenericHealthEventProcessor(ctx, conf.Id, conf.Options, validator)
 	if eventProcessor == nil {
 		return nil
 	}
@@ -62,7 +62,7 @@ func CreateSettingsEventProcessor(
 	if validator == nil {
 		return nil
 	}
-	eventProcessor := event_processors.NewBaseSettingsEventProcessor(ctx, conf.Id, conf.Options, validator)
+	eventProcessor := event_processors.NewGenericSettingsEventProcessor(ctx, conf.Id, conf.Options, validator)
 	if eventProcessor == nil {
 		return nil
 	}
@@ -78,7 +78,7 @@ func CreateLowerBoundsEventProcessor(
 	if lowerBoundProcessor == nil {
 		return nil
 	}
-	eventProcessor := event_processors.NewBaseLowerBoundEventProcessor(ctx, conf.Id, lowerBoundProcessor)
+	eventProcessor := event_processors.NewGenericLowerBoundEventProcessor(ctx, conf.Id, lowerBoundProcessor)
 	if eventProcessor == nil {
 		return nil
 	}
@@ -95,7 +95,7 @@ func CreateBlockEventProcessor(
 	if blockProcessor == nil {
 		return nil
 	}
-	eventProcessor := event_processors.NewBaseBlockEventProcessor(ctx, conf.Id, configuredChain.Chain, blockProcessor)
+	eventProcessor := event_processors.NewGenericBlockEventProcessor(ctx, conf.Id, configuredChain.Chain, blockProcessor)
 	if eventProcessor == nil {
 		return nil
 	}
@@ -120,11 +120,27 @@ func CreateCapEventProcessor(
 		Head:          headProcessor,
 	}
 
-	capProcessor := caps.NewBaseCapProcessor(ctx, conf.Id, chainSpecific.CapDetectors(input))
+	capProcessor := caps.NewGenericCapProcessor(ctx, conf.Id, chainSpecific.CapDetectors(input))
 	if capProcessor == nil {
 		return nil
 	}
-	eventProcessor := event_processors.NewBaseCapEventProcessor(ctx, conf.Id, capProcessor)
+	eventProcessor := event_processors.NewGenericCapEventProcessor(ctx, conf.Id, capProcessor)
+	if eventProcessor == nil {
+		return nil
+	}
+	return eventProcessor
+}
+
+func CreateMethodsEventProcessor(
+	ctx context.Context,
+	conf *config.Upstream,
+	chainSpecific chains_specific.ChainSpecific,
+) event_processors.UpstreamStateEventProcessor {
+	methodsProcessor := createMethodsProcessor(chainSpecific, conf.Options)
+	if methodsProcessor == nil {
+		return nil
+	}
+	eventProcessor := event_processors.NewMethodsEventProcessor(ctx, conf.Id, methodsProcessor)
 	if eventProcessor == nil {
 		return nil
 	}

@@ -1,0 +1,9 @@
+upstream-config:
+  upstreams:
+    - id: cosmos-upstream
+      chain: cosmos-hub
+      connectors:
+        - type: rest
+          url: https://cosmos-rest.publicnode.com
+        - type: tendermint
+          url: https://cosmos-rpc.publicnode.com

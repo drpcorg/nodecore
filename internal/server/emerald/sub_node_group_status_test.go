@@ -12,7 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -381,7 +381,7 @@ func gethStateEvent(id string, height uint64, methods ...string) protocol.Upstre
 // the whole nodecore-side flow with a real chain supervisor: upstream events
 // in, tagged group frames out
 func TestSubscribeNodeGroupStatus_RealChainSupervisorFlow(t *testing.T) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	go chainSupervisor.Start()
 
 	stream, _ := startNodeGroupStream(t, chainSupervisor)

@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newGroupTestSupervisor() *upstreams.BaseChainSupervisor {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+func newGroupTestSupervisor() *upstreams.GenericChainSupervisor {
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	go chainSupervisor.Start()
 	return chainSupervisor
 }

@@ -145,7 +145,9 @@ func TestLowerBoundSearchReturnsOneOnTinyChain(t *testing.T) {
 }
 
 // Plain variant: a previously found bound is confirmed with a single probe (no full re-search).
-func TestLowerBoundSearchPlainReusesCachedBound(t *testing.T) {
+// Plain variant: the cached bound is only the left edge of the next search, never confirmed and
+// returned on its own (see detectPlain). Bounds still only move up.
+func TestLowerBoundSearchPlainReSearchesFromCachedBound(t *testing.T) {
 	calculator := plainCalculator()
 	calls := make([]int64, 0)
 	probe := func(_ context.Context, height int64) (bool, error) {
@@ -161,7 +163,40 @@ func TestLowerBoundSearchPlainReusesCachedBound(t *testing.T) {
 	second, err := calculator.DetectLowerBound(context.Background(), func(context.Context) (int64, error) { return 9, nil }, probe)
 	require.NoError(t, err)
 	assert.Equal(t, int64(5), second[0].Bound)
-	assert.Equal(t, []int64{5}, calls[callsAfterFirst:])
+	// Binary search over [5, 9], not a single confirmation probe of 5.
+	assert.Equal(t, []int64{7, 5, 5}, calls[callsAfterFirst:])
+}
+
+// coreth-like availability: state for the last 32 blocks plus the trie of every 4096th block,
+// persisted forever. Once a search lands on such a block the old cached-confirmation shortcut
+// returned it every cycle while the head moved on; the plain search must instead follow the
+// window.
+func TestLowerBoundSearchPlainDoesNotStickToIsolatedCommitRoot(t *testing.T) {
+	const commitInterval, window = 4096, 32
+	calculator := plainCalculator()
+	latest := int64(2 * commitInterval)
+	probe := func(_ context.Context, height int64) (bool, error) {
+		return height%commitInterval == 0 || height >= latest-window, nil
+	}
+	fetchLatest := func(context.Context) (int64, error) { return latest, nil }
+
+	// Cycle 1: the first midpoint of [0, 8192] is exactly the commit root 4096, so the bound lands on it.
+	first, err := calculator.DetectLowerBound(context.Background(), fetchLatest, probe)
+	require.NoError(t, err)
+	require.Equal(t, int64(commitInterval), first[0].Bound)
+
+	// Cycles 2..4: head moves; 4096 still answers, but the bound must follow the window.
+	for cycle := 2; cycle <= 4; cycle++ {
+		latest += 200
+		calls := 0
+		counted := func(ctx context.Context, height int64) (bool, error) { calls++; return probe(ctx, height) }
+		result, err := calculator.DetectLowerBound(context.Background(), fetchLatest, counted)
+		require.NoError(t, err)
+		bound := result[0].Bound
+		assert.Greater(t, calls, 1, "cycle %d must search, not confirm the cached root", cycle)
+		assert.Equal(t, latest-window, bound, "cycle %d: bound must be the start of the live window", cycle)
+		assert.NotZero(t, bound%commitInterval, "cycle %d: bound must not be an isolated commit root", cycle)
+	}
 }
 
 // Offset variant: a previously found bound is confirmed with a single probe.

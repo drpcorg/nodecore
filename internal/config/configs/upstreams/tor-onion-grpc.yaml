@@ -1,0 +1,11 @@
+server:
+  port: 9095
+  tor-url: localhost:9050
+
+upstream-config:
+  upstreams:
+    - id: sui-upstream
+      chain: sui
+      connectors:
+        - type: grpc
+          url: grpc://examplehidden.onion:9000

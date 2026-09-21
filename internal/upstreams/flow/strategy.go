@@ -90,7 +90,7 @@ func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string,
 
 var _ UpstreamStrategy = (*RatingStrategy)(nil)
 
-type BaseStrategy struct {
+type GenericStrategy struct {
 	selectedUpstreams  mapset.Set[string]
 	chainSupervisor    upstreams.ChainSupervisor
 	additionalMatchers []Matcher
@@ -98,15 +98,15 @@ type BaseStrategy struct {
 	mu                 sync.Mutex
 }
 
-func NewBaseStrategy(chainSupervisor upstreams.ChainSupervisor) *BaseStrategy {
-	return &BaseStrategy{
+func NewGenericStrategy(chainSupervisor upstreams.ChainSupervisor) *GenericStrategy {
+	return &GenericStrategy{
 		selectedUpstreams: mapset.NewThreadUnsafeSet[string](),
 		chainSupervisor:   chainSupervisor,
 	}
 }
 
-func NewBaseStrategyWithOptions(chainSupervisor upstreams.ChainSupervisor, additionalMatchers []Matcher, order UpstreamOrder) *BaseStrategy {
-	strategy := NewBaseStrategy(chainSupervisor)
+func NewGenericStrategyWithOptions(chainSupervisor upstreams.ChainSupervisor, additionalMatchers []Matcher, order UpstreamOrder) *GenericStrategy {
+	strategy := NewGenericStrategy(chainSupervisor)
 	strategy.additionalMatchers = additionalMatchers
 	strategy.order = order
 	return strategy
@@ -127,7 +127,7 @@ func (s *SpecificOrderUpstreamStrategy) WithAdditionalMatchers(additionalMatcher
 	return s
 }
 
-func (b *BaseStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
+func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	upstreamIds := b.chainSupervisor.GetUpstreamIds()
 	if len(upstreamIds) == 0 {
 		return "", protocol.NoAvailableUpstreamsError()
@@ -160,7 +160,9 @@ func filterUpstreams(
 	}
 	matchers := lo.Ternary(len(additionalMatchers) > 0, additionalMatchers, make([]Matcher, 0))
 	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
-	if request.IsSubscribe() {
+	// a JSON-RPC subscription needs a live ws connector on the upstream; a gRPC
+	// stream rides the grpc connector the spec already binds the method to
+	if request.IsSubscribe() && request.RequestType() != protocol.Grpc {
 		matchers = append(matchers, NewWsCapMatcher(request.Method()))
 	}
 
@@ -242,7 +244,7 @@ func selectionError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) err
 	}
 }
 
-var _ UpstreamStrategy = (*BaseStrategy)(nil)
+var _ UpstreamStrategy = (*GenericStrategy)(nil)
 
 // FailingStrategy is a sentinel strategy that returns the same preset error
 // for every SelectUpstream call. Used by createStrategy to surface policy

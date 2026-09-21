@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestBaseBlockProcessorGetFinalizedBlock(t *testing.T) {
+func TestGenericBlockProcessorGetFinalizedBlock(t *testing.T) {
 	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &chains.Options{InternalTimeout: 5 * time.Second}}
 	ctx := context.Background()
 	connector := mocks.NewConnectorMock()
@@ -35,7 +35,7 @@ func TestBaseBlockProcessorGetFinalizedBlock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
 
-	processor := blocks.NewBaseBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewGenericBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -76,7 +76,7 @@ func TestBaseBlockProcessorGetFinalizedBlock(t *testing.T) {
 	assert.Equal(t, expected, manualEvent)
 }
 
-func TestBaseBlockProcessorDisableFinalizedBlock(t *testing.T) {
+func TestGenericBlockProcessorDisableFinalizedBlock(t *testing.T) {
 	upConfig := &config.Upstream{Id: "1", PollInterval: 1 * time.Second, Options: &chains.Options{InternalTimeout: 5 * time.Second}}
 	ctx := context.Background()
 	connector := mocks.NewConnectorMock()
@@ -89,31 +89,37 @@ func TestBaseBlockProcessorDisableFinalizedBlock(t *testing.T) {
 	}`)
 	response := protocol.NewHttpUpstreamResponse("1", body, 200, protocol.JsonRpc)
 
-	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response)
+	requested := make(chan struct{}, 10)
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(response).Run(func(mock.Arguments) {
+		requested <- struct{}{}
+	})
 
-	processor := blocks.NewBaseBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
+	processor := blocks.NewGenericBlockProcessor(ctx, upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, true, connector, test_utils.NewEvmChainSpecific(connector))
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
 
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		sub.Unsubscribe()
-	}()
+	select {
+	case <-requested:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the finalized block request")
+	}
+
+	sub.Unsubscribe()
 	_, ok := <-sub.Events
 
 	connector.AssertExpectations(t)
 	assert.False(t, ok)
 }
 
-func TestBaseBlockProcessorPollsSafeBlockWhenSupported(t *testing.T) {
+func TestGenericBlockProcessorPollsSafeBlockWhenSupported(t *testing.T) {
 	disableSafe := false
 	upConfig := &config.Upstream{Id: "1", PollInterval: time.Hour, Options: &chains.Options{InternalTimeout: 5 * time.Second, DisableSafeBlockDetection: &disableSafe}}
 	chainSpecific := &blockProcessorChainSpecificStub{
 		blockProcessorChainSpecificNoSafeStub: blockProcessorChainSpecificNoSafeStub{finalized: protocol.NewBlockWithHeight(100)},
 		safe:                                  protocol.NewBlockWithHeight(90),
 	}
-	processor := blocks.NewBaseBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
+	processor := blocks.NewGenericBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -133,11 +139,11 @@ func TestBaseBlockProcessorPollsSafeBlockWhenSupported(t *testing.T) {
 	assert.Equal(t, uint64(90), seen[protocol.SafeBlock].Height)
 }
 
-func TestBaseBlockProcessorDisablesSafeBlockWhenUnsupported(t *testing.T) {
+func TestGenericBlockProcessorDisablesSafeBlockWhenUnsupported(t *testing.T) {
 	disableSafe := false
 	upConfig := &config.Upstream{Id: "1", PollInterval: time.Hour, Options: &chains.Options{InternalTimeout: 5 * time.Second, DisableSafeBlockDetection: &disableSafe}}
 	chainSpecific := &blockProcessorChainSpecificNoSafeStub{finalized: protocol.NewBlockWithHeight(100)}
-	processor := blocks.NewBaseBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
+	processor := blocks.NewGenericBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()
@@ -205,14 +211,14 @@ func (b *blockProcessorChainSpecificStub) GetSafeBlock(context.Context) (protoco
 	return b.safe, nil
 }
 
-func TestBaseBlockProcessorSkipsSafeBlockWhenDisabled(t *testing.T) {
+func TestGenericBlockProcessorSkipsSafeBlockWhenDisabled(t *testing.T) {
 	disableSafe := true
 	upConfig := &config.Upstream{Id: "1", PollInterval: time.Hour, Options: &chains.Options{InternalTimeout: 5 * time.Second, DisableSafeBlockDetection: &disableSafe}}
 	chainSpecific := &blockProcessorChainSpecificStub{
 		blockProcessorChainSpecificNoSafeStub: blockProcessorChainSpecificNoSafeStub{finalized: protocol.NewBlockWithHeight(100)},
 		safe:                                  protocol.NewBlockWithHeight(90),
 	}
-	processor := blocks.NewBaseBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
+	processor := blocks.NewGenericBlockProcessor(context.Background(), upConfig.Id, upConfig.PollInterval, upConfig.Options.InternalTimeout, false, *upConfig.Options.DisableSafeBlockDetection, mocks.NewConnectorMock(), chainSpecific)
 	sub := processor.Subscribe("sub")
 
 	go processor.Start()

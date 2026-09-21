@@ -2,17 +2,28 @@ package upstreams
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/pkg/chains"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 )
 
 // update upstream state through one pipeline
-func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool) {
+func (u *GenericUpstream) processStateEvents(ctx context.Context, initialValid bool) {
 	bannedMethods := mapset.NewThreadUnsafeSet[string]()
+	// unsupportedMethods is what method detection last reported. It is tracked separately
+	// from bannedMethods so that an unban - which fires on a timer - can never restore a
+	// method the node structurally lacks.
+	unsupportedMethods := mapset.NewThreadUnsafeSet[string]()
+	methodSpecName := chains.GetMethodSpecNameByChain(u.configuredChain.Chain)
+	forceEnabled := func(method string) bool {
+		return methods.IsForceEnabled(u.upConfig.Methods, specs.GetSpecMethodWithFallback(methodSpecName, method))
+	}
 	validUpstream := initialValid
 	// baseAvail is the availability reported by health probes (setStatus),
 	// tracked here rather than in the shared UpstreamState because only the
@@ -46,7 +57,11 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 				eventType = &protocol.ValidUpstreamEvent{State: &state}
 				validUpstream = true
 			case *protocol.BanMethodUpstreamStateEvent:
-				if bannedMethods.ContainsOne(stateEvent.Method) || slices.Contains(u.upConfig.Methods.EnableMethods, stateEvent.Method) {
+				// A ban the config enables away is not worth recording: it would leave the
+				// method enabled, fire a pointless unban later, and re-arm on the next
+				// failure. This sits on a per-request path - MethodBanHook fires for every
+				// failing response - so it must stay cheap and silent.
+				if bannedMethods.ContainsOne(stateEvent.Method) || forceEnabled(stateEvent.Method) {
 					continue
 				}
 				time.AfterFunc(u.upConfig.Methods.BanDuration, func() {
@@ -54,20 +69,35 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 				})
 				log.Warn().Msgf("the method %s has been banned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Add(stateEvent.Method)
-				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
 			case *protocol.UnbanMethodUpstreamStateEvent:
 				if !bannedMethods.ContainsOne(stateEvent.Method) {
 					continue
 				}
 				log.Warn().Msgf("the method %s has been unbanned on upstream %s", stateEvent.Method, u.id)
 				bannedMethods.Remove(stateEvent.Method)
-				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods)
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
+			case *protocol.UnsupportedMethodsUpstreamStateEvent:
+				if unsupportedMethods.Equal(stateEvent.Methods) {
+					continue
+				}
+				unsupportedMethods = stateEvent.Methods.Clone()
+				for _, method := range unsupportedMethods.ToSlice() {
+					if forceEnabled(method) {
+						log.Warn().Msgf(
+							"method %s is not supported by upstream %s but stays enabled because the config force-enables it",
+							method, u.id,
+						)
+					}
+				}
+				state.UpstreamMethods = u.newUpstreamMethods(bannedMethods, unsupportedMethods)
 			case *protocol.StatusUpstreamStateEvent:
 				if !validUpstream {
 					continue
 				}
 				if stateEvent.Lag == nil {
 					baseAvail = stateEvent.Status
+					u.toggleHeadOnSyncing(baseAvail)
 				}
 				newAvail := protocol.StatusByLag(u.headLag.Load(), baseAvail, u.configuredChain.Settings.Lags.Syncing)
 				if newAvail != state.Status {
@@ -92,7 +122,29 @@ func (u *BaseUpstream) processStateEvents(ctx context.Context, initialValid bool
 	}
 }
 
-func (u *BaseUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
+// toggleHeadOnSyncing stops the head processor when the health probes report Syncing
+// and starts it again on the first non-Syncing verdict. Only probe results reach here:
+// lag-observer events carry a Lag and never change baseAvail, so a node that merely
+// fell behind keeps its head. It acts on whether the processor is actually running rather
+// than on what it last did, because the supervisor (PartialStop, Resume) drives the same
+// processor from another goroutine.
+func (u *GenericUpstream) toggleHeadOnSyncing(probeAvail protocol.AvailabilityStatus) {
+	if !u.pauseHeadWhileSyncing {
+		return
+	}
+	syncing := probeAvail == protocol.Syncing
+	running := u.processorAggregator.IsProcessorRunning(event_processors.HeadEventProcessorType)
+	switch {
+	case syncing && running:
+		log.Warn().Msgf("upstream '%s' reports syncing, pausing its head", u.id)
+		u.processorAggregator.StopProcessor(event_processors.HeadEventProcessorType)
+	case !syncing && !running:
+		log.Warn().Msgf("upstream '%s' is synced again, resuming its head", u.id)
+		u.processorAggregator.StartProcessor(event_processors.HeadEventProcessorType)
+	}
+}
+
+func (u *GenericUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType) protocol.UpstreamEvent {
 	return protocol.UpstreamEvent{
 		Id:        u.id,
 		Chain:     u.configuredChain.Chain,
@@ -100,7 +152,7 @@ func (u *BaseUpstream) createUpstreamEvent(eventType protocol.UpstreamEventType)
 	}
 }
 
-func (u *BaseUpstream) publishUpstreamEvent(state protocol.UpstreamState, eventType protocol.UpstreamEventType) {
+func (u *GenericUpstream) publishUpstreamEvent(state protocol.UpstreamState, eventType protocol.UpstreamEventType) {
 	u.upstreamState.Store(state)
 	upstreamEvent := u.createUpstreamEvent(eventType)
 

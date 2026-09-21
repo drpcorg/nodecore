@@ -22,6 +22,11 @@ type StreamHint interface {
 	Type() RequestType
 }
 
+// NoResultStart is the ResultStart value meaning no "result" value was
+// located in the first chunk. Consumers must treat it as "do not unwrap"
+// rather than as an offset - the zero value would silently mean offset 0.
+const NoResultStart = -1
+
 // JsonRpcResultStreamHint is the StreamHint for unwrapping the "result" value
 // of a JSON-RPC envelope: where the value begins in the first chunk and a
 // counter primed for its JSON type so the consumer can detect where it ends.
@@ -29,6 +34,10 @@ type JsonRpcResultStreamHint struct {
 	ResultStart int
 	Counter     ResultCounter
 }
+
+// NoJsonRpcResultStreamHint is the hint of a response that carries no
+// unwrapping information; unwrapping it fails instead of truncating.
+var NoJsonRpcResultStreamHint = JsonRpcResultStreamHint{ResultStart: NoResultStart}
 
 func (JsonRpcResultStreamHint) Type() RequestType { return JsonRpc }
 
@@ -42,7 +51,7 @@ type FirstChunkAnalysis struct {
 	// envelope-level "error" key was seen in the first chunk.
 	Streamable bool
 	// ResultStart is the byte offset of the "result" value within the first
-	// chunk, or -1 if none was found.
+	// chunk, or NoResultStart if none was found.
 	ResultStart int
 	// Counter is primed for the "result" value's JSON type (valid only when
 	// Streamable).
@@ -76,7 +85,7 @@ func AnalyzeFirstChunk(reader *bufio.Reader, chunkSize int) FirstChunkAnalysis {
 		// buffered in the first chunk, so there is nothing to stream - let the
 		// buffered path parse/validate/cache it. Any other Peek error also
 		// means we shouldn't stream.
-		return FirstChunkAnalysis{ResultStart: -1}
+		return FirstChunkAnalysis{ResultStart: NoResultStart}
 	}
 	return AnalyzeChunk(body)
 }
@@ -86,7 +95,7 @@ func AnalyzeFirstChunk(reader *bufio.Reader, chunkSize int) FirstChunkAnalysis {
 // the gRPC consumer's tests can locate a result value in a chunk without a
 // reader. See AnalyzeFirstChunk for the walk's semantics.
 func AnalyzeChunk(buf []byte) FirstChunkAnalysis {
-	res := FirstChunkAnalysis{ResultStart: -1}
+	res := FirstChunkAnalysis{ResultStart: NoResultStart}
 	dec := json.NewDecoder(bytes.NewReader(buf))
 	tok, err := dec.Token()
 	if err != nil {
@@ -103,16 +112,16 @@ func AnalyzeChunk(buf []byte) FirstChunkAnalysis {
 		}
 		key, ok := keyTok.(string)
 		if !ok {
-			return FirstChunkAnalysis{ResultStart: -1}
+			return FirstChunkAnalysis{ResultStart: NoResultStart}
 		}
 		if key == "error" {
 			// Envelope-level error: do not stream, regardless of result.
-			return FirstChunkAnalysis{ResultStart: -1}
+			return FirstChunkAnalysis{ResultStart: NoResultStart}
 		}
 		if key == "result" {
 			start, counter, ok := resultValueStart(buf, int(dec.InputOffset()))
 			if !ok {
-				return FirstChunkAnalysis{ResultStart: -1}
+				return FirstChunkAnalysis{ResultStart: NoResultStart}
 			}
 			res.ResultStart = start
 			res.Counter = counter

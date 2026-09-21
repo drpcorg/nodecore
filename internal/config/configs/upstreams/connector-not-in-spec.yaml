@@ -1,0 +1,9 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+        - type: grpc
+          url: grpc://test.com:9090

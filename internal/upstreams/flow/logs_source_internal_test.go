@@ -14,9 +14,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -62,7 +62,7 @@ func newLogsTestRegistry(upSup *mocks.UpstreamSupervisorMock) *rating.RatingRegi
 // fetchBlockLogs must pick an upstream whose head is at >= the block height (not
 // the head producer): a too-low upstream is never queried.
 func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	publishLogsUpstream(chSup, "high", 100)
@@ -85,13 +85,13 @@ func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
 	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block)
 
 	require.Len(t, logs, 1)
-	assert.Equal(t, "id", upstreamId) // BaseUpstream id from TestEvmUpstream
+	assert.Equal(t, "id", upstreamId) // GenericUpstream id from TestEvmUpstream
 	connLow.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 
 // A block with no upstream at its height is skipped (nil), not a terminal error.
 func TestFetchBlockLogsNoUpstreamAtHeight(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor()
 	publishLogsUpstream(chSup, "low", 50)
@@ -113,7 +113,7 @@ func TestFetchBlockLogsNoUpstreamAtHeight(t *testing.T) {
 // An upstream that errors on eth_getLogs causes the block to be skipped (nil)
 // after the bounded walk-down, not a terminal failure.
 func TestFetchBlockLogsErrorSkipsBlock(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chSup := test_utils.CreateChainSupervisor()
 	publishLogsUpstream(chSup, "high", 100)
@@ -188,7 +188,7 @@ func publishHead(chSup upstreams.ChainSupervisor, id string, height uint64, hash
 	time.Sleep(30 * time.Millisecond)
 }
 
-func readWsResponse(t *testing.T, ch <-chan *protocol.WsResponse) *protocol.WsResponse {
+func readWsResponse(t *testing.T, ch <-chan protocol.SubResponse) protocol.SubResponse {
 	t.Helper()
 	select {
 	case r, ok := <-ch:
@@ -200,19 +200,19 @@ func readWsResponse(t *testing.T, ch <-chan *protocol.WsResponse) *protocol.WsRe
 	}
 }
 
-func assertRemoved(t *testing.T, r *protocol.WsResponse, want bool) {
+func assertRemoved(t *testing.T, r protocol.SubResponse, want bool) {
 	t.Helper()
 	require.NotNil(t, r)
-	require.Nil(t, r.Error, "unexpected terminal frame")
+	require.Nil(t, r.GetError(), "unexpected terminal frame")
 	var m map[string]any
-	require.NoError(t, sonic.Unmarshal(r.Message, &m))
+	require.NoError(t, sonic.Unmarshal(r.GetMessage(), &m))
 	removed, _ := m["removed"].(bool)
 	assert.Equal(t, want, removed)
 }
 
 func logsSourceTestSetup(t *testing.T, sendResult protocol.ResponseHolder) (upstreams.ChainSupervisor, *mocks.UpstreamSupervisorMock, *rating.RatingRegistry) {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor() // ARBITRUM
 	conn := mocks.NewConnectorMock()
 	if sendResult != nil {
@@ -282,7 +282,7 @@ func TestLogsSourceTerminatesWhenLogsCapAbsentAtStart(t *testing.T) {
 	require.NoError(t, err)
 
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected a terminal error frame when LogsCap is absent")
+	require.NotNil(t, r.GetError(), "expected a terminal error frame when LogsCap is absent")
 }
 
 // Losing LogsCap mid-stream terminates the source on the next head update.
@@ -305,13 +305,13 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
 	publishHead(chSup, "up1", 101, "a1", "a0")
 	r := readWsResponse(t, src.Events)
-	require.NotNil(t, r.Error, "expected a terminal frame after LogsCap is lost")
+	require.NotNil(t, r.GetError(), "expected a terminal frame after LogsCap is lost")
 }
 
 // An eth_getLogs failure for one block skips it without terminating the source;
 // the next block's logs are still delivered.
 func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	chSup := test_utils.CreateChainSupervisor()
 	conn := mocks.NewConnectorMock()
 	conn.On("SendRequest", mock.Anything, mock.Anything).

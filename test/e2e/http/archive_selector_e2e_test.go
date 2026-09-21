@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
 	"github.com/drpcorg/nodecore/test/e2e/internal/harness"
+	"github.com/drpcorg/public/pkg/dshackle"
 )
 
 func TestHTTPArchiveCapabilitySelectorUsesArchiveHardhatBlackbox(t *testing.T) {
@@ -67,6 +67,8 @@ upstream-config:
 		out += fmt.Sprintf(`    - id: %s
       chain: ethereum
       poll-interval: 1s
+      labels:
+        archive: %s
       connectors:
         - type: json-rpc
           url: %q
@@ -75,12 +77,11 @@ upstream-config:
         validation-interval: 30s
         disable-lower-bounds-detection: true
         disable-labels-detection: false
-        archive: %s
         disable-log-index-validation: true
         validate-client-version: false
         validate-syncing: false
         validate-peers: false
-`, upstream.Alias, upstream.InternalURL(), archiveOption)
+`, upstream.Alias, archiveOption, upstream.InternalURL())
 	}
 	return out
 }

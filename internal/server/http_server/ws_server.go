@@ -94,7 +94,7 @@ loop:
 				}
 				break loop
 			}
-			preRequest := &Request{
+			preRequest := &server_ctx.Request{
 				Chain: chain,
 			}
 			requestHandler, err := NewJsonRpcHandler(preRequest, bytes.NewReader(message.message), true)
@@ -103,7 +103,7 @@ loop:
 				break loop
 			}
 
-			handleResp := handleRequest(cancelCtx, requestHandler, authPayload, appCtx, subCtx)
+			handleResp := appCtx.HandleRequest(cancelCtx, requestHandler, authPayload, subCtx)
 
 			wg.Add(1)
 			go func(ctx context.Context) {
@@ -118,14 +118,14 @@ loop:
 					select {
 					case <-ctx.Done():
 						return
-					case response, ok := <-handleResp.responseWrappers:
+					case response, ok := <-handleResp.ResponseWrappers():
 						if !ok {
 							return
 						}
 						if replyErr, ok := response.Response.(*protocol.ReplyError); ok {
-							// close the connection if there is only WsTotalFailure error
+							// close the connection if there is only SubscribeTotalFailure error
 							// otherwise write a response to the connection
-							if replyErr.ErrorKind == protocol.TotalFailure && replyErr.GetError().Code == protocol.WsTotalFailure {
+							if replyErr.ErrorKind == protocol.TotalFailure && replyErr.GetError().Code == protocol.SubscribeTotalFailure {
 								log.Warn().Msgf("got a ws total failure signal, the connection will be closed")
 								closeFunc()
 								return

@@ -16,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/aptos_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/aptos_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/aptos_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -92,11 +93,11 @@ func (a *AptosChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 }
 
 func (a *AptosChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("aptos does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AptosChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("aptos does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AptosChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
@@ -109,7 +110,7 @@ func (a *AptosChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (a *AptosChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Aptos) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {
@@ -128,7 +129,7 @@ func (a *AptosChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 	detectors := []lower_bounds.LowerBoundDetector{
 		aptos_bounds.NewAptosLowerBoundDetector(a.upstreamId, a.configuredChain.Chain, a.internalTimeout, a.connector),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(a.ctx, a.upstreamId, a.configuredChain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(a.ctx, a.upstreamId, a.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (a *AptosChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
@@ -140,7 +141,7 @@ func (a *AptosChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			a.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AptosChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
@@ -158,3 +159,13 @@ func heightToHashId(height uint64) blockchain.HashId {
 }
 
 var _ chains_specific.ChainSpecific = (*AptosChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (a *AptosChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (a *AptosChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

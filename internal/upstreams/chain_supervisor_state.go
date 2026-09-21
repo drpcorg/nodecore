@@ -130,7 +130,7 @@ func recomputeState(prev ChainSupervisorState, states []*protocol.UpstreamState,
 	next.LowerBounds = processLowerBounds(available)
 	next.ChainLabels = processLabels(available)
 	next.Caps = processCaps(available)
-	next.SubMethods = processSubMethods(subChainMethods, next.Caps)
+	next.SubMethods = processSubMethods(subChainMethods, next.Methods, next.Caps)
 	return next
 }
 
@@ -144,11 +144,23 @@ func minStatus(states []*protocol.UpstreamState) protocol.AvailabilityStatus {
 	return status
 }
 
-func processSubMethods(subChainMethods mapset.Set[string], caps mapset.Set[protocol.Cap]) mapset.Set[string] {
-	if caps == nil || !caps.Contains(protocol.WsCap) {
-		return mapset.NewThreadUnsafeSet[string]()
+func processSubMethods(subChainMethods mapset.Set[string], chainMethods methods.Methods, caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+	subMethods := mapset.NewThreadUnsafeSet[string]()
+	for name := range subChainMethods.Iter() {
+		// Only a method some available upstream actually supports (after config,
+		// detection and bans) can be advertised: a disabled subscribe method is
+		// the operator saying "no subscriptions from this upstream".
+		method := chainMethods.GetMethod(name)
+		if method == nil {
+			continue
+		}
+		// A gRPC stream rides the grpc connector the spec binds it to (all grpc
+		// calls share the one connection); a JSON-RPC subscription additionally
+		// needs a live websocket connector somewhere.
+		if method.GrpcCallType().IsServerStream() || (caps != nil && caps.Contains(protocol.WsCap)) {
+			subMethods.Add(name)
+		}
 	}
-	subMethods := subChainMethods.Clone()
 	// EVM advertises concrete topics derived from caps instead of the generic
 	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
 	// real sub types. A topic is offered only if it can be served locally

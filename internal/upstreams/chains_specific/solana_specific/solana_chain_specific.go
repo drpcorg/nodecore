@@ -2,24 +2,25 @@ package solana_specific
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/solana_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/solana_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/solana_validations"
-	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -32,9 +33,13 @@ type SolanaChainSpecificObject struct {
 	connector       connectors.ApiConnector
 	configuredChain *chains.ConfiguredChain
 	options         *chains.Options
+	// requestConnector answers the side requests the head path makes. A Solana websocket
+	// endpoint serves only the pubsub methods, so a specific built from the ws connector
+	// asks getEpochInfo over the upstream's json-rpc connector instead.
+	requestConnector connectors.ApiConnector
 
-	lastKnownHeights *utils.CMap[string, uint64]
-	lastCheckedSlots *utils.CMap[string, uint64]
+	lastKnownHeight atomic.Uint64
+	lastCheckedSlot atomic.Uint64
 }
 
 func (s *SolanaChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
@@ -46,7 +51,7 @@ func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, solana_labels.NewSolanaClientLabelsDetector(), s.options.InternalTimeout),
 	}
 
-	return labels.NewBaseLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
+	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
 }
 
 func (s *SolanaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -57,7 +62,7 @@ func (s *SolanaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoun
 	detectors := []lower_bounds.LowerBoundDetector{
 		solana_bounds.NewSolanaLowerBoundDetector(s.upstreamId, s.options.InternalTimeout, s.connector),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
+	return lower_bounds.NewGenericLowerBoundProcessor(s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors)
 }
 
 func (s *SolanaChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {
@@ -95,26 +100,20 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (p
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
-	lastSlot, _ := s.lastCheckedSlots.Load(s.upstreamId)
-	lastHeight, _ := s.lastKnownHeights.Load(s.upstreamId)
+	lastSlot := s.lastCheckedSlot.Load()
+	lastHeight := s.lastKnownHeight.Load()
 	shouldCheck := slotEvent.Slot >= lastSlot && slotEvent.Slot-lastSlot >= checkInterval
 	estimatedHeight := lo.Ternary(lastHeight != 0 && lastSlot != 0, lastHeight+(slotEvent.Slot-lastSlot), 0)
 
 	if shouldCheck || estimatedHeight == 0 {
 		block, err := s.getEpochInfo(context.Background())
 		if err != nil {
-			var height uint64
-			if estimatedHeight != 0 {
-				height = estimatedHeight
-			} else {
-				if lastHeight != 0 {
-					height = lastHeight
-				} else {
-					height = slotEvent.Slot
-				}
+			if estimatedHeight == 0 {
+				// a slot is not a height: without a known height there is nothing to publish
+				return protocol.ZeroBlock{}, err
 			}
-			log.Err(err).Msgf("couldn't get the epoch info for upstream %s, using the estimated height %d, slot %d", s.upstreamId, height, slotEvent.Slot)
-			return createNewSolanaBlock(height, slotEvent.Slot), nil
+			log.Warn().Err(err).Msgf("couldn't get the epoch info for upstream %s, using the estimated height %d, slot %d", s.upstreamId, estimatedHeight, slotEvent.Slot)
+			return createNewSolanaBlock(estimatedHeight, slotEvent.Slot), nil
 		}
 		return createNewSolanaBlock(block.Height, block.Slot), nil
 	}
@@ -130,17 +129,22 @@ func NewSolanaChainSpecificObject(
 	configuredChain *chains.ConfiguredChain,
 	upstreamId string,
 	connector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
 	options *chains.Options,
 ) *SolanaChainSpecificObject {
+	requestConnector, found := lo.Find(allConnectors, func(c connectors.ApiConnector) bool {
+		return c.GetType() == specs.JsonRpcConnector
+	})
+	if !found {
+		requestConnector = connector
+	}
 	return &SolanaChainSpecificObject{
-		ctx:             ctx,
-		upstreamId:      upstreamId,
-		connector:       connector,
-		configuredChain: configuredChain,
-		options:         options,
-
-		lastKnownHeights: utils.NewCMap[string, uint64](),
-		lastCheckedSlots: utils.NewCMap[string, uint64](),
+		ctx:              ctx,
+		upstreamId:       upstreamId,
+		connector:        connector,
+		configuredChain:  configuredChain,
+		options:          options,
+		requestConnector: requestConnector,
 	}
 }
 
@@ -155,7 +159,7 @@ func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
-	response := s.connector.SendRequest(ctx, request)
+	response := s.requestConnector.SendRequest(ctx, request)
 	if response.HasError() {
 		return protocol.ZeroBlock{}, response.GetError()
 	}
@@ -164,26 +168,14 @@ func (s *SolanaChainSpecificObject) getEpochInfo(ctx context.Context) (protocol.
 		return protocol.ZeroBlock{}, err
 	}
 
-	s.lastKnownHeights.Store(s.upstreamId, block.Height)
-	s.lastCheckedSlots.Store(s.upstreamId, block.Slot)
+	s.lastKnownHeight.Store(block.Height)
+	s.lastCheckedSlot.Store(block.Slot)
 
 	return block, nil
 }
 
-func SyntheticHashes(slot uint64, parentSlot uint64) (blockchain.HashId, blockchain.HashId) {
-	b1 := make([]byte, 32)
-	binary.BigEndian.PutUint64(b1, slot)
-	syntheticHash := blockchain.NewHashIdFromBytes(b1)
-
-	b2 := make([]byte, 32)
-	binary.BigEndian.PutUint64(b2, parentSlot)
-	syntheticParentHash := blockchain.NewHashIdFromBytes(b2)
-
-	return syntheticHash, syntheticParentHash
-}
-
 func createNewSolanaBlock(height uint64, slot uint64) protocol.Block {
-	hash, parentHash := SyntheticHashes(slot, slot-1)
+	hash, parentHash := specific_helpers.SyntheticHashes(slot, slot-1)
 	return protocol.NewBlock(height, slot, hash, parentHash)
 }
 
@@ -197,3 +189,13 @@ type SolanaSlotEvent struct {
 }
 
 var _ chains_specific.ChainSpecific = (*SolanaChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (s *SolanaChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (s *SolanaChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

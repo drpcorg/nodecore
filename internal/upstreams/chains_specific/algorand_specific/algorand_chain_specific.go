@@ -18,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/algorand_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/algorand_bounds"
+	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/algorand_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
@@ -65,7 +66,7 @@ func (a *AlgorandChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			a.internalTimeout,
 		),
 	}
-	return labels.NewBaseLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
 }
 
 func (a *AlgorandChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -81,7 +82,7 @@ func (a *AlgorandChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBo
 			a.connector,
 		),
 	}
-	return lower_bounds.NewBaseLowerBoundProcessor(
+	return lower_bounds.NewGenericLowerBoundProcessor(
 		a.ctx,
 		a.upstreamId,
 		a.configuredChain.AverageRemoveSpeed(),
@@ -101,7 +102,7 @@ func (a *AlgorandChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Algorand) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {
@@ -165,11 +166,11 @@ func (a *AlgorandChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 }
 
 func (a *AlgorandChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("algorand does not support websocket subscriptions")
+	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AlgorandChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("algorand does not support websocket subscriptions")
+	return nil, blocks.ErrUnsupportedHeadSubscriptions
 }
 
 func (a *AlgorandChainSpecificObject) fetchBlockHeader(ctx context.Context, round uint64) (*algorandBlockHeader, error) {
@@ -251,3 +252,13 @@ func subOne(round uint64) uint64 {
 }
 
 var _ chains_specific.ChainSpecific = (*AlgorandChainSpecificObject)(nil)
+
+// MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
+// implements, so its upstreams keep the full method set their spec declares.
+func (a *AlgorandChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+func (a *AlgorandChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
+}

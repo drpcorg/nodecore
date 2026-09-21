@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/pkg/dshackle"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"

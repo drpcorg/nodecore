@@ -149,73 +149,21 @@ func TestParseRestRequest_RestPathWithoutLeadingSlash(t *testing.T) {
 	assert.Equal(t, "POST#/exchange", template, "no double slash in the canonical template")
 }
 
-func TestCloneHeaders_EmptyReturnsNil(t *testing.T) {
-	assert.Nil(t, cloneHeaders(nil))
-	assert.Nil(t, cloneHeaders(http.Header{}))
-}
+// nodecore's credential headers are consumed by the ingress and must never
+// enter the request holder; everything else is forwarded
+func TestParseRestRequestStripsReservedCredentialHeaders(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
+	req.Header.Set("X-Nodecore-Key", "secret")
+	req.Header.Set("X-Nodecore-Token", "token")
+	req.Header.Set("Authorization", "Bearer jwt")
+	req.Header.Set("X-Custom", "keep")
 
-func TestCloneHeaders_PreservesMultiValuedShape(t *testing.T) {
-	src := http.Header{
-		"X-Single": {"only"},
-		"X-Multi":  {"a", "b", "c"},
-	}
+	_, requestParams, err := parseRestRequest(req, "v2/status", "aptos")
+	require.NoError(t, err)
 
-	out := cloneHeaders(src)
-	assert.Equal(t, []string{"only"}, out["X-Single"])
-	assert.Equal(t, []string{"a", "b", "c"}, out["X-Multi"])
-}
-
-// cloneHeaders advertises mutation isolation - confirm a later mutation of
-// the source slice doesn't reach back through the cloned map.
-func TestCloneHeaders_IsolatesSourceMutation(t *testing.T) {
-	src := http.Header{"X-Mut": {"original"}}
-
-	out := cloneHeaders(src)
-	src["X-Mut"][0] = "changed"
-	src.Add("X-Added", "after-clone")
-
-	assert.Equal(t, []string{"original"}, out["X-Mut"],
-		"mutating the source slice in-place must not bleed into the clone")
-	assert.NotContains(t, out, "X-Added",
-		"keys added to the source after cloning must not appear in the clone")
-}
-
-func TestFilteredQuery_EmptyReturnsNil(t *testing.T) {
-	assert.Nil(t, filteredQuery(nil))
-	assert.Nil(t, filteredQuery(map[string][]string{}))
-}
-
-func TestFilteredQuery_RemovesReservedKeysOnly(t *testing.T) {
-	out := filteredQuery(map[string][]string{
-		"quorum":          {"3"},
-		"quorum_required": {"2"},
-		"token":           {"A", "B"},
-		"format":          {"json"},
-	})
-
-	assert.NotContains(t, out, "quorum")
-	assert.NotContains(t, out, "quorum_required")
-	assert.Equal(t, []string{"A", "B"}, out["token"])
-	assert.Equal(t, []string{"json"}, out["format"])
-}
-
-// If every key is reserved, the result is nil (not an empty map) so callers
-// can fast-path on `len(rp.QueryParams) == 0`.
-func TestFilteredQuery_AllReservedReturnsNil(t *testing.T) {
-	out := filteredQuery(map[string][]string{
-		"quorum":          {"3"},
-		"quorum_required": {"2"},
-	})
-	assert.Nil(t, out)
-}
-
-func TestFilteredQuery_IsolatesSourceMutation(t *testing.T) {
-	src := map[string][]string{"token": {"original"}}
-
-	out := filteredQuery(src)
-	src["token"][0] = "changed"
-	src["added-after"] = []string{"x"}
-
-	assert.Equal(t, []string{"original"}, out["token"])
-	assert.NotContains(t, out, "added-after")
+	headers := http.Header(requestParams.Headers)
+	assert.Equal(t, "keep", headers.Get("X-Custom"))
+	assert.Empty(t, headers.Get("X-Nodecore-Key"))
+	assert.Empty(t, headers.Get("X-Nodecore-Token"))
+	assert.Empty(t, headers.Get("Authorization"))
 }

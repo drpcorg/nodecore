@@ -195,3 +195,32 @@ func TestChainValidatorInvalidHexNetVersionThenSettingErrorResult(t *testing.T) 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.SettingsError, actualResult)
 }
+
+// A cosmos chain with an EVM module is validated against its EVM ids from
+// chain-ids, not against the cosmos network name in chain-id. Injective
+// testnet also answers a net_version that is not the decimal of eth_chainId.
+func TestChainValidatorCosmosEvmChainUsesTheEvmIds(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	options := &chains.Options{
+		InternalTimeout: time.Second,
+	}
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.INJECTIVE_TESTNET)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.INJECTIVE_TESTNET)
+
+	test_utils.ExpectEthValidationRequest(
+		connector,
+		chainIdRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x59f"`), protocol.JsonRpc),
+	)
+	test_utils.ExpectEthValidationRequest(
+		connector,
+		netVersionRequest,
+		protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"888"`), protocol.JsonRpc),
+	)
+
+	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("injective-testnet"), options)
+	actualResult := validator.Validate()
+
+	connector.AssertExpectations(t)
+	assert.Equal(t, validations.Valid, actualResult)
+}

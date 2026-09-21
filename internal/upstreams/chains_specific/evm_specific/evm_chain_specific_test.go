@@ -9,14 +9,16 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels"
+	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations/eth_validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -32,14 +34,14 @@ func TestChainValidator(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	chain := chains.GetChain("ethereum")
 
-	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options).SettingsValidators()
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options, nil).SettingsValidators()
 
 	assert.Len(t, validators, 0)
 
 	options.DisableChainValidation = new(false)
 	options.ValidateCallLimit = new(true)
 
-	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options).SettingsValidators()
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options, nil).SettingsValidators()
 
 	assert.Len(t, validators, 2)
 	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
@@ -62,7 +64,7 @@ func TestEvmSubscribeHeadRequest(t *testing.T) {
 	assert.Equal(t, "1", req.Id())
 	assert.Equal(t, "eth_subscribe", req.Method())
 	assert.False(t, req.IsStream())
-	require.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(body))
+	require.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"]}`, string(body))
 }
 
 func TestEvmParseSubBLock(t *testing.T) {
@@ -153,7 +155,7 @@ func TestEvmLowerBoundProcessor(t *testing.T) {
 }
 
 func TestEvmLowerBoundProcessorIncludesProofDetectorWhenSpecSupportsGetProof(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	processor := newEvmChainSpecificForChain("ethereum").LowerBoundProcessor()
 
@@ -161,7 +163,7 @@ func TestEvmLowerBoundProcessorIncludesProofDetectorWhenSpecSupportsGetProof(t *
 }
 
 func TestEvmLowerBoundProcessorSkipsProofDetectorWhenSpecDisablesGetProof(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	for _, chainName := range []string{"viction", "viction-testnet", "hyperliquid", "hyperliquid-testnet"} {
 		t.Run(chainName, func(t *testing.T) {
@@ -181,17 +183,47 @@ func newEvmChainSpecificForChain(chainName string) *specific.EvmChainSpecificObj
 		chains.GetChain(chainName),
 		time.Second,
 		&chains.Options{InternalTimeout: time.Second},
+		nil,
 	)
 }
 
 func lowerBoundDetectorCount(t *testing.T, processor lower_bounds.LowerBoundProcessor) int {
 	t.Helper()
-	base, ok := processor.(*lower_bounds.BaseLowerBoundProcessor)
+	base, ok := processor.(*lower_bounds.GenericLowerBoundProcessor)
 	require.True(t, ok)
 
 	detectors := reflect.ValueOf(base).Elem().FieldByName("lowerBoundsDetectors")
 	require.True(t, detectors.IsValid())
 	return detectors.Len()
+}
+
+// The historical_proofs label describes what backs eth_getProof, so the detector follows
+// that method rather than debug_proofsSyncStatus, which the base EVM spec always carries.
+func TestEvmHistoricalProofsLabelDetectorFollowsGetProofSupport(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	assert.True(t, hasHistoricalProofsLabelDetector(t, "ethereum"))
+	for _, chainName := range []string{"viction", "viction-testnet", "hyperliquid", "hyperliquid-testnet"} {
+		t.Run(chainName, func(t *testing.T) {
+			assert.False(t, hasHistoricalProofsLabelDetector(t, chainName))
+		})
+	}
+}
+
+func hasHistoricalProofsLabelDetector(t *testing.T, chainName string) bool {
+	t.Helper()
+	processor, ok := newEvmChainSpecificForChain(chainName).LabelsProcessor().(*labels.GenericLabelsProcessor)
+	require.True(t, ok)
+
+	detectors := reflect.ValueOf(processor).Elem().FieldByName("labelsDetectors")
+	require.True(t, detectors.IsValid())
+	target := reflect.TypeOf(&eth_labels.EthHistoricalProofsLabelsDetector{})
+	for i := range detectors.Len() {
+		if detectors.Index(i).Elem().Type() == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
@@ -209,7 +241,7 @@ func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
 
 	connector.On("SendRequest", ctx, mock.MatchedBy(func(request protocol.RequestHolder) bool {
 		reqBody, err := request.Body()
-		return err == nil && assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["safe",false]}`, string(reqBody))
+		return err == nil && assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["safe",false]}`, string(reqBody))
 	})).Return(response)
 
 	block, err := test_utils.NewEvmChainSpecific(connector).GetSafeBlock(ctx)

@@ -8,6 +8,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/auth"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/metadata"
 )
 
 func newTokenStrategyForTest(t *testing.T, secret string) auth.AuthRequestStrategy {
@@ -93,4 +94,36 @@ func TestNoopRequestStrategy_NoHeaders(t *testing.T) {
 
 	// Assert
 	assert.NoError(t, err)
+}
+
+func TestTokenRequestStrategy_GrpcPayload_Success(t *testing.T) {
+	strat := newTokenStrategyForTest(t, "super-secret")
+	payload := auth.NewGrpcAuthPayload(metadata.Pairs(auth.XNodecoreToken, "super-secret"))
+
+	assert.NoError(t, strat.AuthenticateRequest(context.Background(), payload))
+}
+
+// metadata keys are case-insensitive: any client casing lands lowercase on
+// the wire and must still resolve the token
+func TestTokenRequestStrategy_GrpcPayload_KeyIsCaseInsensitive(t *testing.T) {
+	strat := newTokenStrategyForTest(t, "super-secret")
+	payload := auth.NewGrpcAuthPayload(metadata.New(map[string]string{"X-NODECORE-TOKEN": "super-secret"}))
+
+	assert.NoError(t, strat.AuthenticateRequest(context.Background(), payload))
+}
+
+func TestTokenRequestStrategy_GrpcPayload_InvalidToken(t *testing.T) {
+	strat := newTokenStrategyForTest(t, "super-secret")
+	payload := auth.NewGrpcAuthPayload(metadata.Pairs(auth.XNodecoreToken, "wrong-secret"))
+
+	err := strat.AuthenticateRequest(context.Background(), payload)
+	assert.ErrorContains(t, err, "invalid secret token")
+}
+
+func TestTokenRequestStrategy_GrpcPayload_MissingToken(t *testing.T) {
+	strat := newTokenStrategyForTest(t, "super-secret")
+	payload := auth.NewGrpcAuthPayload(metadata.MD{})
+
+	err := strat.AuthenticateRequest(context.Background(), payload)
+	assert.ErrorContains(t, err, "invalid secret token")
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 )
 
@@ -66,7 +66,7 @@ func (o *ObserverConnector) SendRequest(ctx context.Context, request protocol.Re
 			return o.sendRequest(ctx, exec, request)
 		})
 
-	// there could be internal requests through this connector, so we should add results to the BaseStatsService directly
+	// there could be internal requests through this connector, so we should add results to the GenericStatsService directly
 	if reqObserver.GetRequestKind() == protocol.InternalUnary {
 		for _, hook := range o.responseReceivedHooks {
 			hook.OnResponseReceived(ctx, request, &protocol.ResponseHolderWrapper{Response: response})

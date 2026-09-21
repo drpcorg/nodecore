@@ -78,6 +78,17 @@ func parseHexInt(raw []byte) (int64, error) {
 	return strconv.ParseInt(hexValue, 16, 64)
 }
 
+// parseEvmBlockNumber accepts both JSON shapes a block number is reported in: a quoted hex
+// string ("0x1a") and a bare decimal number (26). parseHexInt alone would read a bare 26
+// as 0x26.
+func parseEvmBlockNumber(raw json.RawMessage) (int64, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, `"`) {
+		return parseHexInt(raw)
+	}
+	return strconv.ParseInt(trimmed, 10, 64)
+}
+
 func isEvmNullResult(raw []byte) bool {
 	return strings.TrimSpace(string(raw)) == "null" || len(strings.TrimSpace(string(raw))) == 0
 }

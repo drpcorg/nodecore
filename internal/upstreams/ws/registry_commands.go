@@ -2,11 +2,11 @@ package ws
 
 import (
 	"github.com/drpcorg/nodecore/internal/protocol"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
+	specs "github.com/drpcorg/public/pkg/methods"
 )
 
 type registryCommand interface {
-	handle(registry *BaseRequestRegistry)
+	handle(registry *GenericRequestRegistry)
 }
 
 type registerCommand struct {
@@ -21,7 +21,7 @@ func newRegisterCommand(requestID string, req RequestOperation) *registerCommand
 	}
 }
 
-func (c *registerCommand) handle(registry *BaseRequestRegistry) {
+func (c *registerCommand) handle(registry *GenericRequestRegistry) {
 	registry.registryState.requests[c.requestID] = c.req
 }
 
@@ -35,7 +35,7 @@ func newAbortCommand(requestID string) *abortCommand {
 	}
 }
 
-func (c *abortCommand) handle(registry *BaseRequestRegistry) {
+func (c *abortCommand) handle(registry *GenericRequestRegistry) {
 	if req, ok := registry.registryState.requests[c.requestID]; ok {
 		delete(registry.registryState.requests, c.requestID)
 		req.SetSkipDoOnClose()
@@ -53,7 +53,7 @@ func newRpcCommand(response *protocol.WsResponse) *rpcCommand {
 	}
 }
 
-func (c *rpcCommand) handle(registry *BaseRequestRegistry) {
+func (c *rpcCommand) handle(registry *GenericRequestRegistry) {
 	state := registry.registryState
 	req, ok := state.requests[c.response.Id]
 	if !ok {
@@ -80,6 +80,9 @@ func (c *rpcCommand) handle(registry *BaseRequestRegistry) {
 			}
 			sub.ops[req.Id()] = req
 		}
+		// the confirmation's only job is the bookkeeping above; nothing
+		// upstream waits for it, so it never reaches consumers
+		return
 	}
 
 	req.Write(c.response, MessageInternal)
@@ -95,7 +98,7 @@ func newSubscriptionCommand(response *protocol.WsResponse) *subscriptionCommand 
 	}
 }
 
-func (c *subscriptionCommand) handle(registry *BaseRequestRegistry) {
+func (c *subscriptionCommand) handle(registry *GenericRequestRegistry) {
 	sub, ok := registry.registryState.subs[c.response.SubId]
 	if !ok {
 		return
@@ -118,7 +121,7 @@ func newFinishCommand(req RequestOperation, result chan bool) *finishCommand {
 	}
 }
 
-func (c *finishCommand) handle(registry *BaseRequestRegistry) {
+func (c *finishCommand) handle(registry *GenericRequestRegistry) {
 	c.req.Cancel()
 
 	subID := c.req.SubID()
@@ -151,7 +154,7 @@ func newCancelAllCommand() *cancelAllCommand {
 	return &cancelAllCommand{}
 }
 
-func (c *cancelAllCommand) handle(registry *BaseRequestRegistry) {
+func (c *cancelAllCommand) handle(registry *GenericRequestRegistry) {
 	state := registry.registryState
 	ops := make([]RequestOperation, 0, len(state.requests)+len(state.subs))
 

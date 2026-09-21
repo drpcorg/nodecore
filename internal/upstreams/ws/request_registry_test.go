@@ -14,7 +14,7 @@ import (
 )
 
 func TestRequestRegistryRegister(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -30,7 +30,7 @@ func TestRequestRegistryRegister(t *testing.T) {
 }
 
 func TestRequestRegistryStartForwardsInternalMessages(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -46,7 +46,7 @@ func TestRequestRegistryStartForwardsInternalMessages(t *testing.T) {
 func TestRequestRegistryStartCallsDoOnCloseOnCancel(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -62,7 +62,7 @@ func TestRequestRegistryStartCallsDoOnCloseOnCancel(t *testing.T) {
 		Message: []byte(`"0xsub"`),
 	}
 	registry.OnRpcMessage(subscriptionResponse)
-	assertSameMessage(t, req.GetChannel(wsupstream.MessageResponse), subscriptionResponse)
+	awaitSubID(t, req, "0xsub")
 
 	req.Cancel()
 
@@ -78,7 +78,7 @@ func TestRequestRegistryStartCallsDoOnCloseOnCancel(t *testing.T) {
 }
 
 func TestRequestRegistryStartSkipsDoOnCloseWhenDisabled(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -100,7 +100,7 @@ func TestRequestRegistryStartSkipsDoOnCloseWhenDisabled(t *testing.T) {
 }
 
 func TestRequestRegistryAbortCancelsOperationAndRemovesRequest(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -124,7 +124,7 @@ func TestRequestRegistryAbortCancelsOperationAndRemovesRequest(t *testing.T) {
 }
 
 func TestRequestRegistryCancelCancelsUnaryOperationWithoutDoOnClose(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -157,7 +157,7 @@ func TestRequestRegistryCancelCancelsUnaryOperationWithoutDoOnClose(t *testing.T
 func TestRequestRegistryCancelCancelsSubscriptionAndDetachesEvents(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -173,7 +173,7 @@ func TestRequestRegistryCancelCancelsSubscriptionAndDetachesEvents(t *testing.T)
 		Message: []byte(`"0xsub"`),
 	}
 	registry.OnRpcMessage(subscriptionResponse)
-	assertSameMessage(t, req.GetChannel(wsupstream.MessageResponse), subscriptionResponse)
+	awaitSubID(t, req, "0xsub")
 
 	registry.Cancel("request-1")
 
@@ -197,7 +197,7 @@ func TestRequestRegistryCancelCancelsSubscriptionAndDetachesEvents(t *testing.T)
 }
 
 func TestRequestRegistryOnRpcMessageRoutesUnaryResponseOnce(t *testing.T) {
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -215,7 +215,7 @@ func TestRequestRegistryOnRpcMessageRoutesUnaryResponseOnce(t *testing.T) {
 func TestRequestRegistryOnRpcMessageStoresSubscriptionAndRoutesEvents(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -228,8 +228,8 @@ func TestRequestRegistryOnRpcMessageStoresSubscriptionAndRoutesEvents(t *testing
 		Message: []byte(`"0xsub"`),
 	}
 	registry.OnRpcMessage(subscriptionResponse)
-	assertSameMessage(t, req.GetChannel(wsupstream.MessageResponse), subscriptionResponse)
-	assert.Equal(t, "0xsub", req.SubID())
+	awaitSubID(t, req, "0xsub")
+	assertNoMessage(t, req.GetChannel(wsupstream.MessageResponse))
 
 	event := &protocol.WsResponse{
 		Type:    protocol.Ws,
@@ -243,7 +243,7 @@ func TestRequestRegistryOnRpcMessageStoresSubscriptionAndRoutesEvents(t *testing
 func TestRequestRegistryOnRpcMessageWithErrorCancelsOperation(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 
@@ -265,7 +265,7 @@ func TestRequestRegistryOnRpcMessageWithErrorCancelsOperation(t *testing.T) {
 func TestRequestRegistryCancelAllCancelsRequestsAndSubscriptionsWithoutDoOnClose(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	called := make(chan struct{}, 2)
 
 	unaryRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
@@ -289,7 +289,7 @@ func TestRequestRegistryCancelAllCancelsRequestsAndSubscriptionsWithoutDoOnClose
 		Message: []byte(`"0xsub"`),
 	}
 	registry.OnRpcMessage(subscriptionResponse)
-	assertSameMessage(t, subOp.GetChannel(wsupstream.MessageResponse), subscriptionResponse)
+	awaitSubID(t, subOp, "0xsub")
 
 	registry.CancelAll()
 
@@ -323,7 +323,7 @@ func TestRequestRegistryCancelAllCancelsRequestsAndSubscriptionsWithoutDoOnClose
 func TestRequestRegistrySharedSubscriptionKeepsLastOperationActive(t *testing.T) {
 	loadMethodSpecs(t)
 
-	registry := wsupstream.NewBaseRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
+	registry := wsupstream.NewGenericRequestRegistry(context.Background(), chains.ETHEREUM, "upstream-1", "eth")
 	request1, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
 	require.NoError(t, err)
 	request2, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
@@ -353,8 +353,8 @@ func TestRequestRegistrySharedSubscriptionKeepsLastOperationActive(t *testing.T)
 	registry.OnRpcMessage(subscriptionResponse1)
 	registry.OnRpcMessage(subscriptionResponse2)
 
-	assertSameMessage(t, op1.GetChannel(wsupstream.MessageResponse), subscriptionResponse1)
-	assertSameMessage(t, op2.GetChannel(wsupstream.MessageResponse), subscriptionResponse2)
+	awaitSubID(t, op1, "0xsub")
+	awaitSubID(t, op2, "0xsub")
 
 	op1.Cancel()
 	assertDone(t, op1.CtxDone())
@@ -384,7 +384,15 @@ func TestRequestRegistrySharedSubscriptionKeepsLastOperationActive(t *testing.T)
 	}, time.Second, 10*time.Millisecond)
 }
 
-func assertSameMessage(t *testing.T, ch <-chan *protocol.WsResponse, expected *protocol.WsResponse) {
+func awaitSubID(t *testing.T, op wsupstream.RequestOperation, subID string) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		return op.SubID() == subID
+	}, time.Second, 10*time.Millisecond)
+}
+
+func assertSameMessage(t *testing.T, ch <-chan protocol.SubResponse, expected *protocol.WsResponse) {
 	t.Helper()
 
 	select {
@@ -395,7 +403,7 @@ func assertSameMessage(t *testing.T, ch <-chan *protocol.WsResponse, expected *p
 	}
 }
 
-func assertNoMessage(t *testing.T, ch <-chan *protocol.WsResponse) {
+func assertNoMessage(t *testing.T, ch <-chan protocol.SubResponse) {
 	t.Helper()
 
 	select {
@@ -417,7 +425,7 @@ func assertDone(t *testing.T, done <-chan struct{}) {
 	}
 }
 
-func assertClosedChannel(t *testing.T, ch <-chan *protocol.WsResponse) {
+func assertClosedChannel(t *testing.T, ch <-chan protocol.SubResponse) {
 	t.Helper()
 
 	select {

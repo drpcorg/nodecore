@@ -23,7 +23,7 @@ func TestBitcoinClientLabelsDetectorNodeTypeRequest(t *testing.T) {
 	body, err := request.Body()
 	require.NoError(t, err)
 
-	assert.JSONEq(t, `{"id":"1","jsonrpc":"2.0","method":"getnetworkinfo","params":[]}`, string(body))
+	assert.JSONEq(t, `{"id":1,"jsonrpc":"2.0","method":"getnetworkinfo","params":[]}`, string(body))
 }
 
 func TestBitcoinClientLabelsDetectorClientVersionAndType(t *testing.T) {

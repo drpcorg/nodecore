@@ -3,11 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/pkg/utils"
 )
 
 type ServerConfig struct {
@@ -20,7 +22,33 @@ type ServerConfig struct {
 	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
 	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
 	TorUrl          string           `yaml:"tor-url"`
+	// GrpcIngressPort runs the chain-ingress gRPC server: native gRPC clients
+	// call chain methods ("/sui.rpc.v2.../GetObject") directly, with the chain
+	// and api key in the x-nodecore-chain / x-nodecore-key metadata. It is a separate
+	// server from the dshackle one on grpc-port (different clients, auth and
+	// codec), reusing the same tls config. 0 (the default) disables it.
+	GrpcIngressPort int `yaml:"grpc-ingress-port"`
+	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies in front of
+	// nodecore. X-Forwarded-For is only honored when the direct peer matches one
+	// of these; otherwise the direct peer is used as the client IP. Empty (the
+	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
+	// as a client IP.
+	TrustedProxies []string `yaml:"trusted-proxies"`
+
+	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
+	trustedProxyPrefixes []netip.Prefix
 }
+
+// TrustedProxyPrefixes returns the trusted proxy list parsed at config load
+// time. It is empty when no trusted proxies are configured.
+func (s *ServerConfig) TrustedProxyPrefixes() []netip.Prefix {
+	if s == nil {
+		return nil
+	}
+	return s.trustedProxyPrefixes
+}
+
+const SecureSignedLabel = "secure-signed"
 
 type GrpcAuthConfig struct {
 	Enabled                bool          `yaml:"enabled"`
@@ -28,6 +56,10 @@ type GrpcAuthConfig struct {
 	ProviderPrivateKeyPath string        `yaml:"provider-private-key-path"`
 	ExternalPublicKeyPath  string        `yaml:"external-public-key-path"`
 	SessionTTL             time.Duration `yaml:"session-ttl"`
+}
+
+func (g *GrpcAuthConfig) Disabled() bool {
+	return !g.Enabled || g.ProviderPrivateKeyPath == ""
 }
 
 type PyroscopeConfig struct {
@@ -68,6 +100,9 @@ func (s *ServerConfig) validate() error {
 	if s.GrpcPort < 0 {
 		return fmt.Errorf("incorrect grpc port - %d", s.GrpcPort)
 	}
+	if s.GrpcIngressPort < 0 {
+		return fmt.Errorf("incorrect grpc ingress port - %d", s.GrpcIngressPort)
+	}
 	if s.MetricsPort < 0 {
 		return fmt.Errorf("incorrect metrics port - %d", s.MetricsPort)
 	}
@@ -83,6 +118,10 @@ func (s *ServerConfig) validate() error {
 		return fmt.Errorf("grpc port %d is already in use", s.GrpcPort)
 	}
 	ports.Add(s.GrpcPort)
+	if ports.Contains(s.GrpcIngressPort) && s.GrpcIngressPort != 0 {
+		return fmt.Errorf("grpc ingress port %d is already in use", s.GrpcIngressPort)
+	}
+	ports.Add(s.GrpcIngressPort)
 	if ports.Contains(s.MetricsPort) && s.MetricsPort != 0 {
 		return fmt.Errorf("metrics port %d is already in use", s.MetricsPort)
 	}
@@ -94,6 +133,12 @@ func (s *ServerConfig) validate() error {
 	if ports.Contains(s.HealthPort) && s.HealthPort != 0 {
 		return fmt.Errorf("health port %d is already in use", s.HealthPort)
 	}
+
+	trustedProxyPrefixes, err := utils.ParseTrustedProxies(s.TrustedProxies)
+	if err != nil {
+		return fmt.Errorf("trusted-proxies validation error - %s", err.Error())
+	}
+	s.trustedProxyPrefixes = trustedProxyPrefixes
 
 	if err := s.TlsConfig.validate(); err != nil {
 		return fmt.Errorf("tls config validation error - %s", err.Error())

@@ -7,8 +7,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
@@ -82,7 +82,7 @@ func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) upstream
 func (u *UpstreamSupervisorMock) GetUpstream(id string) upstreams.Upstream {
 	args := u.Called(id)
 
-	return args.Get(0).(*upstreams.BaseUpstream)
+	return args.Get(0).(*upstreams.GenericUpstream)
 }
 
 func (u *UpstreamSupervisorMock) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {

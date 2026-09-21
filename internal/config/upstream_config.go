@@ -3,8 +3,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,9 +15,10 @@ import (
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/methods"
+	"github.com/drpcorg/public/pkg/methods"
 	"github.com/evanw/esbuild/pkg/api"
 	"github.com/samber/lo"
+	"gopkg.in/yaml.v3"
 )
 
 type UpstreamConfig struct {
@@ -91,9 +94,9 @@ func (u UpstreamMode) Validate() error {
 func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
 	defaultEnabled := u != nil && u.Mode == StrictMode
 	options := DispatchOptions{
-		Broadcast:    lo.ToPtr(defaultEnabled),
-		MaximumValue: lo.ToPtr(defaultEnabled),
-		NotNull:      lo.ToPtr(defaultEnabled),
+		Broadcast:    new(defaultEnabled),
+		MaximumValue: new(defaultEnabled),
+		NotNull:      new(defaultEnabled),
 	}
 	if u == nil || u.ChainDefaults == nil {
 		return options
@@ -114,11 +117,23 @@ func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
 	return options
 }
 
+// HeadMode selects how a gRPC head connector tracks the head: a head
+// subscription (the node pushes checkpoints/blocks) or polling. It is
+// consulted only when the head connector is grpc; every other connector type
+// implies its mode (websocket subscribes, json-rpc/rest/tendermint poll).
+type HeadMode string
+
+const (
+	HeadModeSubscribe HeadMode = "subscribe"
+	HeadModePoll      HeadMode = "poll"
+)
+
 type Upstream struct {
 	Id                string                   `yaml:"id"`
 	ChainName         string                   `yaml:"chain"`
 	Connectors        []*ApiConnectorConfig    `yaml:"connectors"`
 	HeadConnector     string                   `yaml:"head-connector"`
+	HeadMode          HeadMode                 `yaml:"head-mode"`
 	PollInterval      time.Duration            `yaml:"poll-interval"`
 	Methods           *MethodsConfig           `yaml:"methods"`
 	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config"`
@@ -127,6 +142,48 @@ type Upstream struct {
 	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 	GroupLabels       []string                 `yaml:"group-labels"`
+	Labels            UpstreamLabels           `yaml:"labels"`
+}
+
+// hasGrpcLabel is published on every upstream configured with a grpc connector, so
+// gRPC clients can select upstreams that serve gRPC methods with a label selector.
+const hasGrpcLabel = "has_grpc"
+
+// UpstreamLabels is a manual upstream label map. Label values are strings, but any
+// YAML scalar is accepted and stored as its literal text, so `archive: false` and
+// `archive: "false"` are equivalent - a plain map[string]string would reject the
+// unquoted form. It is named UpstreamLabels rather than Labels because consumers
+// import both this package and protocol, which has its own Labels type.
+type UpstreamLabels map[string]string
+
+// UnmarshalYAML decodes the mapping into yaml.Nodes and keeps each value's literal text.
+// Decoding rather than walking node.Content buys yaml.v3's own diagnostics - a duplicate
+// key is reported with both line numbers, which matters because errors raised here carry
+// no upstream id - and makes merge keys (`<<: *shared`) work for free.
+//
+// An alias node is resolved by the decoder before this method is called, so `labels: *shared`
+// arrives as a plain mapping. Alias *values* (`provider: *prov`) are not resolved, hence the
+// explicit step below.
+func (u *UpstreamLabels) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return errors.New("labels must be a mapping of label names to scalar values")
+	}
+	var raw map[string]yaml.Node
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	labels := make(UpstreamLabels, len(raw))
+	for key, value := range raw {
+		if value.Kind == yaml.AliasNode && value.Alias != nil {
+			value = *value.Alias
+		}
+		if value.Kind != yaml.ScalarNode {
+			return fmt.Errorf("label '%s' must have a scalar value", key)
+		}
+		labels[key] = value.Value
+	}
+	*u = labels
+	return nil
 }
 
 func (u *Upstream) GetApiConnectorTypes() []specs.ApiConnectorType {
@@ -305,6 +362,60 @@ type ApiConnectorConfig struct {
 	// hard-coded defaults (hop-by-hop per RFC 7230 plus Set-Cookie /
 	// Server). Matching is case-insensitive (HTTP header rules).
 	ResponseHeaderDeny []string `yaml:"response-header-deny,omitempty"`
+	// Settings carries per-transport connector tuning; see ConnectorSettings.
+	Settings *ConnectorSettings `yaml:"settings,omitempty"`
+}
+
+const DefaultHttpResponseTimeout = 60 * time.Second
+
+// ConnectorSettings groups per-connector tuning by the transport it applies to, so that
+// settings for different connector kinds can be added without widening
+// ApiConnectorConfig itself. Only the group matching the connector's own transport may be
+// set - validate rejects the others rather than ignoring them silently.
+type ConnectorSettings struct {
+	Http *HttpConnectorSettings `yaml:"http,omitempty"`
+}
+type HttpConnectorSettings struct {
+	ResponseTimeout *time.Duration `yaml:"response-timeout"`
+}
+
+var httpConnectorTypes = []specs.ApiConnectorType{
+	specs.JsonRpcConnector,
+	specs.TendermintConnector,
+	specs.RestConnector,
+	specs.RestIndexer,
+	specs.RestAdditional,
+}
+
+func isHttpConnectorType(connectorType specs.ApiConnectorType) bool {
+	return slices.Contains(httpConnectorTypes, connectorType)
+}
+func (a *ApiConnectorConfig) HttpResponseTimeout() time.Duration {
+	if a == nil || a.Settings == nil || a.Settings.Http == nil || a.Settings.Http.ResponseTimeout == nil {
+		return DefaultHttpResponseTimeout
+	}
+	return *a.Settings.Http.ResponseTimeout
+}
+func (s *ConnectorSettings) validate(connectorName string, connectorType specs.ApiConnectorType) error {
+	if s == nil {
+		return nil
+	}
+	if s.Http != nil {
+		if !isHttpConnectorType(connectorType) {
+			return fmt.Errorf("http settings are not applicable to the '%s' connector", connectorName)
+		}
+		if err := s.Http.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *HttpConnectorSettings) validate() error {
+	if h.ResponseTimeout != nil && *h.ResponseTimeout < 0 {
+		return errors.New("http response timeout can't be less than 0")
+	}
+	return nil
 }
 
 func (a *ApiConnectorConfig) GetApiConnectorType() specs.ApiConnectorType {
@@ -535,6 +646,8 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		)
 	}
 
+	specName := chains.GetMethodSpecNameByChainName(u.ChainName)
+	specConnectors := specs.GetSpecConnectors(specName)
 	connectorTypeSet := mapset.NewThreadUnsafeSet[specs.ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.GetApiConnectorType()) {
@@ -543,10 +656,18 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		if err := connector.validate(torProxyUrl); err != nil {
 			return err
 		}
+		// A connector the chain's spec doesn't declare serves no method at all: it would
+		// be dialed for nothing and misrepresent the upstream's transports.
+		if !slices.Contains(specConnectors, connector.GetApiConnectorType()) {
+			return fmt.Errorf("connector '%s' is not supported by the '%s' method spec of chain '%s'", connector.Type, specName, u.ChainName)
+		}
 		connectorTypeSet.Add(connector.GetApiConnectorType())
 	}
 
 	if err := u.validateHeadConnector(); err != nil {
+		return err
+	}
+	if err := u.validateHeadMode(); err != nil {
 		return err
 	}
 
@@ -572,7 +693,34 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 	}
 
+	if err := u.validateLabels(); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// validateLabels iterates the labels in sorted key order so that a config with several
+// invalid labels always reports the same one - map iteration order is random.
+func (u *Upstream) validateLabels() error {
+	for _, label := range slices.Sorted(maps.Keys(u.Labels)) {
+		if label == "" {
+			return errors.New("labels must not contain an empty key")
+		}
+		if u.Labels[label] == "" {
+			return fmt.Errorf("label '%s' must have a non-empty value", label)
+		}
+	}
+	return nil
+}
+
+func (u *Upstream) validateHeadMode() error {
+	switch u.HeadMode {
+	case HeadModeSubscribe, HeadModePoll:
+		return nil
+	default:
+		return fmt.Errorf("invalid head-mode '%s', expected 'subscribe' or 'poll'", u.HeadMode)
+	}
 }
 
 func (u *Upstream) validateHeadConnector() error {
@@ -627,6 +775,10 @@ func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 		return err
 	}
 
+	if err := a.Settings.validate(a.Type, a.GetApiConnectorType()); err != nil {
+		return err
+	}
+
 	if a.Url == "" {
 		return fmt.Errorf("url must be specified for connector '%s'", a.Type)
 	}
@@ -638,6 +790,11 @@ func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 		return fmt.Errorf("invalid url for connector '%s' - scheme and host are required", a.Type)
 	}
 	if strings.HasSuffix(parsedUrl.Hostname(), ".onion") {
+		if a.GetApiConnectorType() == specs.GrpcConnector {
+			// the grpc connector dials directly (no SOCKS5 support); reject at
+			// config time instead of failing at dial time with no hint
+			return errors.New("onion endpoints are not supported for the 'grpc' connector")
+		}
 		if torProxyUrl == "" {
 			return errors.New("tor proxy url is required for onion endpoints")
 		}

@@ -14,26 +14,26 @@ type LowerBoundEventProcessor interface {
 	UpstreamStateEventProcessor
 }
 
-type BaseLowerBoundEventProcessor struct {
-	lifecycle           *utils.BaseLifecycle
+type GenericLowerBoundEventProcessor struct {
+	lifecycle           *utils.GenericLifecycle
 	upstreamId          string
 	lowerBoundProcessor lower_bounds.LowerBoundProcessor
 	emitter             Emitter
 }
 
-func (b *BaseLowerBoundEventProcessor) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
+func (b *GenericLowerBoundEventProcessor) PredictLowerBound(boundType protocol.LowerBoundType, timeOffset int64) int64 {
 	return b.lowerBoundProcessor.PredictLowerBound(boundType, timeOffset)
 }
 
-func (b *BaseLowerBoundEventProcessor) Type() EventProcessorType {
+func (b *GenericLowerBoundEventProcessor) Type() EventProcessorType {
 	return LowerBoundEventProcessorType
 }
 
-func (b *BaseLowerBoundEventProcessor) SetEmitter(emitter Emitter) {
+func (b *GenericLowerBoundEventProcessor) SetEmitter(emitter Emitter) {
 	b.emitter = emitter
 }
 
-func (b *BaseLowerBoundEventProcessor) Start() {
+func (b *GenericLowerBoundEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		b.lowerBoundProcessor.Start()
 
@@ -58,29 +58,29 @@ func (b *BaseLowerBoundEventProcessor) Start() {
 	})
 }
 
-func (b *BaseLowerBoundEventProcessor) Stop() {
+func (b *GenericLowerBoundEventProcessor) Stop() {
 	b.lifecycle.Stop()
 	b.lowerBoundProcessor.Stop()
 }
 
-func (b *BaseLowerBoundEventProcessor) Running() bool {
+func (b *GenericLowerBoundEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func NewBaseLowerBoundEventProcessor(
+func NewGenericLowerBoundEventProcessor(
 	ctx context.Context,
 	upstreamId string,
 	lowerBoundProcessor lower_bounds.LowerBoundProcessor,
-) *BaseLowerBoundEventProcessor {
+) *GenericLowerBoundEventProcessor {
 	if lowerBoundProcessor == nil {
 		return nil
 	}
 
-	return &BaseLowerBoundEventProcessor{
-		lifecycle:           utils.NewBaseLifecycle(fmt.Sprintf("%s_lower_bounds_event_processor", upstreamId), ctx),
+	return &GenericLowerBoundEventProcessor{
+		lifecycle:           utils.NewGenericLifecycle(fmt.Sprintf("%s_lower_bounds_event_processor", upstreamId), ctx),
 		upstreamId:          upstreamId,
 		lowerBoundProcessor: lowerBoundProcessor,
 	}
 }
 
-var _ LowerBoundEventProcessor = (*BaseLowerBoundEventProcessor)(nil)
+var _ LowerBoundEventProcessor = (*GenericLowerBoundEventProcessor)(nil)

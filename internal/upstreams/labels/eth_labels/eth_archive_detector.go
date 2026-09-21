@@ -18,6 +18,7 @@ const (
 	ArbitrumNitroBlock   = "0x152DD47"
 	OptimismBedrockBlock = "0x645C277"
 	EvmosGenesisBlock    = "0xe54d"
+	BittensorEvmBlock    = "0x424ED4" // 4345556, first block with EVM runtime (spec 210)
 	EarliestBlock        = "0x2710"
 )
 
@@ -30,13 +31,13 @@ type EthArchiveLabelsDetector struct {
 
 func (e *EthArchiveLabelsDetector) DetectLabels() map[string]string {
 	if !e.hasArchiveState(e.readEarliestBlock()) {
-		return map[string]string{"archive": "false"}
+		return map[string]string{chains.ArchiveLabel: "false"}
 	}
 	recentBlock, ok := e.recentArchiveProbeBlock()
 	if ok && !e.hasArchiveState(recentBlock) {
-		return map[string]string{"archive": "false"}
+		return map[string]string{chains.ArchiveLabel: "false"}
 	}
-	return map[string]string{"archive": "true"}
+	return map[string]string{chains.ArchiveLabel: "true"}
 }
 
 func (e *EthArchiveLabelsDetector) hasArchiveState(block string) bool {
@@ -109,6 +110,8 @@ func (e *EthArchiveLabelsDetector) readEarliestBlock() string {
 		return OptimismBedrockBlock
 	case chains.EVMOS:
 		return EvmosGenesisBlock
+	case chains.BITTENSOR:
+		return BittensorEvmBlock
 	default:
 		return EarliestBlock
 	}

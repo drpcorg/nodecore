@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/ton_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -55,13 +56,13 @@ func TestTonFactoryReturnsV2ForRest(t *testing.T) {
 func TestTonSubscribeHeadRequest(t *testing.T) {
 	req, err := newV2(nil).SubscribeHeadRequest()
 	assert.Nil(t, req)
-	assert.EqualError(t, err, "ton: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestTonParseSubscriptionBlock(t *testing.T) {
 	block, err := newV3(nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "ton: head subscriptions are not supported")
+	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
 
 func TestTonCapDetectorsAreNil(t *testing.T) {

@@ -47,7 +47,7 @@ func TestRatingStrategyGetBestByLatency(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisors").Return([]upstreams.ChainSupervisor{chSup})
 
-	tracker := dimensions.NewBaseDimensionTracker()
+	tracker := dimensions.NewGenericDimensionTracker()
 	dims1 := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id1", "eth_getBalance")
 	dims1.TrackRequestDuration(1000000)
 	dims2 := tracker.GetUpstreamDimensions(chains.ARBITRUM, "id2", "eth_getBalance")
@@ -153,7 +153,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 			upSupervisor := mocks.NewUpstreamSupervisorMock()
 			upSupervisor.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
 
-			tracker := dimensions.NewBaseDimensionTracker()
+			tracker := dimensions.NewGenericDimensionTracker()
 			ratingRegistry := rating.NewRatingRegistry(upSupervisor, tracker, &config.ScorePolicyConfig{CalculationFunctionName: config.DefaultLatencyPolicyFuncName})
 
 			request := test.requestFunc(test.method)
@@ -170,7 +170,7 @@ func TestRatingStrategyMatchersErrors(t *testing.T) {
 	}
 }
 
-func TestBaseStrategyMatchersErrors(t *testing.T) {
+func TestGenericStrategyMatchersErrors(t *testing.T) {
 	tests := []struct {
 		name             string
 		method           string
@@ -232,9 +232,9 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 			test.publishEventFunc(chSup)
 
 			request := test.requestFunc(test.method)
-			baseStrategy := flow.NewBaseStrategy(chSup)
+			genericStrategy := flow.NewGenericStrategy(chSup)
 
-			_, err := baseStrategy.SelectUpstream(request)
+			_, err := genericStrategy.SelectUpstream(request)
 
 			assert.NotNil(t, err)
 			assert.Equal(t, test.expectedErr, err)
@@ -242,56 +242,56 @@ func TestBaseStrategyMatchersErrors(t *testing.T) {
 	}
 }
 
-func TestBaseStrategyWithWsCap(t *testing.T) {
+func TestGenericStrategyWithWsCap(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap))
 	request := protocol.NewUpstreamJsonRpcRequest("id", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getBalance"}, true, "")
-	baseStrategy := flow.NewBaseStrategy(chSup)
+	genericStrategy := flow.NewGenericStrategy(chSup)
 
-	upId, err := baseStrategy.SelectUpstream(request)
+	upId, err := genericStrategy.SelectUpstream(request)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "id1", upId)
 }
 
-func TestBaseStrategyGetUpstreams(t *testing.T) {
+func TestGenericStrategyGetUpstreams(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 	test_utils.PublishEvent(chSup, "id2", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
-	baseStrategy := flow.NewBaseStrategy(chSup)
+	genericStrategy := flow.NewGenericStrategy(chSup)
 
-	firstUpId, err := baseStrategy.SelectUpstream(request)
+	firstUpId, err := genericStrategy.SelectUpstream(request)
 
 	assert.Nil(t, err)
 	assert.Contains(t, []string{"id1", "id2"}, firstUpId)
 
-	secondUpId, err := baseStrategy.SelectUpstream(request)
+	secondUpId, err := genericStrategy.SelectUpstream(request)
 
 	assert.Nil(t, err)
 	assert.Contains(t, []string{"id1", "id2"}, secondUpId)
 	assert.NotEqual(t, firstUpId, secondUpId)
 
-	_, err = baseStrategy.SelectUpstream(request)
+	_, err = genericStrategy.SelectUpstream(request)
 
 	assert.NotNil(t, err)
 	assert.Equal(t, protocol.NoAvailableUpstreamsError(), err)
 }
 
-// selectFreshBaseStrategy mimics production, where a brand-new BaseStrategy is
+// selectFreshGenericStrategy mimics production, where a brand-new GenericStrategy is
 // built per request. The round-robin cursor therefore has to live on the
 // (persistent) chain supervisor, not on the transient strategy instance.
-func selectFreshBaseStrategy(t *testing.T, chSup upstreams.ChainSupervisor) string {
+func selectFreshGenericStrategy(t *testing.T, chSup upstreams.ChainSupervisor) string {
 	t.Helper()
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
-	upId, err := flow.NewBaseStrategy(chSup).SelectUpstream(request)
+	upId, err := flow.NewGenericStrategy(chSup).SelectUpstream(request)
 	assert.NoError(t, err)
 	return upId
 }
 
-// TestBaseStrategyRoundRobinAcrossInstances proves the cursor advances across
+// TestGenericStrategyRoundRobinAcrossInstances proves the cursor advances across
 // separate strategy instances (i.e. across requests) rather than resetting.
-func TestBaseStrategyRoundRobinAcrossInstances(t *testing.T) {
+func TestGenericStrategyRoundRobinAcrossInstances(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
 	test_utils.PublishEvent(chSup, "id2", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
@@ -299,7 +299,7 @@ func TestBaseStrategyRoundRobinAcrossInstances(t *testing.T) {
 
 	picks := make([]string, 0, 6)
 	for i := 0; i < 6; i++ {
-		picks = append(picks, selectFreshBaseStrategy(t, chSup))
+		picks = append(picks, selectFreshGenericStrategy(t, chSup))
 	}
 
 	// First full cycle hits every upstream exactly once...
@@ -308,10 +308,10 @@ func TestBaseStrategyRoundRobinAcrossInstances(t *testing.T) {
 	assert.Equal(t, picks[:3], picks[3:])
 }
 
-// TestBaseStrategyRoundRobinPerChainIsolation proves each chain supervisor owns
+// TestGenericStrategyRoundRobinPerChainIsolation proves each chain supervisor owns
 // an independent cursor: activity on one chain must not perturb another's
 // rotation (the bug the global counter caused).
-func TestBaseStrategyRoundRobinPerChainIsolation(t *testing.T) {
+func TestGenericStrategyRoundRobinPerChainIsolation(t *testing.T) {
 	newChSupWith3 := func() upstreams.ChainSupervisor {
 		chSup := test_utils.CreateChainSupervisor()
 		test_utils.PublishEvent(chSup, "id1", protocol.Available, mapset.NewThreadUnsafeSet[protocol.Cap]())
@@ -326,26 +326,26 @@ func TestBaseStrategyRoundRobinPerChainIsolation(t *testing.T) {
 
 	// Warm up `other` by an arbitrary amount to desync its cursor.
 	for i := 0; i < 7; i++ {
-		selectFreshBaseStrategy(t, other)
+		selectFreshGenericStrategy(t, other)
 	}
 
 	// Interleave `other` selections with `observed`; each iteration also advances
 	// `control` once. If cursors are per-chain, observed == control despite the
 	// interleaved traffic on `other`.
 	for i := 0; i < 6; i++ {
-		selectFreshBaseStrategy(t, other)
-		expected := selectFreshBaseStrategy(t, control)
-		got := selectFreshBaseStrategy(t, observed)
+		selectFreshGenericStrategy(t, other)
+		expected := selectFreshGenericStrategy(t, control)
+		got := selectFreshGenericStrategy(t, observed)
 		assert.Equal(t, expected, got)
 	}
 }
 
-func TestBaseStrategyRoutesByLabelSelector(t *testing.T) {
+func TestGenericStrategyRoutesByLabelSelector(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	publishStateWithLabel(chSup, "id1", "region", "eu")
 	publishStateWithLabel(chSup, "id2", "region", "us")
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
-	strategy := flow.NewBaseStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
+	strategy := flow.NewGenericStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
 
 	up, err := strategy.SelectUpstream(request)
 
@@ -353,11 +353,11 @@ func TestBaseStrategyRoutesByLabelSelector(t *testing.T) {
 	assert.Equal(t, "id2", up)
 }
 
-func TestBaseStrategyNoMatchIncludesSelectorTrace(t *testing.T) {
+func TestGenericStrategyNoMatchIncludesSelectorTrace(t *testing.T) {
 	chSup := test_utils.CreateChainSupervisor()
 	publishStateWithLabel(chSup, "id1", "region", "eu")
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
-	strategy := flow.NewBaseStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
+	strategy := flow.NewGenericStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
 
 	_, err := strategy.SelectUpstream(request)
 
@@ -402,7 +402,7 @@ func TestSelectorFailureDoesNotMaskAvailabilityErrorPriority(t *testing.T) {
 	chSup.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "id1", EventType: &protocol.StateUpstreamEvent{State: &state}})
 	time.Sleep(10 * time.Millisecond)
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", nil, chains.ARBITRUM)
-	strategy := flow.NewBaseStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
+	strategy := flow.NewGenericStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
 
 	_, err := strategy.SelectUpstream(request)
 
@@ -420,7 +420,7 @@ func TestSelectorFailureDoesNotMaskMethodErrorPriority(t *testing.T) {
 	chSup.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "id1", EventType: &protocol.StateUpstreamEvent{State: &state}})
 	time.Sleep(10 * time.Millisecond)
 	request, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", nil, chains.ARBITRUM)
-	strategy := flow.NewBaseStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
+	strategy := flow.NewGenericStrategyWithOptions(chSup, []flow.Matcher{flow.NewLabelMatcher("region", []string{"us"})}, nil)
 
 	_, err := strategy.SelectUpstream(request)
 

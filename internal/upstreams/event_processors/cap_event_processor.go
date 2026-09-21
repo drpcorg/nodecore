@@ -14,22 +14,22 @@ type CapEventProcessor interface {
 	UpstreamStateEventProcessor
 }
 
-type BaseCapEventProcessor struct {
-	lifecycle    *utils.BaseLifecycle
+type GenericCapEventProcessor struct {
+	lifecycle    *utils.GenericLifecycle
 	upstreamId   string
 	capProcessor caps.CapProcessor
 	emitter      Emitter
 }
 
-func (b *BaseCapEventProcessor) Type() EventProcessorType {
+func (b *GenericCapEventProcessor) Type() EventProcessorType {
 	return CapEventProcessorType
 }
 
-func (b *BaseCapEventProcessor) SetEmitter(emitter Emitter) {
+func (b *GenericCapEventProcessor) SetEmitter(emitter Emitter) {
 	b.emitter = emitter
 }
 
-func (b *BaseCapEventProcessor) Start() {
+func (b *GenericCapEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
 		// Subscribe before starting the processor so the initial merged cap set,
 		// published as soon as the first detector reports, is never missed.
@@ -55,25 +55,25 @@ func (b *BaseCapEventProcessor) Start() {
 	})
 }
 
-func (b *BaseCapEventProcessor) Stop() {
+func (b *GenericCapEventProcessor) Stop() {
 	b.lifecycle.Stop()
 	b.capProcessor.Stop()
 }
 
-func (b *BaseCapEventProcessor) Running() bool {
+func (b *GenericCapEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func NewBaseCapEventProcessor(ctx context.Context, upstreamId string, capProcessor caps.CapProcessor) *BaseCapEventProcessor {
+func NewGenericCapEventProcessor(ctx context.Context, upstreamId string, capProcessor caps.CapProcessor) *GenericCapEventProcessor {
 	if capProcessor == nil {
 		return nil
 	}
 
-	return &BaseCapEventProcessor{
-		lifecycle:    utils.NewBaseLifecycle(fmt.Sprintf("%s_cap_event_processor", upstreamId), ctx),
+	return &GenericCapEventProcessor{
+		lifecycle:    utils.NewGenericLifecycle(fmt.Sprintf("%s_cap_event_processor", upstreamId), ctx),
 		upstreamId:   upstreamId,
 		capProcessor: capProcessor,
 	}
 }
 
-var _ CapEventProcessor = (*BaseCapEventProcessor)(nil)
+var _ CapEventProcessor = (*GenericCapEventProcessor)(nil)

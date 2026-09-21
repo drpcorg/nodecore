@@ -14,6 +14,7 @@ import (
 const (
 	UnknownClientVersion = "unknown"
 	DefaultClient        = "default client"
+	HlClientType         = "hl"
 )
 
 var semverLikeRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+`)
@@ -61,6 +62,11 @@ func NewEthClientLabelsDetector(
 }
 
 func (e *EthClientLabelsDetector) clientVersion(client string) string {
+	// The classic HyperLiquid node reports no version at all ("hyperliquid evm Mainnet")
+	if isHlNode(client) {
+		return UnknownClientVersion
+	}
+
 	if i := strings.IndexByte(client, '/'); i != -1 {
 		client = client[i+1:]
 
@@ -98,6 +104,11 @@ func (e *EthClientLabelsDetector) clientType(client string) string {
 		return DefaultClient
 	}
 
+	// The classic HyperLiquid node reports e.g. "hyperliquid evm Mainnet"
+	if isHlNode(client) {
+		return HlClientType
+	}
+
 	// Has a slash — type is everything before it
 	if i := strings.IndexByte(client, '/'); i != -1 {
 		clientPart := client[:i]
@@ -123,6 +134,12 @@ func (e *EthClientLabelsDetector) clientType(client string) string {
 
 func isSemverLike(version string) bool {
 	return semverLikeRe.MatchString(version)
+}
+
+// isHlNode reports whether web3_clientVersion belongs to the classic
+// HyperLiquid node, which answers e.g. "hyperliquid evm Mainnet"
+func isHlNode(client string) bool {
+	return strings.HasPrefix(strings.ToLower(client), "hyperliquid")
 }
 
 var _ labels.ClientLabelsDetector = (*EthClientLabelsDetector)(nil)

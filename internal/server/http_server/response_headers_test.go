@@ -12,7 +12,7 @@ import (
 // REST clients depend on the upstream's Content-Type / signature / CORS
 // headers reaching them verbatim. This test pins that path so a future
 // refactor can't silently drop them.
-func TestCopyUpstreamResponseHeaders_ForwardsBaseUpstreamHeaders(t *testing.T) {
+func TestCopyUpstreamResponseHeaders_ForwardsGenericUpstreamHeaders(t *testing.T) {
 	upstream := http.Header{
 		"Content-Type":    {"application/json"},
 		"X-Custom-Header": {"alpha", "beta"},

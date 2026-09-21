@@ -105,7 +105,7 @@ const (
 )
 
 type RequestOperation interface {
-	Write(message *protocol.WsResponse, messageType MessageType)
+	Write(message protocol.SubResponse, messageType MessageType)
 	SetSubID(subID []byte)
 	SetSkipDoOnClose()
 
@@ -115,7 +115,7 @@ type RequestOperation interface {
 	SubIdBytes() []byte
 	ShouldDoOnClose() bool
 	Method() string
-	GetChannel(messageType MessageType) chan *protocol.WsResponse
+	GetChannel(messageType MessageType) chan protocol.SubResponse
 	SubType() string
 
 	CtxDone() <-chan struct{}
@@ -124,11 +124,11 @@ type RequestOperation interface {
 	DoOnClose()
 }
 
-type BaseRequestOp struct {
+type GenericRequestOp struct {
 	mu sync.RWMutex
 
-	responseChan     chan *protocol.WsResponse
-	internalMessages chan *protocol.WsResponse
+	responseChan     chan protocol.SubResponse
+	internalMessages chan protocol.SubResponse
 
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -142,11 +142,11 @@ type BaseRequestOp struct {
 	doOnClose     DoOnClose
 }
 
-func (r *BaseRequestOp) DoOnClose() {
+func (r *GenericRequestOp) DoOnClose() {
 	r.doOnClose(r)
 }
 
-func (r *BaseRequestOp) Write(message *protocol.WsResponse, messageType MessageType) {
+func (r *GenericRequestOp) Write(message protocol.SubResponse, messageType MessageType) {
 	switch messageType {
 	case MessageInternal:
 		select {
@@ -167,7 +167,7 @@ func (r *BaseRequestOp) Write(message *protocol.WsResponse, messageType MessageT
 	}
 }
 
-func (r *BaseRequestOp) GetChannel(messageType MessageType) chan *protocol.WsResponse {
+func (r *GenericRequestOp) GetChannel(messageType MessageType) chan protocol.SubResponse {
 	switch messageType {
 	case MessageInternal:
 		return r.internalMessages
@@ -177,7 +177,7 @@ func (r *BaseRequestOp) GetChannel(messageType MessageType) chan *protocol.WsRes
 	return nil
 }
 
-func (r *BaseRequestOp) SubIdBytes() []byte {
+func (r *GenericRequestOp) SubIdBytes() []byte {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -186,19 +186,19 @@ func (r *BaseRequestOp) SubIdBytes() []byte {
 	return subIdBytes
 }
 
-func (r *BaseRequestOp) Id() string {
+func (r *GenericRequestOp) Id() string {
 	return r.id
 }
 
-func (r *BaseRequestOp) CtxDone() <-chan struct{} {
+func (r *GenericRequestOp) CtxDone() <-chan struct{} {
 	return r.ctx.Done()
 }
 
-func (r *BaseRequestOp) SubType() string {
+func (r *GenericRequestOp) SubType() string {
 	return r.subType
 }
 
-func (r *BaseRequestOp) Cancel() {
+func (r *GenericRequestOp) Cancel() {
 	if r.completed.CompareAndSwap(false, true) {
 		r.cancel()
 
@@ -209,49 +209,49 @@ func (r *BaseRequestOp) Cancel() {
 	}
 }
 
-func (r *BaseRequestOp) Method() string {
+func (r *GenericRequestOp) Method() string {
 	return r.method
 }
 
-func (r *BaseRequestOp) IsCompleted() bool {
+func (r *GenericRequestOp) IsCompleted() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.completed.Load()
 }
 
-func (r *BaseRequestOp) SetSubID(subID []byte) {
+func (r *GenericRequestOp) SetSubID(subID []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.subId = protocol.ResultAsString(subID)
 	r.subIdAsBytes = subID
 }
 
-func (r *BaseRequestOp) SubID() string {
+func (r *GenericRequestOp) SubID() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.subId
 }
 
-func (r *BaseRequestOp) SetSkipDoOnClose() {
+func (r *GenericRequestOp) SetSkipDoOnClose() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.skipDoOnClose = true
 }
 
-func (r *BaseRequestOp) ShouldDoOnClose() bool {
+func (r *GenericRequestOp) ShouldDoOnClose() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return !r.skipDoOnClose
 }
 
-func NewBaseRequestOp(ctx context.Context, id, method, subType string, doOnClose DoOnClose) *BaseRequestOp {
+func NewGenericRequestOp(ctx context.Context, id, method, subType string, doOnClose DoOnClose) *GenericRequestOp {
 	ctx, cancel := context.WithCancel(ctx)
 	bufferSize := requestOpBufferSize(subType)
 
-	return &BaseRequestOp{
+	return &GenericRequestOp{
 		id:               id,
-		responseChan:     make(chan *protocol.WsResponse, bufferSize),
-		internalMessages: make(chan *protocol.WsResponse, bufferSize),
+		responseChan:     make(chan protocol.SubResponse, bufferSize),
+		internalMessages: make(chan protocol.SubResponse, bufferSize),
 		ctx:              ctx,
 		cancel:           cancel,
 		method:           method,
@@ -267,4 +267,4 @@ func requestOpBufferSize(subType string) int {
 	return defaultRequestOpBufferSize
 }
 
-var _ RequestOperation = (*BaseRequestOp)(nil)
+var _ RequestOperation = (*GenericRequestOp)(nil)

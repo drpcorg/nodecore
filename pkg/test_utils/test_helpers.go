@@ -18,19 +18,23 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/aztec_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/beacon_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/bitcoin_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/celestia_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/near_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/solana_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/starknet_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/stellar_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/sui_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	specs "github.com/drpcorg/nodecore/pkg/methods"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/mock"
 )
@@ -75,15 +79,20 @@ func NewUpstreamRequest(t *testing.T, method string, params any) protocol.Reques
 func CtxWithRemoteAddr(remote string) context.Context {
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	req.RemoteAddr = remote
-	return utils.ContextWithIps(context.Background(), req)
+	// No trusted proxies: the direct peer is the client.
+	return utils.ContextWithIps(context.Background(), req, nil)
 }
 
+// CtxWithXFF simulates a request that arrived through a trusted proxy, so the
+// client IP is taken from X-Forwarded-For.
 func CtxWithXFF(xff string) context.Context {
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	req.RemoteAddr = "10.255.255.255:5555"
 	if xff != "" {
 		req.Header.Set("X-Forwarded-For", xff)
 	}
-	return utils.ContextWithIps(context.Background(), req)
+	trusted, _ := utils.ParseTrustedProxies([]string{"10.255.255.255/32"})
+	return utils.ContextWithIps(context.Background(), req, trusted)
 }
 
 func GetResultAsBytes(json []byte) []byte {
@@ -210,7 +219,7 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -230,7 +239,7 @@ func TestEvmUpstream(
 	upConfig *config.Upstream,
 	upstreamMethods methods.Methods,
 	processorAggregator *event_processors.UpstreamProcessorAggregator,
-) *upstreams.BaseUpstream {
+) *upstreams.GenericUpstream {
 	index := "00012"
 	upState := utils.NewAtomic[protocol.UpstreamState]()
 	upState.Store(
@@ -243,7 +252,7 @@ func TestEvmUpstream(
 		),
 	)
 
-	return upstreams.NewBaseUpstreamWithParams(
+	return upstreams.NewGenericUpstreamWithParams(
 		"id",
 		chains.ETHEREUM,
 		[]connectors.ApiConnector{connector},
@@ -253,6 +262,7 @@ func TestEvmUpstream(
 		processorAggregator,
 		nil,
 		nil,
+		false,
 	)
 }
 
@@ -265,11 +275,24 @@ func NewEvmChainSpecific(connector connectors.ApiConnector) *evm_specific.EvmCha
 		chains.GetChain("polygon"),
 		1*time.Second,
 		newTestChainOptions(),
+		nil,
 	)
 }
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
-	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, newTestChainOptions())
+	var allConnectors []connectors.ApiConnector
+	if connector != nil {
+		allConnectors = []connectors.ApiConnector{connector}
+	}
+	return NewSolanaChainSpecificWithConnectors(ctx, connector, allConnectors)
+}
+
+func NewSolanaChainSpecificWithConnectors(
+	ctx context.Context,
+	connector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
+) *specific.SolanaChainSpecificObject {
+	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, allConnectors, newTestChainOptions())
 }
 
 func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aztec_specific.AztecChainSpecificObject {
@@ -292,6 +315,16 @@ func NewNearChainSpecific(ctx context.Context, connector connectors.ApiConnector
 	return near_specific.NewNearChainSpecificObject(ctx, chains.GetChain("near"), "id", connector, time.Second, options)
 }
 
+func NewCelestiaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *celestia_specific.CelestiaChainSpecificObject {
+	options := &chains.Options{
+		InternalTimeout:         5 * time.Second,
+		ValidationInterval:      10 * time.Second,
+		DisableChainValidation:  new(false),
+		DisableHealthValidation: new(false),
+	}
+	return celestia_specific.NewCelestiaChainSpecificObject(ctx, chains.GetChain("celestia"), "id", connector, time.Second, options)
+}
+
 func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConnector) *starknet_specific.StarknetChainSpecificObject {
 	options := &chains.Options{
 		InternalTimeout:         5 * time.Second,
@@ -300,6 +333,10 @@ func NewStarknetChainSpecific(ctx context.Context, connector connectors.ApiConne
 		DisableHealthValidation: new(false),
 	}
 	return starknet_specific.NewStarknetChainSpecificObject(ctx, chains.GetChain("starknet"), "id", connector, time.Second, options)
+}
+
+func NewPolkadotChainSpecific(ctx context.Context, connector connectors.ApiConnector) *polkadot_specific.PolkadotChainSpecificObject {
+	return polkadot_specific.NewPolkadotChainSpecificObject(ctx, chains.GetChain("polkadot"), "id", connector, newTestChainOptions())
 }
 
 func NewAlgorandChainSpecific(ctx context.Context, connector connectors.ApiConnector) *algorand_specific.AlgorandChainSpecificObject {
@@ -324,6 +361,24 @@ func NewBeaconChainSpecific(ctx context.Context, connector connectors.ApiConnect
 
 func NewAptosChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aptos_specific.AptosChainSpecificObject {
 	return aptos_specific.NewAptosChainSpecificObject(ctx, chains.GetChain("aptos-mainnet"), "id", connector, newTestChainOptions())
+}
+
+func NewStellarRpcChainSpecific(ctx context.Context, connector connectors.ApiConnector) *stellar_specific.StellarRpcChainSpecificObject {
+	return stellar_specific.NewStellarRpcChainSpecificObject(
+		ctx, chains.GetChain("stellar"), "id", connector, time.Second, newTestChainOptions(),
+	)
+}
+
+func NewStellarHorizonChainSpecific(ctx context.Context, connector connectors.ApiConnector) *stellar_specific.StellarHorizonChainSpecificObject {
+	return stellar_specific.NewStellarHorizonChainSpecificObject(
+		ctx, chains.GetChain("stellar"), "id", connector, time.Second, newTestChainOptions(),
+	)
+}
+
+func NewSuiChainSpecific(ctx context.Context, connector connectors.ApiConnector) *sui_specific.SuiChainSpecificObject {
+	return sui_specific.NewSuiChainSpecificObject(
+		ctx, chains.GetChain("sui"), "id", connector, time.Second, newTestChainOptions(),
+	)
 }
 
 func NewBitcoinChainSpecific(ctx context.Context, connector connectors.ApiConnector) *bitcoin_specific.BitcoinChainSpecificObject {
@@ -352,7 +407,7 @@ func newTestChainOptions() *chains.Options {
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewBaseChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
 
 	go chainSupervisor.Start()
 
