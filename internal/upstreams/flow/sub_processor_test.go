@@ -142,10 +142,9 @@ func TestSubscriptionRequestProcessorAndCancelCtxThenChannelCloses(t *testing.T)
 	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 	respChan := make(chan protocol.SubResponse)
 
-	// the cancel races the subscribe: the processor may exit before touching the upstream
-	strategy.On("SelectUpstream", request).Return("id", nil).Maybe()
-	upSupervisor.On("GetUpstream", "id").Return(upstream).Maybe()
-	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan, "op-1"), nil).Maybe()
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(upstream)
+	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan, "op-1"), nil)
 	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
 	apiConnector.On("Unsubscribe", mock.Anything).Return().Maybe()
 
@@ -540,7 +539,6 @@ func TestSubscriptionRequestProcessorChannelAckEventAndCancel(t *testing.T) {
 	request := testCelestiaSubscribeRequest("5")
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	subCtx := flow.NewSubCtx(chains.CELESTIA)
-	subCtx.Reserve(context.Background(), request) // the ingress does this per subscribe frame
 	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
 	respChan := make(chan protocol.SubResponse)
 
@@ -588,7 +586,6 @@ func TestSubscriptionRequestProcessorChannelTotalFailure(t *testing.T) {
 	request := testCelestiaSubscribeRequest("5")
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	subCtx := flow.NewSubCtx(chains.CELESTIA)
-	subCtx.Reserve(context.Background(), request)
 	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
 	respChan := make(chan protocol.SubResponse)
 
@@ -622,8 +619,6 @@ func TestSubscriptionRequestProcessorChannelIdsCountPerConnection(t *testing.T) 
 	second := testCelestiaSubscribeRequest("2")
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	subCtx := flow.NewSubCtx(chains.CELESTIA)
-	subCtx.Reserve(context.Background(), first)
-	subCtx.Reserve(context.Background(), second)
 	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
 	respChan := make(chan protocol.SubResponse)
 
@@ -638,29 +633,4 @@ func TestSubscriptionRequestProcessorChannelIdsCountPerConnection(t *testing.T) 
 
 	assert.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":1}`, encodedResponse(t, firstAck, "1"))
 	assert.JSONEq(t, `{"jsonrpc":"2.0","id":2,"result":2}`, encodedResponse(t, secondAck, "2"))
-}
-
-// A channel client's cancel can arrive before the processor starts (the flow
-// runs asynchronously to the read loop). The reservation made by the ingress
-// takes the cancel, so the processor finds a cancelled context and never
-// opens a node subscription.
-func TestSubscriptionRequestProcessorChannelCancelBeforeProcessingOpensNothing(t *testing.T) {
-	upSupervisor := mocks.NewUpstreamSupervisorMock()
-	strategy := mocks.NewMockStrategy()
-	apiConnector := mocks.NewWsConnectorMock()
-	request := testCelestiaSubscribeRequest("5")
-	subCtx := flow.NewSubCtx(chains.CELESTIA)
-	subCtx.Reserve(context.Background(), request)
-	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
-
-	cancelReq := protocol.NewUpstreamJsonRpcRequest("224", protocol.JsonRpcRequestBody{Method: "xrpc.cancel", Params: []byte(`[5]`)}, false, "celestia")
-	closeFrame := <-subCtx.Unsubscribe(cancelReq, "5").(*flow.SubscriptionResponse).ResponseWrappers
-	assert.JSONEq(t, `{"jsonrpc":"2.0","method":"xrpc.ch.close","params":[1]}`, encodedResponse(t, closeFrame, "5"))
-
-	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
-
-	_, open := <-wrappers
-	assert.False(t, open, "nothing is sent, not even an ack")
-	strategy.AssertNotCalled(t, "SelectUpstream", mock.Anything)
-	apiConnector.AssertNotCalled(t, "Subscribe", mock.Anything, mock.Anything)
 }

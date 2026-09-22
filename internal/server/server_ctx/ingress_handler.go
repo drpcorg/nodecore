@@ -113,17 +113,6 @@ func (a *ApplicationServerContext) HandleRequest(
 		hook.NewStatsHook(a.StatsService),
 	)
 
-	// Subscriptions are filed with the connection before the flow starts, in
-	// frame order: a channel-dialect client may cancel by request id before the
-	// ack, and its cancel must find the entry.
-	if subCtx != nil {
-		for _, upstreamRequest := range request.UpstreamRequests {
-			if upstreamRequest.IsSubscribe() {
-				subCtx.Reserve(ctx, upstreamRequest)
-			}
-		}
-	}
-
 	go executionFlow.Execute(ctx, request.UpstreamRequests)
 	responseChan := executionFlow.GetResponses()
 

@@ -13,10 +13,6 @@ import (
 // unsubscribes. The WS server creates one per connection by chain type; the
 // gRPC ingress and the emerald server use the result-only one.
 type SubCtx interface {
-	// Reserve runs in the ingress for a subscribe request, in frame order,
-	// before the flow starts. The channel dialect files the subscription here,
-	// so a client's cancel can never arrive before the entry exists.
-	Reserve(ctx context.Context, request protocol.RequestHolder)
 	// Framing presents one subscription to this client.
 	Framing() subFraming
 	// Unsubscribe serves the client's unsubscribe call: it cancels every
@@ -51,10 +47,6 @@ type baseSubCtx struct {
 	resultOnly bool
 	subs       *utils.CMap[string, context.CancelFunc]
 }
-
-// Reserve is a no-op: the key is the subscription id nodecore generates at ack
-// time, and an eth-style client cannot unsubscribe before it holds that id.
-func (b *baseSubCtx) Reserve(context.Context, protocol.RequestHolder) {}
 
 func (b *baseSubCtx) Framing() subFraming {
 	if b.resultOnly {

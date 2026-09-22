@@ -69,21 +69,8 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		}
 		framing := s.subCtx.Framing()
 
-		// The framing supplies the context the subscription lives on; it is
-		// cancelled by the client's unsubscribe. The processor's own child is
-		// released on the way out.
-		subCtx, err := framing.attach(ctx, request)
-		if err != nil {
-			send(totalFailureWrapper(request, err))
-			return
-		}
-		execCtx, cancel := context.WithCancel(subCtx)
+		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
-		if execCtx.Err() != nil {
-			// cancelled before we got here (a channel client's cancel that
-			// overtook the subscribe): nothing to open
-			return
-		}
 
 		// All subscriptions route through the per-chain aggregation engine so
 		// identical (method+params+selector) subscriptions share a single
@@ -99,7 +86,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		}
 		defer sub.Unsubscribe()
 
-		ack, err := framing.begin(request)
+		ack, err := framing.begin(request, cancel)
 		if err != nil {
 			send(totalFailureWrapper(request, err))
 			return
