@@ -1,7 +1,7 @@
 # Celestia channel subscriptions, Task 1: WS ingress, upstream side, pushed heads — design
 
-Date: 2026-09-21. Branch: `cel_sub`. Depends on `drpcorg/public` PR #272 (branch `cel_ws`,
-commit `cdb1501`), already pinned here as `v1.4.6-0.20260921110952-cdb1501082c6`.
+Date: 2026-09-21. Branch: `cel_sub`. Depends on `drpcorg/public` PR #272, released as v1.4.6 and
+pinned here.
 
 This is the first of two nodecore tasks for Celestia DA subscriptions. Task 2 is
 `NativeSubscribe` passthrough, with its own spec and PR. Heads pushed over `header.Subscribe`
@@ -31,7 +31,7 @@ through `header.Subscribe` instead of polling `header.LocalHead`.
 
 ## What already exists (dialect-agnostic, unchanged)
 
-- Method specs (public `cdb1501`): `celestia-websocket.json` declares `header.Subscribe` and
+- Method specs (public v1.4.6): `celestia-websocket.json` declares `header.Subscribe` and
   `blob.Subscribe` with `subscription: {is-subscribe, type: "channel", method: "xrpc.ch.val",
   unsubscribe-method: "xrpc.cancel"}`; `xrpc.cancel` is `local: true` in `celestia-json-rpc.json`;
   the `celestia` bundle imports the websocket spec. `Subscription.Type` is `base` (default, filled
