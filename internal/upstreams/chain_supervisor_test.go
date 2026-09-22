@@ -874,6 +874,45 @@ func TestChainSupervisorSubMethodsSolanaUsesNativeMethods(t *testing.T) {
 	}, eventuallyWait, eventuallyTick)
 }
 
+func TestChainSupervisorSubMethodsCelestiaChannelSubscriptions(t *testing.T) {
+	loadChainSupervisorMethodSpecs(t)
+
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.CELESTIA, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	methods := newChainMethods(t, chains.CELESTIA, nil)
+
+	go chainSupervisor.Start()
+
+	// The go-jsonrpc channel subscriptions are advertised by their native
+	// names, exactly like any other non-EVM sub method, once a websocket
+	// connector is up; xrpc.cancel is a local call, not a subscription.
+	expected := mapset.NewThreadUnsafeSet[string]("header.Subscribe", "blob.Subscribe")
+
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Equal(expected)
+	}, eventuallyWait, eventuallyTick)
+
+	// The websocket connector goes away -> nothing to subscribe on.
+	chainSupervisor.PublishUpstreamEvent(createEventWithCaps(
+		"id1",
+		protocol.Available,
+		100,
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+	))
+
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().SubMethods.Cardinality() == 0
+	}, eventuallyWait, eventuallyTick)
+}
+
 func TestChainSupervisorCapsAggregatedAcrossUpstreams(t *testing.T) {
 	loadChainSupervisorMethodSpecs(t)
 

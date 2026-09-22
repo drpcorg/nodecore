@@ -96,6 +96,29 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 		require.Error(te, err)
 		assert.ErrorIs(te, err, errSubscribeMappingNotSupported)
 	})
+
+	// Celestia's go-jsonrpc channel subscriptions ride the same passthrough as
+	// any native sub method: the dialect lives in the upstream ws protocol and
+	// the client framing, never in the NativeSubscribe mapping.
+	t.Run("passes celestia header.Subscribe through with empty params", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("celestia", nil, "header.Subscribe", nil)
+		require.NoError(te, err)
+		assert.Equal(te, "header.Subscribe", method)
+		assert.Equal(te, `[]`, string(payload))
+	})
+
+	t.Run("passes celestia blob.Subscribe through with the namespace param", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("celestia", nil, "blob.Subscribe", []byte(`["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]`))
+		require.NoError(te, err)
+		assert.Equal(te, "blob.Subscribe", method)
+		assert.Equal(te, `["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]`, string(payload))
+	})
+
+	t.Run("celestia xrpc.cancel is not a subscription", func(te *testing.T) {
+		_, _, err := mapNativeSubscribeMethod("celestia", nil, "xrpc.cancel", []byte(`[1]`))
+		require.Error(te, err)
+		assert.ErrorIs(te, err, errSubscribeMappingNotSupported)
+	})
 }
 
 func TestBuildNativeCallRequestsRoutesByItemKind(t *testing.T) {
