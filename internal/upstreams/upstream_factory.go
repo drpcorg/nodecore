@@ -390,14 +390,14 @@ func getChainSpecific(
 			conf.Options,
 		), nil
 	case chains.Celestia:
-		return celestia_specific.NewCelestiaChainSpecificObject(
+		return celestia_specific.NewCelestiaSpecific(
 			ctx,
-			configuredChain,
 			conf.Id,
 			connector,
+			configuredChain,
 			conf.PollInterval,
 			conf.Options,
-		), nil
+		)
 	default:
 		panic(fmt.Sprintf("unknown blockchain type - %s", configuredChain.Type))
 	}

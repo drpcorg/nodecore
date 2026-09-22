@@ -33,7 +33,7 @@ type CosmosRestSpecific struct {
 	pollInterval time.Duration
 }
 
-func newCosmosRestSpecific(
+func NewCosmosRestSpecific(
 	ctx context.Context,
 	upstreamId string,
 	connector connectors.ApiConnector,

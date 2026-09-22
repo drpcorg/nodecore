@@ -40,7 +40,7 @@ func NewCosmosSpecific(
 	case specs.TendermintConnector:
 		return tendermint_specific.NewTendermintSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.RestConnector:
-		return newCosmosRestSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
+		return NewCosmosRestSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.GrpcConnector:
 		return NewCosmosGrpcSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.JsonRpcConnector, specs.WebsocketConnector:
