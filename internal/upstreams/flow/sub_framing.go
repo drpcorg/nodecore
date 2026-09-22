@@ -19,10 +19,14 @@ import (
 // same for every client; only the announcement and the per-event wrapping
 // differ.
 type subFraming interface {
+	// attach runs before the source is opened and returns the context the
+	// subscription lives on, cancelled by the client's unsubscribe: the one
+	// reserved by the ingress for the channel dialect, a fresh child of ctx
+	// for the others.
+	attach(ctx context.Context, request protocol.RequestHolder) (context.Context, error)
 	// begin runs once the source is attached. It may announce the subscription
-	// to the client (returned wrapper, nil for none) and register it for a later
-	// unsubscribe via cancel.
-	begin(request protocol.RequestHolder, cancel context.CancelFunc) (*protocol.ResponseHolderWrapper, error)
+	// to the client (returned wrapper, nil for none).
+	begin(request protocol.RequestHolder) (*protocol.ResponseHolderWrapper, error)
 	// event wraps one upstream frame for the client.
 	event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder
 }
@@ -32,22 +36,27 @@ type subFraming interface {
 type jsonRpcFraming struct {
 	chain  chains.Chain
 	subCtx *baseSubCtx
+	cancel context.CancelFunc
 	subId  json.RawMessage
 }
 
-func (f *jsonRpcFraming) begin(request protocol.RequestHolder, cancel context.CancelFunc) (*protocol.ResponseHolderWrapper, error) {
-	// the notification envelope needs the JSON-RPC notification method; a gRPC
-	// stream method (IsSubscribe by call type) has none
-	if request.SpecMethod().Subscription == nil {
-		return nil, fmt.Errorf("%s has no JSON-RPC subscription info", request.Method())
+func (f *jsonRpcFraming) attach(ctx context.Context, request protocol.RequestHolder) (context.Context, error) {
+	if err := needsSubscriptionInfo(request); err != nil {
+		return nil, err
 	}
+	subCtx, cancel := context.WithCancel(ctx)
+	f.cancel = cancel
+	return subCtx, nil
+}
+
+func (f *jsonRpcFraming) begin(request protocol.RequestHolder) (*protocol.ResponseHolderWrapper, error) {
 	subId, err := nextSubscriptionJson(isSolana(f.chain))
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to generate subscription id for %s", request.Method())
 		return nil, protocol.SubscribeTotalFailureError()
 	}
 	f.subId = subId
-	f.subCtx.addSub(protocol.ResultAsString(subId), cancel)
+	f.subCtx.addSub(protocol.ResultAsString(subId), f.cancel)
 	return &protocol.ResponseHolderWrapper{
 		UpstreamId: NoUpstream,
 		RequestId:  request.Id(),
@@ -62,10 +71,15 @@ func (f *jsonRpcFraming) event(request protocol.RequestHolder, r protocol.SubRes
 // resultOnlyFraming is the presentation for consumers that carry their own
 // framing (the gRPC ingress, the emerald server): no ack, no subscription id,
 // each event is the bare payload plus the transport metadata the frame
-// carried (gRPC headers/trailers).
+// carried (gRPC headers/trailers). Its consumers end a subscription by
+// cancelling the request ctx, so the subscription lives on that ctx as is.
 type resultOnlyFraming struct{}
 
-func (resultOnlyFraming) begin(protocol.RequestHolder, context.CancelFunc) (*protocol.ResponseHolderWrapper, error) {
+func (resultOnlyFraming) attach(ctx context.Context, _ protocol.RequestHolder) (context.Context, error) {
+	return ctx, nil
+}
+
+func (resultOnlyFraming) begin(protocol.RequestHolder) (*protocol.ResponseHolderWrapper, error) {
 	return nil, nil
 }
 
@@ -76,22 +90,33 @@ func (resultOnlyFraming) event(request protocol.RequestHolder, r protocol.SubRes
 
 // channelFraming is the go-jsonrpc channel presentation (celestia-node
 // clients): the ack carries the per-connection channel id the channelSubCtx
-// allocates, and events are xrpc.ch.val notifications with params
-// [channelId, value]. The subscription is filed under the client's own
-// request id, because that is what the client puts into xrpc.cancel; the
-// xrpc.ch.close that answers the cancel is written by channelSubCtx.
+// reserved when the ingress read the subscribe frame, and events are
+// xrpc.ch.val notifications with params [channelId, value]. The xrpc.ch.close
+// that answers a cancel is written by channelSubCtx.
 type channelFraming struct {
 	subCtx    *channelSubCtx
 	channelId uint64
 }
 
-func (f *channelFraming) begin(request protocol.RequestHolder, cancel context.CancelFunc) (*protocol.ResponseHolderWrapper, error) {
-	// only a JSON-RPC request carries the client's own id
+func (f *channelFraming) attach(_ context.Context, request protocol.RequestHolder) (context.Context, error) {
+	if err := needsSubscriptionInfo(request); err != nil {
+		return nil, err
+	}
+	// only a JSON-RPC request carries the client's own id, which is what the
+	// reservation is filed under and what the client puts into xrpc.cancel
 	realId, ok := request.(protocol.RealIdHolder)
 	if !ok {
 		return nil, fmt.Errorf("%s needs the client's JSON-RPC request id for a channel subscription", request.Method())
 	}
-	f.channelId = f.subCtx.addSub(realId.RealId(), cancel)
+	ctx, channelId, ok := f.subCtx.attach(realId.RealId())
+	if !ok {
+		return nil, fmt.Errorf("%s was not reserved for request %s", request.Method(), realId.RealId())
+	}
+	f.channelId = channelId
+	return ctx, nil
+}
+
+func (f *channelFraming) begin(request protocol.RequestHolder) (*protocol.ResponseHolderWrapper, error) {
 	return &protocol.ResponseHolderWrapper{
 		UpstreamId: NoUpstream,
 		RequestId:  request.Id(),
@@ -101,6 +126,16 @@ func (f *channelFraming) begin(request protocol.RequestHolder, cancel context.Ca
 
 func (f *channelFraming) event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder {
 	return protocol.NewChannelSubscriptionEventResponse(request.Id(), request.SpecMethod().Subscription.Method, r.GetMessage(), f.channelId)
+}
+
+// needsSubscriptionInfo refuses a request whose method has no JSON-RPC
+// subscription block: the notification envelope needs its method name, and a
+// gRPC stream method (IsSubscribe by call type) has none.
+func needsSubscriptionInfo(request protocol.RequestHolder) error {
+	if request.SpecMethod().Subscription == nil {
+		return fmt.Errorf("%s has no JSON-RPC subscription info", request.Method())
+	}
+	return nil
 }
 
 func isSolana(chain chains.Chain) bool {

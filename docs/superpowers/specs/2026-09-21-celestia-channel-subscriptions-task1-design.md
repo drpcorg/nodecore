@@ -112,11 +112,21 @@ of the client dialect:
 
 ```go
 type SubCtx interface {
+	Reserve(ctx context.Context, request protocol.RequestHolder)            // ingress, per subscribe frame, in frame order
 	Framing() subFraming                                                    // how a subscription is presented
 	Unsubscribe(request protocol.RequestHolder, key string) ProcessedResponse // the reply to the client's unsubscribe call
 	Exists(key string) bool
 }
 ```
+
+**Reservation (ruled 2026-09-22).** A channel client cancels by its own request id, which it knows
+before the ack, and the WS ingress runs the flow asynchronously to its read loop, so a cancel frame
+could reach the context before the subscribe had filed anything. The ingress handler therefore
+calls `Reserve` for every subscribe request right before it spawns the flow, synchronously, in
+frame order, the way a go-jsonrpc node files the request id when it reads the frame. The channel
+context allocates the channel id and the subscription's own context (derived from the
+connection's) there; the base context's `Reserve` is a no-op, since its key is only known at ack
+time and an eth client cannot cancel before it holds it.
 
 `NewSubCtx(chain)` picks the implementation by chain type, Celestia gets the channel one, every
 other chain the base one; `NewResultOnlySubCtx()` is for the gRPC ingress and the emerald server.
@@ -130,23 +140,31 @@ spec field is informational in nodecore for now (a mixed-dialect node like Lotus
   subscription). `Framing()` is `jsonRpcFraming` (or `resultOnlyFraming` for the result-only
   instance). `Unsubscribe` cancels and answers `true`, unknown id included.
 - **`channelSubCtx`** (`flow/channel_sub_ctx.go`): a mutex-guarded map from the client's own
-  request id to a list of `{channelId, cancel}` (a client may reuse one request id for several
-  subscribe calls) and the `uint64` channel id counter starting at 1. `Framing()` is
-  `channelFraming`. `Unsubscribe` cancels every subscription under the key, oldest first, and
-  replies with one `{"jsonrpc":"2.0","method":"xrpc.ch.close","params":[<chId>]}` per closed
-  channel, in order, as a `SubscriptionResponse`; an unknown key gets nothing, as a go-jsonrpc
-  node answers a cancel.
+  request id to a list of reservations `{channelId, ctx, cancel, attached}` (a client may reuse
+  one request id for several subscribe calls) and the `uint64` channel id counter starting at 1.
+  `Reserve` files a reservation; `attach(requestId)` hands the oldest unattached one to the
+  processor that serves it. `Framing()` is `channelFraming`. `Unsubscribe` cancels every
+  reservation under the key, oldest first, and replies with one
+  `{"jsonrpc":"2.0","method":"xrpc.ch.close","params":[<chId>]}` per channel, in order, as a
+  `SubscriptionResponse`; an unknown key gets nothing, as a go-jsonrpc node answers a cancel. A
+  cancelled reservation no processor has attached yet stays filed until its processor attaches,
+  finds the context done and opens nothing; `attach` drops it then.
 
-`channelFraming` (`flow/sub_framing.go`): `begin` type-asserts `protocol.RealIdHolder` (fails the
-subscribe otherwise), files the cancel through `channelSubCtx.addSub(realId, cancel)`, which
-returns the channel id, and acks `{"jsonrpc":"2.0","id":<client id>,"result":<chId>}`. `event`
-is `{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[<chId>, <payload>]}` through
+`subFraming` is `attach` + `begin` + `event`. `attach(ctx, request)` runs before the source is
+opened and returns the context the subscription lives on: `jsonRpcFraming` creates a child of the
+request ctx and registers its cancel under the generated id at `begin`; `resultOnlyFraming`
+returns the request ctx as is; `channelFraming` type-asserts `protocol.RealIdHolder` and takes
+the reservation. Both JSON-RPC framings refuse a method with no `subscription` block (a gRPC
+stream method is `IsSubscribe` without one), so `event` never dereferences a nil `Subscription`.
+The processor derives its own child from the attached context, and returns before touching the
+engine when that context is already done (the cancel-before-processing case, nothing is sent).
+`begin` acks `{"jsonrpc":"2.0","id":<client id>,"result":<chId>}`; `event` is
+`{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[<chId>, <payload>]}` through
 `protocol.NewChannelSubscriptionEventResponse`, with the method from `Subscription.Method`.
 
-The `subFraming` interface stays `begin` + `event`. Terminal frames go through the existing
-`terminalWrapper` for every dialect: a total failure closes the connection as today, with no
-`xrpc.ch.close` first (dropped 2026-09-22; a go-jsonrpc client closes its channels itself when
-the websocket closes).
+Terminal frames go through the existing `terminalWrapper` for every dialect: a total failure
+closes the connection as today, with no `xrpc.ch.close` first (dropped 2026-09-22; a go-jsonrpc
+client closes its channels itself when the websocket closes).
 
 **Accepted trade-off.** The `xrpc.ch.close` that answers a cancel is written by the local
 processor's response path, not by the subscription's own goroutine, so a value that arrived in
@@ -219,8 +237,8 @@ Client `{"id":1,"method":"header.Subscribe","params":[]}` on `/queries/celestia`
    new source selects an upstream with `WsCap`, and `WsConnector.Subscribe` registers op `101`
    and writes `{"id":101,"method":"header.Subscribe","params":[]}`.
 3. Node → `{"id":101,"result":7}`. `rpcCommand` files op `101` under sub `"7"`.
-4. `channelFraming.begin` files the cancel under `"1"` in the `channelSubCtx` and the ingress
-   writes `{"jsonrpc":"2.0","id":1,"result":1}` (client channel id 1).
+4. `channelFraming.begin` acks `{"jsonrpc":"2.0","id":1,"result":1}` with the channel id the
+   ingress reserved under `"1"` before spawning the flow (step 1).
 5. Node → `{"method":"xrpc.ch.val","params":[7,{...}]}` → `ChannelWsProtocol.ParseWsMessage` →
    `subscriptionCommand` → op `101` → source → engine → client
    `{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[1,{...}]}`.
@@ -258,8 +276,11 @@ Unit tests, per site:
   total failure, channel ids count per connection; base behavior unchanged.
 - `flow/sub_ctx_internal_test.go`: dialect selection by chain type; base `Unsubscribe` answers
   `true` (unknown id too); channel `Unsubscribe` closes every channel under a reused request id in
-  order and answers nothing for an unknown id; channel ids count from 1 per context; the local
-  processor over each dialect, including a string request id (`"sd"`).
+  order and answers nothing for an unknown id; channel ids count from 1 per context; a cancel
+  before `attach` is honoured and the reservation dropped on attach; the reservation follows the
+  connection context; both framings refuse a method without subscription info; an unreserved
+  channel request is refused; the local processor over each dialect, including a string request
+  id (`"sd"`). `sub_processor_test.go`: a cancel before processing opens nothing upstream.
 - Celestia specific: ws connector accepted, `WsCap` detector present with a ws connector,
   `SubscribeHeadRequest` is a subscribe request for `header.Subscribe` with empty params,
   `ParseSubscriptionBlock` yields the height and hashes of an `ExtendedHeader` and keeps the raw
