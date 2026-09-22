@@ -55,13 +55,6 @@ func (c *channelSubCtx) Unsubscribe(request protocol.RequestHolder, key string) 
 	return &SubscriptionResponse{wrappers}
 }
 
-func (c *channelSubCtx) Exists(key string) bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_, ok := c.subs[key]
-	return ok
-}
-
 // addSub allocates the next channel id of this connection, files the
 // subscription under the client's request id and returns the channel id.
 func (c *channelSubCtx) addSub(requestId string, cancel context.CancelFunc) uint64 {

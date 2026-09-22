@@ -19,8 +19,6 @@ type SubCtx interface {
 	// subscription filed under key and returns the reply the client gets for
 	// that call.
 	Unsubscribe(request protocol.RequestHolder, key string) ProcessedResponse
-	// Exists reports whether key has live subscriptions.
-	Exists(key string) bool
 }
 
 // NewSubCtx picks the dialect by chain type: go-jsonrpc channels for a
@@ -67,11 +65,6 @@ func (b *baseSubCtx) Unsubscribe(request protocol.RequestHolder, key string) Pro
 			Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), ResultTrue, request.RequestType()),
 		},
 	}
-}
-
-func (b *baseSubCtx) Exists(key string) bool {
-	_, ok := b.subs.Load(key)
-	return ok
 }
 
 func (b *baseSubCtx) addSub(subId string, cancel context.CancelFunc) {

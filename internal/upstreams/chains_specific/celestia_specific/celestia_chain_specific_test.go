@@ -136,7 +136,7 @@ func headerResponse(body string) protocol.ResponseHolder {
 func TestCelestiaProcessors(t *testing.T) {
 	specific := test_utils.NewCelestiaChainSpecific(context.Background(), nil)
 
-	assert.Nil(t, specific.CapDetectors(caps.DetectorInput{}))
+	assert.Len(t, specific.CapDetectors(caps.DetectorInput{}), 1, "the WsCap detector, which never asserts without a ws connector")
 	assert.Nil(t, specific.MethodsProcessor())
 	assert.Nil(t, specific.LabelsProcessor())
 	assert.NotNil(t, specific.BlockProcessor())

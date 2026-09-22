@@ -114,7 +114,6 @@ of the client dialect:
 type SubCtx interface {
 	Framing() subFraming                                                    // how a subscription is presented
 	Unsubscribe(request protocol.RequestHolder, key string) ProcessedResponse // the reply to the client's unsubscribe call
-	Exists(key string) bool
 }
 ```
 
@@ -182,10 +181,11 @@ client's own id because that is what the client will put into `xrpc.cancel`.
 - `NewCelestiaSpecific`: `specs.WebsocketConnector` is routed to `NewCelestiaChainSpecificObject`
   like `JsonRpcConnector` (the DA JSON-RPC API is the same over ws; unary calls go through the ws
   connector's `SendRequest`). The error message listing supported connectors is updated.
-- `CapDetectors`: returns `caps.DefaultCapDetectors(upstreamId, input.WsConnector)` when
-  `input.WsConnector` is not nil, nil otherwise. That grants `WsCap` while the ws connector is
-  connected, which is what `NewWsCapMatcher` requires to route subscribe methods to the
-  upstream. Comments saying the ws connector does not speak the channel protocol are removed.
+- `CapDetectors`: returns `caps.DefaultCapDetectors(upstreamId, input.WsConnector)`, as every
+  other non-EVM chain with a websocket does; without a ws connector the detector never asserts.
+  That grants `WsCap` while the ws connector is connected, which is what `NewWsCapMatcher`
+  requires to route subscribe methods to the upstream. It is plain ws presence, not gated on head
+  liveness as EVM does. Comments saying the ws connector does not speak the channel protocol are removed.
 - `SubscribeHeadRequest` returns
   `protocol.NewInternalSubUpstreamJsonRpcRequest("header.Subscribe", []interface{}{}, chain)`,
   mirroring the EVM `eth_subscribe("newHeads")` hook.

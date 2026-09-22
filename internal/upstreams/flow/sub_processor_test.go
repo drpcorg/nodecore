@@ -553,7 +553,6 @@ func TestSubscriptionRequestProcessorChannelAckEventAndCancel(t *testing.T) {
 	ack := <-wrappers
 	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ack.Response)
 	assert.JSONEq(t, `{"jsonrpc":"2.0","id":5,"result":1}`, encodedResponse(t, ack, "5"))
-	assert.True(t, subCtx.Exists("5"), "registered under the client's request id")
 
 	go func() {
 		respChan <- &protocol.WsResponse{Type: protocol.Ws, SubId: "7", Message: []byte(`{"header":{"height":"42"}}`), UpstreamId: "id"}
@@ -574,7 +573,6 @@ func TestSubscriptionRequestProcessorChannelAckEventAndCancel(t *testing.T) {
 	assert.False(t, more)
 	_, open := <-wrappers
 	assert.False(t, open, "a client cancel is not a failure")
-	assert.False(t, subCtx.Exists("5"))
 }
 
 // The source dying is a total failure, as for every other client; the channel

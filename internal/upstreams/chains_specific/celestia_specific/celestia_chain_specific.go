@@ -67,11 +67,8 @@ func (c *CelestiaChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 
 // CapDetectors grants WsCap while the upstream's websocket connector is
 // connected: celestia-node subscriptions (header.Subscribe, blob.Subscribe)
-// ride on it. Without a websocket connector no ws-derived cap can be asserted.
+// ride on it. Without a websocket connector the detector never asserts.
 func (c *CelestiaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
-	if input.WsConnector == nil {
-		return nil
-	}
 	return caps.DefaultCapDetectors(c.upstreamId, input.WsConnector)
 }
 

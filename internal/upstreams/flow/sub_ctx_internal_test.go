@@ -26,7 +26,8 @@ func TestBaseSubCtxUnsubscribeCancelsAndAnswersTrue(t *testing.T) {
 	subCtx := NewSubCtx(chains.ETHEREUM).(*baseSubCtx)
 	ctx, cancel := context.WithCancel(context.Background())
 	subCtx.addSub("0x112", cancel)
-	assert.True(t, subCtx.Exists("0x112"))
+	_, filed := subCtx.subs.Load("0x112")
+	assert.True(t, filed)
 
 	response := subCtx.Unsubscribe(unsubscribeRequest("223", "eth_unsubscribe", `["0x112"]`, "eth"), "0x112")
 
@@ -37,7 +38,8 @@ func TestBaseSubCtxUnsubscribeCancelsAndAnswersTrue(t *testing.T) {
 	assert.False(t, wrapper.Response.HasError())
 	assert.Equal(t, ResultTrue, wrapper.Response.ResponseResult())
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
-	assert.False(t, subCtx.Exists("0x112"))
+	_, filed = subCtx.subs.Load("0x112")
+	assert.False(t, filed)
 }
 
 // eth nodes answer true for an unknown subscription id as well.
@@ -83,7 +85,7 @@ func TestChannelSubCtxUnsubscribeClosesEveryChannelUnderTheRequestIdInOrder(t *t
 	assert.False(t, open)
 	assert.ErrorIs(t, ctx1.Err(), context.Canceled)
 	assert.ErrorIs(t, ctx2.Err(), context.Canceled)
-	assert.False(t, subCtx.Exists("sd"))
+	assert.NotContains(t, subCtx.subs, "sd")
 }
 
 // go-jsonrpc ignores a cancel for an unknown id, so nothing goes back.
@@ -127,7 +129,8 @@ func TestLocalRequestProcessorUnsubscribeOverBaseSubCtx(t *testing.T) {
 	assert.Equal(t, "223", wrapper.RequestId)
 	assert.Equal(t, ResultTrue, wrapper.Response.ResponseResult())
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
-	assert.False(t, subCtx.Exists("0x112"))
+	_, filed := subCtx.subs.Load("0x112")
+	assert.False(t, filed)
 }
 
 func TestLocalRequestProcessorUnsubscribeWithoutParamsIsAnErrorAndKeepsTheSub(t *testing.T) {
@@ -144,7 +147,8 @@ func TestLocalRequestProcessorUnsubscribeWithoutParamsIsAnErrorAndKeepsTheSub(t 
 	assert.True(t, wrapper.Response.HasError())
 	assert.ErrorContains(t, wrapper.Response.GetError(), "internal server error")
 	assert.NoError(t, ctx.Err())
-	assert.True(t, subCtx.Exists("0x112"))
+	_, filed := subCtx.subs.Load("0x112")
+	assert.True(t, filed)
 }
 
 // The client subscribed with {"id":"sd"} and cancels with xrpc.cancel ["sd"]:
@@ -167,7 +171,7 @@ func TestLocalRequestProcessorXrpcCancelOverChannelSubCtx(t *testing.T) {
 	_, open := <-wrappers
 	assert.False(t, open)
 	assert.ErrorIs(t, ctx.Err(), context.Canceled)
-	assert.False(t, subCtx.Exists("sd"))
+	assert.NotContains(t, subCtx.subs, "sd")
 }
 
 func unsubscribeRequest(id, method, params, spec string) protocol.RequestHolder {
