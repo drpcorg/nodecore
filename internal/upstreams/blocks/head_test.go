@@ -237,3 +237,58 @@ func nextHeadBlock(t *testing.T, events <-chan blocks.HeadEvent) protocol.Block 
 		}
 	}
 }
+
+const celestiaExtendedHeader = `{
+	"header": {
+		"chain_id": "celestia",
+		"height": "6273422",
+		"last_block_id": {"hash": "A72B2BFDBBFFBBAAF25957AAFD5D6C921D45B5AF83A5E7469557BE0DC53AF320"}
+	},
+	"commit": {
+		"height": "6273422",
+		"block_id": {"hash": "5E5EC8DDA2B34E4E97E663845AA47C282766AA79FA815DFC0FF2CFC22D07B4BD"}
+	},
+	"validator_set": {},
+	"dah": {}
+}`
+
+// A celestia head over the websocket connector: header.Subscribe events arrive
+// as channel values (the ChannelWsProtocol has already unwrapped params[1]).
+func TestSubHeadSubscribeCelestiaChannel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	reqConnector := mocks.NewConnectorMock()
+	responseLastBlock := protocol.NewTotalFailureFromErr("1", errors.New("err"), protocol.JsonRpc)
+	reqConnector.On("SendRequest", mock.Anything, mock.Anything).Return(responseLastBlock)
+
+	connector := mocks.NewWsConnectorMock()
+	messages := make(chan protocol.SubResponse, 10)
+	messages <- &protocol.WsResponse{Type: protocol.Ws, SubId: "7", Message: []byte(celestiaExtendedHeader)}
+	connector.On("Subscribe", mock.Anything, mock.MatchedBy(func(req protocol.RequestHolder) bool {
+		return req.Method() == "header.Subscribe"
+	})).Return(protocol.NewJsonRpcWsUpstreamResponse(messages, "op-1"), nil)
+	connector.On("Unsubscribe", "op-1").Maybe()
+
+	upConfig := config.Upstream{
+		ChainName:    "celestia",
+		Id:           "id",
+		PollInterval: 10 * time.Millisecond,
+		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
+	}
+	headProcessor := blocks.NewGenericHeadProcessor(ctx, &upConfig, connector, test_utils.NewCelestiaChainSpecific(ctx, reqConnector))
+	sub := headProcessor.Subscribe("test")
+	go headProcessor.Start()
+
+	head := nextHeadBlock(t, sub.Events)
+	expected := protocol.Block{
+		Height:     uint64(6273422),
+		Hash:       blockchain.NewHashIdFromString("5E5EC8DDA2B34E4E97E663845AA47C282766AA79FA815DFC0FF2CFC22D07B4BD"),
+		ParentHash: blockchain.NewHashIdFromString("A72B2BFDBBFFBBAAF25957AAFD5D6C921D45B5AF83A5E7469557BE0DC53AF320"),
+		RawData:    []byte(celestiaExtendedHeader),
+	}
+
+	assert.Equal(t, expected, head)
+	assert.Equal(t, expected, headProcessor.GetCurrentBlock())
+	connector.AssertExpectations(t)
+}

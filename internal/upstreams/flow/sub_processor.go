@@ -16,7 +16,7 @@ type SubscriptionRequestProcessor struct {
 	chain              chains.Chain
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	engine             subengine.Engine
-	subCtx             *SubCtx
+	subCtx             SubCtx
 	registry           *rating.RatingRegistry
 	localSubs          config.LocalSubSettings
 }
@@ -25,7 +25,7 @@ func NewSubscriptionRequestProcessor(
 	chain chains.Chain,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	engine subengine.Engine,
-	subCtx *SubCtx,
+	subCtx SubCtx,
 	registry *rating.RatingRegistry,
 	localSubs config.LocalSubSettings,
 ) *SubscriptionRequestProcessor {
@@ -67,7 +67,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			send(totalFailureWrapper(request, fmt.Errorf("%s is not a subscription method", request.Method())))
 			return
 		}
-		framing := s.framing()
+		framing := s.subCtx.Framing()
 
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -100,11 +100,11 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			case r, ok := <-sub.Events:
 				if !ok {
 					// The shared source ended. An error frame is a terminal failure
-					// (node disconnect, param reject, slow consumer) - the real
-					// cause is preserved rather than collapsed into a generic
-					// error. An end frame is the clean completion of a bounded
-					// stream, announced with its trailers. No frame at all means
-					// this client detached.
+					// (node disconnect, param reject, slow consumer, a node closing a
+					// channel) - the real cause is preserved rather than collapsed
+					// into a generic error. An end frame is the clean completion of
+					// a bounded stream, announced with its trailers. No frame at all
+					// means this client detached.
 					if terminal := sub.Terminal(); terminal != nil {
 						send(terminalWrapper(request, terminal))
 					}
@@ -131,16 +131,6 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	}()
 
 	return &SubscriptionResponse{responses}
-}
-
-// framing picks how this client sees the subscription: bare event payloads
-// for result-only consumers (the gRPC ingress, the emerald server), the
-// JSON-RPC ack + notification envelope otherwise (the WS server).
-func (s *SubscriptionRequestProcessor) framing() subFraming {
-	if s.subCtx.IsSubscriptionResultOnly() {
-		return resultOnlyFraming{}
-	}
-	return &jsonRpcFraming{chain: s.chain, subCtx: s.subCtx}
 }
 
 func responseUpstreamId(r protocol.SubResponse) string {

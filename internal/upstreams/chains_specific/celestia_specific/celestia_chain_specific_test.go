@@ -37,16 +37,38 @@ const extendedHeader = `{
 	"dah": {}
 }`
 
+// The head of a websocket-driven celestia upstream rides on header.Subscribe.
 func TestCelestiaSubscribeHeadRequest(t *testing.T) {
 	req, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).SubscribeHeadRequest()
-	assert.Nil(t, req)
-	assert.EqualError(t, err, "celestia does not support websocket subscriptions")
+	require.NoError(t, err)
+
+	assert.Equal(t, "header.Subscribe", req.Method())
+	assert.True(t, req.IsSubscribe())
+	body, err := req.Body()
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"jsonrpc":"2.0","id":1,"method":"header.Subscribe","params":[]}`, string(body))
 }
 
+// A header.Subscribe value is an ExtendedHeader, the shape header.LocalHead
+// returns; the raw header stays on the block like the EVM head keeps its block.
 func TestCelestiaParseSubscriptionBlock(t *testing.T) {
+	block, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(extendedHeader))
+	require.NoError(t, err)
+
+	expected := protocol.NewBlock(
+		6273422,
+		0,
+		blockchain.NewHashIdFromString("5E5EC8DDA2B34E4E97E663845AA47C282766AA79FA815DFC0FF2CFC22D07B4BD"),
+		blockchain.NewHashIdFromString("A72B2BFDBBFFBBAAF25957AAFD5D6C921D45B5AF83A5E7469557BE0DC53AF320"),
+	)
+	expected.RawData = []byte(extendedHeader)
+	assert.Equal(t, expected, block)
+}
+
+func TestCelestiaParseSubscriptionBlockInvalidHeader(t *testing.T) {
 	block, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
-	assert.EqualError(t, err, "celestia does not support websocket subscriptions")
+	assert.ErrorContains(t, err, "couldn't parse the celestia extended header")
 }
 
 func TestCelestiaParseBlock(t *testing.T) {
@@ -119,6 +141,15 @@ func TestCelestiaProcessors(t *testing.T) {
 	assert.Nil(t, specific.LabelsProcessor())
 	assert.NotNil(t, specific.BlockProcessor())
 	assert.NotNil(t, specific.LowerBoundProcessor())
+}
+
+// With a websocket connector the upstream gets WsCap while it is connected -
+// header.Subscribe / blob.Subscribe are routed only to upstreams holding it.
+func TestCelestiaCapDetectorsWithAWsConnector(t *testing.T) {
+	detectors := test_utils.NewCelestiaChainSpecific(context.Background(), nil).CapDetectors(caps.DetectorInput{WsConnector: mocks.NewWsConnectorMock()})
+
+	require.Len(t, detectors, 1)
+	assert.Equal(t, []protocol.Cap{protocol.WsCap}, detectors[0].Domain())
 }
 
 func TestCelestiaFinalizedBlockIsTheHead(t *testing.T) {
@@ -198,6 +229,7 @@ func TestNewCelestiaSpecificDispatchesOnConnectorType(t *testing.T) {
 		expected      interface{}
 	}{
 		{specs.JsonRpcConnector, &celestia_specific.CelestiaChainSpecificObject{}},
+		{specs.WebsocketConnector, &celestia_specific.CelestiaChainSpecificObject{}},
 		{specs.TendermintConnector, &tendermint_specific.TendermintChainSpecific{}},
 		{specs.RestConnector, &cosmos_specific.CosmosRestSpecific{}},
 		{specs.GrpcConnector, &cosmos_specific.CosmosGrpcSpecific{}},
@@ -214,14 +246,14 @@ func TestNewCelestiaSpecificDispatchesOnConnectorType(t *testing.T) {
 }
 
 func TestNewCelestiaSpecificUnsupportedConnector(t *testing.T) {
-	for _, connectorType := range []specs.ApiConnectorType{specs.WebsocketConnector, specs.RestIndexer, specs.RestAdditional} {
+	for _, connectorType := range []specs.ApiConnectorType{specs.RestIndexer, specs.RestAdditional} {
 		cs, err := celestia_specific.NewCelestiaSpecific(
 			context.Background(), "id",
 			mocks.NewConnectorMockWithType(connectorType),
 			chains.GetChain("celestia"), time.Second, celestiaDispatchOptions(),
 		)
 		assert.Nil(t, cs, connectorType)
-		assert.ErrorContains(t, err, "celestia specific supports only json-rpc, tendermint, rest or grpc connector", connectorType)
+		assert.ErrorContains(t, err, "celestia specific supports only json-rpc, websocket, tendermint, rest or grpc connector", connectorType)
 	}
 }
 

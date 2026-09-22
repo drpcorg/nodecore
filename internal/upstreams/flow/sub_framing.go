@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -30,7 +31,7 @@ type subFraming interface {
 // fresh client subscription id, then notification envelopes referencing it.
 type jsonRpcFraming struct {
 	chain  chains.Chain
-	subCtx *SubCtx
+	subCtx *baseSubCtx
 	subId  json.RawMessage
 }
 
@@ -46,7 +47,7 @@ func (f *jsonRpcFraming) begin(request protocol.RequestHolder, cancel context.Ca
 		return nil, protocol.SubscribeTotalFailureError()
 	}
 	f.subId = subId
-	f.subCtx.AddSub(protocol.ResultAsString(subId), cancel)
+	f.subCtx.addSub(protocol.ResultAsString(subId), cancel)
 	return &protocol.ResponseHolderWrapper{
 		UpstreamId: NoUpstream,
 		RequestId:  request.Id(),
@@ -71,6 +72,35 @@ func (resultOnlyFraming) begin(protocol.RequestHolder, context.CancelFunc) (*pro
 func (resultOnlyFraming) event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder {
 	headers, trailers := protocol.ResponseMetadata(r)
 	return protocol.NewSubscriptionEventResponse(request.Id(), r.GetMessage()).WithResponseHeaders(headers).WithResponseTrailers(trailers)
+}
+
+// channelFraming is the go-jsonrpc channel presentation (celestia-node
+// clients): the ack carries the per-connection channel id the channelSubCtx
+// allocates, and events are xrpc.ch.val notifications with params
+// [channelId, value]. The subscription is filed under the client's own
+// request id, because that is what the client puts into xrpc.cancel; the
+// xrpc.ch.close that answers the cancel is written by channelSubCtx.
+type channelFraming struct {
+	subCtx    *channelSubCtx
+	channelId uint64
+}
+
+func (f *channelFraming) begin(request protocol.RequestHolder, cancel context.CancelFunc) (*protocol.ResponseHolderWrapper, error) {
+	// only a JSON-RPC request carries the client's own id
+	realId, ok := request.(protocol.RealIdHolder)
+	if !ok {
+		return nil, fmt.Errorf("%s needs the client's JSON-RPC request id for a channel subscription", request.Method())
+	}
+	f.channelId = f.subCtx.addSub(realId.RealId(), cancel)
+	return &protocol.ResponseHolderWrapper{
+		UpstreamId: NoUpstream,
+		RequestId:  request.Id(),
+		Response:   protocol.NewWsJsonRpcResponse(request.Id(), json.RawMessage(strconv.FormatUint(f.channelId, 10)), nil),
+	}, nil
+}
+
+func (f *channelFraming) event(request protocol.RequestHolder, r protocol.SubResponse) protocol.ResponseHolder {
+	return protocol.NewChannelSubscriptionEventResponse(request.Id(), request.SpecMethod().Subscription.Method, r.GetMessage(), f.channelId)
 }
 
 func isSolana(chain chains.Chain) bool {

@@ -12,7 +12,7 @@ import (
 
 type LocalRequestProcessor struct {
 	chain  chains.Chain
-	subCtx *SubCtx
+	subCtx SubCtx
 }
 
 var ResultTrue = []byte(`true`)
@@ -54,14 +54,7 @@ func (l *LocalRequestProcessor) ProcessRequest(
 		if err != nil {
 			return &UnaryResponse{processedServerError(request, err)}
 		}
-		l.subCtx.Unsubscribe(protocol.ResultAsString([]byte(value)))
-		return &UnaryResponse{
-			&protocol.ResponseHolderWrapper{
-				UpstreamId: NoUpstream,
-				RequestId:  request.Id(),
-				Response:   protocol.NewSimpleHttpUpstreamResponse(request.Id(), ResultTrue, request.RequestType()),
-			},
-		}
+		return l.subCtx.Unsubscribe(request, protocol.ResultAsString([]byte(value)))
 	} else {
 		var response protocol.ResponseHolder = protocol.NewTotalFailureFromErr(
 			request.Id(),
@@ -78,7 +71,7 @@ func (l *LocalRequestProcessor) ProcessRequest(
 	}
 }
 
-func NewLocalRequestProcessor(chain chains.Chain, subCtx *SubCtx) *LocalRequestProcessor {
+func NewLocalRequestProcessor(chain chains.Chain, subCtx SubCtx) *LocalRequestProcessor {
 	return &LocalRequestProcessor{chain: chain, subCtx: subCtx}
 }
 
