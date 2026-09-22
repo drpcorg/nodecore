@@ -19,9 +19,11 @@ import (
 // own JSON-RPC API (header.*, blob.*, share.*), while the consensus node
 // (celestia-app) is a regular cosmos-sdk node with the CometBFT RPC, the LCD
 // REST and the SDK gRPC. The DA header height is the consensus height, so both
-// kinds of upstreams feed one coherent chain head. The json-rpc connector gets
-// the DA specific; tendermint, rest and grpc get the cosmos specifics, which
-// validate the chain against the cosmos chain id (celestia, mocha-…).
+// kinds of upstreams feed one coherent chain head. The json-rpc and websocket
+// connectors get the DA specific (the DA node serves the same API over both;
+// its websocket carries the go-jsonrpc channel subscriptions); tendermint, rest
+// and grpc get the cosmos specifics, which validate the chain against the cosmos
+// chain id (celestia, mocha-…).
 func NewCelestiaSpecific(
 	ctx context.Context,
 	upstreamId string,
@@ -34,7 +36,7 @@ func NewCelestiaSpecific(
 		return nil, errors.New("no connector specified")
 	}
 	switch connector.GetType() {
-	case specs.JsonRpcConnector:
+	case specs.JsonRpcConnector, specs.WebsocketConnector:
 		return NewCelestiaChainSpecificObject(ctx, chain, upstreamId, connector, pollInterval, options), nil
 	case specs.TendermintConnector:
 		return tendermint_specific.NewTendermintSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
@@ -44,7 +46,7 @@ func NewCelestiaSpecific(
 		return cosmos_specific.NewCosmosGrpcSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	default:
 		return nil, fmt.Errorf(
-			"celestia specific supports only json-rpc, tendermint, rest or grpc connector but not %s",
+			"celestia specific supports only json-rpc, websocket, tendermint, rest or grpc connector but not %s",
 			connector.GetType(),
 		)
 	}

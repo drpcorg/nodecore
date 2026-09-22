@@ -256,3 +256,4 @@ func (u *UpstreamJsonRpcRequest) Selectors() []RequestSelector {
 }
 
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)
+var _ RealIdHolder = (*UpstreamJsonRpcRequest)(nil)

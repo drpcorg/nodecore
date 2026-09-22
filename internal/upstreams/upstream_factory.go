@@ -132,7 +132,7 @@ func createConnector(
 	case specs.JsonRpcConnector:
 		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
 	case specs.WebsocketConnector:
-		jsonRpcWsProtocol := ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
+		wsProtocol := newWsProtocol(upId, configuredChain)
 		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
 		reqRegistry := ws.NewGenericRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
 		wsProcessor, err := ws.NewGenericWsProcessor(
@@ -142,7 +142,7 @@ func createConnector(
 			dialWsService,
 			reqRegistry,
 			ws.NewWebsocketSession(),
-			jsonRpcWsProtocol,
+			wsProtocol,
 		)
 		if err != nil {
 			return nil, err
@@ -461,4 +461,14 @@ func newConnectorInfo(
 		internalRequestConnector: internalRequestConnector,
 		allConnectors:            allConnectors,
 	}
+}
+
+// newWsProtocol picks the subscription dialect an upstream websocket speaks:
+// go-jsonrpc channels for a celestia DA node, the JSON-RPC subscription model
+// (eth_subscribe and the like) everywhere else.
+func newWsProtocol(upId string, configuredChain *chains.ConfiguredChain) ws.WsProtocol {
+	if configuredChain.Type == chains.Celestia {
+		return ws.NewChannelWsProtocol(upId, configuredChain.MethodSpec)
+	}
+	return ws.NewJsonRpcWsProtocol(upId, configuredChain.MethodSpec, configuredChain.Chain)
 }

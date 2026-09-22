@@ -15,7 +15,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -105,7 +104,7 @@ type GenericExecutionFlow struct {
 	wg                 sync.WaitGroup
 	responseChan       chan *protocol.ResponseHolderWrapper
 	cacheProcessor     caches.CacheProcessor
-	subCtx             *SubCtx
+	subCtx             SubCtx
 	subEngineRegistry  *subengine.Registry
 	registry           *rating.RatingRegistry
 	appConfig          *config.AppConfig
@@ -122,7 +121,7 @@ func NewGenericExecutionFlow(
 	cacheProcessor caches.CacheProcessor,
 	registry *rating.RatingRegistry,
 	appConfig *config.AppConfig,
-	subCtx *SubCtx,
+	subCtx SubCtx,
 	quorumRegistry *quorum.Registry,
 	subEngineRegistry *subengine.Registry,
 ) *GenericExecutionFlow {
@@ -483,7 +482,7 @@ func (e *GenericExecutionFlow) verifyQuorumSignatures(
 		// via request.Body()), not nodecore's internal UUID tag. Fall back to
 		// Id() only if the request does not expose a real id accessor.
 		var expectedReqID string
-		if rr, ok := request.(interface{ RealId() string }); ok {
+		if rr, ok := request.(protocol.RealIdHolder); ok {
 			expectedReqID = rr.RealId()
 		} else {
 			expectedReqID = request.Id()
@@ -527,41 +526,4 @@ func isStickyRequest(specMethod *specs.Method) bool {
 
 func shouldEnforceIntegrity(specMethod *specs.Method, integrityConfig *config.IntegrityConfig) bool {
 	return integrityConfig.Enabled && specMethod != nil && specMethod.ShouldEnforceIntegrity()
-}
-
-type SubCtx struct {
-	subscriptions      *utils.CMap[string, context.CancelFunc]
-	subscriptionResult bool
-}
-
-func NewSubCtx() *SubCtx {
-	return &SubCtx{
-		subscriptions: utils.NewCMap[string, context.CancelFunc](),
-	}
-}
-
-func (s *SubCtx) WithSubscriptionResultOnly(enabled bool) *SubCtx {
-	s.subscriptionResult = enabled
-	return s
-}
-
-func (s *SubCtx) IsSubscriptionResultOnly() bool {
-	return s.subscriptionResult
-}
-
-func (s *SubCtx) AddSub(sub string, cancel context.CancelFunc) {
-	s.subscriptions.Store(sub, cancel)
-}
-
-func (s *SubCtx) Unsubscribe(sub string) {
-	cancel, ok := s.subscriptions.Load(sub)
-	if ok {
-		s.subscriptions.Delete(sub)
-		cancel()
-	}
-}
-
-func (s *SubCtx) Exists(sub string) bool {
-	_, ok := s.subscriptions.Load(sub)
-	return ok
 }

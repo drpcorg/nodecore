@@ -178,6 +178,15 @@ type RequestHolder interface {
 	IsSubscribe() bool
 }
 
+// RealIdHolder is a request that carries the client's own JSON-RPC id, as
+// opposed to Id(), nodecore's internal tag. Only JSON-RPC requests have one;
+// consumers that need it (quorum header checks, go-jsonrpc channel framing)
+// type-assert for it.
+type RealIdHolder interface {
+	// RealId is the client's JSON-RPC id as text, string ids unquoted.
+	RealId() string
+}
+
 type ResponseHolder interface {
 	ResponseResult() []byte
 	ResponseResultString() (string, error)

@@ -96,7 +96,7 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 		s.appCtx.CacheProcessor,
 		s.appCtx.Registry,
 		s.appCtx.AppConfig,
-		flow.NewSubCtx(),
+		flow.NewSubCtx(configuredChain.Chain),
 		s.appCtx.QuorumRegistry,
 		s.appCtx.SubEngineRegistry,
 	)
@@ -167,7 +167,7 @@ func (s *GrpcBlockchainService) NativeSubscribe(request *dshackle.NativeSubscrib
 		return status.Error(codes.Internal, err.Error())
 	}
 
-	subCtx := flow.NewSubCtx().WithSubscriptionResultOnly(true)
+	subCtx := flow.NewResultOnlySubCtx()
 	executionFlow := flow.NewGenericExecutionFlow(
 		configuredChain.Chain,
 		s.appCtx.UpstreamSupervisor,

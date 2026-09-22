@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/server_ctx"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
@@ -50,7 +51,7 @@ func HandleWebsocket(
 ) {
 	log := zerolog.Ctx(ctx)
 
-	subCtx := flow.NewSubCtx()
+	subCtx := flow.NewSubCtx(chains.GetChain(chain).Chain)
 
 	cancelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

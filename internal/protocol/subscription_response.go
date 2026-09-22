@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"testing/iotest"
 
 	"github.com/bytedance/sonic"
@@ -47,6 +48,19 @@ func NewJsonRpcSubscriptionEventResponse(id, method string, payload []byte, subI
 		id:      id,
 		payload: payload,
 		encoder: jsonRpcEventEncoder{method: method, subId: subId},
+	}
+}
+
+// NewChannelSubscriptionEventResponse is the event in the go-jsonrpc channel
+// notification shape used by celestia-node clients:
+// {"jsonrpc":"2.0","method":<method>,"params":[<channelId>,<payload>]}.
+// With no payload the params hold the channel id alone, which is how a channel
+// close (xrpc.ch.close) is announced.
+func NewChannelSubscriptionEventResponse(id, method string, payload []byte, channelId uint64) *SubscriptionEventResponse {
+	return &SubscriptionEventResponse{
+		id:      id,
+		payload: payload,
+		encoder: channelEventEncoder{method: method, channelId: channelId},
 	}
 }
 
@@ -215,7 +229,34 @@ func (e jsonRpcEventEncoder) Encode(payload []byte) io.Reader {
 	return bytes.NewReader(respBytes)
 }
 
+// channelEventEncoder wraps the payload in a go-jsonrpc channel notification:
+// {"jsonrpc":"2.0","method":<method>,"params":[<channelId>,<payload>]}, or
+// params [<channelId>] when there is no payload.
+type channelEventEncoder struct {
+	method    string
+	channelId uint64
+}
+
+type channelNotification struct {
+	JsonRpc string            `json:"jsonrpc"`
+	Method  string            `json:"method"`
+	Params  []json.RawMessage `json:"params"`
+}
+
+func (e channelEventEncoder) Encode(payload []byte) io.Reader {
+	params := []json.RawMessage{json.RawMessage(strconv.FormatUint(e.channelId, 10))}
+	if len(payload) > 0 {
+		params = append(params, payload)
+	}
+	respBytes, err := sonic.Marshal(channelNotification{JsonRpc: "2.0", Method: e.method, Params: params})
+	if err != nil {
+		return iotest.ErrReader(err)
+	}
+	return bytes.NewReader(respBytes)
+}
+
 var _ SubscriptionResponseHolder = (*SubscriptionEventResponse)(nil)
 var _ SubscriptionResponseHolder = (*SubscriptionEndResponse)(nil)
 var _ subEventEncoder = rawEventEncoder{}
 var _ subEventEncoder = jsonRpcEventEncoder{}
+var _ subEventEncoder = channelEventEncoder{}

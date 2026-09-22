@@ -249,3 +249,60 @@ func loadRegistryCommandMethodSpecs(t *testing.T) {
 
 	specs_utils.LoadMethodSpecs()
 }
+
+// A node-side end (a go-jsonrpc xrpc.ch.close, parsed as a Ws frame carrying
+// the total-failure error) reaches every op of the sub and drops the sub, so
+// the ops' finish does not run the close hook: there is nothing left on the
+// node to cancel.
+func TestSubscriptionCommandHandleNodeEndDropsTheSubscription(t *testing.T) {
+	registry := newTestRegistryState("celestia")
+	req1 := NewGenericRequestOp(context.Background(), "101", "header.Subscribe", "header.Subscribe", func(RequestOperation) {})
+	req2 := NewGenericRequestOp(context.Background(), "102", "header.Subscribe", "header.Subscribe", func(RequestOperation) {})
+	req1.SetSubID([]byte(`7`))
+	req2.SetSubID([]byte(`7`))
+	registry.registryState.subs["7"] = &registrySubscription{
+		subType: "header.Subscribe",
+		ops: map[string]RequestOperation{
+			req1.Id(): req1,
+			req2.Id(): req2,
+		},
+	}
+
+	end := &protocol.WsResponse{Type: protocol.Ws, SubId: "7", Error: protocol.SubscribeTotalFailureError()}
+	newSubscriptionCommand(end).handle(registry)
+
+	for _, req := range []*GenericRequestOp{req1, req2} {
+		select {
+		case got := <-req.GetChannel(MessageInternal):
+			assert.Equal(t, protocol.SubscribeTotalFailureError(), got.GetError())
+		case <-time.After(time.Second):
+			t.Fatalf("op %s did not receive the end frame", req.Id())
+		}
+	}
+	assert.NotContains(t, registry.registryState.subs, "7")
+
+	result := make(chan bool, 1)
+	newFinishCommand(req1, result).handle(registry)
+	assert.False(t, <-result)
+}
+
+// A plain event keeps the subscription filed.
+func TestSubscriptionCommandHandleEventKeepsTheSubscription(t *testing.T) {
+	registry := newTestRegistryState("celestia")
+	req := NewGenericRequestOp(context.Background(), "101", "header.Subscribe", "header.Subscribe", func(RequestOperation) {})
+	req.SetSubID([]byte(`7`))
+	registry.registryState.subs["7"] = &registrySubscription{
+		subType: "header.Subscribe",
+		ops:     map[string]RequestOperation{req.Id(): req},
+	}
+
+	newSubscriptionCommand(&protocol.WsResponse{Type: protocol.Ws, SubId: "7", Message: []byte(`{}`)}).handle(registry)
+
+	assert.Contains(t, registry.registryState.subs, "7")
+	select {
+	case got := <-req.GetChannel(MessageInternal):
+		assert.Nil(t, got.GetError())
+	case <-time.After(time.Second):
+		t.Fatal("op did not receive the event")
+	}
+}

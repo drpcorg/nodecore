@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -106,4 +107,12 @@ func TestUpstreamSpecificsShareTheObjectOnASingleConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Same(t, specifics.probe, specifics.head)
+}
+
+// A celestia DA node speaks go-jsonrpc channels over its websocket; every
+// other chain keeps the JSON-RPC subscription dialect.
+func TestNewWsProtocolPicksTheDialectByChainType(t *testing.T) {
+	assert.IsType(t, &ws.ChannelWsProtocol{}, newWsProtocol("id", chains.GetChain("celestia")))
+	assert.IsType(t, &ws.ChannelWsProtocol{}, newWsProtocol("id", chains.GetChain("celestia-mocha")))
+	assert.IsType(t, &ws.JsonRpcWsProtocol{}, newWsProtocol("id", chains.GetChain("ethereum")))
 }
