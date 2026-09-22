@@ -113,7 +113,7 @@ func (b *GenericChainSupervisor) assignGroup(id string, state *protocol.Upstream
 	clientType := clientTypeOf(state)
 	newKey := current.key
 	if !had || current.methods != state.UpstreamMethods || current.clientType != clientType {
-		newKey = GroupKey{ClientType: clientType, MethodsHash: methodsHash(state.UpstreamMethods)}
+		newKey = groupKeyOf(state)
 	}
 	b.upstreamGroup[id] = groupMembership{key: newKey, methods: state.UpstreamMethods, clientType: clientType}
 	if had && current.key == newKey {
