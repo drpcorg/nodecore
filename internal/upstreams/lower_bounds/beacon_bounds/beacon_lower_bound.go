@@ -21,6 +21,19 @@ const (
 	// slots below a no-data probe before treating the window as pruned.
 	beaconBoundMaxOffset = 20
 	slotsPerEpoch        = 32
+	// blobProbeScanWindow bounds how far an ambiguous empty blob answer scans
+	// forward looking for a block that carried blobs.
+	blobProbeScanWindow = slotsPerEpoch
+)
+
+var (
+	blockNotFoundHints = []string{"could not find requested block", "has not been found", "block not found", "internal server error"}
+	// Pre-Deneb slots answer HTTP 400 "block is pre-Deneb and has no blobs" and
+	// PeerDAS nodes that no longer hold enough data columns answer HTTP 400
+	// "Insufficient data columns to reconstruct blobs"; both sit below the
+	// blob-availability bound, so they must count as a miss rather than a hard
+	// error - otherwise the binary search retries them and never converges.
+	blobNotFoundHints = []string{"block not found", "has not been found", "pre-deneb", "no blobs", "insufficient data columns"}
 )
 
 // NewBeaconChainLowerBoundDetectors returns the four data-availability detectors
@@ -72,7 +85,7 @@ func (d *beaconLowerBoundDetector) Period() time.Duration {
 }
 
 func newBlockDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetector {
-	notFound := []string{"could not find requested block", "has not been found", "block not found", "internal server error"}
+	notFound := blockNotFoundHints
 	return &beaconLowerBoundDetector{
 		calculator:  lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, protocol.BlockBound, []protocol.LowerBoundType{protocol.BlockBound}, beaconBoundPeriod, beaconBoundMaxOffset),
 		fetchLatest: p.fetchHeadSlot,
@@ -128,25 +141,88 @@ func newEpochDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetec
 }
 
 func newBlobDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetector {
-	// Pre-Deneb slots answer HTTP 400 "block is pre-Deneb and has no blobs";
-	// they sit below the blob-availability bound, so they must count as a miss
-	// rather than a hard error - otherwise the binary search never converges.
-	notFound := []string{"block not found", "has not been found", "pre-deneb", "no blobs"}
 	return &beaconLowerBoundDetector{
 		calculator:  lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, protocol.BlobBound, []protocol.LowerBoundType{protocol.BlobBound}, beaconBoundPeriod, beaconBoundMaxOffset),
 		fetchLatest: p.fetchHeadSlot,
-		probe: func(ctx context.Context, slot int64) (bool, error) {
-			req := protocol.NewInternalUpstreamRestRequest(
-				"GET#/eth/v1/beacon/blob_sidecars/*",
-				&protocol.RequestParams{PathParams: []string{strconv.FormatInt(slot, 10)}},
-				p.chain,
-			)
-			// A pruned slot answers 404; a retained slot answers 200 even when it
-			// carries no blobs, so a present "data" key (empty array included) counts
-			// as available - this keeps the availability predicate monotonic.
-			return p.doProbe(ctx, req, notFound, hasDataKey)
-		},
+		probe:       p.probeBlobs,
 	}
+}
+
+// probeBlobs reports whether the node still serves the blob sidecars of a slot.
+//
+// An empty sidecar list is ambiguous: a node answers 200 {"data":[]} both for a
+// block that never carried blobs and for a block whose blobs it already pruned
+// (Lighthouse keeps answering 200 with an empty list after pruning instead of
+// 404). Counting every empty answer as available drags the bound down to the
+// Deneb fork on nodes that only retain the last ~18 days. So an empty answer is
+// resolved against the block: blob commitments without sidecars mean pruned; no
+// commitments means the slot says nothing, and the probe moves to the next slot
+// until it finds a block that carried blobs.
+func (p *beaconProber) probeBlobs(ctx context.Context, slot int64) (bool, error) {
+	for s := slot; s < slot+blobProbeScanWindow; s++ {
+		raw, found, err := p.fetch(ctx, blobSidecarsRequest(p.chain, s), blobNotFoundHints)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			if s == slot {
+				return false, nil
+			}
+			// Later in the scan a not-found is either a skipped slot or pruned data;
+			// the block tells which.
+			present, _, err := p.blockBlobCommitments(ctx, s)
+			if err != nil {
+				return false, err
+			}
+			if present {
+				return false, nil
+			}
+			continue
+		}
+
+		sidecars, ok := jsonArrayLen(raw, "data")
+		if !ok {
+			return false, nil
+		}
+		if sidecars > 0 {
+			return true, nil
+		}
+
+		present, commitments, err := p.blockBlobCommitments(ctx, s)
+		if err != nil {
+			return false, err
+		}
+		if present && commitments > 0 {
+			return false, nil
+		}
+	}
+	// No blob-carrying block in the window: nothing contradicts the 200 answers,
+	// so keep treating the slot as retained.
+	return true, nil
+}
+
+// blockBlobCommitments returns whether the node has the block at slot and how
+// many blob KZG commitments it carries.
+func (p *beaconProber) blockBlobCommitments(ctx context.Context, slot int64) (bool, int, error) {
+	req := protocol.NewInternalUpstreamRestRequest(
+		"GET#/eth/v2/beacon/blocks/*",
+		&protocol.RequestParams{PathParams: []string{strconv.FormatInt(slot, 10)}},
+		p.chain,
+	)
+	raw, found, err := p.fetch(ctx, req, blockNotFoundHints)
+	if err != nil || !found {
+		return false, 0, err
+	}
+	commitments, _ := jsonArrayLen(raw, "data", "message", "body", "blob_kzg_commitments")
+	return true, commitments, nil
+}
+
+func blobSidecarsRequest(chain chains.Chain, slot int64) protocol.RequestHolder {
+	return protocol.NewInternalUpstreamRestRequest(
+		"GET#/eth/v1/beacon/blob_sidecars/*",
+		&protocol.RequestParams{PathParams: []string{strconv.FormatInt(slot, 10)}},
+		chain,
+	)
 }
 
 type beaconProber struct {
@@ -186,6 +262,16 @@ func (p *beaconProber) doProbe(
 	notFoundHints []string,
 	hit func([]byte) (bool, error),
 ) (bool, error) {
+	raw, found, err := p.fetch(ctx, req, notFoundHints)
+	if err != nil || !found {
+		return false, err
+	}
+	return hit(raw)
+}
+
+// fetch issues a probe request and returns its body (found), a not-found
+// (false, nil) or a transient error.
+func (p *beaconProber) fetch(ctx context.Context, req protocol.RequestHolder, notFoundHints []string) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.internalTimeout)
 	defer cancel()
 
@@ -193,25 +279,25 @@ func (p *beaconProber) doProbe(
 	if resp.HasError() {
 		respErr := resp.GetError()
 		if respErr == nil {
-			return false, fmt.Errorf("beacon upstream '%s' probe failed with no error detail", p.upstreamId)
+			return nil, false, fmt.Errorf("beacon upstream '%s' probe failed with no error detail", p.upstreamId)
 		}
 		if resp.ResponseCode() == 404 || matchesAnyHint(respErr.Message, notFoundHints) {
-			return false, nil
+			return nil, false, nil
 		}
-		return false, respErr
+		return nil, false, respErr
 	}
 
 	raw := resp.ResponseResult()
 	if len(raw) == 0 {
-		return false, fmt.Errorf("beacon upstream '%s' probe returned an empty body", p.upstreamId)
+		return nil, false, fmt.Errorf("beacon upstream '%s' probe returned an empty body", p.upstreamId)
 	}
 	if code, msg, ok := parseBeaconError(raw); ok {
 		if code == 404 || matchesAnyHint(msg, notFoundHints) {
-			return false, nil
+			return nil, false, nil
 		}
-		return false, fmt.Errorf("beacon upstream '%s' probe error %d: %s", p.upstreamId, code, msg)
+		return nil, false, fmt.Errorf("beacon upstream '%s' probe error %d: %s", p.upstreamId, code, msg)
 	}
-	return hit(raw)
+	return raw, true, nil
 }
 
 type beaconHeaderResponse struct {
@@ -234,6 +320,25 @@ func hasDataKey(raw []byte) (bool, error) {
 		return false, nil
 	}
 	return node.Exists(), nil
+}
+
+// jsonArrayLen returns the length of the JSON array at path; ok is false when
+// the path is missing or is not an array.
+func jsonArrayLen(raw []byte, path ...interface{}) (int, bool) {
+	node, err := sonic.Get(raw, path...)
+	if err != nil || !node.Exists() {
+		return 0, false
+	}
+	// ast.Node.Len reports 0 for a lazily-parsed array, so decode the raw slice.
+	arrayRaw, err := node.Raw()
+	if err != nil {
+		return 0, false
+	}
+	var items []sonic.NoCopyRawMessage
+	if err := sonic.UnmarshalString(arrayRaw, &items); err != nil {
+		return 0, false
+	}
+	return len(items), true
 }
 
 // parseBeaconError detects a beacon error envelope ({"code":404,"message":"..."})
