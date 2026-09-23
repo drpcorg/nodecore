@@ -67,16 +67,17 @@ func restConnectorFor(t *testing.T, cfg *config.ApiConnectorConfig) *connectors.
 	return connector
 }
 
-// Go's transport only ever negotiates gzip on its own, so zstd has to be
-// offered explicitly - which also hands nodecore the job of decoding both.
-func TestUpstreamRequestOffersZstdAndGzip(t *testing.T) {
+// Go's transport only ever negotiates gzip on its own, so zstd and brotli have
+// to be offered explicitly - which also hands nodecore the job of decoding
+// every coding.
+func TestUpstreamRequestOffersEveryCoding(t *testing.T) {
 	srv, offered := upstreamServing(t, "", upstreamBody)
 	connector := restConnectorFor(t, &config.ApiConnectorConfig{Url: srv.URL})
 
 	r := connector.SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
 
 	require.False(t, r.HasError())
-	assert.Equal(t, "zstd, gzip", *offered)
+	assert.Equal(t, "zstd, br, gzip", *offered)
 }
 
 // Whatever coding the node answers with, the framework above the connector

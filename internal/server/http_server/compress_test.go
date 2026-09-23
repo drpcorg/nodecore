@@ -45,7 +45,7 @@ func TestCompressServesTheNegotiatedCoding(t *testing.T) {
 		{"gzip client", "gzip", "gzip"},
 		{"client offering both prefers zstd", "gzip, zstd", "zstd"},
 		{"client refusing zstd still gets gzip", "zstd;q=0, gzip", "gzip"},
-		{"unknown coding is not compressed", "br", ""},
+		{"unknown coding is not compressed", "deflate", ""},
 		{"no header is not compressed", "", ""},
 	}
 
@@ -254,7 +254,7 @@ func TestCompressReadsEveryAcceptEncodingFieldLine(t *testing.T) {
 		expected string
 	}{
 		{"a refusal on a later line still counts", []string{"zstd;q=0", "gzip"}, "gzip"},
-		{"a coding on a later line is still offered", []string{"br", "zstd"}, "zstd"},
+		{"a coding on a later line is still offered", []string{"deflate", "zstd"}, "zstd"},
 		{"split across lines the way a proxy might", []string{"gzip;q=0.5", "zstd;q=0.1"}, "gzip"},
 	}
 
