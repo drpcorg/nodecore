@@ -3,9 +3,9 @@
 //
 // Both edges need the same three things - decide which coding to use, encode
 // a body, decode a body - so the codec pools live here once rather than in
-// each edge. Levels are fixed at the fastest setting of each codec: a proxy
-// pays the compression cost on the hot path of every request, where CPU time
-// costs more than the extra few percent of ratio.
+// each edge. Levels are fixed at the cheapest useful setting of each codec: a
+// proxy pays the compression cost on the hot path of every request, where CPU
+// time costs more than the extra few percent of ratio.
 package compression
 
 import (
