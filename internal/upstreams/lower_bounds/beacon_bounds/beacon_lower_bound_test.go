@@ -131,8 +131,6 @@ func TestBeaconBlobLowerBoundTreatsPreDenebAsMiss(t *testing.T) {
 const (
 	sidecarBody     = `{"data":[{"index":"0","blob":"0x00"}]}`
 	emptyBlobsBody  = `{"data":[]}`
-	blockWithBlobs  = `{"data":{"message":{"slot":"1","body":{"blob_kzg_commitments":["0x01"]}}}}`
-	blockNoBlobs    = `{"data":{"message":{"slot":"1","body":{"blob_kzg_commitments":[]}}}}`
 	blobDenebFrom   = int64(20)
 	blobRetainedAge = int64(60) // blobs retained for slots [60, 100]
 )
@@ -154,21 +152,17 @@ func mockPreDeneb(connector *mocks.ConnectorMock) {
 	))
 }
 
-// mockRetainedWindow serves slots [blobRetainedAge, head]: even slots carry
-// blobs, odd slots carry none (200 {"data":[]} and a block without commitments).
-func mockRetainedWindow(connector *mocks.ConnectorMock) {
+// mockBlobSlots serves slots [from, head]: even slots carry blobs, odd slots
+// carry none and answer 200 {"data":[]}.
+func mockBlobSlots(connector *mocks.ConnectorMock, from int64) {
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		slot, ok := blobPathSlot(r)
-		return ok && slot >= blobRetainedAge && slot%2 == 0
+		return ok && slot >= from && slot%2 == 0
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(sidecarBody), 200, protocol.Rest))
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		slot, ok := blobPathSlot(r)
-		return ok && slot >= blobRetainedAge && slot%2 == 1
+		return ok && slot >= from && slot%2 == 1
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(emptyBlobsBody), 200, protocol.Rest))
-	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		slot, ok := blockPathSlot(r)
-		return ok && slot >= blobRetainedAge && slot%2 == 1
-	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(blockNoBlobs), 200, protocol.Rest))
 }
 
 func detectBlobBound(t *testing.T, connector *mocks.ConnectorMock) int64 {
@@ -184,24 +178,19 @@ func detectBlobBound(t *testing.T, connector *mocks.ConnectorMock) int64 {
 }
 
 // TestBeaconBlobLowerBoundEmptyAnswerOnPrunedSlots reproduces a node that keeps
-// answering 200 {"data":[]} for slots whose blobs it already pruned. Their blocks
-// still carry blob commitments, so those slots must count as a miss and the
-// bound must land on the retention window, not on the Deneb fork.
+// answering 200 {"data":[]} for slots whose blobs it already pruned. An empty
+// answer is a miss, so the bound lands on the retention window, not on the
+// Deneb fork, while blob-less slots inside the window are stepped over.
 func TestBeaconBlobLowerBoundEmptyAnswerOnPrunedSlots(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	mockHead(connector)
 	mockPreDeneb(connector)
-	mockRetainedWindow(connector)
+	mockBlobSlots(connector, blobRetainedAge)
 
-	// Pruned window [Deneb, retained): empty sidecars, blocks with commitments.
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		slot, ok := blobPathSlot(r)
 		return ok && slot >= blobDenebFrom && slot < blobRetainedAge
 	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(emptyBlobsBody), 200, protocol.Rest))
-	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		slot, ok := blockPathSlot(r)
-		return ok && slot >= blobDenebFrom && slot < blobRetainedAge
-	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(blockWithBlobs), 200, protocol.Rest))
 
 	assert.Equal(t, blobRetainedAge, detectBlobBound(t, connector))
 }
@@ -213,7 +202,7 @@ func TestBeaconBlobLowerBoundInsufficientDataColumns(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	mockHead(connector)
 	mockPreDeneb(connector)
-	mockRetainedWindow(connector)
+	mockBlobSlots(connector, blobRetainedAge)
 
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		slot, ok := blobPathSlot(r)
@@ -226,23 +215,13 @@ func TestBeaconBlobLowerBoundInsufficientDataColumns(t *testing.T) {
 }
 
 // TestBeaconBlobLowerBoundArchive keeps an archive node (every slot since Deneb
-// served, including slots without blobs) at the Deneb fork.
+// served, blob-less slots interleaved) at the first blob-carrying slot after
+// the Deneb fork.
 func TestBeaconBlobLowerBoundArchive(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	mockHead(connector)
 	mockPreDeneb(connector)
-	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		slot, ok := blobPathSlot(r)
-		return ok && slot >= blobDenebFrom && slot%2 == 0
-	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(sidecarBody), 200, protocol.Rest))
-	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		slot, ok := blobPathSlot(r)
-		return ok && slot >= blobDenebFrom && slot%2 == 1
-	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(emptyBlobsBody), 200, protocol.Rest))
-	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
-		slot, ok := blockPathSlot(r)
-		return ok && slot >= blobDenebFrom && slot%2 == 1
-	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(blockNoBlobs), 200, protocol.Rest))
+	mockBlobSlots(connector, blobDenebFrom)
 
 	assert.Equal(t, blobDenebFrom, detectBlobBound(t, connector))
 }
