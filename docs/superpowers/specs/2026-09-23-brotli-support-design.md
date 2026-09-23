@@ -90,7 +90,9 @@ which defeats the point. lgwin 18 beat lgwin 16 on both ratio and time on the
 large bodies (105,523 vs 109,118 bytes on the block) for ~1 MiB more per
 encoder, and matches the 256 KiB zstd window whose rationale (RPC bodies repeat
 within kilobytes) applies unchanged. lgwin 22 bought 1–2% more for another
-1.3 MiB per encoder.
+1.3 MiB per encoder. At qualities 0 and 1 go-brrr, like the reference C
+encoder, never declares less than lgwin 18 whatever is requested, so 18 is
+also the smallest window a quality-1 stream announces.
 
 zstd stays ahead of br on a tie: it is denser than brotli at these levels on
 everything but the tiniest bodies, and far faster for the client to decode. br
@@ -218,6 +220,18 @@ var brotliReaderPool = sync.Pool{New: func() any { return brrr.NewReader(nil) }}
    `Close()` (hands the ring buffer back to go-brrr and zeroes the decode state)
    → `Reset(nil)` (revives the reader and drops `r`) → `Put`.
 
+**Bytes after the end of the stream are rejected.** brotli has no
+concatenation — unlike gzip members or zstd frames, a second stream is not a
+continuation — and gzip and zstd both reject trailing bytes. go-brrr notices a
+tail only when it shares a buffer with the end of the stream (`excessive
+input`); a tail arriving in a later read is accepted silently. So the decoder
+is read through a small `brotliStream` wrapper that, when the decoder reports
+`io.EOF`, reads one byte past it from the body: a byte there is an error
+(`data after the end of the brotli stream`), a transport error there is
+surfaced, and a clean `io.EOF` ends the body. The eager decode in step 3 goes
+through the same wrapper, so the one-byte empty stream with junk behind it is
+rejected too.
+
 The existing `pooledReader` bookkeeping keeps `release` from running under a
 live `Read`, which is what lets the streaming paths close a body from another
 goroutine. Nothing about it is coding-specific.
@@ -262,6 +276,7 @@ All mappings exist today; brotli only feeds into them.
 | client request    | empty body, or the one-byte empty stream, labelled `br`     | accepted; the handler reads an empty body                      |
 | client request    | decodes past 32 MiB                                         | the read fails and the request is rejected, never truncated    |
 | client request    | corruption deeper in the stream                             | fails when the handler reads it, as for gzip and zstd          |
+| either            | bytes after the end of the brotli stream                    | fails on the read that reaches them, as for gzip and zstd      |
 | upstream response | not brotli, or truncated at the head                        | partial failure: retried elsewhere, the node is scored         |
 | upstream response | corruption deeper in the stream                             | fails mid-read, as for gzip and zstd                           |
 | upstream response | client leaves while the head is being decoded               | total failure with a context error; not counted against the node |
