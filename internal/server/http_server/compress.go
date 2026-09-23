@@ -3,8 +3,8 @@ package http_server
 // the package is adapted from echo's compress middleware
 // https://github.com/labstack/echo/blob/master/middleware/compress.go
 // with the hard-wired gzip codec replaced by internal/compression, which
-// negotiates zstd as well, and without the MinLength buffering echo grew for
-// its threshold option.
+// negotiates zstd and brotli as well, and without the MinLength buffering echo
+// grew for its threshold option.
 
 import (
 	"bufio"
@@ -43,7 +43,7 @@ type compressResponseWriter struct {
 var errResponseFinished = errors.New("the response body is already finished")
 
 // Compress returns a middleware that compresses the response body with the
-// coding the client asked for - zstd or gzip, whichever Negotiate picks.
+// coding the client asked for - zstd, br or gzip, whichever Negotiate picks.
 // A client that asks for neither is served plain bytes.
 func Compress() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
