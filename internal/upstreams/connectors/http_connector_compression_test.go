@@ -151,7 +151,7 @@ func TestConfiguredAcceptEncodingIsNotOverridden(t *testing.T) {
 func TestUnsupportedUpstreamCodingFails(t *testing.T) {
 	srv, _ := upstreamServing(t, "", upstreamBody)
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Encoding", "br")
+		w.Header().Set("Content-Encoding", "deflate")
 		_, _ = w.Write(upstreamBody)
 	})
 	connector := restConnectorFor(t, &config.ApiConnectorConfig{Url: srv.URL})

@@ -99,9 +99,9 @@ func TestDecompressDropsTheContentEncodingHeader(t *testing.T) {
 // A coding nodecore does not decode is left alone rather than guessed at: the
 // handler sees exactly the bytes the client sent, as it always has.
 func TestDecompressPassesUnknownCodingsThrough(t *testing.T) {
-	body := []byte("\x1b\x2f\x00 brotli-ish bytes")
+	body := []byte("\x78\x9c deflate-ish bytes")
 
-	rec, seen := postCompressed(t, "br", body)
+	rec, seen := postCompressed(t, "deflate", body)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, body, seen)

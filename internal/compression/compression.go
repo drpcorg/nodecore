@@ -23,6 +23,9 @@ const (
 	Identity Scheme = ""
 	Gzip     Scheme = "gzip"
 	Zstd     Scheme = "zstd"
+	// Brotli's content-coding token is "br" (RFC 7932), not "brotli": a
+	// client asking for the latter is asking for a coding nobody implements.
+	Brotli Scheme = "br"
 )
 
 // Offer is the Accept-Encoding nodecore sends upstream. zstd leads on
