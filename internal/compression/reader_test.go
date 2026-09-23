@@ -3,6 +3,7 @@ package compression_test
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -605,4 +606,54 @@ func TestWrapReaderDecodesABrotliBodyArrivingAByteAtATime(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, plain, got)
+}
+
+// lastBytesWithError hands over its data and reports err together with the
+// final bytes, the way a transport can deliver the end of a body and its
+// failure in one read.
+type lastBytesWithError struct {
+	data []byte
+	err  error
+}
+
+func (r *lastBytesWithError) Read(p []byte) (int, error) {
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	if len(r.data) == 0 {
+		return n, r.err
+	}
+	return n, nil
+}
+
+// The body can still fail once the brotli stream is complete - a connection
+// reset before the last chunk of an HTTP body, a client that goes away. gzip
+// and zstd read on past their last member or frame and report that failure,
+// so brotli must too, rather than calling a body complete whose transport
+// failed. The failure has to stay reported on later reads as well.
+func TestWrapReaderSurfacesATransportErrorAfterTheBrotliStream(t *testing.T) {
+	errTransport := errors.New("connection reset")
+	stream := brotliBytes(t, []byte(`{"jsonrpc":"2.0","id":1,"result":"0x10"}`))
+	empty := brotliBytes(t, nil)
+	tests := []struct {
+		name string
+		body io.Reader
+	}{
+		{"in the read after the stream", io.MultiReader(bytes.NewReader(stream), iotest.ErrReader(errTransport))},
+		{"together with the last bytes of the stream", &lastBytesWithError{data: stream, err: errTransport}},
+		{"after the empty stream", io.MultiReader(bytes.NewReader(empty), iotest.ErrReader(errTransport))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(te *testing.T) {
+			reader, err := compression.WrapReader("br", tt.body)
+			if err == nil {
+				defer func() { _ = reader.Close() }()
+				_, err = io.ReadAll(reader)
+				_, again := reader.Read(make([]byte, 1))
+				assert.ErrorIs(te, again, errTransport, "the failure must stay reported")
+			}
+
+			assert.ErrorIs(te, err, errTransport)
+		})
+	}
 }

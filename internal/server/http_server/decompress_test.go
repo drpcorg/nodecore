@@ -229,11 +229,15 @@ func TestDecompressCapsTheDecodedBodySize(t *testing.T) {
 func TestDecompressPassesBodiesUpToTheCap(t *testing.T) {
 	plain := bytes.Repeat([]byte("A"), http_server.MaxDecodedRequestBytes)
 
-	read, rec, readErr := postAndCount(t, "zstd", compress(t, compression.Zstd, plain))
+	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip, compression.Brotli} {
+		t.Run(string(scheme), func(te *testing.T) {
+			read, rec, readErr := postAndCount(te, string(scheme), compress(te, scheme, plain))
 
-	require.NoError(t, readErr)
-	assert.Equal(t, int64(len(plain)), read)
-	assert.Equal(t, http.StatusOK, rec.Code)
+			require.NoError(te, readErr)
+			assert.Equal(te, int64(len(plain)), read)
+			assert.Equal(te, http.StatusOK, rec.Code)
+		})
+	}
 }
 
 // postAndCount reports how much of the body the handler managed to read, and

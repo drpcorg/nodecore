@@ -116,33 +116,74 @@ func TestBrotliWriterDeclaresA256KiBWindow(t *testing.T) {
 	assert.Equal(t, 18, brotliWindowBits(buf.Bytes()[0]))
 }
 
-type failingWriter struct{}
+// failingWriter is a client that has gone away. It lets through the first
+// accept bytes - a connection that drops partway through a response - and
+// fails every write from then on.
+type failingWriter struct {
+	accept int
+}
 
-func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("the client went away") }
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if len(p) <= w.accept {
+		w.accept -= len(p)
+		return len(p), nil
+	}
+	n := w.accept
+	w.accept = 0
+	return n, errors.New("the client went away")
+}
 
 // A client that hangs up mid-response leaves its encoder with a failed write
-// behind it, and the pool hands that encoder to the next response. Reset has
-// to clear the failure, or every response after a disconnect inherits it.
+// behind it, and the pool hands that encoder to the next response. Where the
+// failure surfaces depends on how much the codec had buffered - Write for a
+// large body, Flush or Close for a small one - and the two Resets that
+// ReleaseWriter and AcquireWriter do between responses have to clear it
+// wherever it came from. They are applied to the same instance here, so the
+// test does not depend on which writer the pool happens to hand back.
 func TestAcquireWriterIsHealthyAfterAFailedWrite(t *testing.T) {
-	for _, scheme := range []compression.Scheme{compression.Gzip, compression.Zstd, compression.Brotli} {
-		t.Run(string(scheme), func(te *testing.T) {
-			for range 3 {
-				writer, err := compression.AcquireWriter(scheme, failingWriter{})
-				require.NoError(te, err)
-				_, writeErr := writer.Write(lowRedundancy(256 << 10))
-				flushErr := writer.Flush()
-				closeErr := writer.Close()
-				require.True(te, writeErr != nil || flushErr != nil || closeErr != nil,
-					"the failing client was never written to")
-				compression.ReleaseWriter(writer)
+	failures := []struct {
+		name   string
+		accept int
+		fail   func(compression.Writer) error
+	}{
+		{"write fails before anything reaches the client", 0, func(w compression.Writer) error {
+			_, err := w.Write(lowRedundancy(1 << 20))
+			return err
+		}},
+		{"write fails partway through the body", 4 << 10, func(w compression.Writer) error {
+			_, err := w.Write(lowRedundancy(1 << 20))
+			return err
+		}},
+		{"flush fails", 0, func(w compression.Writer) error {
+			if _, err := w.Write([]byte(`{"chunk":"first"}`)); err != nil {
+				return err
+			}
+			return w.Flush()
+		}},
+		{"close fails", 0, func(w compression.Writer) error {
+			if _, err := w.Write([]byte(`{"chunk":"first"}`)); err != nil {
+				return err
+			}
+			return w.Close()
+		}},
+	}
 
+	for _, scheme := range []compression.Scheme{compression.Gzip, compression.Zstd, compression.Brotli} {
+		for _, failure := range failures {
+			t.Run(string(scheme)+"/"+failure.name, func(te *testing.T) {
+				writer, err := compression.AcquireWriter(scheme, &failingWriter{accept: failure.accept})
+				require.NoError(te, err)
+				defer compression.ReleaseWriter(writer)
+				require.Error(te, failure.fail(writer), "the step that should have hit the dead client did not fail")
+
+				// What ReleaseWriter and then AcquireWriter do to a pooled
+				// writer, in that order.
 				var buf bytes.Buffer
-				healthy, err := compression.AcquireWriter(scheme, &buf)
+				writer.Reset(io.Discard)
+				writer.Reset(&buf)
+				_, err = writer.Write([]byte("the next response"))
 				require.NoError(te, err)
-				_, err = healthy.Write([]byte("the next response"))
-				require.NoError(te, err)
-				require.NoError(te, healthy.Close())
-				compression.ReleaseWriter(healthy)
+				require.NoError(te, writer.Close())
 
 				reader, err := compression.WrapReader(string(scheme), &buf)
 				require.NoError(te, err)
@@ -150,8 +191,8 @@ func TestAcquireWriterIsHealthyAfterAFailedWrite(t *testing.T) {
 				require.NoError(te, err)
 				require.NoError(te, reader.Close())
 				assert.Equal(te, "the next response", string(got))
-			}
-		})
+			})
+		}
 	}
 }
 
