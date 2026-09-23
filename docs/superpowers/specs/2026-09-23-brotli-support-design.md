@@ -1,7 +1,7 @@
 # Brotli (`br`) content coding — design
 
 - **Date:** 2026-09-23
-- **Status:** design approved, not yet implemented
+- **Status:** implemented on branch `feat/brotli-compression`
 - **Branch:** `feat/brotli-compression`
 - **Area:** `internal/compression`, `internal/server/http_server`, `internal/upstreams/connectors`
 
