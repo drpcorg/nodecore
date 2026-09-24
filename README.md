@@ -27,7 +27,7 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 - **Quorum** — request and verify independently-signed responses from upstreams before returning data to the client. See [Quorum](docs/nodecore/10-quorum.md).
 - **Flexible authentication** — token-based and JWT authentication, plus scoped access keys with fine-grained restrictions (IP, method, and contract address whitelists). See [Auth](docs/nodecore/03-auth.md).
 - **Observability** — Prometheus [metrics](docs/nodecore/08-prometheus-metrics.md) and a public [gRPC API](docs/nodecore/12-grpc-server.md) for querying upstream and chain state.
-- **Compression** — gzip and zstd on both hops: client requests and responses are negotiated per request, and upstream responses are requested compressed and decoded on arrival. No configuration. See [Compression](docs/nodecore/15-compression.md).
+- **Compression** — gzip, zstd and brotli on both hops: client requests and responses are negotiated per request, and upstream responses are requested compressed and decoded on arrival. No configuration. See [Compression](docs/nodecore/15-compression.md).
 - **Streaming-first architecture** — responses can be streamed to minimize memory footprint and handle large payloads efficiently.
 
 ## Quick start
@@ -116,7 +116,7 @@ Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical conf
 | [gRPC API](docs/nodecore/12-grpc-server.md) | Public gRPC API for upstream and chain state (dshackle-compatible) |
 | [Subscriptions](docs/nodecore/13-subscriptions.md) | Subscription aggregation and local synthesis |
 | [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md) | Native gRPC chain traffic: metadata contract, auth, reflection |
-| [Compression](docs/nodecore/15-compression.md) | gzip/zstd on the client and upstream hops |
+| [Compression](docs/nodecore/15-compression.md) | gzip/zstd/brotli on the client and upstream hops |
 
 ## Integrations
 

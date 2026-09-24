@@ -294,10 +294,10 @@ func (h *HttpConnector) applyConfigHeaders(req *http.Request) {
 		req.Header.Set(k, v)
 	}
 	// Go's transport would negotiate gzip on its own, but only gzip, and only
-	// while no Accept-Encoding is set. Asking for zstd here therefore also
-	// takes over decoding the answer - see decodeResponseBody. An operator who
-	// pinned the header in the connector config keeps it: a node that
-	// mishandles a coding is exactly what that setting is for.
+	// while no Accept-Encoding is set. Asking for zstd and brotli here
+	// therefore also takes over decoding the answer - see decodeResponseBody.
+	// An operator who pinned the header in the connector config keeps it: a
+	// node that mishandles a coding is exactly what that setting is for.
 	if req.Header.Get(acceptEncodingHeader) == "" {
 		req.Header.Set(acceptEncodingHeader, compression.Offer)
 	}
@@ -506,7 +506,7 @@ func (h *HttpConnector) dispatch(
 	body, err := decodeResponseBody(resp)
 	if err != nil {
 		utils.CloseBodyReader(ctx, resp.Body)
-		// Both codings read the head of the body to validate it, so a client
+		// Every coding reads the head of the body to validate it, so a client
 		// that walked away lands here as a read failure. That is nobody's
 		// fault upstream: reported as a partial failure it would penalise a
 		// healthy node and retry a request with no one left to answer.

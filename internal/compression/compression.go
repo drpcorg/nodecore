@@ -3,9 +3,9 @@
 //
 // Both edges need the same three things - decide which coding to use, encode
 // a body, decode a body - so the codec pools live here once rather than in
-// each edge. Levels are fixed at the fastest setting of each codec: a proxy
-// pays the compression cost on the hot path of every request, where CPU time
-// costs more than the extra few percent of ratio.
+// each edge. Levels are fixed at the cheapest useful setting of each codec: a
+// proxy pays the compression cost on the hot path of every request, where CPU
+// time costs more than the extra few percent of ratio.
 package compression
 
 import (
@@ -23,17 +23,26 @@ const (
 	Identity Scheme = ""
 	Gzip     Scheme = "gzip"
 	Zstd     Scheme = "zstd"
+	// Brotli's content-coding token is "br" (RFC 7932), not "brotli": a
+	// client asking for the latter is asking for a coding nobody implements.
+	Brotli Scheme = "br"
 )
 
-// Offer is the Accept-Encoding nodecore sends upstream. zstd leads on
-// preference, but a node that knows neither simply answers identity - content
+// preference is the order an exact tie in Accept-Encoding is settled in. zstd
+// is the densest of the three at these levels and the fastest for a client to
+// decode; brotli beats gzip on both size and CPU on the bodies large enough
+// for either to matter; gzip is the one every client reads.
+var preference = [...]Scheme{Zstd, Brotli, Gzip}
+
+// Offer is the Accept-Encoding nodecore sends upstream, in preference order.
+// A node that knows none of them simply answers identity - content
 // negotiation degrades on its own, which is why this needs no config knob.
-const Offer = "zstd, gzip"
+const Offer = "zstd, br, gzip"
 
 // Negotiate picks the coding to encode a response with, given the client's
-// Accept-Encoding (RFC 9110 §12.5.3). The highest q wins; zstd breaks a tie
-// because it decodes faster and compresses denser than gzip at these levels.
-// Anything unrecognised, refused with q=0, or absent yields Identity.
+// Accept-Encoding (RFC 9110 §12.5.3). The highest q wins, and an exact tie
+// goes to whichever coding comes first in preference. Anything unrecognised,
+// refused with q=0, or absent yields Identity.
 //
 // A coding the client names twice is settled by its last mention, which the
 // RFC leaves open and which lets a merged header ("gzip, gzip;q=0", two field
@@ -52,30 +61,46 @@ func Negotiate(acceptEncoding string) Scheme {
 	// its q is collected separately and applied afterwards. Folding it in
 	// during the scan is how "zstd;q=0, *" would end up serving zstd to a
 	// client that had just refused it.
-	var gzipQ, zstdQ, identityQ, wildcardQ float64
-	var gzipNamed, zstdNamed, identityNamed, wildcardNamed bool
+	var quality [len(preference)]float64
+	var named [len(preference)]bool
+	var identityQ, wildcardQ float64
+	var identityNamed, wildcardNamed bool
 
 	for _, part := range strings.Split(acceptEncoding, ",") {
-		coding, quality := parseCoding(part)
+		coding, q := parseCoding(part)
 		switch coding {
-		case string(Gzip):
-			gzipQ, gzipNamed = quality, true
-		case string(Zstd):
-			zstdQ, zstdNamed = quality, true
 		case "identity":
-			identityQ, identityNamed = quality, true
+			identityQ, identityNamed = q, true
 		case "*":
-			wildcardQ, wildcardNamed = quality, true
+			wildcardQ, wildcardNamed = q, true
+		default:
+			for i, scheme := range preference {
+				if coding == string(scheme) {
+					quality[i], named[i] = q, true
+					break
+				}
+			}
 		}
 	}
-	if wildcardNamed {
-		// A bare "*" is a client saying anything is acceptable, so it reaches
-		// both codings at the same q and the tie-break below picks zstd.
-		if !gzipNamed {
-			gzipQ = wildcardQ
+
+	// A q of zero is a refusal rather than a weak preference, so it never
+	// wins: nothing displaces Identity without a q above zero. Only a
+	// strictly higher q displaces the best so far, which is what hands an
+	// exact tie to the coding earlier in preference - and that can never
+	// demote a coding the client ranked higher.
+	best, bestQ := Identity, 0.0
+	for i, scheme := range preference {
+		q := quality[i]
+		if !named[i] {
+			if !wildcardNamed {
+				continue
+			}
+			// A bare "*" is a client saying anything is acceptable, so it
+			// reaches every coding the client did not name, at the same q.
+			q = wildcardQ
 		}
-		if !zstdNamed {
-			zstdQ = wildcardQ
+		if q > bestQ {
+			best, bestQ = scheme, q
 		}
 	}
 
@@ -83,21 +108,10 @@ func Negotiate(acceptEncoding string) Scheme {
 	// not to be compressed, and only an explicit "identity" says that - left
 	// unmentioned it is the fallback, which it stays either way. The
 	// comparison is strict so an unranked tie still compresses.
-	if identityNamed && identityQ > gzipQ && identityQ > zstdQ {
+	if identityNamed && identityQ > bestQ {
 		return Identity
 	}
-
-	// A q of zero is a refusal rather than a weak preference, so it never
-	// wins. Of what remains the higher q takes it, and zstd takes an exact
-	// tie - which can never demote a coding the client ranked higher.
-	switch {
-	case zstdQ > 0 && zstdQ >= gzipQ:
-		return Zstd
-	case gzipQ > 0:
-		return Gzip
-	default:
-		return Identity
-	}
+	return best
 }
 
 // parseCoding splits one Accept-Encoding element into its coding name and its

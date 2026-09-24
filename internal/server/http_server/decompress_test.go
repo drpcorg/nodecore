@@ -62,6 +62,8 @@ func TestDecompressDecodesRequestBodies(t *testing.T) {
 		{"zstd", "zstd", compress(t, compression.Zstd, plain)},
 		{"gzip", "gzip", compress(t, compression.Gzip, plain)},
 		{"case-insensitive", "ZSTD", compress(t, compression.Zstd, plain)},
+		{"br", "br", compress(t, compression.Brotli, plain)},
+		{"br is case-insensitive", "BR", compress(t, compression.Brotli, plain)},
 		{"no encoding", "", plain},
 		{"identity", "identity", plain},
 	}
@@ -99,9 +101,9 @@ func TestDecompressDropsTheContentEncodingHeader(t *testing.T) {
 // A coding nodecore does not decode is left alone rather than guessed at: the
 // handler sees exactly the bytes the client sent, as it always has.
 func TestDecompressPassesUnknownCodingsThrough(t *testing.T) {
-	body := []byte("\x1b\x2f\x00 brotli-ish bytes")
+	body := []byte("\x78\x9c deflate-ish bytes")
 
-	rec, seen := postCompressed(t, "br", body)
+	rec, seen := postCompressed(t, "deflate", body)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, body, seen)
@@ -121,6 +123,9 @@ func TestDecompressRejectsBodiesThatAreNotTheDeclaredCoding(t *testing.T) {
 		{"zstd declared, plain body", "zstd", plain},
 		{"gzip declared, header truncated", "gzip", compress(t, compression.Gzip, plain)[:5]},
 		{"zstd declared, magic truncated", "zstd", compress(t, compression.Zstd, plain)[:2]},
+		{"br declared, plain body", "br", plain},
+		{"br declared, gzip body", "br", compress(t, compression.Gzip, plain)},
+		{"br declared, head truncated", "br", compress(t, compression.Brotli, plain)[:2]},
 	}
 
 	for _, tt := range tests {
@@ -137,6 +142,7 @@ func TestDecompressRejectsBodiesThatAreNotTheDeclaredCoding(t *testing.T) {
 // served as though the client had sent a short body.
 func TestDecompressFailsOnTruncatedStream(t *testing.T) {
 	plain := bytes.Repeat([]byte("x"), 4096)
+	brStream := compress(t, compression.Brotli, plain)
 	tests := []struct {
 		name            string
 		contentEncoding string
@@ -144,6 +150,7 @@ func TestDecompressFailsOnTruncatedStream(t *testing.T) {
 	}{
 		{"zstd", "zstd", compress(t, compression.Zstd, plain)[:16]},
 		{"gzip", "gzip", compress(t, compression.Gzip, plain)[:14]},
+		{"br", "br", brStream[:len(brStream)-2]},
 	}
 
 	for _, tt := range tests {
@@ -161,7 +168,7 @@ func TestDecompressFailsOnTruncatedStream(t *testing.T) {
 // through ("ignore if body is empty"), and a client that sets the header on a
 // bodyless POST must not start getting a 400 for it.
 func TestDecompressPassesEmptyBodiesThrough(t *testing.T) {
-	for _, contentEncoding := range []string{"gzip", "zstd", "identity", ""} {
+	for _, contentEncoding := range []string{"gzip", "zstd", "br", "identity", ""} {
 		name := contentEncoding
 		if name == "" {
 			name = "absent"
@@ -197,13 +204,13 @@ func TestDecompressRejectsFramesAboveTheWindowCap(t *testing.T) {
 }
 
 // A compressed request body is a size multiplier, and the multiplier is the
-// sender's to choose: DEFLATE tops out near 1000:1, zstd has no such ceiling,
-// so a few hundred kilobytes on the wire can ask nodecore to hold gigabytes.
-// The decoded body is capped, and a body that runs past the cap fails rather
-// than being quietly served short.
+// sender's to choose: DEFLATE tops out near 1000:1, zstd and brotli have no
+// such ceiling, so a few hundred kilobytes on the wire can ask nodecore to hold
+// gigabytes. The decoded body is capped, and a body that runs past the cap
+// fails rather than being quietly served short.
 func TestDecompressCapsTheDecodedBodySize(t *testing.T) {
 	oversize := http_server.MaxDecodedRequestBytes + 1<<20
-	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip} {
+	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip, compression.Brotli} {
 		t.Run(string(scheme), func(te *testing.T) {
 			bomb := compress(te, scheme, bytes.Repeat([]byte("A"), oversize))
 			require.Less(te, len(bomb), 1<<20, "a bomb this cheap on the wire is the whole point of the cap")
@@ -222,11 +229,15 @@ func TestDecompressCapsTheDecodedBodySize(t *testing.T) {
 func TestDecompressPassesBodiesUpToTheCap(t *testing.T) {
 	plain := bytes.Repeat([]byte("A"), http_server.MaxDecodedRequestBytes)
 
-	read, rec, readErr := postAndCount(t, "zstd", compress(t, compression.Zstd, plain))
+	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip, compression.Brotli} {
+		t.Run(string(scheme), func(te *testing.T) {
+			read, rec, readErr := postAndCount(te, string(scheme), compress(te, scheme, plain))
 
-	require.NoError(t, readErr)
-	assert.Equal(t, int64(len(plain)), read)
-	assert.Equal(t, http.StatusOK, rec.Code)
+			require.NoError(te, readErr)
+			assert.Equal(te, int64(len(plain)), read)
+			assert.Equal(te, http.StatusOK, rec.Code)
+		})
+	}
 }
 
 // postAndCount reports how much of the body the handler managed to read, and
@@ -250,4 +261,32 @@ func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, *ht
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	return read, rec, readErr
+}
+
+// A br body's Content-Encoding goes once the body is decoded, like any other
+// coding's - left in place it would tell the node to decompress plain bytes.
+func TestDecompressDropsTheBrotliContentEncodingHeader(t *testing.T) {
+	plain := []byte(`{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}`)
+	var seenHeader string
+	var seenBody []byte
+	e := echo.New()
+	e.Use(http_server.Decompress())
+	e.POST("/", func(c echo.Context) error {
+		seenHeader = c.Request().Header.Get(echo.HeaderContentEncoding)
+		body, err := io.ReadAll(c.Request().Body)
+		seenBody = body
+		if err != nil {
+			return err
+		}
+		return c.NoContent(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(compress(t, compression.Brotli, plain)))
+	req.Header.Set(echo.HeaderContentEncoding, "br")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Empty(t, seenHeader)
+	assert.Equal(t, plain, seenBody)
 }

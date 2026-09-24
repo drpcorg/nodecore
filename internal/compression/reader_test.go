@@ -2,16 +2,23 @@ package compression_test
 
 import (
 	"bytes"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
+	brrr "github.com/molecule-man/go-brrr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +44,62 @@ func zstdBytes(t *testing.T, plain []byte) []byte {
 	return buf.Bytes()
 }
 
+func brotliBytes(t *testing.T, plain []byte) []byte {
+	t.Helper()
+	out, err := brrr.Compress(plain, 5)
+	require.NoError(t, err)
+	return out
+}
+
+// encodeAs encodes plain the way a peer labelling it contentEncoding would.
+func encodeAs(t *testing.T, contentEncoding string, plain []byte) []byte {
+	t.Helper()
+	switch contentEncoding {
+	case "gzip":
+		return gzipBytes(t, plain)
+	case "zstd":
+		return zstdBytes(t, plain)
+	case "br":
+		return brotliBytes(t, plain)
+	}
+	t.Fatalf("no test encoder for %q", contentEncoding)
+	return nil
+}
+
+// lowRedundancy is hex text that no coding compresses much, so any prefix of
+// its encoding is well past the codec's head. A repeated string compresses to
+// a few dozen bytes, and half of that may not yet hold brotli's first
+// meta-block header - which WrapReader decodes before it returns, so a test
+// that parks the body halfway would park WrapReader instead of a Read.
+func lowRedundancy(n int) []byte {
+	rng := rand.New(rand.NewPCG(1, 2))
+	raw := make([]byte, n/2)
+	for i := range raw {
+		raw[i] = byte(rng.Uint32())
+	}
+	return []byte(hex.EncodeToString(raw))
+}
+
+// brotliWindowBits decodes the window a brotli stream declares in its first
+// byte (RFC 7932 §9.1, read least significant bit first), or 0 for the
+// pattern the format reserves - which is how the large-window form opens.
+func brotliWindowBits(first byte) int {
+	if first&1 == 0 {
+		return 16
+	}
+	if n := (first >> 1) & 7; n != 0 {
+		return 17 + int(n)
+	}
+	switch m := (first >> 4) & 7; m {
+	case 0:
+		return 17
+	case 1:
+		return 0
+	default:
+		return 8 + int(m)
+	}
+}
+
 func TestWrapReaderDecodesSupportedCodings(t *testing.T) {
 	plain := []byte(`{"jsonrpc":"2.0","id":1,"result":"0x10"}`)
 	tests := []struct {
@@ -47,6 +110,8 @@ func TestWrapReaderDecodesSupportedCodings(t *testing.T) {
 		{"gzip", "gzip", gzipBytes(t, plain)},
 		{"zstd", "zstd", zstdBytes(t, plain)},
 		{"case-insensitive", "ZSTD", zstdBytes(t, plain)},
+		{"br", "br", brotliBytes(t, plain)},
+		{"br is case-insensitive", "BR", brotliBytes(t, plain)},
 		{"no encoding is passed through", "", plain},
 		{"identity is passed through", "identity", plain},
 	}
@@ -69,7 +134,7 @@ func TestWrapReaderDecodesSupportedCodings(t *testing.T) {
 // passed on: the body would reach the client as bytes it cannot read, and the
 // connector strips Content-Encoding so it would not even know why.
 func TestWrapReaderRejectsUnsupportedCodings(t *testing.T) {
-	for _, contentEncoding := range []string{"br", "deflate", "gzip, gzip"} {
+	for _, contentEncoding := range []string{"brotli", "deflate", "gzip, gzip"} {
 		t.Run(contentEncoding, func(te *testing.T) {
 			_, err := compression.WrapReader(contentEncoding, bytes.NewReader(nil))
 
@@ -82,15 +147,10 @@ func TestWrapReaderRejectsUnsupportedCodings(t *testing.T) {
 // a decoder still holding the previous stream's state produces garbage on
 // its next use.
 func TestWrapReaderIsReusableAfterClose(t *testing.T) {
-	for _, scheme := range []string{"gzip", "zstd"} {
+	for _, scheme := range []string{"gzip", "zstd", "br"} {
 		t.Run(scheme, func(te *testing.T) {
 			for _, plain := range [][]byte{[]byte("first body"), []byte("a completely different second body")} {
-				var body []byte
-				if scheme == "gzip" {
-					body = gzipBytes(te, plain)
-				} else {
-					body = zstdBytes(te, plain)
-				}
+				body := encodeAs(te, scheme, plain)
 
 				reader, err := compression.WrapReader(scheme, bytes.NewReader(body))
 				require.NoError(te, err)
@@ -144,11 +204,12 @@ func TestWrapReaderRejectsBodyThatIsNotZstd(t *testing.T) {
 
 // An empty body is a legitimate zero-byte payload, not a malformed frame -
 // and every coding has to say so. Left to the codecs they disagree: gzip
-// calls it a truncated header and zstd a missing magic. A peer that labels an
-// empty 204 with a coding used to be served by both echo's decompress
-// middleware and Go's transparent gzip, and it stays served here.
+// calls it a truncated header, zstd a missing magic, and brotli a truncated
+// stream. A peer that labels an empty 204 with a coding used to be served by
+// both echo's decompress middleware and Go's transparent gzip, and it stays
+// served here.
 func TestWrapReaderAcceptsAnEmptyBodyUnderEveryCoding(t *testing.T) {
-	for _, contentEncoding := range []string{"zstd", "gzip", "identity", ""} {
+	for _, contentEncoding := range []string{"zstd", "gzip", "br", "identity", ""} {
 		name := contentEncoding
 		if name == "" {
 			name = "absent"
@@ -246,13 +307,10 @@ func (r *parkingReader) Read(p []byte) (int, error) {
 // through a codec still in use, and for zstd the release path deadlocks
 // against the read outright.
 func TestWrapReaderSurvivesACloseDuringARead(t *testing.T) {
-	for _, contentEncoding := range []string{"zstd", "gzip"} {
+	for _, contentEncoding := range []string{"zstd", "gzip", "br"} {
 		t.Run(contentEncoding, func(te *testing.T) {
-			plain := bytes.Repeat([]byte("payload-payload-"), 4096)
-			frame := zstdBytes(te, plain)
-			if contentEncoding == "gzip" {
-				frame = gzipBytes(te, plain)
-			}
+			plain := lowRedundancy(64 << 10)
+			frame := encodeAs(te, contentEncoding, plain)
 
 			for range 10 {
 				source := &parkingReader{
@@ -307,12 +365,9 @@ func TestWrapReaderSurvivesACloseDuringARead(t *testing.T) {
 // Reading a body after it has been closed must be refused rather than reach a
 // codec that now belongs to someone else.
 func TestWrapReaderRefusesReadsAfterClose(t *testing.T) {
-	for _, contentEncoding := range []string{"zstd", "gzip"} {
+	for _, contentEncoding := range []string{"zstd", "gzip", "br"} {
 		t.Run(contentEncoding, func(te *testing.T) {
-			frame := zstdBytes(te, []byte("payload"))
-			if contentEncoding == "gzip" {
-				frame = gzipBytes(te, []byte("payload"))
-			}
+			frame := encodeAs(te, contentEncoding, []byte("payload"))
 			reader, err := compression.WrapReader(contentEncoding, bytes.NewReader(frame))
 			require.NoError(te, err)
 			require.NoError(te, reader.Close())
@@ -350,13 +405,10 @@ func (r *dribbleReader) Read(p []byte) (int, error) {
 }
 
 func TestWrapReaderSurvivesATornDownStreamUnderRacingTeardown(t *testing.T) {
-	for _, contentEncoding := range []string{"zstd", "gzip"} {
+	for _, contentEncoding := range []string{"zstd", "gzip", "br"} {
 		t.Run(contentEncoding, func(te *testing.T) {
-			plain := bytes.Repeat([]byte("payload-payload-"), 4096)
-			frame := zstdBytes(te, plain)
-			if contentEncoding == "gzip" {
-				frame = gzipBytes(te, plain)
-			}
+			plain := lowRedundancy(64 << 10)
+			frame := encodeAs(te, contentEncoding, plain)
 
 			for round := range 15 {
 				source := &dribbleReader{body: frame, stop: make(chan struct{})}
@@ -391,6 +443,217 @@ func TestWrapReaderSurvivesATornDownStreamUnderRacingTeardown(t *testing.T) {
 
 				<-readDone
 			}
+		})
+	}
+}
+
+// Fixtures made by the reference C encoder (brotli 1.2.0), so these are
+// streams go-brrr did not write:
+//
+//	brotli -c -w 10 response.json > response.lgwin10.br
+//	brotli -c -w 22 response.json > response.lgwin22.br
+//	brotli -c < response.json > response.lgwin24.br
+//	brotli -c --large_window=26 response.json > response.large-window.br
+//
+// response.lgwin24.br is compressed from a pipe, which is when the CLI
+// declares lgwin 24 - the largest window RFC 7932 allows, and the reason the
+// decoder window is not capped below it.
+func TestWrapReaderDecodesReferenceBrotliStreams(t *testing.T) {
+	plain, err := os.ReadFile(filepath.Join("testdata", "brotli", "response.json"))
+	require.NoError(t, err)
+	tests := []struct {
+		file  string
+		lgwin int
+	}{
+		{"response.lgwin10.br", 10},
+		{"response.lgwin22.br", 22},
+		{"response.lgwin24.br", 24},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.file, func(te *testing.T) {
+			stream, err := os.ReadFile(filepath.Join("testdata", "brotli", tt.file))
+			require.NoError(te, err)
+			require.Equal(te, tt.lgwin, brotliWindowBits(stream[0]),
+				"the fixture does not declare the window it is named for")
+
+			reader, err := compression.WrapReader("br", bytes.NewReader(stream))
+			require.NoError(te, err)
+			defer func() { require.NoError(te, reader.Close()) }()
+			got, err := io.ReadAll(reader)
+
+			require.NoError(te, err)
+			assert.Equal(te, plain, got)
+		})
+	}
+}
+
+// The empty brotli stream is one byte, and encoders disagree on which: the
+// reference CLI writes 0x3f, go-brrr 0x3b. Either is a complete body that
+// decodes to nothing - not an empty body, and not a malformed one.
+func TestWrapReaderAcceptsTheEmptyBrotliStream(t *testing.T) {
+	for _, stream := range [][]byte{{0x3f}, brotliBytes(t, nil)} {
+		t.Run(fmt.Sprintf("%#x", stream), func(te *testing.T) {
+			reader, err := compression.WrapReader("br", bytes.NewReader(stream))
+			require.NoError(te, err)
+			defer func() { require.NoError(te, reader.Close()) }()
+
+			got, err := io.ReadAll(reader)
+
+			require.NoError(te, err)
+			assert.Empty(te, got)
+		})
+	}
+}
+
+// brotli has no magic number to turn a mislabelled body away with, so
+// WrapReader decodes its first byte instead. The decoder that failed goes back
+// to the pool, and the next body through it is somebody else's - so it has to
+// come back healthy.
+func TestWrapReaderRejectsBodiesThatAreNotBrotli(t *testing.T) {
+	plainJSON := []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}`)
+	largeWindow, err := os.ReadFile(filepath.Join("testdata", "brotli", "response.large-window.br"))
+	require.NoError(t, err)
+	valid := []byte(`{"jsonrpc":"2.0","id":1,"result":"0x10"}`)
+	tests := []struct {
+		name string
+		body []byte
+	}{
+		{"plain json object", plainJSON},
+		{"plain json array", append(append([]byte("["), plainJSON...), ']')},
+		{"json behind a byte-order mark", append([]byte{0xef, 0xbb, 0xbf}, plainJSON...)},
+		{"gzip bytes under a br label", gzipBytes(t, plainJSON)},
+		{"zstd bytes under a br label", zstdBytes(t, plainJSON)},
+		{"zeroes", make([]byte, 64)},
+		{"the non-standard large-window form", largeWindow},
+		{"a stream cut off inside its head", brotliBytes(t, plainJSON)[:2]},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(te *testing.T) {
+			_, err := compression.WrapReader("br", bytes.NewReader(tt.body))
+
+			require.Error(te, err)
+			assert.NotErrorIs(te, err, compression.ErrUnsupportedEncoding,
+				"the coding is supported; it is this body that is wrong")
+
+			reader, err := compression.WrapReader("br", bytes.NewReader(brotliBytes(te, valid)))
+			require.NoError(te, err)
+			got, err := io.ReadAll(reader)
+			require.NoError(te, err)
+			require.NoError(te, reader.Close())
+			assert.Equal(te, valid, got, "the decoder that rejected a body must come back healthy")
+		})
+	}
+}
+
+// A stream cut off past its head gets through WrapReader - nothing is wrong
+// with it yet - and fails on the read that reaches the cut, rather than ending
+// as though the body were shorter.
+func TestWrapReaderReportsATruncatedBrotliStreamOnRead(t *testing.T) {
+	stream := brotliBytes(t, lowRedundancy(64<<10))
+
+	reader, err := compression.WrapReader("br", bytes.NewReader(stream[:len(stream)/2]))
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+	_, err = io.ReadAll(reader)
+
+	assert.Error(t, err)
+}
+
+// A brotli body is one stream. Bytes after its end - junk, or a second stream,
+// which brotli does not define as a continuation - are rejected the way gzip
+// and zstd reject bytes after their last member or frame, however the body
+// happened to be split on the wire.
+func TestWrapReaderRejectsDataAfterTheBrotliStream(t *testing.T) {
+	stream := brotliBytes(t, []byte(`{"jsonrpc":"2.0","id":1,"result":"0x10"}`))
+	empty := brotliBytes(t, nil)
+	junk := []byte("junk")
+	tests := []struct {
+		name string
+		body io.Reader
+	}{
+		{"junk in the same read", bytes.NewReader(bytes.Join([][]byte{stream, junk}, nil))},
+		{"junk in a later read", io.MultiReader(bytes.NewReader(stream), bytes.NewReader(junk))},
+		{"a second stream", bytes.NewReader(bytes.Join([][]byte{stream, stream}, nil))},
+		{"a second stream in a later read", io.MultiReader(bytes.NewReader(stream), bytes.NewReader(stream))},
+		{"junk after the empty stream", io.MultiReader(bytes.NewReader(empty), bytes.NewReader(junk))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(te *testing.T) {
+			reader, err := compression.WrapReader("br", tt.body)
+			if err == nil {
+				defer func() { _ = reader.Close() }()
+				_, err = io.ReadAll(reader)
+			}
+
+			assert.Error(te, err, "bytes after the end of the stream were silently dropped")
+		})
+	}
+}
+
+// A body arrives in whatever pieces the network makes of it. The eager decode
+// in WrapReader has to wait for its first byte of output, not give up on the
+// first short read.
+func TestWrapReaderDecodesABrotliBodyArrivingAByteAtATime(t *testing.T) {
+	plain := lowRedundancy(4 << 10)
+
+	reader, err := compression.WrapReader("br", iotest.OneByteReader(bytes.NewReader(brotliBytes(t, plain))))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, reader.Close()) }()
+	got, err := io.ReadAll(reader)
+
+	require.NoError(t, err)
+	assert.Equal(t, plain, got)
+}
+
+// lastBytesWithError hands over its data and reports err together with the
+// final bytes, the way a transport can deliver the end of a body and its
+// failure in one read.
+type lastBytesWithError struct {
+	data []byte
+	err  error
+}
+
+func (r *lastBytesWithError) Read(p []byte) (int, error) {
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	if len(r.data) == 0 {
+		return n, r.err
+	}
+	return n, nil
+}
+
+// The body can still fail once the brotli stream is complete - a connection
+// reset before the last chunk of an HTTP body, a client that goes away. gzip
+// and zstd read on past their last member or frame and report that failure,
+// so brotli must too, rather than calling a body complete whose transport
+// failed. The failure has to stay reported on later reads as well.
+func TestWrapReaderSurfacesATransportErrorAfterTheBrotliStream(t *testing.T) {
+	errTransport := errors.New("connection reset")
+	stream := brotliBytes(t, []byte(`{"jsonrpc":"2.0","id":1,"result":"0x10"}`))
+	empty := brotliBytes(t, nil)
+	tests := []struct {
+		name string
+		body io.Reader
+	}{
+		{"in the read after the stream", io.MultiReader(bytes.NewReader(stream), iotest.ErrReader(errTransport))},
+		{"together with the last bytes of the stream", &lastBytesWithError{data: stream, err: errTransport}},
+		{"after the empty stream", io.MultiReader(bytes.NewReader(empty), iotest.ErrReader(errTransport))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(te *testing.T) {
+			reader, err := compression.WrapReader("br", tt.body)
+			if err == nil {
+				defer func() { _ = reader.Close() }()
+				_, err = io.ReadAll(reader)
+				_, again := reader.Read(make([]byte, 1))
+				assert.ErrorIs(te, again, errTransport, "the failure must stay reported")
+			}
+
+			assert.ErrorIs(te, err, errTransport)
 		})
 	}
 }
