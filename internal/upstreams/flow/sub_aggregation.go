@@ -20,8 +20,10 @@ import (
 
 // localNewHeadsKey is the aggregation key for the locally-synthesized newHeads
 // source. The local source taps the chain's single merged-head stream and
-// ignores request selectors, so all local newHeads subscribers must collapse
-// onto one source regardless of their selectors (one head tap per chain).
+// cannot honour request selectors, so resolveSource only takes this path when
+// the request carries none - a selector-bearing subscription (a node group, a
+// client type) falls through to node-backed sources instead. Subscribers that
+// do take it collapse onto one source: one head tap per chain.
 const localNewHeadsKey = "local|newHeads"
 
 // localLogsKey is the aggregation key for the locally-synthesized logs source.
@@ -37,7 +39,8 @@ const localLogsKey = "local|logs"
 // localPendingTxKey is the aggregation key for the locally-synthesized
 // newPendingTransactions source. It opens eth_subscribe("newPendingTransactions")
 // on every ws-capable upstream of the chain, merges them and dedupes by hash, so
-// all clients must collapse onto one source regardless of selectors (one mempool
+// it cannot honour selectors either: resolveSource takes this path only for
+// requests that carry none, and those clients collapse onto one source (one mempool
 // tap per chain) - same rationale as localNewHeadsKey.
 const localPendingTxKey = "local|newPendingTransactions"
 
@@ -77,7 +80,8 @@ func resolveSource(
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
 ) (string, subengine.SourceBuilder, SubFilter) {
-	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) &&
+		!hasEffectiveSelectors(request.Selectors()) {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
 	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
@@ -85,7 +89,8 @@ func resolveSource(
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
 		}
 	}
-	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) &&
+		!hasEffectiveSelectors(request.Selectors()) {
 		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays

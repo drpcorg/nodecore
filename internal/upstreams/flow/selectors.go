@@ -65,6 +65,10 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	case nil, protocol.RequestAnySelector:
 		return nil, nil
 	case protocol.RequestLabelSelector:
+		// the node-group id is derived, not stored, so it needs its own matcher
+		if s.Name == upstreams.NodeGroupLabel {
+			return NewNodeGroupMatcher(s.Values), nil
+		}
 		return NewLabelMatcher(s.Name, s.Values), nil
 	case protocol.RequestExistsSelector:
 		return NewLabelExistsMatcher(s.Name), nil

@@ -2,8 +2,10 @@ package flow
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/rs/zerolog/log"
 )
 
@@ -292,6 +294,34 @@ func (l *LabelMatcher) Match(_ string, state *protocol.UpstreamState) MatchRespo
 	}
 	return LabelResponse{l.name, l.values}
 }
+
+// NodeGroupMatcher pins a request to one of the given node groups. The id is a
+// pure function of the upstream state, so it is recomputed here from the same
+// inputs the supervisor used instead of being carried as a stored label - an
+// upstream that changed group between the consumer's snapshot and this call is
+// simply not matched.
+type NodeGroupMatcher struct {
+	values []string
+}
+
+func NewNodeGroupMatcher(values []string) *NodeGroupMatcher {
+	return &NodeGroupMatcher{values: values}
+}
+
+func (n *NodeGroupMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if state == nil {
+		return LabelResponse{upstreams.NodeGroupLabel, n.values}
+	}
+	if len(n.values) == 0 {
+		return SuccessResponse{}
+	}
+	if slices.Contains(n.values, upstreams.GroupKeyOf(state).Id()) {
+		return SuccessResponse{}
+	}
+	return LabelResponse{upstreams.NodeGroupLabel, n.values}
+}
+
+var _ Matcher = (*NodeGroupMatcher)(nil)
 
 type LabelExistsMatcher struct{ name string }
 

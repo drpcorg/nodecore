@@ -10,12 +10,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/emerald"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -432,4 +433,81 @@ func TestSubscribeNodeGroupStatus_RealChainSupervisorFlow(t *testing.T) {
 	// removing the last member announces the group's unavailability
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("up-geth"))
 	assert.Eventually(t, func() bool { return hasUnavailableDelta(secondGroupId) }, time.Second, 10*time.Millisecond)
+}
+
+func methodsMockWithHas(methods ...string) *mocks.MethodsMock {
+	methodsMock := mocks.NewMethodsMock()
+	supported := mapset.NewThreadUnsafeSet[string](methods...)
+	methodsMock.On("GetSupportedMethods").Return(supported)
+	for _, method := range methods {
+		methodsMock.On("HasMethod", method).Return(true)
+	}
+	methodsMock.On("HasMethod", mock.Anything).Return(false)
+	return methodsMock
+}
+
+func clientStateEvent(id, clientType string, height uint64, methods ...string) protocol.UpstreamEvent {
+	return test_utils.CreateEventWithLabels(id, protocol.Available, protocol.NewBlockWithHeight(height),
+		methodsMockWithHas(methods...), map[string]string{"client_type": clientType})
+}
+
+// The contract the whole feature rests on: the group id a consumer reads off
+// the stream is the id that pins a request back to that group. Both sides
+// derive it from the same upstream state, so this is what proves they agree.
+func TestSubscribeNodeGroupStatus_StreamedIdPinsTheRequestBack(t *testing.T) {
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	go chainSupervisor.Start()
+
+	stream, _ := startNodeGroupStream(t, chainSupervisor)
+
+	chainSupervisor.PublishUpstreamEvent(clientStateEvent("up-geth", "geth", 100, "eth_call"))
+	chainSupervisor.PublishUpstreamEvent(clientStateEvent("up-erigon", "erigon", 99, "eth_call"))
+
+	announcedIds := func() map[string]string {
+		stream.mu.RLock()
+		defer stream.mu.RUnlock()
+		ids := make(map[string]string)
+		for _, response := range stream.responses {
+			id := response.GetChainDescription().GetNodeGroupId()
+			if !response.FullResponse || id == "" {
+				continue
+			}
+			ids[strings.Split(id, ":")[0]] = id
+		}
+		return ids
+	}
+	require.Eventually(t, func() bool { return len(announcedIds()) == 2 }, 5*time.Second, 10*time.Millisecond)
+
+	ids := announcedIds()
+	gethId, erigonId := ids["geth"], ids["erigon"]
+	require.NotEmpty(t, gethId)
+	require.NotEmpty(t, erigonId)
+
+	// the real selection path: the group matcher on top of nodecore's own
+	// status and method matchers
+	selectFor := func(nodeGroupIds ...string) (string, error) {
+		strategy := flow.NewGenericStrategyWithOptions(chainSupervisor,
+			[]flow.Matcher{flow.NewNodeGroupMatcher(nodeGroupIds)}, nil)
+		return strategy.SelectUpstream(protocol.NewUpstreamJsonRpcRequest(
+			"1", protocol.JsonRpcRequestBody{Method: "eth_call"}, false, "eth"))
+	}
+
+	selected, err := selectFor(gethId)
+	require.NoError(t, err)
+	assert.Equal(t, "up-geth", selected, "the streamed geth id selects the geth upstream")
+
+	selected, err = selectFor(erigonId)
+	require.NoError(t, err)
+	assert.Equal(t, "up-erigon", selected)
+
+	// pinning to both leaves the choice to nodecore, which is the point of
+	// sending every matching group
+	selected, err = selectFor(gethId, erigonId)
+	require.NoError(t, err)
+	assert.Contains(t, []string{"up-geth", "up-erigon"}, selected)
+
+	// an id no upstream carries any more selects nothing instead of falling
+	// back to an unchecked node
+	_, err = selectFor("geth:dead:beef")
+	require.Error(t, err)
 }
