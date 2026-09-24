@@ -15,23 +15,53 @@ import (
 
 const unknownClientType = "unknown"
 
-// GroupKey identifies a node group within one chain: same client type and the
-// same supported call-method set.
+// NodeGroupLabel is the selector name a client uses to pin a request to node
+// groups. It is not a stored label: the id is derived from the upstream state,
+// and the matcher recomputes it from the same inputs the supervisor used.
+const NodeGroupLabel = "node_group"
+
+// GroupKey identifies a node group within one chain: the same routing labels
+// and the same supported call-method set. Labels are part of the key because
+// consumers evaluate label-derived capabilities per group - a group spanning
+// two label sets would advertise a combination none of its members has.
 type GroupKey struct {
 	ClientType  string
+	LabelsHash  string
 	MethodsHash string
 }
 
 func (k GroupKey) Id() string {
-	return k.ClientType + ":" + k.MethodsHash
+	return k.ClientType + ":" + k.LabelsHash + ":" + k.MethodsHash
 }
 
-// groupKeyOf derives the owning group from an upstream state snapshot.
-// SubMethods and Caps deliberately don't participate. The client_type label is
-// detected asynchronously, so an upstream may start under "unknown" and move
-// once the label lands.
-func groupKeyOf(state *protocol.UpstreamState) GroupKey {
-	return GroupKey{ClientType: clientTypeOf(state), MethodsHash: methodsHash(state.UpstreamMethods)}
+// GroupKeyOf derives the owning group from an upstream state snapshot. It is a
+// pure function of the state, which is what lets the selector matcher recompute
+// the id without asking the supervisor. SubMethods and Caps deliberately don't
+// participate. The client_type label is detected asynchronously, so an upstream
+// may start under "unknown" and move once the label lands.
+func GroupKeyOf(state *protocol.UpstreamState) GroupKey {
+	return GroupKey{
+		ClientType:  clientTypeOf(state),
+		LabelsHash:  labelsHash(state.Labels),
+		MethodsHash: methodsHash(state.UpstreamMethods),
+	}
+}
+
+// labelsHash covers every routing label, NodeGroupLabel excluded: the id is
+// derived from the labels, so letting it in would make the key self-referential.
+func labelsHash(labels *protocol.Labels) string {
+	var pairs []string
+	if labels != nil {
+		for name, value := range labels.GetAllLabels() {
+			if name == NodeGroupLabel {
+				continue
+			}
+			pairs = append(pairs, name+"="+value)
+		}
+	}
+	slices.Sort(pairs)
+	sum := sha256.Sum256([]byte(strings.Join(pairs, "\n")))
+	return hex.EncodeToString(sum[:4])
 }
 
 func clientTypeOf(state *protocol.UpstreamState) string {
@@ -46,12 +76,13 @@ func clientTypeOf(state *protocol.UpstreamState) string {
 }
 
 // groupMembership caches the derived key next to its inputs: state events fire
-// on every block/bound advance, and UpstreamMethods is copy-on-write (replaced
-// only on ban/unban), so pointer identity spares the per-event rehash.
+// on every block/bound advance, while UpstreamMethods and Labels are both
+// copy-on-write (replaced on ban/unban and on label detection), so pointer
+// identity spares the per-event rehash.
 type groupMembership struct {
-	key        GroupKey
-	methods    methods.Methods
-	clientType string
+	key     GroupKey
+	methods methods.Methods
+	labels  *protocol.Labels
 }
 
 func methodsHash(m methods.Methods) string {
@@ -110,12 +141,11 @@ func (b *GenericChainSupervisor) assignGroup(id string, state *protocol.Upstream
 		return
 	}
 	current, had := b.upstreamGroup[id]
-	clientType := clientTypeOf(state)
 	newKey := current.key
-	if !had || current.methods != state.UpstreamMethods || current.clientType != clientType {
-		newKey = groupKeyOf(state)
+	if !had || current.methods != state.UpstreamMethods || current.labels != state.Labels {
+		newKey = GroupKeyOf(state)
 	}
-	b.upstreamGroup[id] = groupMembership{key: newKey, methods: state.UpstreamMethods, clientType: clientType}
+	b.upstreamGroup[id] = groupMembership{key: newKey, methods: state.UpstreamMethods, labels: state.Labels}
 	if had && current.key == newKey {
 		// same group, a member's state changed
 		if g, ok := b.groups.Load(newKey.Id()); ok {

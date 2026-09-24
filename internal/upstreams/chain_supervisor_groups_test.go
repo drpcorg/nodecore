@@ -155,8 +155,13 @@ func TestChainSupervisorFourUpstreamsThreeGroups(t *testing.T) {
 	}
 	require.NotEmpty(t, soloGethId)
 
-	// same method set, different client type: same hash suffix, different group
-	assert.Equal(t, strings.SplitAfter(soloGethId, ":")[1], strings.SplitAfter(erigonId, ":")[1])
+	// same method set, different client type: same method hash, different label
+	// hash, so a different group
+	soloParts, erigonParts := strings.Split(soloGethId, ":"), strings.Split(erigonId, ":")
+	require.Len(t, soloParts, 3)
+	require.Len(t, erigonParts, 3)
+	assert.Equal(t, soloParts[2], erigonParts[2])
+	assert.NotEqual(t, soloParts[1], erigonParts[1])
 	assert.True(t, groups[soloGethId].Methods.GetSupportedMethods().Equal(mapset.NewThreadUnsafeSet[string]("eth_call")))
 	assertEventuallyEqual(t, uint64(99), func() any { return chainSupervisor.GetNodeGroupStates()[soloGethId].HeadData.Head.Height })
 	assertEventuallyEqual(t, uint64(98), func() any { return chainSupervisor.GetNodeGroupStates()[erigonId].HeadData.Head.Height })
