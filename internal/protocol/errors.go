@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"strings"
 )
 
 const (
@@ -121,6 +122,15 @@ func NoAvailableUpstreamsErrorWithCause(cause string) *ResponseError {
 	}
 	return &ResponseError{
 		Message: fmt.Sprintf("no available upstreams to process a request. Cause - %s", cause),
+		Code:    NoAvailableUpstreams,
+	}
+}
+
+// NodeGroupNotPresentError answers a request pinned to node groups none of
+// whose upstreams is here. dproxy classifies it by the message prefix.
+func NodeGroupNotPresentError(ids []string) *ResponseError {
+	return &ResponseError{
+		Message: "node group not present: " + strings.Join(ids, ", "),
 		Code:    NoAvailableUpstreams,
 	}
 }

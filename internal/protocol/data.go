@@ -322,6 +322,10 @@ type ResponseHolderWrapper struct {
 	FinalizationBlockType *BlockType
 	FinalizationBlock     Block
 	Response              ResponseHolder
+	// the node group UpstreamId was selected under: the pinned id it matched,
+	// its GROUPS id for an unpinned request; empty when no upstream served it
+	// (cache hits, local methods)
+	NodeGroupId string
 }
 
 type AvailabilityStatus int

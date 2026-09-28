@@ -350,7 +350,7 @@ func enrichPendingTx(
 		}
 		sent++
 		go func(up upstreams.Upstream) {
-			resp, err := sendUnaryRequest(bcastCtx, up, request, parsedParam)
+			resp, err := sendUnaryRequest(bcastCtx, up, request, parsedParam, "")
 			if err != nil || resp.Response.HasError() {
 				results <- txResult{}
 				return

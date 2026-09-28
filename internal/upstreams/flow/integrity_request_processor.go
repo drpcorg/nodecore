@@ -112,6 +112,9 @@ func (i *IntegrityRequestProcessor) handleResponse(
 		return response
 	}
 
+	// the re-route stays inside the request's node-group pin: filterUpstreams
+	// gates every strategy on it, and a pinned request that only an upstream
+	// outside the pin could improve keeps its first response
 	upstreamStrategy := NewSpecificOrderUpstreamStrategy(sortedUpstreams, chainSupervisor)
 	newResponse, err := executeUnaryRequest(ctx, i.chain, request, i.upstreamSupervisor, upstreamStrategy)
 	if err != nil {

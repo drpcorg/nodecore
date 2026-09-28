@@ -34,6 +34,9 @@ type ServerConfig struct {
 	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
 	// as a client IP.
 	TrustedProxies []string `yaml:"trusted-proxies"`
+	// GrpcNodeGroupBatchWindow is how long SubscribeNodeGroupStatus collects
+	// updates into one response.
+	GrpcNodeGroupBatchWindow time.Duration `yaml:"grpc-node-group-batch-window"`
 
 	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
 	trustedProxyPrefixes []netip.Prefix
@@ -111,6 +114,9 @@ func (s *ServerConfig) validate() error {
 	}
 	if s.HealthPort < 0 {
 		return fmt.Errorf("incorrect health port - %d", s.HealthPort)
+	}
+	if s.GrpcNodeGroupBatchWindow < 0 {
+		return fmt.Errorf("incorrect grpc node group batch window - %s", s.GrpcNodeGroupBatchWindow)
 	}
 
 	ports := mapset.NewThreadUnsafeSet[int](s.Port)

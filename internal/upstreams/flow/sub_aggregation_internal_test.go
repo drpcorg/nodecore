@@ -38,6 +38,15 @@ func (s *stubChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return nil
 }
+func (s *stubChainSupervisor) SubscribeNodeGroupStates(upstreams.SeparationLevel, string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
+	return nil
+}
+func (s *stubChainSupervisor) GetNodeGroupStates(upstreams.SeparationLevel) map[string]upstreams.ChainSupervisorState {
+	return nil
+}
+func (s *stubChainSupervisor) GetNodeGroupState(upstreams.SeparationLevel, string) (upstreams.ChainSupervisorState, bool) {
+	return upstreams.ChainSupervisorState{}, false
+}
 
 var _ upstreams.ChainSupervisor = (*stubChainSupervisor)(nil)
 

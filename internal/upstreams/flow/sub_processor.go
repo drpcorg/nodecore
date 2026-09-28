@@ -68,6 +68,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			return
 		}
 		framing := s.subCtx.Framing()
+		nodeGroupOf := s.nodeGroupNamer(request)
 
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -78,7 +79,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// (gRPC streams opt out via a per-request key, see resolveSource).
 		// The shared source emits events only - each client's framing decides
 		// how (and whether) the subscription is announced to the client.
-		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
+		key, builder, accept := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
 		sub, err := s.engine.Subscribe(key, builder)
 		if err != nil {
 			send(totalFailureWrapper(request, err))
@@ -106,20 +107,24 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 					// a bounded stream, announced with its trailers. No frame at all
 					// means this client detached.
 					if terminal := sub.Terminal(); terminal != nil {
-						send(terminalWrapper(request, terminal))
+						wrapper := terminalWrapper(request, terminal)
+						wrapper.NodeGroupId = nodeGroupOf(wrapper.UpstreamId)
+						send(wrapper)
 					}
 					return
 				}
-				// Per-client logs filtering: the shared logs source carries every
-				// log of the chain; drop the ones this client did not subscribe to.
-				// Never filter terminal frames (handled above; they carry no Message).
-				if filter != nil && !filter.Matches(r.GetParsedEvent()) {
+				// Per-client filtering of a shared source: the logs source carries
+				// every log of the chain, the drpc pending source the txs of every
+				// upstream. Never filter terminal frames (handled above).
+				if accept != nil && !accept(r) {
 					continue
 				}
+				upstreamId := responseUpstreamId(r)
 				wrapper := &protocol.ResponseHolderWrapper{
-					UpstreamId: responseUpstreamId(r),
-					RequestId:  request.Id(),
-					Response:   framing.event(request, r),
+					UpstreamId:  upstreamId,
+					NodeGroupId: nodeGroupOf(upstreamId),
+					RequestId:   request.Id(),
+					Response:    framing.event(request, r),
 				}
 				if !send(wrapper) {
 					return
@@ -131,6 +136,19 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	}()
 
 	return &SubscriptionResponse{responses}
+}
+
+// nodeGroupNamer names the node group a frame's upstream serves from, read off
+// the same supervisor snapshot the gate uses.
+func (s *SubscriptionRequestProcessor) nodeGroupNamer(request protocol.RequestHolder) func(upstreamId string) string {
+	pins := pinsOf(request)
+	chainSupervisor := s.upstreamSupervisor.GetChainSupervisor(s.chain)
+	return func(upstreamId string) string {
+		if chainSupervisor == nil {
+			return ""
+		}
+		return pins.nodeGroupOf(upstreamId, chainSupervisor.GetUpstreamState(upstreamId))
+	}
 }
 
 func responseUpstreamId(r protocol.SubResponse) string {

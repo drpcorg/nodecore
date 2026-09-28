@@ -2,6 +2,7 @@ package mocks
 
 import (
 	"context"
+	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -15,13 +16,26 @@ import (
 
 type MethodsMock struct {
 	mock.Mock
+	getMethodExpected atomic.Bool
 }
 
 func NewMethodsMock() *MethodsMock {
 	return &MethodsMock{}
 }
 
+func (m *MethodsMock) On(methodName string, arguments ...any) *mock.Call {
+	if methodName == "GetMethod" {
+		m.getMethodExpected.Store(true)
+	}
+	return m.Mock.On(methodName, arguments...)
+}
+
+// GetMethod answers nil until a test expects it: node group ids look up every
+// supported method, and most tests list only the names.
 func (m *MethodsMock) GetMethod(methodName string) *specs.Method {
+	if !m.getMethodExpected.Load() {
+		return nil
+	}
 	args := m.Called(methodName)
 	if args.Get(0) == nil {
 		return nil

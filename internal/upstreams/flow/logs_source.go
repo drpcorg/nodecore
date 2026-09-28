@@ -176,7 +176,7 @@ func fetchBlockLogs(
 
 	// Select any available, best-rated upstream whose head is at >= the block's
 	// height. A fresh strategy per block carries the height matcher; repeated
-	// SelectUpstream calls walk down the rating list (selectedUpstreams dedup).
+	// SelectUpstream calls walk down the rating list (selection dedup).
 	strategy := NewRatingStrategy(chain, "eth_getLogs", []Matcher{NewHeightMatcher(int64(block.Height))}, chainSup, registry)
 
 	for attempt := 0; attempt < logsFetchAttempts; attempt++ {

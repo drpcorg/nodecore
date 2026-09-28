@@ -44,6 +44,22 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeNodeGroupStatus(SubscribeNodeGroupStatusRequest) → stream SubscribeNodeGroupStatusResponse`**
+
+  Server-streaming RPC: the same chain-status lifecycle, but per *node group* instead of the merged per-network view. The request's `level` says how the upstreams of a chain are split:
+
+  | level | one group per | `node_group_id` |
+  |---|---|---|
+  | `SEPARATION_LABELS` | routing-label set | `l:<client_type>:<labels_hash8>` |
+  | `SEPARATION_GROUPS` (also `UNSPECIFIED`) | routing-label set + call-method set | `g:<client_type>:<labels_hash8>:<methods_hash8>` |
+  | `SEPARATION_FULL` | upstream | `n:<hex12(sha256(upstream id))>` |
+
+  Subscription methods don't affect grouping, so a websocket-capable node shares a group with its http-only twin. Ids are opaque; clients must not parse them beyond the level prefix. An unknown level fails the call with `INVALID_ARGUMENT`. `chains` limits the stream to the listed chains, including ones that appear later; empty means every chain.
+
+  Every `ChainDescription` is tagged with `node_group_id`. Semantics mirror the network level: a head-gated full response per live group on subscribe (each full carries `BuildInfo`), then group-scoped deltas, with groups included in the periodic resync (60 s). A group-tagged `ChainStatus` of `AVAIL_UNAVAILABLE` is the removal signal - sent when the group's last member leaves, and as a resync tombstone when a removal delta was lost; a group is never introduced while unavailable, and one that recovers or re-forms under the same id is re-introduced with a fresh full. Group membership is dynamic: label re-detection or a method ban moves an upstream between groups. A reconnect starts over with fulls. Per-group heads are observability only: lag validation keeps measuring upstreams against the network head.
+
+  Responses are batched: each `SubscribeNodeGroupStatusResponse` carries the `items` of one flush window (`server.grpc-node-group-batch-window`, default `20ms`, flushed early at 1000 items or 1 MiB) and echoes the applied `level`. Within a window a group's heads collapse to the latest, merged into its pending full if there is one; fulls and other deltas are all kept, in order. `SubscribeChainStatus` is unaffected: it never carries group-tagged events and sends one response per update.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.

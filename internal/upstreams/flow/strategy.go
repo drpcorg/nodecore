@@ -3,13 +3,10 @@ package flow
 import (
 	"sync"
 
-	mapset "github.com/deckarep/golang-set/v2"
-
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/samber/lo"
 )
 
 const NoUpstream = "NoUpstream"
@@ -19,12 +16,11 @@ type UpstreamStrategy interface {
 }
 
 type SpecificOrderUpstreamStrategy struct {
+	selection
 	upstreamIds        []string
 	chainSupervisor    upstreams.ChainSupervisor
-	selectedUpstreams  mapset.Set[string]
 	additionalMatchers []Matcher
 	order              UpstreamOrder
-	mu                 sync.Mutex
 }
 
 func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
@@ -32,7 +28,7 @@ func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestH
 		return "", protocol.NoAvailableUpstreamsError()
 	}
 
-	selectedUpstream, currentReason, trace := filterUpstreams(&s.mu, request, s.upstreamIds, s.chainSupervisor, s.selectedUpstreams, s.additionalMatchers, s.order)
+	selectedUpstream, currentReason, trace := filterUpstreams(&s.selection, request, s.upstreamIds, s.chainSupervisor, s.additionalMatchers, s.order)
 	if selectedUpstream != "" {
 		return selectedUpstream, nil
 	}
@@ -42,21 +38,19 @@ func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestH
 
 func NewSpecificOrderUpstreamStrategy(upstreamIds []string, chainSupervisor upstreams.ChainSupervisor) *SpecificOrderUpstreamStrategy {
 	return &SpecificOrderUpstreamStrategy{
-		upstreamIds:       upstreamIds,
-		chainSupervisor:   chainSupervisor,
-		selectedUpstreams: mapset.NewThreadUnsafeSet[string](),
+		upstreamIds:     upstreamIds,
+		chainSupervisor: chainSupervisor,
 	}
 }
 
 var _ UpstreamStrategy = (*SpecificOrderUpstreamStrategy)(nil)
 
 type RatingStrategy struct {
+	selection
 	chainSupervisor    upstreams.ChainSupervisor
-	selectedUpstreams  mapset.Set[string]
 	ups                []string
 	additionalMatchers []Matcher
 	order              UpstreamOrder
-	mu                 sync.Mutex
 }
 
 func NewRatingStrategy(
@@ -71,7 +65,6 @@ func NewRatingStrategy(
 		chainSupervisor:    chainSupervisor,
 		ups:                ups,
 		additionalMatchers: additionalMatchers,
-		selectedUpstreams:  mapset.NewThreadUnsafeSet[string](),
 	}
 }
 
@@ -80,7 +73,7 @@ func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string,
 		return "", protocol.NoAvailableUpstreamsError()
 	}
 
-	selectedUpstream, currentReason, trace := filterUpstreams(&r.mu, request, r.ups, r.chainSupervisor, r.selectedUpstreams, r.additionalMatchers, r.order)
+	selectedUpstream, currentReason, trace := filterUpstreams(&r.selection, request, r.ups, r.chainSupervisor, r.additionalMatchers, r.order)
 	if selectedUpstream != "" {
 		return selectedUpstream, nil
 	}
@@ -91,18 +84,14 @@ func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string,
 var _ UpstreamStrategy = (*RatingStrategy)(nil)
 
 type GenericStrategy struct {
-	selectedUpstreams  mapset.Set[string]
+	selection
 	chainSupervisor    upstreams.ChainSupervisor
 	additionalMatchers []Matcher
 	order              UpstreamOrder
-	mu                 sync.Mutex
 }
 
 func NewGenericStrategy(chainSupervisor upstreams.ChainSupervisor) *GenericStrategy {
-	return &GenericStrategy{
-		selectedUpstreams: mapset.NewThreadUnsafeSet[string](),
-		chainSupervisor:   chainSupervisor,
-	}
+	return &GenericStrategy{chainSupervisor: chainSupervisor}
 }
 
 func NewGenericStrategyWithOptions(chainSupervisor upstreams.ChainSupervisor, additionalMatchers []Matcher, order UpstreamOrder) *GenericStrategy {
@@ -136,7 +125,7 @@ func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string
 	pos := b.chainSupervisor.NextIndex() % uint64(len(upstreamIds))
 	upstreamIds = append(upstreamIds[pos:], upstreamIds[:pos]...)
 
-	selectedUpstream, currentReason, trace := filterUpstreams(&b.mu, request, upstreamIds, b.chainSupervisor, b.selectedUpstreams, b.additionalMatchers, b.order)
+	selectedUpstream, currentReason, trace := filterUpstreams(&b.selection, request, upstreamIds, b.chainSupervisor, b.additionalMatchers, b.order)
 	if selectedUpstream != "" {
 		return selectedUpstream, nil
 	}
@@ -145,11 +134,10 @@ func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string
 }
 
 func filterUpstreams(
-	mu *sync.Mutex,
+	sel *selection,
 	request protocol.RequestHolder,
 	upstreamIds []string,
 	chainSupervisor upstreams.ChainSupervisor,
-	selectedUpstreams mapset.Set[string],
 	additionalMatchers []Matcher,
 	order UpstreamOrder,
 ) (string, MatchResponse, *UpstreamsMatchTrace) {
@@ -158,31 +146,27 @@ func filterUpstreams(
 	if order != nil {
 		upstreamIds = order(upstreamIds)
 	}
-	matchers := lo.Ternary(len(additionalMatchers) > 0, additionalMatchers, make([]Matcher, 0))
-	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
-	// a JSON-RPC subscription needs a live ws connector on the upstream; a gRPC
-	// stream rides the grpc connector the spec already binds the method to
-	if request.IsSubscribe() && request.RequestType() != protocol.Grpc {
-		matchers = append(matchers, NewWsCapMatcher(request.Method()))
-	}
-
-	multiMatcher := NewMultiMatcher(matchers...)
-	for i := 0; i < len(upstreamIds); i++ {
-		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
-		if upstreamState == nil {
+	pins := sel.pinsOf(request)
+	multiMatcher := requestMatcher(request, additionalMatchers)
+	admitted := false
+	for _, upstreamId := range upstreamIds {
+		upstreamState := chainSupervisor.GetUpstreamState(upstreamId)
+		// an upstream outside the pinned groups is no candidate, not even for the error
+		if upstreamState == nil || !pins.admits(upstreamId, upstreamState) {
 			continue
 		}
-		matched := multiMatcher.Match(upstreamIds[i], upstreamState)
-		trace.Add(upstreamIds[i], matched)
+		admitted = true
+		matched := multiMatcher.Match(upstreamId, upstreamState)
+		trace.Add(upstreamId, matched)
 
-		upstreamMatched, newReason := processMatchedResponse(mu, matched, currentReason, selectedUpstreams, upstreamIds[i], upstreamState, request)
+		upstreamMatched, newReason := sel.take(matched, currentReason, upstreamId, upstreamState, request)
 		if upstreamMatched {
 			allowed := true
 			if upstreamState.AutoTuneRateLimiter != nil {
 				allowed = upstreamState.AutoTuneRateLimiter.Allow()
 			}
 			if allowed {
-				return upstreamIds[i], nil, trace
+				return upstreamId, nil, trace
 			}
 			if currentReason == nil || (RateLimiterResponse{}).Type() < currentReason.Type() {
 				currentReason = RateLimiterResponse{}
@@ -191,40 +175,93 @@ func filterUpstreams(
 			currentReason = newReason
 		}
 	}
+	if !admitted && pins.pinned() {
+		return "", pins.notPresent(), trace
+	}
 	return "", currentReason, trace
 }
 
-func processMatchedResponse(
-	mu *sync.Mutex,
+// requestMatcher checks what an upstream must offer to serve the request.
+func requestMatcher(request protocol.RequestHolder, additionalMatchers []Matcher) *MultiMatcher {
+	// a fresh slice: the strategy's matchers are shared by concurrent hedges
+	matchers := make([]Matcher, 0, len(additionalMatchers)+3)
+	matchers = append(matchers, additionalMatchers...)
+	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
+	// a JSON-RPC subscription needs a live ws connector on the upstream; a gRPC
+	// stream rides the grpc connector the spec already binds the method to
+	if request.IsSubscribe() && request.RequestType() != protocol.Grpc {
+		matchers = append(matchers, NewWsCapMatcher(request.Method()))
+	}
+	return NewMultiMatcher(matchers...)
+}
+
+// selection is what a strategy keeps for its one request across retries and
+// hedges: the pins, parsed once, and the upstreams selected so far with the
+// node group each was admitted under.
+type selection struct {
+	pinsOnce sync.Once
+	pins     nodeGroupPins
+	mu       sync.Mutex
+	selected map[string]string // upstream id -> node group id
+}
+
+func (s *selection) pinsOf(request protocol.RequestHolder) nodeGroupPins {
+	s.pinsOnce.Do(func() { s.pins = pinsOf(request) })
+	return s.pins
+}
+
+// take selects the upstream if it matched, is not selected yet and has budget,
+// naming its node group from the snapshot the gate admitted it on. Otherwise
+// it returns the reason that replaces currentReason, if any.
+func (s *selection) take(
 	matched MatchResponse,
 	currentReason MatchResponse,
-	selectedUpstreams mapset.Set[string],
 	upstreamId string,
 	state *protocol.UpstreamState,
 	request protocol.RequestHolder,
 ) (bool, MatchResponse) {
-	mu.Lock()
-	defer mu.Unlock()
-	if !selectedUpstreams.ContainsOne(upstreamId) {
-		if matched.Type() == SuccessType {
-			if state.RateLimiterBudget != nil {
-				allow, err := state.RateLimiterBudget.Allow(request.Method())
-				if err != nil {
-					return false, RateLimiterResponse{}
-				}
-				if !allow {
-					return false, RateLimiterResponse{}
-				}
-			}
-			selectedUpstreams.Add(upstreamId)
-			return true, nil
-		} else {
-			if currentReason == nil || matched.Type() < currentReason.Type() {
-				return false, matched
-			}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.selected[upstreamId]; ok {
+		return false, nil
+	}
+	if matched.Type() != SuccessType {
+		if currentReason == nil || matched.Type() < currentReason.Type() {
+			return false, matched
+		}
+		return false, nil
+	}
+	if state.RateLimiterBudget != nil {
+		if allow, err := state.RateLimiterBudget.Allow(request.Method()); err != nil || !allow {
+			return false, RateLimiterResponse{}
 		}
 	}
-	return false, nil
+	if s.selected == nil {
+		s.selected = make(map[string]string)
+	}
+	s.selected[upstreamId] = s.pinsOf(request).nodeGroupOf(upstreamId, state)
+	return true, nil
+}
+
+func (s *selection) nodeGroupOf(upstreamId string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.selected[upstreamId]
+}
+
+// nodeGroupRecorder is a strategy that names the node group it admitted each
+// selected upstream under.
+type nodeGroupRecorder interface {
+	nodeGroupOf(upstreamId string) string
+}
+
+// selectedNodeGroup is the node group a reply of the selected upstream is
+// stamped with: the one the gate admitted it under.
+func selectedNodeGroup(strategy UpstreamStrategy, upstreamId string) string {
+	if recorder, ok := strategy.(nodeGroupRecorder); ok {
+		return recorder.nodeGroupOf(upstreamId)
+	}
+	return ""
 }
 
 func selectionError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) error {
@@ -232,6 +269,8 @@ func selectionError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) err
 		return protocol.NoAvailableUpstreamsError()
 	}
 	switch m := matchResponse.(type) {
+	case NodeGroupResponse:
+		return protocol.NodeGroupNotPresentError(m.ids)
 	case MethodResponse:
 		return protocol.NotSupportedMethodError(m.method)
 	case RateLimiterResponse:

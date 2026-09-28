@@ -53,7 +53,7 @@ func (f *FanoutRequestProcessor) ProcessRequest(
 				results <- fanoutResult{upstreamID: upstreamID, err: protocol.NoAvailableUpstreamsError()}
 				return
 			}
-			wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
+			wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam, selectedNodeGroup(upstreamStrategy, upstreamID))
 			results <- fanoutResult{upstreamID: upstreamID, wrapper: wrapper, err: err}
 		}(upstreamID)
 	}

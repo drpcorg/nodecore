@@ -14,6 +14,8 @@ import (
 const (
 	defaultPort     = 9090
 	defaultInterval = 1 * time.Minute
+
+	DefaultGrpcNodeGroupBatchWindow = 20 * time.Millisecond
 )
 
 func (a *AppConfig) setDefaults() {
@@ -103,6 +105,9 @@ func (s *ServerConfig) setDefaults() {
 	}
 	if s.HealthPort == 0 {
 		s.HealthPort = 9096
+	}
+	if s.GrpcNodeGroupBatchWindow == 0 {
+		s.GrpcNodeGroupBatchWindow = DefaultGrpcNodeGroupBatchWindow
 	}
 	if s.PyroscopeConfig == nil {
 		s.PyroscopeConfig = &PyroscopeConfig{}

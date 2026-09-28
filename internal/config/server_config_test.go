@@ -16,12 +16,13 @@ func TestServerConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := config.ServerConfig{
-		Port:            9095,
-		MetricsPort:     9093,
-		PprofPort:       6061,
-		HealthPort:      9096,
-		PyroscopeConfig: &config.PyroscopeConfig{},
-		TlsConfig:       &config.TlsConfig{},
+		Port:                     9095,
+		MetricsPort:              9093,
+		PprofPort:                6061,
+		HealthPort:               9096,
+		PyroscopeConfig:          &config.PyroscopeConfig{},
+		GrpcNodeGroupBatchWindow: config.DefaultGrpcNodeGroupBatchWindow,
+		TlsConfig:                &config.TlsConfig{},
 		GrpcAuthConfig: &config.GrpcAuthConfig{
 			PublicKeyOwner: "drpc",
 			SessionTTL:     24 * time.Hour,

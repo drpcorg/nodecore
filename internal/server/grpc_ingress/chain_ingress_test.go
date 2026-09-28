@@ -91,6 +91,7 @@ func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authPro
 	suiSpec := chains.GetMethodSpecNameByChain(chains.SUI)
 	methodsMock.On("GetMethod", suiListCheckpoints).Return(specs.GetSpecMethod(suiSpec, suiListCheckpoints))
 	methodsMock.On("GetMethod", suiSubscribeCheckpoints).Return(specs.GetSpecMethod(suiSpec, suiSubscribeCheckpoints))
+	methodsMock.On("GetMethod", mock.Anything).Return(nil).Maybe()
 
 	upstream := test_utils.TestEvmUpstream(connector, &config.Upstream{
 		Id:           "id",
@@ -99,7 +100,7 @@ func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authPro
 	}, methodsMock, nil)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(
-		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice(), dimensions.NewGenericDimensionTracker(), false, nil,
+		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice, dimensions.NewGenericDimensionTracker(), false, nil,
 	)
 	go chainSupervisor.Start()
 	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil)

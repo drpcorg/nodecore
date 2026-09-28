@@ -5,7 +5,9 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/samber/lo"
 )
 
@@ -77,7 +79,8 @@ func (c ChainSupervisorState) Compare(new ChainSupervisorState) []ChainSuperviso
 		wrappers = append(wrappers, NewStatusWrapper(new.Status))
 	}
 
-	if !c.Methods.GetSupportedMethods().Equal(new.Methods.GetSupportedMethods()) {
+	// identity first: GetSupportedMethods clones the set
+	if c.Methods != new.Methods && !c.Methods.GetSupportedMethods().Equal(new.Methods.GetSupportedMethods()) {
 		wrappers = append(wrappers, NewMethodsWrapper(new.Methods.GetSupportedMethods().ToSlice()))
 	}
 
@@ -115,6 +118,167 @@ func capsEqual(a, b mapset.Set[protocol.Cap]) bool {
 		return (a == nil || a.Cardinality() == 0) && (b == nil || b.Cardinality() == 0)
 	}
 	return a.Equal(b)
+}
+
+// stateFacets are the parts of a merged state, so that a member update
+// recomputes only the parts it touched.
+type stateFacets uint8
+
+const (
+	statusFacet stateFacets = 1 << iota
+	methodsFacet
+	capsFacet
+	blocksFacet
+	boundsFacet
+	labelsFacet
+
+	allFacets = statusFacet | methodsFacet | capsFacet | blocksFacet | boundsFacet | labelsFacet
+)
+
+// changedFacets compares the copy-on-write parts of two snapshots by identity.
+func changedFacets(prev, next *protocol.UpstreamState) stateFacets {
+	wasAvailable, isAvailable := prev.Status == protocol.Available, next.Status == protocol.Available
+	if wasAvailable != isAvailable {
+		// only available upstreams are merged
+		return allFacets
+	}
+	var changed stateFacets
+	if prev.Status != next.Status {
+		changed |= statusFacet
+	}
+	if !isAvailable {
+		return changed
+	}
+	if prev.UpstreamMethods != next.UpstreamMethods {
+		changed |= methodsFacet
+	}
+	if prev.Caps != next.Caps {
+		changed |= capsFacet
+	}
+	if prev.BlockInfo != next.BlockInfo {
+		changed |= blocksFacet
+	}
+	if prev.LowerBoundsInfo != next.LowerBoundsInfo {
+		changed |= boundsFacet
+	}
+	if prev.Labels != next.Labels {
+		changed |= labelsFacet
+	}
+	return changed
+}
+
+// recomputeFacets rebuilds the changed facets of a merged view (network or
+// group) from the member snapshots; the rest, HeadData included, carries over
+// from prev.
+func recomputeFacets(
+	prev ChainSupervisorState,
+	states []*protocol.UpstreamState,
+	changed stateFacets,
+	subChainMethods mapset.Set[string],
+) ChainSupervisorState {
+	next := prev
+	// the status covers every member, the other facets only the available ones
+	if changed&statusFacet != 0 {
+		next.Status = minStatus(states)
+	}
+	if changed&^statusFacet == 0 {
+		return next
+	}
+	available := lo.Filter(states, func(item *protocol.UpstreamState, _ int) bool {
+		return item.Status == protocol.Available
+	})
+	if changed&methodsFacet != 0 {
+		next.Methods = processUpstreamMethods(available)
+	}
+	if changed&blocksFacet != 0 {
+		next.Blocks = processUpstreamBlocks(available)
+	}
+	if changed&boundsFacet != 0 {
+		next.LowerBounds = processLowerBounds(available)
+	}
+	if changed&labelsFacet != 0 {
+		next.ChainLabels = processLabels(available)
+	}
+	if changed&capsFacet != 0 {
+		next.Caps = processCaps(available)
+	}
+	if changed&(methodsFacet|capsFacet) != 0 {
+		next.SubMethods = processSubMethods(subChainMethods, next.Methods, next.Caps)
+	}
+	return next
+}
+
+// chooseHead runs a head event through a node group's fork choice, the only
+// place a group head changes, and publishes the new head.
+func chooseHead(
+	fc choice.ForkChoice,
+	state *utils.Atomic[ChainSupervisorState],
+	subs *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent],
+	nodeGroupId string,
+	upstreamId string,
+	headEvent *protocol.HeadUpstreamEvent,
+) {
+	updated, head := fc.Choose(upstreamId, headEvent)
+	if !updated {
+		return
+	}
+	next := state.Load()
+	next.HeadData = NewChainHeadData(head, upstreamId)
+	state.Store(next)
+	if !next.HeadData.IsEmpty() {
+		subs.Publish(&ChainSupervisorStateWrapperEvent{
+			Wrappers:    []ChainSupervisorStateWrapper{NewHeadWrapper(head, upstreamId)},
+			NodeGroupId: nodeGroupId,
+		})
+	}
+}
+
+func minStatus(states []*protocol.UpstreamState) protocol.AvailabilityStatus {
+	var status = protocol.Unavailable
+	for _, state := range states {
+		if state.Status < status {
+			status = state.Status
+		}
+	}
+	return status
+}
+
+func processSubMethods(subChainMethods mapset.Set[string], chainMethods methods.Methods, caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+	subMethods := mapset.NewThreadUnsafeSet[string]()
+	for name := range subChainMethods.Iter() {
+		// Only a method some available upstream actually supports (after config,
+		// detection and bans) can be advertised: a disabled subscribe method is
+		// the operator saying "no subscriptions from this upstream".
+		method := chainMethods.GetMethod(name)
+		if method == nil {
+			continue
+		}
+		// A gRPC stream rides the grpc connector the spec binds it to (all grpc
+		// calls share the one connection); a JSON-RPC subscription additionally
+		// needs a live websocket connector somewhere.
+		if method.GrpcCallType().IsServerStream() || (caps != nil && caps.Contains(protocol.WsCap)) {
+			subMethods.Add(name)
+		}
+	}
+	// EVM advertises concrete topics derived from caps instead of the generic
+	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
+	// real sub types. A topic is offered only if it can be served locally
+	// (newHeads -> NewHeadsCap, logs -> LogsCap, newPendingTransactions and
+	// drpc_pendingTransactions -> PendingTxCap).
+	if subMethods.ContainsOne("eth_subscribe") {
+		subMethods.Remove("eth_subscribe")
+		if caps.Contains(protocol.NewHeadsCap) {
+			subMethods.Add("newHeads")
+		}
+		if caps.Contains(protocol.LogsCap) {
+			subMethods.Add("logs")
+		}
+		if caps.Contains(protocol.PendingTxCap) {
+			subMethods.Add("newPendingTransactions")
+			subMethods.Add("drpc_pendingTransactions")
+		}
+	}
+	return subMethods
 }
 
 func processCaps(availableUpstreams []*protocol.UpstreamState) mapset.Set[protocol.Cap] {

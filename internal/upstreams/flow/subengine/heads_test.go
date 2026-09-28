@@ -68,6 +68,15 @@ func (s *fakeChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return s.sm.Subscribe(name)
 }
+func (s *fakeChainSupervisor) SubscribeNodeGroupStates(upstreams.SeparationLevel, string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
+	return nil
+}
+func (s *fakeChainSupervisor) GetNodeGroupStates(upstreams.SeparationLevel) map[string]upstreams.ChainSupervisorState {
+	return nil
+}
+func (s *fakeChainSupervisor) GetNodeGroupState(upstreams.SeparationLevel, string) (upstreams.ChainSupervisorState, bool) {
+	return upstreams.ChainSupervisorState{}, false
+}
 
 var _ upstreams.ChainSupervisor = (*fakeChainSupervisor)(nil)
 

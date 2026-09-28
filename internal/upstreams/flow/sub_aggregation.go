@@ -21,7 +21,9 @@ import (
 // localNewHeadsKey is the aggregation key for the locally-synthesized newHeads
 // source. The local source taps the chain's single merged-head stream and
 // ignores request selectors, so all local newHeads subscribers must collapse
-// onto one source regardless of their selectors (one head tap per chain).
+// onto one source regardless of their selectors (one head tap per chain). A
+// subscription pinned to node groups is the exception: the merged head is not
+// theirs, so it falls through to node-backed sources.
 const localNewHeadsKey = "local|newHeads"
 
 // localLogsKey is the aggregation key for the locally-synthesized logs source.
@@ -38,7 +40,8 @@ const localLogsKey = "local|logs"
 // newPendingTransactions source. It opens eth_subscribe("newPendingTransactions")
 // on every ws-capable upstream of the chain, merges them and dedupes by hash, so
 // all clients must collapse onto one source regardless of selectors (one mempool
-// tap per chain) - same rationale as localNewHeadsKey.
+// tap per chain) - same rationale, and the same node-group exception, as
+// localNewHeadsKey.
 const localPendingTxKey = "local|newPendingTransactions"
 
 // localDrpcPendingTxKey is the aggregation key for drpc_pendingTransactions: it
@@ -76,22 +79,25 @@ func resolveSource(
 	registry *rating.RatingRegistry,
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
-) (string, subengine.SourceBuilder, SubFilter) {
-	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+) (string, subengine.SourceBuilder, frameFilter) {
+	pins := pinsOf(request)
+	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) && !pins.pinned() {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
 	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
 		if filter, err := parseLogFilter(request); err == nil {
-			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
+			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), eventFrames(filter)
 		}
 	}
-	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) && !pins.pinned() {
 		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
 	// local regardless of settings; it builds its own pending-tx source internally.
+	// dproxy pins every subscription under group routing, so a pinned one is not
+	// refused: it gets only the frames from inside its pin.
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
-		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
+		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), pinnedFrames(pins, supervisor.GetChainSupervisor(chain))
 	}
 	if isGrpcStream(request) {
 		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix
@@ -105,6 +111,27 @@ func resolveSource(
 		return fmt.Sprintf("%s|%s", subscriptionKey(request), uuid.NewString()), newGenericSourceBuilder(supervisor, request, strategy), nil
 	}
 	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
+}
+
+// frameFilter keeps the frames of a shared source that one client subscribed to.
+type frameFilter func(frame protocol.SubResponse) bool
+
+func eventFrames(filter SubFilter) frameFilter {
+	return func(frame protocol.SubResponse) bool {
+		return filter.Matches(frame.GetParsedEvent())
+	}
+}
+
+// pinnedFrames keeps the frames of the upstreams the pins admit, judged on the
+// supervisor snapshot like the selection gate; nil when nothing is pinned.
+func pinnedFrames(pins nodeGroupPins, chainSupervisor upstreams.ChainSupervisor) frameFilter {
+	if !pins.pinned() {
+		return nil
+	}
+	return func(frame protocol.SubResponse) bool {
+		upstreamId := frame.GetUpstreamId()
+		return pins.admits(upstreamId, chainSupervisor.GetUpstreamState(upstreamId))
+	}
 }
 
 // isGrpcStream reports whether request is a gRPC server-streaming call of

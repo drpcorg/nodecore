@@ -52,7 +52,7 @@ func (p *NotNullRequestProcessor) ProcessRequest(
 			continue
 		}
 
-		wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
+		wrapper, err := sendUnaryRequest(ctx, upstream, request, parsedParam, selectedNodeGroup(upstreamStrategy, upstreamID))
 		if err != nil {
 			lastErr = err
 			continue

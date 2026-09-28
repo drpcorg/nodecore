@@ -18,7 +18,7 @@ import (
 // order; within a group the usual rating order applies via filterUpstreams.
 //
 // Like the other strategies, a single instance lives for one request and its
-// selectedUpstreams set accumulates across failsafe attempts (retries/hedges),
+// selection accumulates across failsafe attempts (retries/hedges),
 // so an upstream is selected at most once per request even if it belongs to
 // several groups.
 //
@@ -32,16 +32,15 @@ import (
 // In both modes an entirely-dead group (nothing selectable) always falls
 // through to the next group.
 type LabelGroupStrategy struct {
+	selection
 	groups             [][]string
 	passOnError        bool
 	chainSupervisor    upstreams.ChainSupervisor
-	selectedUpstreams  mapset.Set[string]
 	additionalMatchers []Matcher
 	order              UpstreamOrder
 	currentGroupIdx    int
 	firstCall          bool
 	cursorMu           sync.Mutex
-	mu                 sync.Mutex
 }
 
 // NewLabelGroupStrategy builds a LabelGroupStrategy from the rating registry:
@@ -74,11 +73,10 @@ func NewLabelGroupStrategy(
 // is handy when the ordered groups are known up front (e.g. tests).
 func NewLabelGroupStrategyWithGroups(groups [][]string, passOnError bool, chainSupervisor upstreams.ChainSupervisor) *LabelGroupStrategy {
 	return &LabelGroupStrategy{
-		groups:            groups,
-		passOnError:       passOnError,
-		chainSupervisor:   chainSupervisor,
-		selectedUpstreams: mapset.NewThreadUnsafeSet[string](),
-		firstCall:         true,
+		groups:          groups,
+		passOnError:     passOnError,
+		chainSupervisor: chainSupervisor,
+		firstCall:       true,
 	}
 }
 
@@ -108,9 +106,9 @@ func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (str
 
 	var currentReason MatchResponse
 	var trace *UpstreamsMatchTrace
+	exhausted := false
 	for ; idx < len(s.groups); idx++ {
-		selectedUpstream, reason, groupTrace := filterUpstreams(&s.mu, request, s.groups[idx], s.chainSupervisor, s.selectedUpstreams, s.additionalMatchers, s.order)
-		trace = groupTrace
+		selectedUpstream, reason, groupTrace := filterUpstreams(&s.selection, request, s.groups[idx], s.chainSupervisor, s.additionalMatchers, s.order)
 		if selectedUpstream != "" {
 			s.cursorMu.Lock()
 			s.currentGroupIdx = idx
@@ -118,14 +116,21 @@ func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (str
 			return selectedUpstream, nil
 		}
 		// group is exhausted (all tried) or dead (nothing selectable) -> fall through
-		if reason != nil && (currentReason == nil || reason.Type() < currentReason.Type()) {
-			currentReason = reason
+		if reason == nil {
+			exhausted = true
+		} else if currentReason == nil || reason.Type() < currentReason.Type() {
+			currentReason, trace = reason, groupTrace
 		}
 	}
 	s.cursorMu.Lock()
 	s.currentGroupIdx = idx
 	s.cursorMu.Unlock()
 
+	// a group without the pinned node groups says they are absent, but a group
+	// that has tried them all shows they are here
+	if _, absent := currentReason.(NodeGroupResponse); absent && exhausted {
+		currentReason = nil
+	}
 	return "", selectionError(currentReason, trace)
 }
 

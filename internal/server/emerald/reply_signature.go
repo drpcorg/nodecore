@@ -84,8 +84,9 @@ func nativeSubscribeReplyItem(
 	}
 
 	return &dshackle.NativeSubscribeReplyItem{
-		Payload:    result,
-		UpstreamId: wrapper.UpstreamId,
-		Signature:  replySignature,
+		Payload:     result,
+		UpstreamId:  wrapper.UpstreamId,
+		NodeGroupId: wrapper.NodeGroupId,
+		Signature:   replySignature,
 	}, nil
 }

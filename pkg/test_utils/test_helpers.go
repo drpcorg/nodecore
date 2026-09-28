@@ -161,6 +161,37 @@ func CreateRemoveEvent(id string) protocol.UpstreamEvent {
 	}
 }
 
+func CreateEventWithLabels(
+	id string,
+	status protocol.AvailabilityStatus,
+	head protocol.Block,
+	methods methods.Methods,
+	labels map[string]string,
+) protocol.UpstreamEvent {
+	labelsInfo := protocol.NewLabels()
+	for key, value := range labels {
+		labelsInfo.AddLabel(key, value)
+	}
+
+	state := protocol.DefaultUpstreamState(
+		methods,
+		mapset.NewThreadUnsafeSet[protocol.Cap](),
+		"",
+		nil,
+		nil,
+	)
+	state.Status = status
+	state.HeadData = head
+	state.Labels = labelsInfo
+
+	return protocol.UpstreamEvent{
+		Id: id,
+		EventType: &protocol.StateUpstreamEvent{
+			State: &state,
+		},
+	}
+}
+
 func CreateEventWithBlockData(
 	id string,
 	status protocol.AvailabilityStatus,
@@ -188,7 +219,7 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice, nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -376,7 +407,7 @@ func newTestChainOptions() *chains.Options {
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice, nil, false, nil)
 
 	go chainSupervisor.Start()
 

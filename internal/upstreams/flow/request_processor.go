@@ -131,7 +131,7 @@ func executeUnaryRequest(
 				firstUpstream.Store(upstreamId)
 			}
 
-			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request, parsedParam)
+			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request, parsedParam, selectedNodeGroup(upstreamStrategy, upstreamId))
 			if err != nil {
 				return nil, handleErrors(exec, err)
 			}
@@ -154,7 +154,7 @@ func executeUnaryRequest(
 // the lightweight counterpart to executeUnaryRequest for callers that just need a
 // one-shot request to a strategy-chosen upstream - e.g. the local logs source
 // fetching eth_getLogs from any upstream at the block's height. Repeated calls
-// with the same strategy walk down its rating list (selectedUpstreams dedup).
+// with the same strategy walk down its rating list (selection dedup).
 func selectAndSend(
 	ctx context.Context,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
@@ -169,7 +169,7 @@ func selectAndSend(
 	if upstream == nil {
 		return nil, protocol.NoAvailableUpstreamsError()
 	}
-	return sendUnaryRequest(ctx, upstream, request, request.ParseParams(ctx))
+	return sendUnaryRequest(ctx, upstream, request, request.ParseParams(ctx), selectedNodeGroup(strategy, upstreamId))
 }
 
 func getMethodConnector(upstream upstreams.Upstream, method *specs.Method) connectors.ApiConnector {
@@ -186,6 +186,7 @@ func sendUnaryRequest(
 	upstream upstreams.Upstream,
 	request protocol.RequestHolder,
 	parsedParam specs.MethodParam,
+	nodeGroupId string,
 ) (*protocol.ResponseHolderWrapper, error) {
 	zerolog.Ctx(ctx).Debug().Msgf("sending a request %s to upstream %s", request.Method(), upstream.GetId())
 
@@ -231,6 +232,7 @@ func sendUnaryRequest(
 	return &protocol.ResponseHolderWrapper{
 		RequestId:             request.Id(),
 		UpstreamId:            upstream.GetId(),
+		NodeGroupId:           nodeGroupId,
 		UpstreamNodeVersion:   upstreamNodeVersion,
 		FinalizationBlockType: finalizationBlockType,
 		FinalizationBlock:     finalizationBlock,

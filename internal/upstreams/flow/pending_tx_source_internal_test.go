@@ -39,6 +39,7 @@ func pendingMethodsMock() *mocks.MethodsMock {
 	m.On("HasMethod", mock.Anything).Return(true).Maybe()
 	// the chain supervisor resolves eth_subscribe to decide whether topics are advertised
 	m.On("GetMethod", "eth_subscribe").Return(specs.GetSpecMethod("eth", "eth_subscribe")).Maybe()
+	m.On("GetMethod", mock.Anything).Return(nil).Maybe()
 	return m
 }
 

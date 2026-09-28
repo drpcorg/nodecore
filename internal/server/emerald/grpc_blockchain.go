@@ -59,6 +59,20 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream)
 }
 
+func (s *GrpcBlockchainService) SubscribeNodeGroupStatus(request *dshackle.SubscribeNodeGroupStatusRequest, stream dshackle.Blockchain_SubscribeNodeGroupStatusServer) error {
+	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
+		return err
+	}
+	if request == nil {
+		return status.Error(codes.Internal, "request is nil")
+	}
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
+		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
+	}
+
+	return SubscribeNodeGroupStatus(s.appCtx.UpstreamSupervisor, request, stream, nodeGroupBatchWindow(s.appCtx.AppConfig))
+}
+
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {
 	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
 		return err
@@ -119,6 +133,7 @@ func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, 
 			log.Warn().Msgf("no request found for id %s, cannot build a reply", wrapper.RequestId)
 			replyItem := nativeCallErrorItem(parseCallItemID(wrapper.RequestId), protocol.ServerError(), nil)
 			replyItem.UpstreamId = wrapper.UpstreamId
+			replyItem.NodeGroupId = wrapper.NodeGroupId
 			if err := stream.Send(replyItem); err != nil {
 				return err
 			}

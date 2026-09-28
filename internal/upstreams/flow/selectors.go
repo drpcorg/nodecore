@@ -6,6 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/samber/lo"
 )
 
 type sortKind int
@@ -36,6 +37,8 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.PredictLowerBound(boundType, timeOffset)
 	}
 
+	// the node-group pins are not matchers: filterUpstreams enforces them as a gate
+	_, selectors = splitNodeGroupPins(selectors)
 	matchers := make([]Matcher, 0, len(selectors))
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
@@ -65,6 +68,10 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	case nil, protocol.RequestAnySelector:
 		return nil, nil
 	case protocol.RequestLabelSelector:
+		// reached under OR/NOT only (elsewhere it is the gate); the id is derived, not stored
+		if s.Name == upstreams.NodeGroupLabel {
+			return NewNodeGroupMatcher(s.Values), nil
+		}
 		return NewLabelMatcher(s.Name, s.Values), nil
 	case protocol.RequestExistsSelector:
 		return NewLabelExistsMatcher(s.Name), nil
@@ -131,6 +138,75 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	default:
 		return unsupported(fmt.Sprintf("unsupported selector %T", selector))
 	}
+}
+
+// splitNodeGroupPins takes out the node_group selectors every serving upstream
+// must match: the top-level ones and those under AND. One without ids pins
+// nothing and is dropped. Under OR or NOT a node_group selector stays in rest.
+func splitNodeGroupPins(selectors []protocol.RequestSelector) (pins []protocol.RequestLabelSelector, rest []protocol.RequestSelector) {
+	for _, selector := range selectors {
+		switch s := selector.(type) {
+		case protocol.RequestLabelSelector:
+			if s.Name == upstreams.NodeGroupLabel {
+				if len(s.Values) > 0 {
+					pins = append(pins, s)
+				}
+				continue
+			}
+		case protocol.RequestAndSelector:
+			childPins, children := splitNodeGroupPins(s.Children)
+			pins = append(pins, childPins...)
+			selector = protocol.RequestAndSelector{Children: children}
+		}
+		rest = append(rest, selector)
+	}
+	return pins, rest
+}
+
+// nodeGroupPins are the node_group selectors every serving upstream must
+// match. They are taken from the request itself, so no strategy - retries,
+// hedges, the integrity re-route - can leave the pin.
+type nodeGroupPins []*NodeGroupMatcher
+
+func pinsOf(request protocol.RequestHolder) nodeGroupPins {
+	pins, _ := splitNodeGroupPins(request.Selectors())
+	return lo.Map(pins, func(pin protocol.RequestLabelSelector, _ int) *NodeGroupMatcher {
+		return NewNodeGroupMatcher(pin.Values)
+	})
+}
+
+func (p nodeGroupPins) pinned() bool {
+	return len(p) > 0
+}
+
+func (p nodeGroupPins) admits(upstreamId string, state *protocol.UpstreamState) bool {
+	for _, pin := range p {
+		if _, ok := pin.matchedId(upstreamId, state); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// nodeGroupOf names the node group the upstream serves the request from: the
+// id it matched in the first pin, else its id at that pin's level, and its
+// GROUPS id when the request is unpinned.
+func (p nodeGroupPins) nodeGroupOf(upstreamId string, state *protocol.UpstreamState) string {
+	if !p.pinned() {
+		return upstreams.CachedNodeGroupId(upstreams.SeparationGroups, upstreamId, state)
+	}
+	if id, ok := p[0].matchedId(upstreamId, state); ok {
+		return id
+	}
+	level, ok := upstreams.NodeGroupLevel(p[0].ids[0])
+	if !ok {
+		level = upstreams.SeparationGroups
+	}
+	return upstreams.CachedNodeGroupId(level, upstreamId, state)
+}
+
+func (p nodeGroupPins) notPresent() NodeGroupResponse {
+	return NodeGroupResponse{lo.FlatMap(p, func(pin *NodeGroupMatcher, _ int) []string { return pin.ids })}
 }
 
 type UpstreamOrder func([]string) []string

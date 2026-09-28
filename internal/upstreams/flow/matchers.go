@@ -2,8 +2,10 @@ package flow
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/rs/zerolog/log"
 )
 
@@ -15,6 +17,8 @@ const (
 	RateLimiterType
 	UpstreamIndexType
 	SelectorType
+	// the weakest reason: any cause from a member of the pinned groups beats it
+	NodeGroupType
 	SuccessType
 )
 
@@ -190,6 +194,11 @@ func (l LabelResponse) Cause() string {
 	return fmt.Sprintf("No label `%s` with values %v", l.name, l.values)
 }
 
+type NodeGroupResponse struct{ ids []string }
+
+func (n NodeGroupResponse) Type() MatchResponseType { return NodeGroupType }
+func (n NodeGroupResponse) Cause() string           { return protocol.NodeGroupNotPresentError(n.ids).Message }
+
 type ExistsResponse struct{ name string }
 
 func (e ExistsResponse) Type() MatchResponseType { return SelectorType }
@@ -292,6 +301,52 @@ func (l *LabelMatcher) Match(_ string, state *protocol.UpstreamState) MatchRespo
 	}
 	return LabelResponse{l.name, l.values}
 }
+
+// NodeGroupMatcher matches an upstream whose node group is one of the ids, each
+// at the level its prefix tags. The id is derived from the upstream state, so
+// an upstream that has left the group stops matching.
+type NodeGroupMatcher struct {
+	ids     []string
+	byLevel map[upstreams.SeparationLevel][]string
+}
+
+func NewNodeGroupMatcher(ids []string) *NodeGroupMatcher {
+	byLevel := make(map[upstreams.SeparationLevel][]string)
+	for _, id := range ids {
+		// an id of no known level never matches
+		if level, ok := upstreams.NodeGroupLevel(id); ok {
+			byLevel[level] = append(byLevel[level], id)
+		}
+	}
+	return &NodeGroupMatcher{ids: ids, byLevel: byLevel}
+}
+
+func (n *NodeGroupMatcher) Match(upId string, state *protocol.UpstreamState) MatchResponse {
+	if state != nil && len(n.ids) == 0 {
+		return SuccessResponse{}
+	}
+	if _, ok := n.matchedId(upId, state); ok {
+		return SuccessResponse{}
+	}
+	return NodeGroupResponse{n.ids}
+}
+
+// matchedId is the id of the upstream's node group among the matcher's ids.
+func (n *NodeGroupMatcher) matchedId(upId string, state *protocol.UpstreamState) (string, bool) {
+	if state == nil {
+		return "", false
+	}
+	for _, level := range upstreams.SeparationLevels {
+		if ids := n.byLevel[level]; len(ids) > 0 {
+			if id := upstreams.CachedNodeGroupId(level, upId, state); slices.Contains(ids, id) {
+				return id, true
+			}
+		}
+	}
+	return "", false
+}
+
+var _ Matcher = (*NodeGroupMatcher)(nil)
 
 type LabelExistsMatcher struct{ name string }
 

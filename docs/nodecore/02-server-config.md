@@ -38,6 +38,7 @@ server:
 
 - `port` - The main HTTP port where nodecore listens for incoming RPC requests. Request and response bodies on this port are gzip/zstd [compressed](15-compression.md) by content negotiation; there is nothing to configure. **_Default_**: `9090`
 - `grpc-port` - Port exposing the [gRPC API](12-grpc-server.md) for querying upstream/chain state. Disabled by default; set explicitly to enable
+- `grpc-node-group-batch-window` - How long [`SubscribeNodeGroupStatus`](12-grpc-server.md) collects node-group updates into one response. **_Default_**: `20ms`
 - `grpc-ingress-port` - Port exposing the [gRPC chain ingress](14-grpc-ingress.md): native gRPC chain traffic (e.g. Sui's `sui.rpc.v2`) routed through the same execution flow as HTTP requests. Disabled by default. This is a **separate server** from `grpc-port` — different clients and auth models — reusing the same `tls` config; either can run without the other
 - `metrics-port` - Port exposing Prometheus metrics (endpoint `GET /metrics`). By default, it's disabled, so it's necessary to specify the port explicitly to enable prom metrics
 - `pprof-port` - Port for Go [pprof](https://github.com/google/pprof) profiling endpoints. By default, profiling is disabled; to enable it, you must explicitly set this port

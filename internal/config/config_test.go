@@ -66,8 +66,9 @@ func TestReadFullConfig(t *testing.T) {
 			FlushInterval: 5 * time.Minute,
 		},
 		ServerConfig: &config.ServerConfig{
-			Port:       9095,
-			HealthPort: 9096,
+			Port:                     9095,
+			HealthPort:               9096,
+			GrpcNodeGroupBatchWindow: config.DefaultGrpcNodeGroupBatchWindow,
 			PyroscopeConfig: &config.PyroscopeConfig{
 				Enabled:  true,
 				Url:      "url",

@@ -12,8 +12,7 @@ import (
 // SubFilter decides, per client, whether a fanned-out event should be delivered
 // to that client. A shared local source (e.g. the chain's single all-logs
 // stream) carries every event for all of its subscribers; each client's
-// SubFilter drops the ones it did not subscribe to. resolveSource returns nil
-// for sources that need no per-client filtering (newHeads, generic passthrough).
+// SubFilter drops the ones it did not subscribe to.
 //
 // It receives the source-attached protocol.ParsedEvent (parsed once per event in
 // the source) so it can match without re-parsing the raw JSON for every

@@ -59,13 +59,13 @@ func (grpcNativeSubscribeAdapter) SendReply(
 		if err != nil {
 			return true, status.Error(codes.Internal, "unable to encode the stream status")
 		}
-		return true, stream.Send(grpcFinalItem(wrapper.UpstreamId, response, statusBytes))
+		return true, stream.Send(grpcFinalItem(wrapper, statusBytes))
 	}
 
 	// after the error check the flow only delivers events and the end frame;
 	// the assertion exists because IsEnd lives on the narrower interface
 	if sub, ok := response.(protocol.SubscriptionResponseHolder); ok && sub.IsEnd() {
-		return true, stream.Send(grpcFinalItem(wrapper.UpstreamId, response, nil))
+		return true, stream.Send(grpcFinalItem(wrapper, nil))
 	}
 
 	replyItem, err := nativeSubscribeReplyItem(wrapper, response.ResponseResult(), nonce, signer)
@@ -96,10 +96,11 @@ func grpcSubResponseData(response protocol.ResponseHolder) *dshackle.GrpcSubResp
 // grpcFinalItem is the terminal item of a gRPC stream: no payload, never
 // signed, final set, the trailers (and the headers of a zero-message stream)
 // the upstream closed with, statusBytes empty for a clean end.
-func grpcFinalItem(upstreamId string, response protocol.ResponseHolder, statusBytes []byte) *dshackle.NativeSubscribeReplyItem {
-	headers, trailers := protocol.ResponseMetadata(response)
+func grpcFinalItem(wrapper *protocol.ResponseHolderWrapper, statusBytes []byte) *dshackle.NativeSubscribeReplyItem {
+	headers, trailers := protocol.ResponseMetadata(wrapper.Response)
 	return &dshackle.NativeSubscribeReplyItem{
-		UpstreamId: upstreamId,
+		UpstreamId:  wrapper.UpstreamId,
+		NodeGroupId: wrapper.NodeGroupId,
 		Data: &dshackle.NativeSubscribeReplyItem_GrpcData{GrpcData: &dshackle.GrpcSubResponseData{
 			Metadata: mapHeaders(headers),
 			Trailers: mapHeaders(trailers),

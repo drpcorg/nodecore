@@ -131,6 +131,7 @@ func sendReply(
 type replyMeta struct {
 	requestID           uint32
 	upstreamID          string
+	nodeGroupID         string
 	upstreamNodeVersion string
 	finalization        *dshackle.FinalizationData
 	headers             []*dshackle.KeyValue
@@ -142,6 +143,7 @@ func newReplyMeta(wrapper *protocol.ResponseHolderWrapper) replyMeta {
 	return replyMeta{
 		requestID:           parseCallItemID(wrapper.RequestId),
 		upstreamID:          wrapper.UpstreamId,
+		nodeGroupID:         wrapper.NodeGroupId,
 		upstreamNodeVersion: wrapper.UpstreamNodeVersion,
 		finalization:        nativeCallFinalizationData(wrapper),
 		headers:             mapHeaders(headers),
@@ -151,6 +153,7 @@ func newReplyMeta(wrapper *protocol.ResponseHolderWrapper) replyMeta {
 
 func (m replyMeta) stamp(item *dshackle.NativeCallReplyItem) *dshackle.NativeCallReplyItem {
 	item.UpstreamId = m.upstreamID
+	item.NodeGroupId = m.nodeGroupID
 	item.UpstreamNodeVersion = m.upstreamNodeVersion
 	item.Finalization = m.finalization
 	item.ResponseHeaders = m.headers
