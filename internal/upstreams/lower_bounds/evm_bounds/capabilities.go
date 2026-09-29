@@ -10,7 +10,6 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
-	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 )
@@ -45,9 +44,8 @@ const (
 // EvmCapabilities caches the upstream's eth_capabilities report (geth >= 1.17.4), which
 // states the oldest served block per data type and replaces the per-type binary searches.
 // One instance is shared by all lower-bound detectors of an upstream, so the method is
-// called once per result window instead of once per bound type. Every reported bound with a
-// probe is checked one block below (see reportedBoundUnderstated); the probe path stays intact
-// for upstreams without the method.
+// called once per result window instead of once per bound type. A reported bound is checked
+// one block below; the probe path stays intact for upstreams without the method.
 type EvmCapabilities struct {
 	upstreamId      string
 	chain           *chains.ConfiguredChain
@@ -249,18 +247,14 @@ type evmCapabilitiesSnapshot struct {
 	head int64
 }
 
-func (s *evmCapabilitiesSnapshot) resource(boundType protocol.LowerBoundType) (evmCapabilityResource, bool) {
-	res, ok := s.resources[capabilityResource(boundType)]
-	return res, ok
-}
-
-// capabilityResource maps TraceBound to the state capability: nodecore derives the trace
+// resource answers for TraceBound with the state capability: nodecore derives the trace
 // bound from the state search today, and traces are re-executed from state.
-func capabilityResource(boundType protocol.LowerBoundType) protocol.LowerBoundType {
+func (s *evmCapabilitiesSnapshot) resource(boundType protocol.LowerBoundType) (evmCapabilityResource, bool) {
 	if boundType == protocol.TraceBound {
-		return protocol.StateBound
+		boundType = protocol.StateBound
 	}
-	return boundType
+	res, ok := s.resources[boundType]
+	return res, ok
 }
 
 // parseEvmCapabilities maps a raw eth_capabilities result to per-bound-type resources.
@@ -339,49 +333,14 @@ func (e *EvmLowerBoundDetector) detectFromCapabilities(ctx context.Context) ([]p
 		}
 		results = append(results, protocol.NewLowerBoundDataNow(res.bound, boundType))
 	}
+	// the upstream may serve more than it reports: data one block below goes to the search
+	if main, _ := snapshot.resource(e.MainBoundType); main.bound > 1 && hasDataAt(ctx, e.probe, main.bound-1) {
+		return nil, false
+	}
 	return results, true
 }
 
-// reportedBoundUnderstated probes one block below the reported bound of boundType: upstreams
-// may serve data deeper than eth_capabilities reports. Bound 1 has nothing below it, and a
-// probe error counts as a miss.
-func reportedBoundUnderstated(
-	ctx context.Context,
-	upstreamId string,
-	reported []protocol.LowerBoundData,
-	boundType protocol.LowerBoundType,
-	probe lower_bounds.LowerBoundProbe,
-) bool {
-	for _, data := range reported {
-		if data.Type != boundType || data.Bound <= 1 {
-			continue
-		}
-		available, err := probe(ctx, data.Bound-1)
-		if err != nil || !available {
-			return false
-		}
-		log.Debug().Msgf(
-			"upstream '%s' %s reports %s from %d but serves block %d, detecting it by probing",
-			upstreamId, evmCapabilitiesMethod, boundType.String(), data.Bound, data.Bound-1,
-		)
-		return true
-	}
-	return false
-}
-
-// withReportedOwnResources takes the types read from the main resource from detected and the
-// rest from reported: logs have their own capability next to blocks and no probe of their own.
-func (e *EvmLowerBoundDetector) withReportedOwnResources(detected, reported []protocol.LowerBoundData) []protocol.LowerBoundData {
-	results := make([]protocol.LowerBoundData, 0, len(detected))
-	for _, data := range detected {
-		if capabilityResource(data.Type) == e.MainBoundType {
-			results = append(results, data)
-		}
-	}
-	for _, data := range reported {
-		if capabilityResource(data.Type) != e.MainBoundType {
-			results = append(results, data)
-		}
-	}
-	return results
+func hasDataAt(ctx context.Context, probe func(context.Context, int64) (bool, error), height int64) bool {
+	available, err := probe(ctx, height)
+	return err == nil && available
 }

@@ -234,7 +234,7 @@ func TestEvmCapabilitiesStateKeptWhenBelowReportedBoundIsUnavailable(t *testing.
 	}
 }
 
-// Blocks served below the reported bound are searched; logs have no probe and keep the report.
+// Like any search of the block detector, it publishes the logs bound too.
 func TestEvmCapabilitiesBlocksBelowReportedBoundFallToSearch(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, evmOK(`{"blocks":{"disabled":false,"oldestBlock":"0x64"},"logs":{"disabled":false,"oldestBlock":"0x28"}}`)).Once()
@@ -246,7 +246,7 @@ func TestEvmCapabilitiesBlocksBelowReportedBoundFallToSearch(t *testing.T) {
 
 	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 30, protocol.LogsBound: 40}, boundsByType(result))
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 30, protocol.LogsBound: 30}, boundsByType(result))
 	connector.AssertExpectations(t)
 }
 
@@ -282,22 +282,6 @@ func TestEvmCapabilitiesProofsBelowReportedBoundFallToSearch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.ProofBound: 30}, boundsByType(result))
 	connector.AssertExpectations(t)
-}
-
-func TestEvmCapabilitiesFailedSearchKeepsReportedBounds(t *testing.T) {
-	connector := mocks.NewConnectorMock()
-	expectCapabilities(connector, evmOK(`{"blocks":{"disabled":false,"oldestBlock":"0x64"},"logs":{"disabled":false,"oldestBlock":"0x28"}}`)).Once()
-	expectBlocksAbove(connector, 30, `{"number":"0x1e","transactions":[]}`)
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_blockNumber"))).
-		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom")))
-
-	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
-	detector := fastEvm(evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities))
-
-	result, err := detector.DetectLowerBound(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 100, protocol.LogsBound: 40}, boundsByType(result))
 }
 
 func TestEvmCapabilitiesArchiveStateIsNotProbed(t *testing.T) {

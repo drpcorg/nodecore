@@ -59,19 +59,10 @@ func (e *EvmProofLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]pr
 	if bound, ok := e.detectFromProofsSyncStatus(ctx); ok {
 		return e.LowerBoundResults(bound), nil
 	}
-	reported, ok := e.detectFromCapabilities(ctx)
-	if !ok {
-		return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.hasProof)
+	if results, ok := e.detectFromCapabilities(ctx); ok {
+		return results, nil
 	}
-	if !reportedBoundUnderstated(ctx, e.UpstreamId, reported, protocol.ProofBound, e.hasProof) {
-		return reported, nil
-	}
-	detected, err := e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.hasProof)
-	if err != nil {
-		log.Debug().Err(err).Msgf("upstream '%s' proof lower bound search failed, keeping the reported one", e.UpstreamId)
-		return reported, nil
-	}
-	return detected, nil
+	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.hasProof)
 }
 
 // detectFromProofsSyncStatus asks the upstream for the block window its historical proof
@@ -135,6 +126,9 @@ func (e *EvmProofLowerBoundDetector) detectFromCapabilities(ctx context.Context)
 			"upstream '%s' %s reports proofs from %d with head %d, ignoring it for the proof bound",
 			e.UpstreamId, evmCapabilitiesMethod, res.bound, snapshot.head,
 		)
+		return nil, false
+	}
+	if res.bound > 1 && hasDataAt(ctx, e.hasProof, res.bound-1) {
 		return nil, false
 	}
 	return e.LowerBoundResults(res.bound), true
