@@ -74,24 +74,14 @@ func newGenericLowerBoundProcessor(
 
 // WithManualBounds pins the configured bound types: they are published once at Start,
 // their detectors are dropped, and detector output for them is discarded.
+// detected is nil when there is no detection; manual must not be empty.
 func WithManualBounds(
 	ctx context.Context,
 	upstreamId string,
 	manual map[protocol.LowerBoundType]int64,
-	detected LowerBoundProcessor,
-) LowerBoundProcessor {
-	if len(manual) == 0 {
-		return detected
-	}
-
-	var processor *GenericLowerBoundProcessor
-	switch p := detected.(type) {
-	case nil:
-	case *GenericLowerBoundProcessor:
-		processor = p
-	default:
-		log.Panic().Msgf("upstream '%s': lower-bounds needs a *GenericLowerBoundProcessor, got %T", upstreamId, detected)
-	}
+	detected *GenericLowerBoundProcessor,
+) *GenericLowerBoundProcessor {
+	processor := detected
 	if processor == nil {
 		processor = newGenericLowerBoundProcessor(ctx, upstreamId, 0, 15*time.Second, nil)
 	}

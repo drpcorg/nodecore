@@ -123,7 +123,16 @@ func createLowerBoundsProcessor(
 	if !*conf.Options.DisableLowerBoundsDetection {
 		detected = chainSpecific.LowerBoundProcessor()
 	}
-	return lower_bounds.WithManualBounds(ctx, conf.Id, manualLowerBounds(conf.LowerBounds), detected)
+	manual := manualLowerBounds(conf.LowerBounds)
+	if len(manual) == 0 {
+		return detected
+	}
+	// every chain family builds a GenericLowerBoundProcessor; nil means no detection
+	generic, ok := detected.(*lower_bounds.GenericLowerBoundProcessor)
+	if detected != nil && !ok {
+		log.Panic().Msgf("upstream '%s': lower-bounds needs a *GenericLowerBoundProcessor, got %T", conf.Id, detected)
+	}
+	return lower_bounds.WithManualBounds(ctx, conf.Id, manual, generic)
 }
 
 func manualLowerBounds(bounds config.UpstreamLowerBounds) map[protocol.LowerBoundType]int64 {
