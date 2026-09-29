@@ -45,7 +45,8 @@ const (
 // states the oldest served block per data type and replaces the per-type binary searches.
 // One instance is shared by all lower-bound detectors of an upstream, so the method is
 // called once per result window instead of once per bound type. The values are trusted
-// as reported; the probe path stays intact for upstreams without the method.
+// as reported except state, which is checked one block below (see stateBelowReportedBound);
+// the probe path stays intact for upstreams without the method.
 type EvmCapabilities struct {
 	upstreamId      string
 	chain           *chains.ConfiguredChain
@@ -333,5 +334,27 @@ func (e *EvmLowerBoundDetector) detectFromCapabilities(ctx context.Context) ([]p
 		}
 		results = append(results, protocol.NewLowerBoundDataNow(res.bound, boundType))
 	}
+	if e.MainBoundType == protocol.StateBound && e.stateBelowReportedBound(ctx, snapshot) {
+		return nil, false
+	}
 	return results, true
+}
+
+// stateBelowReportedBound checks state.oldestBlock with one probe just below it: upstreams
+// may serve state deeper than they report. A hit sends the cycle to the search; a miss or
+// an error keeps the reported value.
+func (e *EvmLowerBoundDetector) stateBelowReportedBound(ctx context.Context, snapshot *evmCapabilitiesSnapshot) bool {
+	res, _ := snapshot.resource(protocol.StateBound)
+	if res.disabled || res.bound <= 1 {
+		return false
+	}
+	available, err := e.hasState(ctx, res.bound-1)
+	if err != nil || !available {
+		return false
+	}
+	log.Debug().Msgf(
+		"upstream '%s' %s reports state from %d but serves block %d, searching the state bound",
+		e.UpstreamId, evmCapabilitiesMethod, res.bound, res.bound-1,
+	)
+	return true
 }
