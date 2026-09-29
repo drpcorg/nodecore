@@ -78,8 +78,8 @@ github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c h1:In87uFQZsuGfjDDNfWn
 github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c/go.mod h1:MxLav0peU43GgvwVgNbLAj1s/bSGboKkhuULvq/7hx4=
 github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0 h1:fuHXpEVTTk7TilRdfGRLHpiTD6tnT0ihEowCfWjlFvw=
 github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0/go.mod h1:Tb7Xxye4LX7cT3i8YLvmPMGCV92IOi4CDZvm/V8ylc0=
-github.com/drpcorg/public v1.4.7-0.20260929120644-e57f9e0b053d h1:/NbWj3Xcige5vsgZxYkz46N4nwaCaKnFvco+VwTKjrQ=
-github.com/drpcorg/public v1.4.7-0.20260929120644-e57f9e0b053d/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
+github.com/drpcorg/public v1.4.7-0.20260929134126-cc524079d041 h1:25lwCiqu+h/rtpsUVZ8eto2zX7f7HX6kiZsO4Cnm79w=
+github.com/drpcorg/public v1.4.7-0.20260929134126-cc524079d041/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
 github.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/qyY=
 github.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/emicklei/dot v1.6.2 h1:08GN+DD79cy/tzN6uLCT84+2Wk9u+wvqP+Hkx/dIR8A=
