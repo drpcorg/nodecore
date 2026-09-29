@@ -321,24 +321,25 @@ func TestSubscribeUpstreamStatus_DeltasOnlyWhenChanged(t *testing.T) {
 	chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.UpstreamIndex = "other" })
 	stream.quiet(t, 1)
 
-	// a head: every upstream listed, none described
+	// a head: only that upstream, not described
 	chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(101) })
 	response := stream.waitFor(t, 2)[1]
 	assert.False(t, response.FullResponse)
 	assert.Nil(t, response.BuildInfo)
-	assert.Equal(t, []string{"up-1", "up-2"}, upstreamIds(response))
+	assert.Equal(t, []string{"up-1"}, upstreamIds(response))
 	assert.Empty(t, described(response))
+	assert.Empty(t, response.RemovedUpstreamIds)
 	assert.Equal(t, uint64(101), response.Upstreams[0].Head.Height)
 	stream.quiet(t, 2)
 
-	// a description part: only that upstream described
+	// a description part: only that upstream, described
 	chainSupervisor.update("up-2", func(state *protocol.UpstreamState) {
 		labels := state.Labels.Copy()
 		labels.AddLabel("archive", "true")
 		state.Labels = labels
 	})
 	response = stream.waitFor(t, 3)[2]
-	assert.Equal(t, []string{"up-1", "up-2"}, upstreamIds(response))
+	assert.Equal(t, []string{"up-2"}, upstreamIds(response))
 	assert.Equal(t, []string{"up-2"}, described(response))
 
 	// a status: described too
@@ -359,28 +360,38 @@ func TestSubscribeUpstreamStatus_AddedAndRemovedUpstreams(t *testing.T) {
 	chainSupervisor.set("up-3", testUpstreamState(100))
 	response := stream.waitFor(t, 2)[1]
 	assert.False(t, response.FullResponse)
-	assert.Equal(t, []string{"up-1", "up-2", "up-3"}, upstreamIds(response))
+	assert.Equal(t, []string{"up-3"}, upstreamIds(response))
 	assert.Equal(t, []string{"up-3"}, described(response))
 
-	// removal = missing from the list
+	// a removal is named in the delta
 	chainSupervisor.remove("up-2")
 	response = stream.waitFor(t, 3)[2]
-	assert.Equal(t, []string{"up-1", "up-3"}, upstreamIds(response))
-	assert.Empty(t, described(response))
+	assert.Empty(t, response.Upstreams)
+	assert.Equal(t, []string{"up-2"}, response.RemovedUpstreamIds)
 
-	// an emptied chain is sent as an empty list, once
+	// an emptied chain: every remaining upstream removed (in one delta or two)
 	chainSupervisor.remove("up-1")
 	chainSupervisor.remove("up-3")
-	response = stream.waitFor(t, 4)[3]
-	assert.Equal(t, chainRef(chains.ETHEREUM), response.Chain)
-	assert.Empty(t, response.Upstreams)
-	stream.quiet(t, 4)
+	var removed []string
+	require.Eventually(t, func() bool {
+		removed = nil
+		for _, r := range stream.all()[3:] {
+			assert.Equal(t, chainRef(chains.ETHEREUM), r.Chain)
+			assert.Empty(t, r.Upstreams)
+			removed = append(removed, r.RemovedUpstreamIds...)
+		}
+		return len(removed) == 2
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.ElementsMatch(t, []string{"up-1", "up-3"}, removed)
+	count := len(stream.all())
+	stream.quiet(t, count)
 
 	// an upstream that comes back is described again
 	chainSupervisor.set("up-2", testUpstreamState(100))
-	response = stream.waitFor(t, 5)[4]
+	response = stream.waitFor(t, count+1)[count]
 	assert.False(t, response.FullResponse)
 	assert.Equal(t, []string{"up-2"}, described(response))
+	assert.Empty(t, response.RemovedUpstreamIds)
 }
 
 func TestSubscribeUpstreamStatus_ResyncSendsFull(t *testing.T) {
@@ -395,6 +406,16 @@ func TestSubscribeUpstreamStatus_ResyncSendsFull(t *testing.T) {
 		assert.NotNil(t, response.BuildInfo)
 		assert.Equal(t, []string{"up-1", "up-2"}, described(response))
 	}
+
+	// a full lists what is there, so it also carries a removal
+	chainSupervisor.remove("up-2")
+	require.Eventually(t, func() bool {
+		all := stream.all()
+		last := all[len(all)-1]
+		return last.FullResponse && slices.Equal(upstreamIds(last), []string{"up-1"})
+	}, 5*time.Second, 10*time.Millisecond)
+	all := stream.all()
+	assert.Empty(t, all[len(all)-1].RemovedUpstreamIds)
 }
 
 func TestSubscribeUpstreamStatus_ChainsFilter(t *testing.T) {

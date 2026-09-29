@@ -1,6 +1,7 @@
 package emerald
 
 import (
+	"slices"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -17,8 +18,8 @@ import (
 
 // SubscribeUpstreamStatus streams the state of every upstream. It pulls: every
 // interval it compares the upstreams of each chain with what the stream last
-// sent and sends the chains that differ, so nothing queues up or gets dropped
-// and a slow consumer just gets fewer, fresher responses.
+// sent and sends what differs, so nothing queues up or gets dropped and a slow
+// consumer just gets fewer, fresher responses.
 func SubscribeUpstreamStatus(
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	request *dshackle.SubscribeUpstreamStatusRequest,
@@ -139,26 +140,16 @@ func (p *upstreamStatusProducer) chainResponse(
 		full = now.Sub(chain.lastFull) >= p.resyncInterval
 	}
 
-	changed := full || len(chain.current) != len(chain.sent)
-	for i := 0; !changed && i < len(chain.current); i++ {
-		prev, ok := chain.sent[chain.current[i].id]
-		changed = !ok || upstreamChanged(prev, chain.current[i].state)
-	}
-	if !changed {
-		return nil
-	}
-
-	response := &dshackle.SubscribeUpstreamStatusResponse{
-		Chain:        chain.ref,
-		Upstreams:    make([]*dshackle.UpstreamStatus, 0, len(chain.current)),
-		FullResponse: full,
-	}
-	if full {
-		response.BuildInfo = &dshackle.BuildInfo{Version: buildinfo.ProductVersion()}
-		chain.lastFull = now
-	}
+	// a full response lists every upstream; a delta only the new or changed
+	// ones, and the ids of those removed
+	var upstreams []*dshackle.UpstreamStatus
 	sent := make(map[string]*protocol.UpstreamState, len(chain.current))
 	for _, snapshot := range chain.current {
+		prev, known := chain.sent[snapshot.id]
+		sent[snapshot.id] = snapshot.state
+		if !full && known && !upstreamChanged(prev, snapshot.state) {
+			continue
+		}
 		status := &dshackle.UpstreamStatus{
 			UpstreamId: snapshot.id,
 			Status:     ChainStatusToApi(snapshot.state.Status).GetStatus(),
@@ -166,13 +157,35 @@ func (p *upstreamStatusProducer) chainResponse(
 		if !snapshot.state.HeadData.IsEmptyByHeight() {
 			status.Head = HeadToApi(snapshot.state.HeadData).GetHead()
 		}
-		if prev, ok := chain.sent[snapshot.id]; full || !ok || descriptionChanged(prev, snapshot.state) {
+		if full || !known || descriptionChanged(prev, snapshot.state) {
 			status.Description = upstreamDescription(snapshot.state, chain.subMethods)
 		}
-		response.Upstreams = append(response.Upstreams, status)
-		sent[snapshot.id] = snapshot.state
+		upstreams = append(upstreams, status)
+	}
+	var removed []string
+	if !full {
+		for id := range chain.sent {
+			if _, ok := sent[id]; !ok {
+				removed = append(removed, id)
+			}
+		}
+		slices.Sort(removed)
 	}
 	chain.sent = sent
+	if !full && len(upstreams) == 0 && len(removed) == 0 {
+		return nil
+	}
+
+	response := &dshackle.SubscribeUpstreamStatusResponse{
+		Chain:              chain.ref,
+		Upstreams:          upstreams,
+		FullResponse:       full,
+		RemovedUpstreamIds: removed,
+	}
+	if full {
+		response.BuildInfo = &dshackle.BuildInfo{Version: buildinfo.ProductVersion()}
+		chain.lastFull = now
+	}
 	chain.announced = true
 
 	return response
