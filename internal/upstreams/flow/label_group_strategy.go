@@ -139,7 +139,7 @@ func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (str
 		currentReason = nil
 	}
 
-	return "", selectionError(currentReason, trace)
+	return "", selectionError(request, currentReason, trace)
 }
 
 var _ UpstreamStrategy = (*LabelGroupStrategy)(nil)

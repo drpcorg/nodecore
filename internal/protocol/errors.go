@@ -26,6 +26,9 @@ type ResponseError struct {
 	Code    int
 	Message string
 	Data    interface{}
+	// NodeLevel marks an error the pin caused rather than the request (see
+	// IsNodeLevelError)
+	NodeLevel bool
 }
 
 func (b *ResponseError) Error() string {

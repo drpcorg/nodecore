@@ -232,10 +232,12 @@ func quorumPinError(request protocol.RequestHolder, drpcIds []string, chainSuper
 	if !pins.Pinned() || slices.ContainsFunc(drpcIds, pins.Admits) {
 		return nil
 	}
+	err := protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector")
 	if miss := pinMiss(pins, chainSupervisor); !miss.present {
-		return miss.error()
+		err = miss.error()
 	}
-	return protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector")
+	err.NodeLevel = true
+	return err
 }
 
 // filterQuorumCapableUpstreams keeps only DRPC upstreams that expose a

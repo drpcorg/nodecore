@@ -38,7 +38,7 @@ func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestH
 		return selectedUpstream, nil
 	}
 
-	return "", selectionError(currentReason, trace)
+	return "", selectionError(request, currentReason, trace)
 }
 
 func NewSpecificOrderUpstreamStrategy(upstreamIds []string, chainSupervisor upstreams.ChainSupervisor) *SpecificOrderUpstreamStrategy {
@@ -87,7 +87,7 @@ func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string,
 		return selectedUpstream, nil
 	}
 
-	return "", selectionError(currentReason, trace)
+	return "", selectionError(request, currentReason, trace)
 }
 
 var _ UpstreamStrategy = (*RatingStrategy)(nil)
@@ -147,7 +147,7 @@ func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string
 		return selectedUpstream, nil
 	}
 
-	return "", selectionError(currentReason, trace)
+	return "", selectionError(request, currentReason, trace)
 }
 
 func filterUpstreams(
@@ -237,7 +237,7 @@ func withUnrated(request protocol.RequestHolder, rated []string, chainSupervisor
 // noUpstreamsError answers a strategy without candidates.
 func noUpstreamsError(request protocol.RequestHolder, chainSupervisor upstreams.ChainSupervisor) error {
 	if pins := pinsOf(request); pins.Pinned() {
-		return selectionError(pinMiss(pins, chainSupervisor), nil)
+		return selectionError(request, pinMiss(pins, chainSupervisor), nil)
 	}
 	return protocol.NoAvailableUpstreamsError()
 }
@@ -275,7 +275,16 @@ func processMatchedResponse(
 	return false, nil
 }
 
-func selectionError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) error {
+func selectionError(request protocol.RequestHolder, matchResponse MatchResponse, trace *UpstreamsMatchTrace) error {
+	err := matchError(matchResponse, trace)
+	// the pin failed, not the request: another upstream may answer it
+	if pinsOf(request).Pinned() {
+		err.NodeLevel = true
+	}
+	return err
+}
+
+func matchError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) *protocol.ResponseError {
 	if matchResponse == nil {
 		return protocol.NoAvailableUpstreamsError()
 	}
