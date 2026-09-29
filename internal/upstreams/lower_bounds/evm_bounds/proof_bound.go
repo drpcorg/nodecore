@@ -20,7 +20,8 @@ const evmProofsSyncStatusMethod = "debug_proofsSyncStatus"
 // stateproofs.oldestBlock at the head while --proofs-history serves a window 129600 blocks
 // deep. Sources in order, every cycle, with no cached verdicts:
 //  1. debug_proofsSyncStatus (op-reth): earliest of the reported window.
-//  2. eth_capabilities: stateproofs.oldestBlock, trusted only when it is below head.number.
+//  2. eth_capabilities: stateproofs.oldestBlock, trusted only when it is below head.number
+//     and eth_getProof has nothing one block below it.
 //  3. eth_getProof binary search.
 type EvmProofLowerBoundDetector struct {
 	*lower_bounds.LowerBoundSearchCalculator
@@ -58,10 +59,19 @@ func (e *EvmProofLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]pr
 	if bound, ok := e.detectFromProofsSyncStatus(ctx); ok {
 		return e.LowerBoundResults(bound), nil
 	}
-	if results, ok := e.detectFromCapabilities(ctx); ok {
-		return results, nil
+	reported, ok := e.detectFromCapabilities(ctx)
+	if !ok {
+		return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.hasProof)
 	}
-	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.hasProof)
+	if !reportedBoundUnderstated(ctx, e.UpstreamId, reported, protocol.ProofBound, e.hasProof) {
+		return reported, nil
+	}
+	detected, err := e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.hasProof)
+	if err != nil {
+		log.Debug().Err(err).Msgf("upstream '%s' proof lower bound search failed, keeping the reported one", e.UpstreamId)
+		return reported, nil
+	}
+	return detected, nil
 }
 
 // detectFromProofsSyncStatus asks the upstream for the block window its historical proof

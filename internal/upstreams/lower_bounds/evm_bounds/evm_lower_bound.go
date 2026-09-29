@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -24,8 +25,9 @@ const (
 // state, tx or receipts) for an EVM upstream. The concrete per-type probe
 // logic lives in the sibling *_bound.go files; this file holds the shared wiring:
 // construction, the probe dispatcher, and the JSON-RPC call helper. Reported answers
-// are preferred over probing: eth_capabilities (see capabilities.go) first, then the
-// gold bound and the binary search. Proofs have their own detector in proof_bound.go.
+// are preferred over probing: eth_capabilities (see capabilities.go) first, checked one
+// block below, then the gold bound and the binary search. Proofs have their own detector
+// in proof_bound.go.
 type EvmLowerBoundDetector struct {
 	*lower_bounds.LowerBoundSearchCalculator
 	evmRpcClient
@@ -69,9 +71,22 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 }
 
 func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
-	if results, ok := e.detectFromCapabilities(ctx); ok {
-		return results, nil
+	reported, ok := e.detectFromCapabilities(ctx)
+	if !ok {
+		return e.detectByProbing(ctx)
 	}
+	if !reportedBoundUnderstated(ctx, e.UpstreamId, reported, e.MainBoundType, e.probe) {
+		return reported, nil
+	}
+	detected, err := e.detectByProbing(ctx)
+	if err != nil {
+		log.Debug().Err(err).Msgf("upstream '%s' %s lower bound search failed, keeping the reported one", e.UpstreamId, e.MainBoundType.String())
+		return reported, nil
+	}
+	return e.withReportedOwnResources(detected, reported), nil
+}
+
+func (e *EvmLowerBoundDetector) detectByProbing(ctx context.Context) ([]protocol.LowerBoundData, error) {
 	if results, ok := e.detectFromGoldBound(ctx); ok {
 		return results, nil
 	}

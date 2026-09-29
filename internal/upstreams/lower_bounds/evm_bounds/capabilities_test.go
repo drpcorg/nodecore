@@ -12,6 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds/evm_bounds"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -92,6 +93,14 @@ func expectStateAbove(connector *mocks.ConnectorMock, threshold int64, missingSt
 		Maybe()
 }
 
+// expectReportedBoundsExact makes the fixture's reports exact: nothing is served one block
+// below state (100), tx (50), receipts (60) or proofs (200).
+func expectReportedBoundsExact(connector *mocks.ConnectorMock) {
+	expectStateAbove(connector, 100, missingTrieNode())
+	expectBlocksAbove(connector, 1000, `{"number":"0x3e8","transactions":["0xaa"]}`)
+	expectProofsAbove(connector, 200)
+}
+
 func missingTrieNode() *protocol.ResponseError {
 	return protocol.ResponseErrorWithMessage("missing trie node")
 }
@@ -111,7 +120,7 @@ func TestEvmCapabilitiesServeAllBoundTypesWithSingleCall(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, evmOK(evmCapabilitiesFixture)).Once()
 	expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(protocol.NotSupportedMethodError("debug_proofsSyncStatus"))).Once()
-	expectStateAbove(connector, 100, missingTrieNode())
+	expectReportedBoundsExact(connector)
 
 	detectors := evmCapabilitiesDetectors(connector)
 
@@ -134,11 +143,14 @@ func TestEvmCapabilitiesServeAllBoundTypesWithSingleCall(t *testing.T) {
 		protocol.ProofBound:    200,
 	}
 	assert.Equal(t, expected, bounds)
-	// one eth_capabilities call, the proof detector's rejected sync status and the state check
-	// below the reported bound (override support + balance): no searches
+	// one eth_capabilities call, the proof detector's rejected sync status and one check below
+	// each reported bound above 1 (state: override support + balance; tx, receipts: block; proof): no searches
 	assert.Equal(t, 1, countRequests(connector, "eth_capabilities"))
 	assert.Equal(t, 1, countRequests(connector, "eth_getBalance"))
-	assert.Len(t, connector.Calls, 4)
+	assert.Equal(t, 2, countRequests(connector, "eth_getBlockByNumber"))
+	assert.Equal(t, 1, countRequests(connector, "eth_getProof"))
+	assert.Equal(t, 0, countRequests(connector, "eth_blockNumber"))
+	assert.Len(t, connector.Calls, 7)
 	connector.AssertExpectations(t)
 }
 
@@ -147,7 +159,7 @@ func TestEvmCapabilitiesConcurrentDetectorsShareOneFetch(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, evmOK(evmCapabilitiesFixture)).Once()
 	expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(protocol.NotSupportedMethodError("debug_proofsSyncStatus"))).Once()
-	expectStateAbove(connector, 100, missingTrieNode())
+	expectReportedBoundsExact(connector)
 
 	detectors := evmCapabilitiesDetectors(connector)
 
@@ -164,7 +176,7 @@ func TestEvmCapabilitiesConcurrentDetectorsShareOneFetch(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, 1, countRequests(connector, "eth_capabilities"))
-	assert.Len(t, connector.Calls, 4)
+	assert.Len(t, connector.Calls, 7)
 	connector.AssertExpectations(t)
 }
 
@@ -220,6 +232,72 @@ func TestEvmCapabilitiesStateKeptWhenBelowReportedBoundIsUnavailable(t *testing.
 			assert.Equal(t, 0, countRequests(connector, "eth_blockNumber"))
 		})
 	}
+}
+
+// Blocks served below the reported bound are searched; logs have no probe and keep the report.
+func TestEvmCapabilitiesBlocksBelowReportedBoundFallToSearch(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectCapabilities(connector, evmOK(`{"blocks":{"disabled":false,"oldestBlock":"0x64"},"logs":{"disabled":false,"oldestBlock":"0x28"}}`)).Once()
+	expectBlocksAbove(connector, 30, `{"number":"0x1e","transactions":[]}`)
+	expectLatest(connector, "0x1000")
+
+	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
+	detector := evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities)
+
+	result, err := detector.DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 30, protocol.LogsBound: 40}, boundsByType(result))
+	connector.AssertExpectations(t)
+}
+
+// A tx served below the reported bound goes through the gold bound before the search.
+func TestEvmCapabilitiesTxBelowReportedBoundUsesGoldBound(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectCapabilities(connector, evmOK(`{"tx":{"disabled":false,"oldestBlock":"0x32"}}`)).Once()
+	expectBlocksAbove(connector, 0, `{"number":"0x31","transactions":["0xaa"]}`)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionByHash"))).
+		Return(evmOK(`{"hash":"0xaa"}`)).
+		Twice()
+
+	chain := evmChainWithGold(&chains.GoldLowerBound{Hash: "0xgold"}, nil)
+	capabilities := evm_bounds.NewEvmCapabilities("id", chain, time.Second, connector)
+	detector := evm_bounds.NewEvmTxLowerBoundDetector("id", chain, time.Second, connector).WithCapabilities(capabilities)
+
+	result, err := detector.DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.TxBound: 1}, boundsByType(result))
+	assert.Equal(t, 0, countRequests(connector, "eth_blockNumber"))
+	connector.AssertExpectations(t)
+}
+
+func TestEvmCapabilitiesProofsBelowReportedBoundFallToSearch(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(protocol.NotSupportedMethodError("debug_proofsSyncStatus"))).Once()
+	expectCapabilities(connector, evmOK(capsProofsBelowHead)).Once()
+	expectProofsAbove(connector, 30)
+	expectLatest(connector, "0x1000")
+
+	result, err := proofDetector(connector).DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.ProofBound: 30}, boundsByType(result))
+	connector.AssertExpectations(t)
+}
+
+func TestEvmCapabilitiesFailedSearchKeepsReportedBounds(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectCapabilities(connector, evmOK(`{"blocks":{"disabled":false,"oldestBlock":"0x64"},"logs":{"disabled":false,"oldestBlock":"0x28"}}`)).Once()
+	expectBlocksAbove(connector, 30, `{"number":"0x1e","transactions":[]}`)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_blockNumber"))).
+		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom")))
+
+	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
+	detector := fastEvm(evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities))
+
+	result, err := detector.DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 100, protocol.LogsBound: 40}, boundsByType(result))
 }
 
 func TestEvmCapabilitiesArchiveStateIsNotProbed(t *testing.T) {
@@ -446,6 +524,7 @@ func TestEvmCapabilitiesPartialResponseFallsBackPerDetector(t *testing.T) {
 		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getProof"))).
 		Return(evmOK(`{"accountProof":[]}`)).
 		Maybe()
+	expectBlocksAbove(connector, 1000, `{"number":"0x3e8","transactions":["0xaa"]}`)
 
 	capabilities := evm_bounds.NewEvmCapabilities("id", evmChain(), time.Second, connector)
 	txDetector := evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector).WithCapabilities(capabilities)
