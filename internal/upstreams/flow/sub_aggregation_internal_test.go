@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
@@ -422,4 +424,61 @@ func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
 	assert.Equal(t, blockSubscribeBufferSize, genericSourceBufferSize(blockSub))
 	assert.Equal(t, genericSubscriptionBufferSize, genericSourceBufferSize(newHeads))
 	assert.Less(t, blockSubscribeBufferSize, genericSubscriptionBufferSize)
+}
+
+// A selector-bearing subscription (a client's own selector or an API key's
+// upstream restriction) skips the local sources, which merge every upstream of
+// the chain, and is routed on its selectors instead.
+func TestResolveSourceSkipsLocalSourcesForRoutedRequests(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	resolve := func(params string, selectors ...protocol.RequestSelector) (string, subengine.SourceBuilder) {
+		request := subscribeRequestWithSelectors(params, selectors...)
+		key, builder, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), request, nil, nil, nil, allLocalSubs)
+		return key, builder
+	}
+
+	for _, tc := range []struct {
+		params   string
+		localKey string
+	}{
+		{`["newHeads"]`, localNewHeadsKey},
+		{`["logs",{}]`, localLogsKey},
+		{`["newPendingTransactions"]`, localPendingTxKey},
+	} {
+		t.Run(tc.localKey, func(t *testing.T) {
+			key, _ := resolve(tc.params)
+			assert.Equal(t, tc.localKey, key)
+
+			key, _ = resolve(tc.params, group)
+			assert.NotEqual(t, tc.localKey, key)
+			assert.Contains(t, key, group.Key())
+
+			// RequestAnySelector routes nothing and keeps the local source.
+			key, _ = resolve(tc.params, protocol.RequestAnySelector{})
+			assert.Equal(t, tc.localKey, key)
+		})
+	}
+
+	t.Run("drpc_pendingTransactions fails", func(t *testing.T) {
+		key, builder := resolve(`["drpc_pendingTransactions"]`, group)
+		assert.NotEqual(t, localDrpcPendingTxKey, key)
+		source, err := builder(context.Background())
+		assert.Nil(t, source)
+		assert.ErrorContains(t, err, "cannot be served with upstream selectors")
+	})
+}
+
+// Subscriptions restricted to different upstreams must never share a source,
+// while equally restricted ones still do.
+func TestSubscriptionKeySeparatesGroupLabelRestrictions(t *testing.T) {
+	request := func(labels ...string) protocol.RequestHolder {
+		return subscribeRequestWithSelectors(`["newHeads"]`, protocol.RequestGroupLabelSelector{Labels: labels})
+	}
+	assert.NotEqual(t, subscriptionKey(request("archive")), subscriptionKey(request("full")))
+	assert.NotEqual(t, subscriptionKey(request("archive")), subscriptionKey(subscribeRequest(`["newHeads"]`)))
+	assert.Equal(t, subscriptionKey(request("archive", "fast")), subscriptionKey(request("fast", "archive")))
+}
+
+func subscribeRequestWithSelectors(params string, selectors ...protocol.RequestSelector) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth", selectors...)
 }

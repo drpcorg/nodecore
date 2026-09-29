@@ -56,6 +56,12 @@ func (s RequestUnsupportedSelector) Key() string {
 	return fmt.Sprintf("unsupported(%s)", s.Reason)
 }
 
+func (s RequestGroupLabelSelector) Key() string {
+	labels := append([]string(nil), s.Labels...)
+	sort.Strings(labels)
+	return fmt.Sprintf("group(%s)", strings.Join(labels, "|"))
+}
+
 func selectorGroupKey(children []RequestSelector) string {
 	parts := make([]string, 0, len(children))
 	for _, child := range children {
@@ -130,7 +136,9 @@ func labelClassKey(selector RequestSelector) string {
 		return fmt.Sprintf("not(%s)", key)
 	default:
 		// RequestAnySelector, height/slot/tag/lower-bound, unsupported, nil:
-		// no node-class constraint.
+		// no node-class constraint. RequestGroupLabelSelector restricts routing
+		// (which upstreams may serve), not the response, so keys sharing data
+		// keep sharing cache entries.
 		return ""
 	}
 }

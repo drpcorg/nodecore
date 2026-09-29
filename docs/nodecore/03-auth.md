@@ -150,6 +150,10 @@ local:
     contracts:
       allowed:
         - "0xfde26a190bfd8c43040c6b5ebf9bc7f8c934c80a"
+    upstreams:
+      group-labels:
+        - archive
+        - fast
 ```
 
 The `local` key type is the simplest form of key management. It allows you to define access keys directly in the configuration file, without relying on an external service. This is useful for quick setups and internal environments.
@@ -163,6 +167,19 @@ The `local` key type is the simplest form of key management. It allows you to de
 * `settings.methods.forbidden` - A blacklist of RPC methods that cannot be called with this key
 * `settings.contracts.allowed` - Restricts interaction to a specific set of contract addresses for `eth_call` and `eth_getLogs` methods
 * `settings.cors-origins` - The list of allowed CORS origins for this key. If present, nodecore will include the appropriate `Access-Control-Allow-Origin` header only for the origins explicitly listed here. If the incoming request’s Origin header does not match any entry, the request will be rejected by the CORS layer.
+* `settings.upstreams.group-labels` - Restricts which upstreams may serve this key's requests: only an upstream carrying at least one of these [`group-labels`](05-upstream-config.md#label-balancing) is used. See [Upstream restriction](#upstream-restriction) below. **_Default_**: unset, every upstream may serve the key
+
+##### Upstream restriction
+
+`settings.upstreams` pins a key to a subset of nodes — for example, one tenant to its dedicated archive nodes. It reuses the `group-labels` that [`label-balancing`](05-upstream-config.md#label-balancing) groups upstreams by, but it is a **filter, not a balancer**:
+
+* Upstreams without any of the listed labels are never used for the key — not as a fallback, not on a retry, not for a hedge. If none of the admitted upstreams can serve a request, it fails with `no available upstreams`.
+* Among the admitted upstreams, the chain's usual balancing strategy (`rating`, `base` or `label-balancing`) still decides which one serves the request.
+* It applies to every request and subscription the key sends through the HTTP, WebSocket and [gRPC chain ingress](14-grpc-ingress.md). Keys do not apply to the [emerald gRPC API](12-grpc-server.md), which authenticates separately.
+* Subscriptions of keys restricted to different labels never share an upstream subscription; keys with the same restriction still share one. Locally-synthesized `newHeads`, `logs` and `newPendingTransactions` merge every upstream of the chain, so a restricted key gets a node-backed subscription from an admitted upstream instead, and `drpc_pendingTransactions` is rejected for it (see [Subscriptions](13-subscriptions.md#local-subscriptions-vs-node-backed-passthrough)).
+* The cache is shared: the restriction chooses which nodes answer, not what they answer.
+
+Every listed label must be carried by at least one configured upstream, otherwise nodecore fails to start — a mistyped label would otherwise leave the key with no upstream at all. The restriction is available for `local` keys only.
 
 #### DRPC keys
 

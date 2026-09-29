@@ -255,5 +255,13 @@ func (u *UpstreamJsonRpcRequest) Selectors() []RequestSelector {
 	return append([]RequestSelector(nil), u.selectors...)
 }
 
+// AppendSelectors adds routing selectors to the request. Call it before the
+// request enters the execution flow: selectors are read without a lock, and a
+// hash already computed does not see selectors added later.
+func (u *UpstreamJsonRpcRequest) AppendSelectors(selectors ...RequestSelector) {
+	u.selectors = append(u.Selectors(), selectors...)
+}
+
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)
+var _ SelectorAppender = (*UpstreamJsonRpcRequest)(nil)
 var _ RealIdHolder = (*UpstreamJsonRpcRequest)(nil)

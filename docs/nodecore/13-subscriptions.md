@@ -79,12 +79,15 @@ There are four local source types:
 
 - the topic's `local-subscriptions` flag is turned off,
 - no upstream on the chain has the required capability, or
-- (for `logs` only) the request carries effective routing selectors — a selector-constrained logs
-  subscription cannot be served from the shared all-upstream log stream, so it goes to a single
-  upstream.
+- the request carries effective routing selectors — a client's own gRPC selector, or the
+  [upstream restriction](03-auth.md#local-keys) of the API key it came with. Every local source
+  merges all upstreams of the chain, so a selector-constrained subscription cannot be served from
+  it and goes to a single upstream that matches the selectors.
 
 `drpc_pendingTransactions` is the exception: it is a synthetic method with no node-backed
 equivalent, so it is always served locally (subject only to an upstream having `PendingTxCap`).
+With effective routing selectors it has no path at all and the subscription fails with a client
+error rather than being served from upstreams the selectors exclude.
 
 ### Head-liveness gate on `WsCap`
 
@@ -104,9 +107,11 @@ off per chain/upstream with [`disable-liveness-subscription-validation`](05-upst
 
 ### newHeads
 
-There is one merged head per chain, so the local `newHeads` source is **one source per chain** and
-ignores request selectors. It taps the chain's head stream and forwards the upstream head
-notification payload verbatim.
+There is one merged head per chain, so the local `newHeads` source is **one source per chain**. It
+taps the chain's head stream and forwards the upstream head notification payload verbatim. A
+`newHeads` request with effective selectors uses a node-backed passthrough instead (see the
+[fallback rule](#local-subscriptions-vs-node-backed-passthrough)); the same holds for
+`newPendingTransactions`.
 
 ### logs
 
