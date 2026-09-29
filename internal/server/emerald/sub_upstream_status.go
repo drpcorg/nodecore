@@ -233,8 +233,9 @@ func (c *upstreamStatusChain) response(
 			continue
 		}
 		status := &dshackle.UpstreamStatus{
-			UpstreamId: id,
-			Status:     ChainStatusToApi(state.Status).GetStatus(),
+			UpstreamId:    id,
+			UpstreamIndex: state.UpstreamIndex,
+			Status:        ChainStatusToApi(state.Status).GetStatus(),
 		}
 		if !state.HeadData.IsEmptyByHeight() {
 			status.Head = HeadToApi(state.HeadData).GetHead()
@@ -291,7 +292,8 @@ func upstreamChanged(prev, next *protocol.UpstreamState) bool {
 
 // descriptionChanged compares the copy-on-write parts by identity.
 func descriptionChanged(prev, next *protocol.UpstreamState) bool {
-	return prev.Status != next.Status ||
+	return prev.UpstreamIndex != next.UpstreamIndex ||
+		prev.Status != next.Status ||
 		prev.UpstreamMethods != next.UpstreamMethods ||
 		prev.Caps != next.Caps ||
 		prev.BlockInfo != next.BlockInfo ||

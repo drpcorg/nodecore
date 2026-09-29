@@ -366,7 +366,7 @@ func TestSubscribeUpstreamStatus_DeltasOnlyWhenChanged(t *testing.T) {
 	stream.quiet(t, 1)
 
 	// a new snapshot with nothing the stream carries changed
-	chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.UpstreamIndex = "other" })
+	chainSupervisor.update("up-1", func(state *protocol.UpstreamState) {})
 	stream.quiet(t, 1)
 
 	// a head: only that upstream, not described
@@ -661,4 +661,18 @@ func TestSubscribeUpstreamStatus_ResyncsOfTheChainsAreSpread(t *testing.T) {
 	times := slices.Collect(maps.Values(resyncs))
 	slices.SortFunc(times, time.Time.Compare)
 	assert.Greater(t, times[len(times)-1].Sub(times[0]), resync/4)
+}
+
+func TestSubscribeUpstreamStatus_TracksStickyIndexChanges(t *testing.T) {
+	chainSupervisor := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	state := testUpstreamState(100)
+	state.UpstreamIndex = "000001"
+	chainSupervisor.set("up-1", state)
+	stream, _ := startUpstreamStatus(t, &dshackle.SubscribeUpstreamStatusRequest{}, time.Hour, chainSupervisor)
+	assert.Equal(t, "000001", stream.waitFor(t, 1)[0].Upstreams[0].UpstreamIndex)
+	chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.UpstreamIndex = "000002" })
+	response := stream.waitFor(t, 2)[1]
+	assert.False(t, response.FullResponse)
+	require.Len(t, response.Upstreams, 1)
+	assert.Equal(t, "000002", response.Upstreams[0].UpstreamIndex)
 }

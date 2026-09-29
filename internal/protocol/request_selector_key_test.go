@@ -262,13 +262,13 @@ func TestLabelCacheKey(t *testing.T) {
 	}
 }
 
-func TestLabelCacheKeyLeavesOutUpstreamPins(t *testing.T) {
+func TestLabelCacheKeyIsolatesUpstreamPins(t *testing.T) {
 	pin := func(ids ...string) protocol.RequestLabelSelector { return label(protocol.UpstreamIdLabel, ids...) }
 
-	assert.Empty(t, protocol.LabelCacheKey(sel(pin("a", "b"))))
-	assert.Empty(t, protocol.LabelCacheKey(sel(and(pin("a"), protocol.RequestHeightSelector{Height: 1}))))
-	assert.Equal(t, "label(type=a)", protocol.LabelCacheKey(sel(pin("a"), label("type", "a"))))
-	assert.Equal(t, "label(type=a)", protocol.LabelCacheKey(sel(and(pin("a"), and(pin("b"), label("type", "a"))))))
+	assert.Equal(t, "label(upstream_id=a|b)", protocol.LabelCacheKey(sel(pin("a", "b"))))
+	assert.Equal(t, "label(upstream_id=a)", protocol.LabelCacheKey(sel(and(pin("a"), protocol.RequestHeightSelector{Height: 1}))))
+	assert.Equal(t, "and(label(type=a)|label(upstream_id=a))", protocol.LabelCacheKey(sel(pin("a"), label("type", "a"))))
+	assert.Equal(t, "and(and(label(type=a)|label(upstream_id=b))|label(upstream_id=a))", protocol.LabelCacheKey(sel(and(pin("a"), and(pin("b"), label("type", "a"))))))
 	// not a pin: an ordinary label
 	assert.Equal(t, "label(upstream_id=)", protocol.LabelCacheKey(sel(pin())))
 	assert.Equal(t, "or(label(type=a)|label(upstream_id=a))", protocol.LabelCacheKey(sel(or(pin("a"), label("type", "a")))))
@@ -276,14 +276,14 @@ func TestLabelCacheKeyLeavesOutUpstreamPins(t *testing.T) {
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getBalance", Params: []byte(`["0x1","0x2"]`)}
 	unpinned := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
 	for _, pins := range [][]protocol.RequestSelector{sel(pin("a")), sel(pin("a", "b")), sel(and(pin("b")))} {
-		assert.Equal(t, unpinned.RequestHash(), protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth", pins...).RequestHash())
+		assert.NotEqual(t, unpinned.RequestHash(), protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth", pins...).RequestHash())
 	}
 	rest := protocol.NewUpstreamRestRequest("1", "GET#/eth/v1/node/version", nil, nil, "")
 	pinnedRest := protocol.NewUpstreamRestRequest("1", "GET#/eth/v1/node/version", nil, nil, "", pin("a"))
-	assert.Equal(t, rest.RequestHash(), pinnedRest.RequestHash())
+	assert.NotEqual(t, rest.RequestHash(), pinnedRest.RequestHash())
 	grpc := protocol.NewUpstreamGrpcRequest("1", "/pkg.Svc/Method", nil, []byte("body"), "")
 	pinnedGrpc := protocol.NewUpstreamGrpcRequest("1", "/pkg.Svc/Method", nil, []byte("body"), "", pin("a"))
-	assert.Equal(t, grpc.RequestHash(), pinnedGrpc.RequestHash())
+	assert.NotEqual(t, grpc.RequestHash(), pinnedGrpc.RequestHash())
 }
 
 func TestLabelCacheKeyDistinguishesClasses(t *testing.T) {
