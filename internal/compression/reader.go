@@ -77,9 +77,14 @@ var zstdDecoderPool = sync.Pool{
 	},
 }
 
-// Brotli readers are pooled for their struct, not their window: Close hands
-// the ring buffer back to go-brrr's own pool and zeroes the decode state, so
-// a reader parked here keeps only its fixed 32KiB input buffer.
+// Brotli readers are pooled for the state a decode builds - its ring buffer,
+// output buffer and Huffman tables - which go-brrr keeps across Reset, so a
+// warm reader decodes the next body without allocating. That is also what a
+// parked reader holds: its ring buffer and output buffer each grow up to the
+// window a stream declares. So only a reader whose last stream declared at
+// most brotliParkedMaxWindowBits is parked warm; one released from a larger
+// window is Closed first, which hands the ring buffer back to go-brrr's own
+// pool and drops the rest.
 //
 // The window is not capped below RFC 7932's own limit, lgwin 24 (16MiB). That
 // is what the reference encoder declares whenever it compresses a pipe, so a
@@ -92,6 +97,13 @@ var zstdDecoderPool = sync.Pool{
 var brotliReaderPool = sync.Pool{
 	New: func() any { return brrr.NewReader(nil) },
 }
+
+// brotliParkedMaxWindowBits is the largest window, lgwin 22 (4MiB), that a
+// pooled brotli reader keeps its state for. It covers what encoders declare by
+// default - the reference library's lgwin 22, nodecore's own lgwin 18 - and
+// bounds a parked reader near decoderMaxWindow, what a pooled zstd decoder
+// may keep.
+const brotliParkedMaxWindowBits = 22
 
 // WrapReader returns a reader that decodes r according to contentEncoding.
 // An empty or identity encoding passes r through untouched.
@@ -227,12 +239,14 @@ func wrapBrotliReader(r io.Reader) (io.ReadCloser, error) {
 	// would fail the empty payload gzip and zstd both let through. One byte of
 	// lookahead tells the two apart without consuming anything.
 	buffered := bufio.NewReaderSize(r, brotliPeekSize)
-	if _, err := buffered.Peek(1); err != nil {
+	header, err := buffered.Peek(1)
+	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return io.NopCloser(buffered), nil
 		}
 		return nil, fmt.Errorf("invalid brotli body: cannot read the stream header: %w", err)
 	}
+	lgwin := brotliStreamWindowBits(header[0])
 
 	// New cannot fail, so the pool holds nothing but readers.
 	decoder := brotliReaderPool.Get().(*brrr.Reader)
@@ -249,30 +263,58 @@ func wrapBrotliReader(r io.Reader) (io.ReadCloser, error) {
 	var first [1]byte
 	n, err := stream.Read(first[:])
 	if err != nil && !errors.Is(err, io.EOF) {
-		releaseBrotliReader(decoder)
+		releaseBrotliReader(decoder, lgwin)
 		return nil, fmt.Errorf("invalid brotli body: %w", err)
 	}
 	if n == 0 && errors.Is(err, io.EOF) {
 		// A complete stream that decodes to nothing: the one-byte empty
 		// stream. There is nothing left for a decoder to do.
-		releaseBrotliReader(decoder)
+		releaseBrotliReader(decoder, lgwin)
 		return io.NopCloser(buffered), nil
 	}
 	return &pooledReader{
 		// The byte decoded above goes back in front of the rest.
 		Reader:  io.MultiReader(bytes.NewReader(first[:n]), stream),
-		release: func() { releaseBrotliReader(decoder) },
+		release: func() { releaseBrotliReader(decoder, lgwin) },
 	}, nil
 }
 
-// releaseBrotliReader returns a decoder to the pool. Close hands its ring
-// buffer back to go-brrr and zeroes the decode state - without it a parked
-// reader would keep the largest window it ever decoded - and Reset revives it
-// and lets go of the body it was reading.
-func releaseBrotliReader(decoder *brrr.Reader) {
-	_ = decoder.Close()
-	decoder.Reset(nil)
+// releaseBrotliReader returns a decoder to the pool, warm or cold by the
+// window its stream declared.
+func releaseBrotliReader(decoder *brrr.Reader, lgwin int) {
+	resetBrotliReader(decoder, lgwin)
 	brotliReaderPool.Put(decoder)
+}
+
+// resetBrotliReader lets go of the body a decoder was reading. Reset alone
+// keeps the decode state for the next body. Close drops it first, for a stream
+// that declared a window too large to park - or the large-window form, which
+// the decoder refuses anyway.
+func resetBrotliReader(decoder *brrr.Reader, lgwin int) {
+	if lgwin == 0 || lgwin > brotliParkedMaxWindowBits {
+		_ = decoder.Close()
+	}
+	decoder.Reset(nil)
+}
+
+// brotliStreamWindowBits decodes the window a brotli stream declares in its
+// first byte (RFC 7932 §9.1, read least significant bit first), or 0 for the
+// pattern the format reserves - which is how the large-window form opens.
+func brotliStreamWindowBits(first byte) int {
+	if first&1 == 0 {
+		return 16
+	}
+	if n := (first >> 1) & 7; n != 0 {
+		return 17 + int(n)
+	}
+	switch m := (first >> 4) & 7; m {
+	case 0:
+		return 17
+	case 1:
+		return 0
+	default:
+		return 8 + int(m)
+	}
 }
 
 // brotliStream reads one brotli stream and checks that the body ends with it.

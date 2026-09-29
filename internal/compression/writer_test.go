@@ -113,7 +113,7 @@ func TestBrotliWriterDeclaresA256KiBWindow(t *testing.T) {
 	require.NoError(t, writer.Close())
 	compression.ReleaseWriter(writer)
 
-	assert.Equal(t, 18, brotliWindowBits(buf.Bytes()[0]))
+	assert.Equal(t, 18, compression.BrotliStreamWindowBits(buf.Bytes()[0]))
 }
 
 // failingWriter is a client that has gone away. It lets through the first

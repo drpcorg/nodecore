@@ -80,26 +80,6 @@ func lowRedundancy(n int) []byte {
 	return []byte(hex.EncodeToString(raw))
 }
 
-// brotliWindowBits decodes the window a brotli stream declares in its first
-// byte (RFC 7932 §9.1, read least significant bit first), or 0 for the
-// pattern the format reserves - which is how the large-window form opens.
-func brotliWindowBits(first byte) int {
-	if first&1 == 0 {
-		return 16
-	}
-	if n := (first >> 1) & 7; n != 0 {
-		return 17 + int(n)
-	}
-	switch m := (first >> 4) & 7; m {
-	case 0:
-		return 17
-	case 1:
-		return 0
-	default:
-		return 8 + int(m)
-	}
-}
-
 func TestWrapReaderDecodesSupportedCodings(t *testing.T) {
 	plain := []byte(`{"jsonrpc":"2.0","id":1,"result":"0x10"}`)
 	tests := []struct {
@@ -474,7 +454,7 @@ func TestWrapReaderDecodesReferenceBrotliStreams(t *testing.T) {
 		t.Run(tt.file, func(te *testing.T) {
 			stream, err := os.ReadFile(filepath.Join("testdata", "brotli", tt.file))
 			require.NoError(te, err)
-			require.Equal(te, tt.lgwin, brotliWindowBits(stream[0]),
+			require.Equal(te, tt.lgwin, compression.BrotliStreamWindowBits(stream[0]),
 				"the fixture does not declare the window it is named for")
 
 			reader, err := compression.WrapReader("br", bytes.NewReader(stream))

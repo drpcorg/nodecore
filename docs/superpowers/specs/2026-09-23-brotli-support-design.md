@@ -216,9 +216,12 @@ var brotliReaderPool = sync.Pool{New: func() any { return brrr.NewReader(nil) }}
 4. **A valid stream that decodes to nothing** (the one-byte empty stream) returns
    its reader to the pool at once and hands back an empty `io.NopCloser`.
 5. **Otherwise** return a `pooledReader` whose `Reader` is the decoded byte
-   followed by the decoder, and whose `release` is
-   `Close()` (hands the ring buffer back to go-brrr and zeroes the decode state)
-   → `Reset(nil)` (revives the reader and drops `r`) → `Put`.
+   followed by the decoder, and whose `release` is `Reset(nil)` (drops `r`,
+   keeps the ring buffer, output buffer and tables warm for the next body) →
+   `Put`. A stream whose first byte declared a window above lgwin 22 (4 MiB) is
+   `Close`d first, which hands the ring buffer back to go-brrr's own pool and
+   zeroes the decode state, so a parked reader holds at most about 8 MiB - the
+   bound a pooled zstd decoder has.
 
 **Bytes after the end of the stream are rejected.** brotli has no
 concatenation — unlike gzip members or zstd frames, a second stream is not a
