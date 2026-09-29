@@ -1,0 +1,2 @@
+server:
+  grpc-upstream-status-interval: -1s

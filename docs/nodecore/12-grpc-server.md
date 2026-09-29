@@ -44,9 +44,19 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeUpstreamStatus(SubscribeUpstreamStatusRequest) → stream SubscribeUpstreamStatusResponse`**
+
+  Server-streaming RPC: the state of every upstream, the inputs of the merged view `SubscribeChainStatus` streams (which is unaffected). `chains` limits the stream to those chains, including ones added later; empty means every chain, and unknown refs are ignored.
+
+  Each response is one chain and lists **all** its upstreams (`upstream_id`, `status`, `head`); an upstream missing from a response is gone, and an emptied chain is sent as an empty list. `description` is what `SubscribeChainStatus` sends for a chain (methods, subscriptions, lower bounds, finalization, labels as one `NodeDetails` with quorum 1), built from that upstream alone whatever its status; it is present only for upstreams that are new or whose description or status changed. A chain is first sent once it has an upstream; its first response is full (`full_response`, `build_info`, every description), and so is one every 60 s after that, so a consumer can repair what a lossy hop dropped.
+
+  The stream pulls: every `server.grpc-upstream-status-interval` (default `100ms`) it compares the upstreams with what it last sent and sends only the chains that differ. Nothing is queued or dropped; a slow consumer gets fewer, fresher responses. `upstream_id` is the id `NativeCallReplyItem.upstream_id` names the upstream by.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
+
+  A label selector named `upstream_id`, at the top level or under an AND of the request (or item) selector, pins the call to the upstreams whose [`SubscribeUpstreamStatus`](#blockchainservice) id is among its values: retries, hedges, the integrity re-route, label-group balancing and broadcast / maximum-value / not-null dispatch all stay inside the pin, and a pinned upstream the rating has not listed yet is a candidate too. When none of the pinned upstreams is here the item fails with the no-available-upstreams code (`1` on a JSON-RPC item) and the message `pinned upstreams not present: <ids>`; a pinned upstream that is here but cannot serve the call fails as usual, and a cached response is served whatever the pin. Under OR or NOT `upstream_id` is an ordinary label, which no upstream has.
 
 - **`NativeSubscribe(NativeSubscribeRequest) → stream NativeSubscribeReplyItem`**
 

@@ -201,7 +201,7 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 	// Quorum requests may only be served by drpc upstreams via an HTTP-capable
 	// connector, since only they return QR signature headers we can verify.
 	if quorumRequested {
-		sorted := e.registry.GetSortedUpstreams(e.chain, request.Method())
+		sorted := withUnrated(request, e.registry.GetSortedUpstreams(e.chain, request.Method()), chainSupervisor)
 		drpcIds := filterQuorumCapableUpstreams(sorted, e.upstreamSupervisor, request.RequestType())
 		if len(drpcIds) == 0 {
 			return NewFailingStrategy(protocol.QuorumNotSupportedError("no DRPC upstream with an HTTP connector available for this chain"))
@@ -209,7 +209,7 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor).WithAdditionalMatchers(additionalMatchers).WithOrder(order)
 	}
 	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil {
-		return NewLabelGroupStrategy(e.chain, request.Method(), cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
+		return NewLabelGroupStrategy(e.chain, request, cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
 			WithAdditionalMatchers(additionalMatchers).
 			WithOrder(order)
 	}

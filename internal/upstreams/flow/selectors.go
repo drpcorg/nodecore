@@ -2,6 +2,7 @@ package flow
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -36,6 +37,8 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.PredictLowerBound(boundType, timeOffset)
 	}
 
+	// the pins are no matchers: filterUpstreams enforces them as a gate
+	_, selectors = splitUpstreamPins(selectors)
 	matchers := make([]Matcher, 0, len(selectors))
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
@@ -131,6 +134,64 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	default:
 		return unsupported(fmt.Sprintf("unsupported selector %T", selector))
 	}
+}
+
+// UpstreamIdLabel names the label selector that pins a request to upstreams
+// by id. Elsewhere than at the top level or under AND it is an ordinary label,
+// which no upstream has.
+const UpstreamIdLabel = "upstream_id"
+
+// splitUpstreamPins takes out the upstream_id selectors every serving upstream
+// must match: the top-level ones and those under AND. One without values pins
+// nothing and is dropped. Under OR or NOT an upstream_id selector stays in rest.
+func splitUpstreamPins(selectors []protocol.RequestSelector) (pins upstreamPins, rest []protocol.RequestSelector) {
+	for _, selector := range selectors {
+		switch s := selector.(type) {
+		case protocol.RequestLabelSelector:
+			if s.Name == UpstreamIdLabel {
+				if len(s.Values) > 0 {
+					pins = append(pins, s.Values)
+				}
+				continue
+			}
+		case protocol.RequestAndSelector:
+			childPins, children := splitUpstreamPins(s.Children)
+			pins = append(pins, childPins...)
+			selector = protocol.RequestAndSelector{Children: children}
+		}
+		rest = append(rest, selector)
+	}
+	return pins, rest
+}
+
+// upstreamPins are the id lists an upstream must be in to serve the request.
+// They come from the request itself, so no strategy - retries, hedges, the
+// integrity re-route, dispatch - can leave them.
+type upstreamPins [][]string
+
+func pinsOf(request protocol.RequestHolder) upstreamPins {
+	if request == nil {
+		return nil
+	}
+	pins, _ := splitUpstreamPins(request.Selectors())
+	return pins
+}
+
+func (p upstreamPins) pinned() bool {
+	return len(p) > 0
+}
+
+func (p upstreamPins) admits(upstreamId string) bool {
+	for _, ids := range p {
+		if !slices.Contains(ids, upstreamId) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p upstreamPins) notPresent() PinResponse {
+	return PinResponse{slices.Concat(p...)}
 }
 
 type UpstreamOrder func([]string) []string

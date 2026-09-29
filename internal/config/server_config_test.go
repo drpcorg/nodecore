@@ -16,12 +16,13 @@ func TestServerConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := config.ServerConfig{
-		Port:            9095,
-		MetricsPort:     9093,
-		PprofPort:       6061,
-		HealthPort:      9096,
-		PyroscopeConfig: &config.PyroscopeConfig{},
-		TlsConfig:       &config.TlsConfig{},
+		Port:                       9095,
+		MetricsPort:                9093,
+		PprofPort:                  6061,
+		HealthPort:                 9096,
+		GrpcUpstreamStatusInterval: 250 * time.Millisecond,
+		PyroscopeConfig:            &config.PyroscopeConfig{},
+		TlsConfig:                  &config.TlsConfig{},
 		GrpcAuthConfig: &config.GrpcAuthConfig{
 			PublicKeyOwner: "drpc",
 			SessionTTL:     24 * time.Hour,
@@ -81,6 +82,13 @@ func TestServerConfigWrongServerPortThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
 
 	assert.ErrorContains(t, err, "incorrect server port - -9095")
+}
+
+func TestServerConfigWrongUpstreamStatusIntervalThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-wrong-upstream-status-interval.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "incorrect grpc upstream status interval - -1s")
 }
 
 func TestServerConfigWrongMetricsPortThenError(t *testing.T) {

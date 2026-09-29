@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"slices"
 	"sync"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -76,11 +77,12 @@ func NewRatingStrategy(
 }
 
 func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
-	if len(r.ups) == 0 {
-		return "", protocol.NoAvailableUpstreamsError()
+	ups := withUnrated(request, r.ups, r.chainSupervisor)
+	if len(ups) == 0 {
+		return "", noUpstreamsError(request)
 	}
 
-	selectedUpstream, currentReason, trace := filterUpstreams(&r.mu, request, r.ups, r.chainSupervisor, r.selectedUpstreams, r.additionalMatchers, r.order)
+	selectedUpstream, currentReason, trace := filterUpstreams(&r.mu, request, ups, r.chainSupervisor, r.selectedUpstreams, r.additionalMatchers, r.order)
 	if selectedUpstream != "" {
 		return selectedUpstream, nil
 	}
@@ -130,7 +132,7 @@ func (s *SpecificOrderUpstreamStrategy) WithAdditionalMatchers(additionalMatcher
 func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	upstreamIds := b.chainSupervisor.GetUpstreamIds()
 	if len(upstreamIds) == 0 {
-		return "", protocol.NoAvailableUpstreamsError()
+		return "", noUpstreamsError(request)
 	}
 
 	pos := b.chainSupervisor.NextIndex() % uint64(len(upstreamIds))
@@ -158,6 +160,7 @@ func filterUpstreams(
 	if order != nil {
 		upstreamIds = order(upstreamIds)
 	}
+	pins := pinsOf(request)
 	matchers := lo.Ternary(len(additionalMatchers) > 0, additionalMatchers, make([]Matcher, 0))
 	matchers = append(matchers, NewStatusMatcher(), NewMethodMatcher(request.Method()))
 	// a JSON-RPC subscription needs a live ws connector on the upstream; a gRPC
@@ -167,11 +170,14 @@ func filterUpstreams(
 	}
 
 	multiMatcher := NewMultiMatcher(matchers...)
+	admitted := false
 	for i := 0; i < len(upstreamIds); i++ {
 		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
-		if upstreamState == nil {
+		// an upstream outside the pins is no candidate, not even for the error
+		if upstreamState == nil || !pins.admits(upstreamIds[i]) {
 			continue
 		}
+		admitted = true
 		matched := multiMatcher.Match(upstreamIds[i], upstreamState)
 		trace.Add(upstreamIds[i], matched)
 
@@ -191,7 +197,38 @@ func filterUpstreams(
 			currentReason = newReason
 		}
 	}
+	if !admitted && pins.pinned() {
+		return "", pins.notPresent(), trace
+	}
 	return "", currentReason, trace
+}
+
+// withUnrated appends to the rating list the pinned upstreams it lacks: the
+// list is recomputed every calculation-interval, while the chain supervisor
+// knows a new upstream at once.
+func withUnrated(request protocol.RequestHolder, rated []string, chainSupervisor upstreams.ChainSupervisor) []string {
+	pins := pinsOf(request)
+	if !pins.pinned() || chainSupervisor == nil {
+		return rated
+	}
+	var unrated []string
+	for _, id := range pins[0] {
+		if pins.admits(id) && !slices.Contains(rated, id) && !slices.Contains(unrated, id) && chainSupervisor.GetUpstreamState(id) != nil {
+			unrated = append(unrated, id)
+		}
+	}
+	if len(unrated) == 0 {
+		return rated
+	}
+	return append(slices.Clip(rated), unrated...)
+}
+
+// noUpstreamsError: with no upstreams at all, none of the pinned ones is here.
+func noUpstreamsError(request protocol.RequestHolder) error {
+	if pins := pinsOf(request); pins.pinned() {
+		return selectionError(pins.notPresent(), nil)
+	}
+	return protocol.NoAvailableUpstreamsError()
 }
 
 func processMatchedResponse(
@@ -232,6 +269,8 @@ func selectionError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) err
 		return protocol.NoAvailableUpstreamsError()
 	}
 	switch m := matchResponse.(type) {
+	case PinResponse:
+		return protocol.PinnedUpstreamsNotPresentError(m.ids)
 	case MethodResponse:
 		return protocol.NotSupportedMethodError(m.method)
 	case RateLimiterResponse:
