@@ -143,11 +143,20 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 	GroupLabels       []string                 `yaml:"group-labels"`
 	Labels            UpstreamLabels           `yaml:"labels"`
+	LowerBounds       UpstreamLowerBounds      `yaml:"lower-bounds"`
 }
 
 // hasGrpcLabel is published on every upstream configured with a grpc connector, so
 // gRPC clients can select upstreams that serve gRPC methods with a label selector.
 const hasGrpcLabel = "has_grpc"
+
+// LowerBoundTypeNames are the keys accepted in an upstream's lower-bounds map;
+// each is the lowercased protocol.LowerBoundType name.
+var LowerBoundTypeNames = []string{"slot", "state", "receipts", "tx", "block", "logs", "trace", "proof", "epoch", "blob"}
+
+// UpstreamLowerBounds maps a bound type name to a manually configured lower bound.
+// A configured type is published as is and never detected.
+type UpstreamLowerBounds map[string]int64
 
 // UpstreamLabels is a manual upstream label map. Label values are strings, but any
 // YAML scalar is accepted and stored as its literal text, so `archive: false` and
@@ -697,6 +706,10 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		return err
 	}
 
+	if err := u.validateLowerBounds(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -709,6 +722,19 @@ func (u *Upstream) validateLabels() error {
 		}
 		if u.Labels[label] == "" {
 			return fmt.Errorf("label '%s' must have a non-empty value", label)
+		}
+	}
+	return nil
+}
+
+// validateLowerBounds iterates in sorted key order so the reported error is deterministic.
+func (u *Upstream) validateLowerBounds() error {
+	for _, key := range slices.Sorted(maps.Keys(u.LowerBounds)) {
+		if !slices.Contains(LowerBoundTypeNames, key) {
+			return fmt.Errorf("lower-bounds: unknown bound type '%s', allowed: %s", key, strings.Join(LowerBoundTypeNames, ", "))
+		}
+		if value := u.LowerBounds[key]; value < 1 {
+			return fmt.Errorf("lower-bounds: bound '%s' must be >= 1, got %d", key, value)
 		}
 	}
 	return nil

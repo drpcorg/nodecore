@@ -26,6 +26,8 @@ type GenericLowerBoundProcessor struct {
 
 	lowerBoundsDetectors []LowerBoundDetector
 	lowerBounds          *LowerBounds
+	// manualBounds are configured bounds; set once before Start and read-only afterwards
+	manualBounds map[protocol.LowerBoundType]int64
 }
 
 func NewGenericLowerBoundProcessor(
@@ -49,7 +51,16 @@ func NewGenericLowerBoundProcessorWithDelay(
 	if len(lowerBoundsDetectors) == 0 {
 		return nil
 	}
+	return newGenericLowerBoundProcessor(ctx, upstreamId, averageSpeed, initialDelay, lowerBoundsDetectors)
+}
 
+func newGenericLowerBoundProcessor(
+	ctx context.Context,
+	upstreamId string,
+	averageSpeed float64,
+	initialDelay time.Duration,
+	lowerBoundsDetectors []LowerBoundDetector,
+) *GenericLowerBoundProcessor {
 	name := fmt.Sprintf("%s_lower_bound_service", upstreamId)
 	return &GenericLowerBoundProcessor{
 		upstreamId:           upstreamId,
@@ -61,12 +72,62 @@ func NewGenericLowerBoundProcessorWithDelay(
 	}
 }
 
+// WithManualBounds pins the configured bound types: they are published once at Start,
+// their detectors are dropped, and detector output for them is discarded.
+func WithManualBounds(
+	ctx context.Context,
+	upstreamId string,
+	manual map[protocol.LowerBoundType]int64,
+	detected LowerBoundProcessor,
+) LowerBoundProcessor {
+	if len(manual) == 0 {
+		return detected
+	}
+
+	var processor *GenericLowerBoundProcessor
+	switch p := detected.(type) {
+	case nil:
+	case *GenericLowerBoundProcessor:
+		processor = p
+	default:
+		log.Panic().Msgf("upstream '%s': lower-bounds needs a *GenericLowerBoundProcessor, got %T", upstreamId, detected)
+	}
+	if processor == nil {
+		processor = newGenericLowerBoundProcessor(ctx, upstreamId, 0, 15*time.Second, nil)
+	}
+
+	processor.manualBounds = manual
+	processor.lowerBoundsDetectors = lo.Filter(processor.lowerBoundsDetectors, func(detector LowerBoundDetector, _ int) bool {
+		keep := lo.ContainsBy(detector.SupportedTypes(), func(t protocol.LowerBoundType) bool {
+			_, configured := manual[t]
+			return t != protocol.UnknownBound && !configured
+		})
+		if !keep {
+			log.Info().Msgf("upstream '%s': lower bound detection of %s skipped, bounds are configured", upstreamId, detector.SupportedTypes())
+		}
+		return keep
+	})
+	return processor
+}
+
 func (b *GenericLowerBoundProcessor) PredictLowerBound(bt protocol.LowerBoundType, timeOffset int64) int64 {
+	if bound, ok := b.manualBounds[bt]; ok {
+		return bound
+	}
 	return b.lowerBounds.PredictNextBound(bt, timeOffset)
 }
 
 func (b *GenericLowerBoundProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
+		for boundType, bound := range b.manualBounds {
+			log.Info().Msgf("upstream '%s' lower bound of type %s is %d (configured)", b.upstreamId, boundType.String(), bound)
+			b.subManager.Publish(protocol.NewLowerBoundDataNow(bound, boundType))
+		}
+		// lo.FanIn over zero channels yields a closed channel, the select below would spin on it
+		if len(b.lowerBoundsDetectors) == 0 {
+			return nil
+		}
+
 		lowerBoundsChansArr := make([]<-chan protocol.LowerBoundData, 0, len(b.lowerBoundsDetectors))
 		for _, detector := range b.lowerBoundsDetectors {
 			lowerBoundsChansArr = append(lowerBoundsChansArr, b.detectLowerBound(ctx, detector))
@@ -146,6 +207,9 @@ func (b *GenericLowerBoundProcessor) processBounds(
 	}
 
 	for _, data := range bounds {
+		if _, configured := b.manualBounds[data.Type]; configured {
+			continue
+		}
 		var bound int64
 		lastBound, ok := b.lowerBounds.GetLastBound(data.Type)
 		if !ok {

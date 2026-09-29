@@ -318,3 +318,71 @@ func TestGenericLowerBoundServiceSecondStartDoesNotDuplicatePublishing(t *testin
 	assertNoLowerBound(t, sub.Events, 100*time.Millisecond)
 	detector.AssertExpectations(t)
 }
+
+func TestWithManualBoundsSkipsFullyConfiguredDetectorsAndOverridesDetectedTypes(t *testing.T) {
+	stateDetector := mocks.NewLowerBoundDetectorMock()
+	stateDetector.On("SupportedTypes").Return([]protocol.LowerBoundType{protocol.StateBound, protocol.TraceBound})
+	stateDetector.On("Period").Return(time.Hour).Maybe()
+
+	blockDetector := mocks.NewLowerBoundDetectorMock()
+	blockDetector.On("SupportedTypes").Return([]protocol.LowerBoundType{protocol.BlockBound, protocol.LogsBound})
+	blockDetector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{
+		protocol.NewLowerBoundData(50, 1000, protocol.BlockBound),
+		protocol.NewLowerBoundData(60, 1000, protocol.LogsBound),
+	}, nil).Once()
+	blockDetector.On("Period").Return(time.Hour).Maybe()
+
+	ctx := context.Background()
+	detected := lower_bounds.NewGenericLowerBoundProcessorWithDelay(ctx, "up-1", 1, time.Millisecond, []lower_bounds.LowerBoundDetector{stateDetector, blockDetector})
+	manual := map[protocol.LowerBoundType]int64{protocol.StateBound: 1, protocol.TraceBound: 1, protocol.BlockBound: 10}
+	processor := lower_bounds.WithManualBounds(ctx, "up-1", manual, detected)
+	sub := processor.Subscribe("sub-1")
+	defer sub.Unsubscribe()
+	processor.Start()
+	defer processor.Stop()
+
+	published := make(map[protocol.LowerBoundType]int64)
+	for range manual {
+		event := waitForLowerBound(t, sub.Events, time.Second)
+		published[event.Type] = event.Bound
+	}
+	assert.Equal(t, manual, published)
+
+	event := waitForLowerBound(t, sub.Events, time.Second)
+	assert.Equal(t, protocol.LogsBound, event.Type)
+	assert.Equal(t, int64(60), event.Bound)
+	assertNoLowerBound(t, sub.Events, 100*time.Millisecond)
+
+	// configured bounds are static: a non-zero average speed must not move them
+	assert.Equal(t, int64(10), processor.PredictLowerBound(protocol.BlockBound, 1000))
+	assert.Equal(t, int64(1), processor.PredictLowerBound(protocol.StateBound, 1000))
+	stateDetector.AssertNotCalled(t, "DetectLowerBound", mock.Anything)
+	blockDetector.AssertExpectations(t)
+}
+
+func TestWithManualBoundsWithoutDetectedProcessor(t *testing.T) {
+	tests := []struct {
+		name     string
+		detected lower_bounds.LowerBoundProcessor
+	}{
+		{name: "nil", detected: nil},
+		{name: "typed nil", detected: (*lower_bounds.GenericLowerBoundProcessor)(nil)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			processor := lower_bounds.WithManualBounds(context.Background(), "up-1", map[protocol.LowerBoundType]int64{protocol.StateBound: 5}, tt.detected)
+			require.NotNil(t, processor)
+			sub := processor.Subscribe("sub-1")
+			defer sub.Unsubscribe()
+			processor.Start()
+			defer processor.Stop()
+
+			event := waitForLowerBound(t, sub.Events, time.Second)
+			assert.Equal(t, protocol.StateBound, event.Type)
+			assert.Equal(t, int64(5), event.Bound)
+			assertNoLowerBound(t, sub.Events, 50*time.Millisecond)
+			assert.True(t, processor.Running())
+			assert.Equal(t, int64(5), processor.PredictLowerBound(protocol.StateBound, 0))
+		})
+	}
+}
