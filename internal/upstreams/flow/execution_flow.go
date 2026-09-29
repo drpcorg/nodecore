@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -206,6 +207,9 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 		if len(drpcIds) == 0 {
 			return NewFailingStrategy(protocol.QuorumNotSupportedError("no DRPC upstream with an HTTP connector available for this chain"))
 		}
+		if err := quorumPinError(request, drpcIds, chainSupervisor); err != nil {
+			return NewFailingStrategy(err)
+		}
 		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor).WithAdditionalMatchers(additionalMatchers).WithOrder(order)
 	}
 	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil {
@@ -219,6 +223,19 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 	default: // rating
 		return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
 	}
+}
+
+// quorumPinError fails a pinned quorum request whose pinned upstreams are no
+// DRPC upstreams that can sign.
+func quorumPinError(request protocol.RequestHolder, drpcIds []string, chainSupervisor upstreams.ChainSupervisor) *protocol.ResponseError {
+	pins := pinsOf(request)
+	if !pins.Pinned() || slices.ContainsFunc(drpcIds, pins.Admits) {
+		return nil
+	}
+	if miss := pinMiss(pins, chainSupervisor); !miss.present {
+		return miss.error()
+	}
+	return protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector")
 }
 
 // filterQuorumCapableUpstreams keeps only DRPC upstreams that expose a

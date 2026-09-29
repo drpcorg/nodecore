@@ -30,7 +30,7 @@ type SpecificOrderUpstreamStrategy struct {
 
 func (s *SpecificOrderUpstreamStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	if len(s.upstreamIds) == 0 {
-		return "", protocol.NoAvailableUpstreamsError()
+		return "", noUpstreamsError(request, s.chainSupervisor)
 	}
 
 	selectedUpstream, currentReason, trace := filterUpstreams(&s.mu, request, s.upstreamIds, s.chainSupervisor, s.selectedUpstreams, s.additionalMatchers, s.order)
@@ -79,7 +79,7 @@ func NewRatingStrategy(
 func (r *RatingStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	ups := withUnrated(request, r.ups, r.chainSupervisor)
 	if len(ups) == 0 {
-		return "", noUpstreamsError(request)
+		return "", noUpstreamsError(request, r.chainSupervisor)
 	}
 
 	selectedUpstream, currentReason, trace := filterUpstreams(&r.mu, request, ups, r.chainSupervisor, r.selectedUpstreams, r.additionalMatchers, r.order)
@@ -131,8 +131,12 @@ func (s *SpecificOrderUpstreamStrategy) WithAdditionalMatchers(additionalMatcher
 
 func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	upstreamIds := b.chainSupervisor.GetUpstreamIds()
+	// under a pin the rotation runs over the pinned upstreams, so they share evenly
+	if pins := pinsOf(request); pins.Pinned() {
+		upstreamIds = slices.DeleteFunc(upstreamIds, func(id string) bool { return !pins.Admits(id) })
+	}
 	if len(upstreamIds) == 0 {
-		return "", noUpstreamsError(request)
+		return "", noUpstreamsError(request, b.chainSupervisor)
 	}
 
 	pos := b.chainSupervisor.NextIndex() % uint64(len(upstreamIds))
@@ -174,7 +178,7 @@ func filterUpstreams(
 	for i := 0; i < len(upstreamIds); i++ {
 		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
 		// an upstream outside the pins is no candidate, not even for the error
-		if upstreamState == nil || !pins.admits(upstreamIds[i]) {
+		if upstreamState == nil || !pins.Admits(upstreamIds[i]) {
 			continue
 		}
 		admitted = true
@@ -197,10 +201,17 @@ func filterUpstreams(
 			currentReason = newReason
 		}
 	}
-	if !admitted && pins.pinned() {
-		return "", pins.notPresent(), trace
+	if !admitted && pins.Pinned() {
+		return "", pinMiss(pins, chainSupervisor), trace
 	}
 	return "", currentReason, trace
+}
+
+func pinsOf(request protocol.RequestHolder) protocol.UpstreamPins {
+	if request == nil {
+		return nil
+	}
+	return request.UpstreamPins()
 }
 
 // withUnrated appends to the rating list the pinned upstreams it lacks: the
@@ -208,12 +219,12 @@ func filterUpstreams(
 // knows a new upstream at once.
 func withUnrated(request protocol.RequestHolder, rated []string, chainSupervisor upstreams.ChainSupervisor) []string {
 	pins := pinsOf(request)
-	if !pins.pinned() || chainSupervisor == nil {
+	if !pins.Pinned() || chainSupervisor == nil {
 		return rated
 	}
 	var unrated []string
 	for _, id := range pins[0] {
-		if pins.admits(id) && !slices.Contains(rated, id) && !slices.Contains(unrated, id) && chainSupervisor.GetUpstreamState(id) != nil {
+		if pins.Admits(id) && !slices.Contains(rated, id) && !slices.Contains(unrated, id) && chainSupervisor.GetUpstreamState(id) != nil {
 			unrated = append(unrated, id)
 		}
 	}
@@ -223,10 +234,10 @@ func withUnrated(request protocol.RequestHolder, rated []string, chainSupervisor
 	return append(slices.Clip(rated), unrated...)
 }
 
-// noUpstreamsError: with no upstreams at all, none of the pinned ones is here.
-func noUpstreamsError(request protocol.RequestHolder) error {
-	if pins := pinsOf(request); pins.pinned() {
-		return selectionError(pins.notPresent(), nil)
+// noUpstreamsError answers a strategy without candidates.
+func noUpstreamsError(request protocol.RequestHolder, chainSupervisor upstreams.ChainSupervisor) error {
+	if pins := pinsOf(request); pins.Pinned() {
+		return selectionError(pinMiss(pins, chainSupervisor), nil)
 	}
 	return protocol.NoAvailableUpstreamsError()
 }
@@ -270,7 +281,7 @@ func selectionError(matchResponse MatchResponse, trace *UpstreamsMatchTrace) err
 	}
 	switch m := matchResponse.(type) {
 	case PinResponse:
-		return protocol.PinnedUpstreamsNotPresentError(m.ids)
+		return m.error()
 	case MethodResponse:
 		return protocol.NotSupportedMethodError(m.method)
 	case RateLimiterResponse:

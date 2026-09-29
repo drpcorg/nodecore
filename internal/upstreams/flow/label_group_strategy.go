@@ -95,7 +95,7 @@ func (s *LabelGroupStrategy) WithAdditionalMatchers(additionalMatchers []Matcher
 
 func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	if len(s.groups) == 0 {
-		return "", protocol.NoAvailableUpstreamsError()
+		return "", noUpstreamsError(request, s.chainSupervisor)
 	}
 
 	s.cursorMu.Lock()

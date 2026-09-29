@@ -21,7 +21,7 @@ import (
 )
 
 func pin(ids ...string) protocol.RequestLabelSelector {
-	return protocol.RequestLabelSelector{Name: UpstreamIdLabel, Values: ids}
+	return protocol.RequestLabelSelector{Name: protocol.UpstreamIdLabel, Values: ids}
 }
 
 func pinTestRequest(method string, selectors ...protocol.RequestSelector) protocol.RequestHolder {
@@ -78,26 +78,42 @@ func TestUpstreamPinsAreAGate(t *testing.T) {
 		pin("a", "b"),
 		protocol.RequestAndSelector{Children: []protocol.RequestSelector{pin("b", "c"), geth}},
 		or,
-		// pins nothing
+		// no pin: an ordinary label
 		pin(),
 	}
 
-	pins, rest := splitUpstreamPins(selectors)
-	assert.Equal(t, upstreamPins{{"a", "b"}, {"b", "c"}}, pins)
-	assert.True(t, pins.admits("b"))
-	assert.False(t, pins.admits("a"))
-	assert.False(t, pins.admits("c"))
-	assert.Equal(t, []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{geth}}, or}, rest)
+	pins, rest := protocol.SplitUpstreamPins(selectors)
+	assert.Equal(t, protocol.UpstreamPins{{"a", "b"}, {"b", "c"}}, pins)
+	assert.True(t, pins.Admits("b"))
+	assert.False(t, pins.Admits("a"))
+	assert.False(t, pins.Admits("c"))
+	assert.Equal(t, []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{geth}}, or, pin()}, rest)
+	assert.Equal(t, pins, pinTestRequest("eth_call", selectors...).UpstreamPins())
 
 	matchers, order := buildSelectorRouting([]protocol.RequestSelector{pin("a")}, nil, nil)
 	assert.Empty(t, matchers)
 	assert.Nil(t, order)
 
 	// elsewhere upstream_id is a label no upstream has
-	matchers, _ = buildSelectorRouting([]protocol.RequestSelector{or}, nil, nil)
-	require.Len(t, matchers, 1)
 	state := protocol.DefaultUpstreamState(nil, nil, "", nil, nil)
-	assert.NotEqual(t, SuccessType, matchers[0].Match("x", &state).Type())
+	for _, selector := range []protocol.RequestSelector{or, pin()} {
+		matchers, _ = buildSelectorRouting([]protocol.RequestSelector{selector}, nil, nil)
+		require.Len(t, matchers, 1)
+		assert.NotEqual(t, SuccessType, matchers[0].Match("x", &state).Type())
+	}
+}
+
+func TestEmptyUpstreamIdSelectorFailsLikeAnyLabel(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a")
+	selectErr := func(selector protocol.RequestSelector) error {
+		matchers, _ := buildSelectorRouting([]protocol.RequestSelector{selector}, nil, chainSupervisor)
+		strategy := NewGenericStrategyWithOptions(chainSupervisor, matchers, nil)
+		_, err := strategy.SelectUpstream(pinTestRequest("eth_call", selector))
+		return err
+	}
+
+	err := selectErr(pin())
+	assert.Equal(t, protocol.NoAvailableUpstreamsErrorWithCause("a - No label `upstream_id` with values []"), err)
 }
 
 func TestPinnedRequestSelectsOnlyPinnedUpstreams(t *testing.T) {
@@ -139,7 +155,8 @@ func TestPinnedRequestReachesAnUpstreamTheRatingHasNotListedYet(t *testing.T) {
 
 func TestPinnedUpstreamsNotPresent(t *testing.T) {
 	chainSupervisor := pinTestChain(t, "eth_call", "a")
-	request := pinTestRequest("eth_call", pin("x", "y"))
+	// each id once in the message
+	request := pinTestRequest("eth_call", pin("x", "y"), protocol.RequestAndSelector{Children: []protocol.RequestSelector{pin("y", "x")}})
 	expected := protocol.PinnedUpstreamsNotPresentError([]string{"x", "y"})
 	assert.Equal(t, "pinned upstreams not present: x, y", expected.Message)
 	assert.Equal(t, protocol.NoAvailableUpstreams, expected.Code)
@@ -150,6 +167,7 @@ func TestPinnedUpstreamsNotPresent(t *testing.T) {
 		"empty rating":   ratingStrategyOf(chainSupervisor),
 		"specific order": NewSpecificOrderUpstreamStrategy([]string{"a"}, chainSupervisor),
 		"label groups":   NewLabelGroupStrategyWithGroups([][]string{{"a"}, {}}, false, chainSupervisor),
+		"no groups":      NewLabelGroupStrategyWithGroups(nil, false, chainSupervisor),
 		"empty chain":    NewGenericStrategy(pinTestChain(t, "eth_call")),
 	}
 	for name, strategy := range strategies {
@@ -175,6 +193,72 @@ func TestPinnedUpstreamPresentButUnusable(t *testing.T) {
 	strategy := NewLabelGroupStrategyWithGroups([][]string{{"down"}, {"a"}}, false, chainSupervisor)
 	_, err = strategy.SelectUpstream(pinTestRequest("eth_call", pin("down")))
 	assert.Equal(t, protocol.NoAvailableUpstreamsError(), err)
+}
+
+// pinned upstreams that are here but no candidates of the strategy (outside
+// every label group, filtered out) fail like the unpinned request would
+func TestPinnedUpstreamPresentButNoCandidate(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
+	request := pinTestRequest("eth_call", pin("b"))
+
+	strategies := map[string]UpstreamStrategy{
+		"label groups without default": NewLabelGroupStrategyWithGroups([][]string{{"a"}}, false, chainSupervisor),
+		"no groups":                    NewLabelGroupStrategyWithGroups(nil, false, chainSupervisor),
+		"specific order":               NewSpecificOrderUpstreamStrategy([]string{"a"}, chainSupervisor),
+		"empty specific order":         NewSpecificOrderUpstreamStrategy(nil, chainSupervisor),
+	}
+	for name, strategy := range strategies {
+		t.Run(name, func(t *testing.T) {
+			_, err := strategy.SelectUpstream(request)
+			assert.Equal(t, protocol.NoAvailableUpstreamsError(), err)
+		})
+	}
+}
+
+func TestPinnedQuorumWithoutAPinnedSigner(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "drpc-1")
+	drpcIds := []string{"drpc-1"}
+
+	assert.Nil(t, quorumPinError(pinTestRequest("eth_call", pin("drpc-1", "a")), drpcIds, chainSupervisor))
+	assert.Equal(t,
+		protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector"),
+		quorumPinError(pinTestRequest("eth_call", pin("a")), drpcIds, chainSupervisor),
+	)
+	assert.Equal(t,
+		protocol.PinnedUpstreamsNotPresentError([]string{"x"}),
+		quorumPinError(pinTestRequest("eth_call", pin("x")), drpcIds, chainSupervisor),
+	)
+	assert.Nil(t, quorumPinError(pinTestRequest("eth_call"), drpcIds, chainSupervisor))
+}
+
+func TestPinnedRoundRobinSharesEvenly(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "b", "c", "d")
+	request := pinTestRequest("eth_call", pin("a", "d"))
+
+	counts := make(map[string]int)
+	for range 1000 {
+		id, err := NewGenericStrategy(chainSupervisor).SelectUpstream(request)
+		require.NoError(t, err)
+		counts[id]++
+	}
+	assert.Equal(t, map[string]int{"a": 500, "d": 500}, counts)
+}
+
+// the pins are parsed once per request: selecting for an unpinned request
+// with selectors costs what it costs without them
+func TestUnpinnedSelectionAllocations(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "b", "c")
+	selectors := []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{
+		protocol.RequestLowerHeightSelector{Height: 10},
+		protocol.RequestHeightSelector{Height: 100},
+	}}}
+	allocs := func(request protocol.RequestHolder) float64 {
+		return testing.AllocsPerRun(100, func() {
+			_, _ = ratingStrategyOf(chainSupervisor, "a", "b", "c").SelectUpstream(request)
+		})
+	}
+
+	assert.Equal(t, allocs(pinTestRequest("eth_call")), allocs(pinTestRequest("eth_call", selectors...)))
 }
 
 type pinTestUpstreams struct {
