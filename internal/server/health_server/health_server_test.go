@@ -111,5 +111,9 @@ func (h *healthChainSupervisorStub) SubscribeState(name string) *utils.Subscript
 	return nil
 }
 
+func (h *healthChainSupervisorStub) UpstreamsChanged() <-chan struct{} {
+	return nil
+}
+
 var _ upstreams.ChainSupervisor = (*healthChainSupervisorStub)(nil)
 var _ upstreams.UpstreamSupervisor = (*healthSupervisorStub)(nil)

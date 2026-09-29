@@ -1,9 +1,11 @@
 package emerald_test
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -28,6 +31,7 @@ type upstreamStatusStream struct {
 	*subscribeChainStatusStream
 	mu        sync.Mutex
 	responses []*dshackle.SubscribeUpstreamStatusResponse
+	sentAt    []time.Time
 	// when set, every Send waits for a value
 	gate chan struct{}
 }
@@ -43,7 +47,14 @@ func (s *upstreamStatusStream) Send(resp *dshackle.SubscribeUpstreamStatusRespon
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.responses = append(s.responses, proto.Clone(resp).(*dshackle.SubscribeUpstreamStatusResponse))
+	s.sentAt = append(s.sentAt, time.Now())
 	return nil
+}
+
+func (s *upstreamStatusStream) sendTimes() []time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.sentAt)
 }
 
 func (s *upstreamStatusStream) all() []*dshackle.SubscribeUpstreamStatusResponse {
@@ -67,8 +78,10 @@ func (s *upstreamStatusStream) quiet(t *testing.T, count int) {
 
 type upstreamsChainSupervisor struct {
 	*fakeChainSupervisor
-	mu     sync.RWMutex
-	states map[string]*protocol.UpstreamState
+	mu      sync.RWMutex
+	states  map[string]*protocol.UpstreamState
+	changed utils.Signal
+	reads   atomic.Int64
 }
 
 func newUpstreamsChainSupervisor(chain chains.Chain) *upstreamsChainSupervisor {
@@ -78,7 +91,12 @@ func newUpstreamsChainSupervisor(chain chains.Chain) *upstreamsChainSupervisor {
 	}
 }
 
+func (s *upstreamsChainSupervisor) UpstreamsChanged() <-chan struct{} {
+	return s.changed.C()
+}
+
 func (s *upstreamsChainSupervisor) GetUpstreamIds() []string {
+	s.reads.Add(1)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids := make([]string, 0, len(s.states))
@@ -97,29 +115,45 @@ func (s *upstreamsChainSupervisor) GetUpstreamState(id string) *protocol.Upstrea
 
 func (s *upstreamsChainSupervisor) set(id string, state *protocol.UpstreamState) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.states[id] = state
+	s.mu.Unlock()
+	s.changed.Notify()
 }
 
 func (s *upstreamsChainSupervisor) remove(id string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.states, id)
+	s.mu.Unlock()
+	s.changed.Notify()
 }
 
 // update stores a copy of the upstream's snapshot, the way the supervisor does
 func (s *upstreamsChainSupervisor) update(id string, change func(*protocol.UpstreamState)) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	next := *s.states[id]
 	change(&next)
 	s.states[id] = &next
+	s.mu.Unlock()
+	s.changed.Notify()
 }
 
 type chainsUpstreamSupervisor struct {
 	*mocks.UpstreamSupervisorMock
 	mu     sync.Mutex
 	chains []upstreams.ChainSupervisor
+	events *utils.SubscriptionManager[upstreams.ChainSupervisorEvent]
+}
+
+func newChainsUpstreamSupervisor(chainSupervisors ...upstreams.ChainSupervisor) *chainsUpstreamSupervisor {
+	return &chainsUpstreamSupervisor{
+		UpstreamSupervisorMock: mocks.NewUpstreamSupervisorMock(),
+		chains:                 chainSupervisors,
+		events:                 utils.NewSubscriptionManager[upstreams.ChainSupervisorEvent]("test-chain-supervisors"),
+	}
+}
+
+func (s *chainsUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.Subscription[upstreams.ChainSupervisorEvent] {
+	return s.events.Subscribe(name)
 }
 
 func (s *chainsUpstreamSupervisor) GetChainSupervisors() []upstreams.ChainSupervisor {
@@ -128,10 +162,13 @@ func (s *chainsUpstreamSupervisor) GetChainSupervisors() []upstreams.ChainSuperv
 	return slices.Clone(s.chains)
 }
 
+// add registers a chain supervisor the way the upstream supervisor does:
+// stored first, then announced
 func (s *chainsUpstreamSupervisor) add(chainSupervisor upstreams.ChainSupervisor) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.chains = append(s.chains, chainSupervisor)
+	s.mu.Unlock()
+	s.events.Publish(&upstreams.AddChainSupervisorEvent{ChainSupervisor: chainSupervisor})
 }
 
 func startUpstreamStatus(
@@ -141,13 +178,24 @@ func startUpstreamStatus(
 	chainSupervisors ...upstreams.ChainSupervisor,
 ) (*upstreamStatusStream, *chainsUpstreamSupervisor) {
 	t.Helper()
+	return startUpstreamStatusWithInterval(t, request, time.Millisecond, resyncInterval, chainSupervisors...)
+}
+
+func startUpstreamStatusWithInterval(
+	t *testing.T,
+	request *dshackle.SubscribeUpstreamStatusRequest,
+	interval time.Duration,
+	resyncInterval time.Duration,
+	chainSupervisors ...upstreams.ChainSupervisor,
+) (*upstreamStatusStream, *chainsUpstreamSupervisor) {
+	t.Helper()
 	loadMethodSpecs(t)
 
-	supervisor := &chainsUpstreamSupervisor{UpstreamSupervisorMock: mocks.NewUpstreamSupervisorMock(), chains: chainSupervisors}
+	supervisor := newChainsUpstreamSupervisor(chainSupervisors...)
 	stream := &upstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeUpstreamStatusWithResync(supervisor, request, stream, time.Millisecond, resyncInterval)
+		done <- emerald.SubscribeUpstreamStatusWithResync(supervisor, request, stream, interval, resyncInterval)
 	}()
 	t.Cleanup(func() {
 		stream.cancel()
@@ -460,10 +508,7 @@ func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
 	chainSupervisor.set("up-1", testUpstreamState(100))
 
 	loadMethodSpecs(t)
-	supervisor := &chainsUpstreamSupervisor{
-		UpstreamSupervisorMock: mocks.NewUpstreamSupervisorMock(),
-		chains:                 []upstreams.ChainSupervisor{chainSupervisor},
-	}
+	supervisor := newChainsUpstreamSupervisor(chainSupervisor)
 	stream := &upstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream(), gate: make(chan struct{})}
 	done := make(chan error, 1)
 	go func() {
@@ -498,7 +543,7 @@ func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
 
 func TestSubscribeUpstreamStatus_StopsOnContextCancel(t *testing.T) {
 	loadMethodSpecs(t)
-	supervisor := &chainsUpstreamSupervisor{UpstreamSupervisorMock: mocks.NewUpstreamSupervisorMock()}
+	supervisor := newChainsUpstreamSupervisor()
 	stream := &upstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
 	done := make(chan error, 1)
 	go func() {
@@ -512,4 +557,108 @@ func TestSubscribeUpstreamStatus_StopsOnContextCancel(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("the stream did not stop")
 	}
+}
+
+// a change is sent at once, not on the next poll, once the gap to the last
+// send of the chain is over
+func TestSubscribeUpstreamStatus_WakesOnChange(t *testing.T) {
+	const interval = 300 * time.Millisecond
+	chainSupervisor := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	chainSupervisor.set("up-1", testUpstreamState(100))
+	stream, _ := startUpstreamStatusWithInterval(t, &dshackle.SubscribeUpstreamStatusRequest{}, interval, time.Hour, chainSupervisor)
+	stream.waitFor(t, 1)
+
+	for height := uint64(101); height <= 103; height++ {
+		time.Sleep(interval + 20*time.Millisecond)
+		changedAt := time.Now()
+		chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
+		count := int(height - 99)
+		response := stream.waitFor(t, count)[count-1]
+		assert.Equal(t, height, response.Upstreams[0].Head.Height)
+		assert.Less(t, stream.sendTimes()[count-1].Sub(changedAt), 50*time.Millisecond)
+	}
+}
+
+func TestSubscribeUpstreamStatus_IntervalIsTheMinimumGapOfAChain(t *testing.T) {
+	const interval = 200 * time.Millisecond
+	ethereum := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	ethereum.set("eth-1", testUpstreamState(100))
+	polygon := newUpstreamsChainSupervisor(chains.POLYGON)
+	polygon.set("polygon-1", testUpstreamState(200))
+	stream, _ := startUpstreamStatusWithInterval(t, &dshackle.SubscribeUpstreamStatusRequest{}, interval, time.Hour, ethereum, polygon)
+	fulls := stream.waitFor(t, 2)
+	ethereumFull := slices.IndexFunc(fulls, func(r *dshackle.SubscribeUpstreamStatusResponse) bool { return r.Chain == chainRef(chains.ETHEREUM) })
+
+	// a burst within the gap is one response, with the latest state
+	for height := uint64(101); height <= 105; height++ {
+		ethereum.update("eth-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
+	}
+	response := stream.waitFor(t, 3)[2]
+	assert.Equal(t, chainRef(chains.ETHEREUM), response.Chain)
+	assert.Equal(t, uint64(105), response.Upstreams[0].Head.Height)
+
+	// the gap is per chain: polygon goes out while ethereum waits
+	ethereum.update("eth-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(106) })
+	polygon.update("polygon-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(201) })
+	responses := stream.waitFor(t, 5)
+	stream.quiet(t, 5)
+	assert.Equal(t, chainRef(chains.POLYGON), responses[3].Chain)
+	assert.Equal(t, uint64(201), responses[3].Upstreams[0].Head.Height)
+	assert.Equal(t, chainRef(chains.ETHEREUM), responses[4].Chain)
+	assert.Equal(t, uint64(106), responses[4].Upstreams[0].Head.Height)
+
+	sentAt := stream.sendTimes()
+	assert.GreaterOrEqual(t, sentAt[2].Sub(sentAt[ethereumFull]), interval)
+	assert.Less(t, sentAt[3].Sub(sentAt[2]), interval/2)
+	assert.GreaterOrEqual(t, sentAt[4].Sub(sentAt[2]), interval)
+}
+
+// an idle chain is not looked at: only a change wakes its sender
+func TestSubscribeUpstreamStatus_IdleChainCostsNothing(t *testing.T) {
+	chainSupervisor := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	chainSupervisor.set("up-1", testUpstreamState(100))
+	stream, _ := startUpstreamStatus(t, &dshackle.SubscribeUpstreamStatusRequest{}, time.Hour, chainSupervisor)
+	stream.waitFor(t, 1)
+
+	reads := chainSupervisor.reads.Load()
+	stream.quiet(t, 1)
+	assert.Equal(t, reads, chainSupervisor.reads.Load())
+}
+
+// the first resync of each chain comes at a random offset, so the fulls of
+// all chains do not come at once
+func TestSubscribeUpstreamStatus_ResyncsOfTheChainsAreSpread(t *testing.T) {
+	const resync = 400 * time.Millisecond
+	chainList := []chains.Chain{
+		chains.ETHEREUM, chains.POLYGON, chains.ARBITRUM, chains.OPTIMISM, chains.BASE, chains.BSC,
+		chains.AVALANCHE, chains.FANTOM, chains.GNOSIS, chains.LINEA, chains.SCROLL, chains.MANTLE,
+	}
+	chainSupervisors := make([]upstreams.ChainSupervisor, 0, len(chainList))
+	for _, chain := range chainList {
+		chainSupervisor := newUpstreamsChainSupervisor(chain)
+		chainSupervisor.set("up-1", testUpstreamState(100))
+		chainSupervisors = append(chainSupervisors, chainSupervisor)
+	}
+	stream, _ := startUpstreamStatus(t, &dshackle.SubscribeUpstreamStatusRequest{}, resync, chainSupervisors...)
+
+	// the time of each chain's second full
+	var resyncs map[dshackle.ChainRef]time.Time
+	require.Eventually(t, func() bool {
+		fulls := make(map[dshackle.ChainRef]int)
+		resyncs = make(map[dshackle.ChainRef]time.Time)
+		sentAt := stream.sendTimes()
+		for i, response := range stream.all() {
+			if !response.FullResponse {
+				continue
+			}
+			if fulls[response.Chain]++; fulls[response.Chain] == 2 {
+				resyncs[response.Chain] = sentAt[i]
+			}
+		}
+		return len(resyncs) == len(chainList)
+	}, 2*resync, 5*time.Millisecond)
+
+	times := slices.Collect(maps.Values(resyncs))
+	slices.SortFunc(times, time.Time.Compare)
+	assert.Greater(t, times[len(times)-1].Sub(times[0]), resync/4)
 }

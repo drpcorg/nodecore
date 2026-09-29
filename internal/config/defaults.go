@@ -15,7 +15,9 @@ const (
 	defaultPort     = 9090
 	defaultInterval = 1 * time.Minute
 
-	DefaultGrpcUpstreamStatusInterval = 100 * time.Millisecond
+	DefaultGrpcUpstreamStatusInterval = 25 * time.Millisecond
+	minGrpcUpstreamStatusInterval     = 5 * time.Millisecond
+	maxGrpcUpstreamStatusInterval     = time.Second
 )
 
 func (a *AppConfig) setDefaults() {

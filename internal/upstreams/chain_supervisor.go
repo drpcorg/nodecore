@@ -53,7 +53,8 @@ type GenericChainSupervisor struct {
 
 	roundRobinIndex atomic.Uint64
 
-	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+	subStateManager  *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+	upstreamsChanged utils.Signal
 }
 
 func NewGenericChainSupervisor(
@@ -138,6 +139,10 @@ func (b *GenericChainSupervisor) SubscribeState(name string) *utils.Subscription
 	return b.subStateManager.Subscribe(name)
 }
 
+func (b *GenericChainSupervisor) UpstreamsChanged() <-chan struct{} {
+	return b.upstreamsChanged.C()
+}
+
 func (b *GenericChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
 	if s, ok := b.upstreamStates.Load(upstreamId); ok {
 		return s
@@ -186,6 +191,7 @@ func (b *GenericChainSupervisor) processEvents() {
 					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
 						upHead := upState.HeadData
 						b.upstreamStates.Delete(event.Id)
+						b.upstreamsChanged.Notify()
 						delete(b.lastOver, event.Id)
 
 						b.updateState()
@@ -201,11 +207,13 @@ func (b *GenericChainSupervisor) processEvents() {
 						newUpState := *upState
 						newUpState.HeadData = eventType.Head
 						b.upstreamStates.Store(event.Id, &newUpState)
+						b.upstreamsChanged.Notify()
 					}
 					b.updateHead(event.Id, eventType)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
 					b.upstreamStates.Store(event.Id, eventType.State)
+					b.upstreamsChanged.Notify()
 					b.updateState()
 				case *protocol.ValidUpstreamEvent:
 					// Symmetric to RemoveUpstreamEvent: a recovered upstream is
@@ -216,6 +224,7 @@ func (b *GenericChainSupervisor) processEvents() {
 					if eventType.State != nil {
 						availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
 						b.upstreamStates.Store(event.Id, eventType.State)
+						b.upstreamsChanged.Notify()
 						b.updateState()
 						if !eventType.State.HeadData.IsEmptyByHeight() {
 							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})
