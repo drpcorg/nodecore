@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -263,15 +264,23 @@ func TestPinnedRoundRobinSharesEvenly(t *testing.T) {
 // the pins are parsed once per request: selecting for an unpinned request
 // with selectors costs what it costs without them
 func TestUnpinnedSelectionAllocations(t *testing.T) {
+	if raceEnabled {
+		t.Skip("allocation counts differ under the race detector")
+	}
 	chainSupervisor := pinTestChain(t, "eth_call", "a", "b", "c")
 	selectors := []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{
 		protocol.RequestLowerHeightSelector{Height: 10},
 		protocol.RequestHeightSelector{Height: 100},
 	}}}
+	// the least of several runs: other goroutines of the process only add
 	allocs := func(request protocol.RequestHolder) float64 {
-		return testing.AllocsPerRun(100, func() {
-			_, _ = ratingStrategyOf(chainSupervisor, "a", "b", "c").SelectUpstream(request)
-		})
+		least := math.Inf(1)
+		for range 5 {
+			least = min(least, testing.AllocsPerRun(100, func() {
+				_, _ = ratingStrategyOf(chainSupervisor, "a", "b", "c").SelectUpstream(request)
+			}))
+		}
+		return least
 	}
 
 	assert.Equal(t, allocs(pinTestRequest("eth_call")), allocs(pinTestRequest("eth_call", selectors...)))
