@@ -111,46 +111,62 @@ func TestBrotliStreamWindowBitsDecodesEveryEncoding(t *testing.T) {
 }
 
 // What a pooled brotli decoder is worth pooling for is the tables and buffers
-// a decode builds, and go-brrr keeps those across Reset but not across Close.
-// So a decoder released from a window small enough to park decodes the next
-// body without allocating at all, and one released from a larger window is
-// Closed and starts cold - which is what keeps a crafted lgwin 24 stream from
-// leaving 32MiB parked in the pool.
-func TestReleasedBrotliReaderStaysWarmOnlyForSmallWindows(t *testing.T) {
-	tests := []struct {
-		file string
-		warm bool
-	}{
-		{"response.lgwin10.br", true},
-		{"response.lgwin22.br", true},
-		{"response.lgwin24.br", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.file, func(te *testing.T) {
-			stream := brotliFixture(te, tt.file)
+// a decode builds, and go-brrr keeps those across Reset. So a decoder parked
+// from a window small enough to keep decodes the next body without allocating
+// at all. The body is read into a fixed buffer rather than through io.Copy,
+// whose own pooled buffer the race detector randomly drops.
+func TestParkedBrotliReaderDecodesWithoutAllocating(t *testing.T) {
+	for _, file := range []string{"response.lgwin10.br", "response.lgwin22.br"} {
+		t.Run(file, func(te *testing.T) {
+			stream := brotliFixture(te, file)
 			lgwin := brotliStreamWindowBits(stream[0])
 			decoder := brrr.NewReader(nil)
 			source := bytes.NewReader(nil)
+			out := make([]byte, 4096)
 			var decodeErr error
 			decode := func() {
 				source.Reset(stream)
 				decoder.Reset(source)
-				if _, err := io.Copy(io.Discard, decoder); err != nil {
-					decodeErr = err
+				for {
+					_, err := decoder.Read(out)
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						decodeErr = err
+						break
+					}
 				}
-				resetBrotliReader(decoder, lgwin)
+				require.True(te, parkBrotliReader(decoder, lgwin))
 			}
 			decode()
 
 			allocs := testing.AllocsPerRun(20, decode)
 
 			require.NoError(te, decodeErr)
-			if tt.warm {
-				assert.Zero(te, allocs, "a decoder parked warm rebuilt its state")
-			} else {
-				assert.NotZero(te, allocs, "a decoder released from a large window kept its state")
-			}
+			assert.Zero(te, allocs, "a decoder parked warm rebuilt its state")
+		})
+	}
+}
+
+// A decoder whose stream declared a window above what a parked reader may
+// keep is dropped - and not Closed on the way out. Close hands its ring buffer,
+// up to 16MiB, to go-brrr's own pool, where the next decoder that grows its
+// ring takes it and parks it warm, however small its own window. Dropped, the
+// ring goes to the GC with the decoder.
+func TestLargeWindowBrotliReaderIsDroppedWithoutClose(t *testing.T) {
+	for _, file := range []string{"response.lgwin24.br", "response.large-window.br"} {
+		t.Run(file, func(te *testing.T) {
+			stream := brotliFixture(te, file)
+			decoder := brrr.NewReader(bytes.NewReader(stream))
+			_, _ = io.Copy(io.Discard, decoder)
+			_, decodeErr := decoder.Read(make([]byte, 1))
+
+			parked := parkBrotliReader(decoder, brotliStreamWindowBits(stream[0]))
+
+			assert.False(te, parked)
+			_, err := decoder.Read(make([]byte, 1))
+			assert.Equal(te, decodeErr, err, "the decoder was Closed, handing its ring buffer to go-brrr's pool")
 		})
 	}
 }
@@ -170,12 +186,12 @@ func TestWarmBrotliReaderDecodesTheNextBodyCleanly(t *testing.T) {
 
 	decoder := brrr.NewReader(nil)
 	decodeAll := func(stream []byte) ([]byte, error) {
-		defer resetBrotliReader(decoder, brotliStreamWindowBits(stream[0]))
+		defer func() { require.True(t, parkBrotliReader(decoder, brotliStreamWindowBits(stream[0]))) }()
 		decoder.Reset(bytes.NewReader(stream))
 		return io.ReadAll(decoder)
 	}
 	decodePart := func(stream []byte, n int) {
-		defer resetBrotliReader(decoder, brotliStreamWindowBits(stream[0]))
+		defer func() { require.True(t, parkBrotliReader(decoder, brotliStreamWindowBits(stream[0]))) }()
 		decoder.Reset(bytes.NewReader(stream))
 		_, err := io.ReadFull(decoder, make([]byte, n))
 		require.NoError(t, err)
@@ -199,4 +215,67 @@ func TestWarmBrotliReaderDecodesTheNextBodyCleanly(t *testing.T) {
 	got, err = decodeAll(lgwin22)
 	require.NoError(t, err)
 	assert.Equal(t, plain, got, "a body after one that failed to decode")
+}
+
+// The cutoff itself, window by window: lgwin 22 is the largest a reader is
+// pooled after, and the large-window form (0) never is.
+func TestBrotliWindowParksUpToLgwin22(t *testing.T) {
+	for lgwin := 10; lgwin <= 24; lgwin++ {
+		assert.Equal(t, lgwin <= 22, brotliWindowParks(lgwin), "lgwin %d", lgwin)
+	}
+	assert.False(t, brotliWindowParks(0), "the large-window form")
+}
+
+// countingPool counts what WrapReader takes from and hands back to the brotli
+// reader pool. It counts calls, not contents, so it stays deterministic under
+// the race detector, which drops sync.Pool items at random.
+type countingPool struct {
+	readerPool
+	gets, puts int
+}
+
+func (p *countingPool) Get() any  { p.gets++; return p.readerPool.Get() }
+func (p *countingPool) Put(x any) { p.puts++; p.readerPool.Put(x) }
+
+// WrapReader has to route each body by the window its own first byte declares:
+// a warm reader from the pool, returned to it, for a window that parks, and a
+// fresh reader the pool never sees for one that does not - including the
+// reference encoder's empty stream, which declares lgwin 24, and the
+// large-window form it rejects.
+func TestWrapReaderPoolsBrotliReadersByDeclaredWindow(t *testing.T) {
+	large, err := brrr.Compress(bytes.Repeat([]byte("x"), 64), 5)
+	require.NoError(t, err)
+	tests := []struct {
+		name   string
+		stream []byte
+		pooled bool
+	}{
+		{"lgwin 10", brotliFixture(t, "response.lgwin10.br"), true},
+		{"lgwin 22", brotliFixture(t, "response.lgwin22.br"), true},
+		{"go-brrr's default window", large, true},
+		{"go-brrr's empty stream, lgwin 22", []byte{0x3b}, true},
+		{"lgwin 24", brotliFixture(t, "response.lgwin24.br"), false},
+		{"the reference empty stream, lgwin 24", []byte{0x3f}, false},
+		{"the large-window form", brotliFixture(t, "response.large-window.br"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(te *testing.T) {
+			pool := &countingPool{readerPool: brotliReaderPool}
+			brotliReaderPool = pool
+			te.Cleanup(func() { brotliReaderPool = pool.readerPool })
+
+			if reader, err := WrapReader("br", bytes.NewReader(tt.stream)); err == nil {
+				_, _ = io.Copy(io.Discard, reader)
+				require.NoError(te, reader.Close())
+			}
+
+			want := 0
+			if tt.pooled {
+				want = 1
+			}
+			assert.Equal(te, want, pool.gets, "readers taken from the pool")
+			assert.Equal(te, want, pool.puts, "readers returned to the pool")
+		})
+	}
 }

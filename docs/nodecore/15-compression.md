@@ -168,9 +168,12 @@ goroutine count nobody asked for.
 Brotli runs at quality 1 rather than its fastest, 0: quality 0 comes out larger than gzip on large
 bodies, while quality 1 costs about half of gzip `BestSpeed`'s CPU there and comes out smaller. A
 pooled brotli decoder keeps its decode state between bodies, so a warm one decodes the next body
-without allocating, but only after a stream that declared a window of at most 4 MiB (lgwin 22, the
-reference encoder's default); after a larger one it drops that state, so a parked decoder never
-holds more than about 8 MiB, what a pooled zstd decoder may keep.
+without allocating. Only a decoder whose stream declared a window of at most 4 MiB (lgwin 22, the
+reference encoder's default) is pooled; one from a larger window is dropped with its ring buffer. A
+parked decoder's buffers are sized to the output it has decoded - for ordinary RPC bodies, each at
+most the largest body rounded up to a power of two. The worst case, on crafted input, is about 16 MiB
+(a ~5 MiB output buffer, a ring buffer of up to 8 MiB that go-brrr recycled from a larger window's
+decode, and up to ~2.5 MiB of Huffman tables), against the 8 MiB a pooled zstd decoder may keep.
 
 gzip and zstd are provided by [`klauspost/compress`](https://github.com/klauspost/compress), brotli
 by [`molecule-man/go-brrr`](https://github.com/molecule-man/go-brrr).

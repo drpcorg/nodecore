@@ -80,11 +80,9 @@ var zstdDecoderPool = sync.Pool{
 // Brotli readers are pooled for the state a decode builds - its ring buffer,
 // output buffer and Huffman tables - which go-brrr keeps across Reset, so a
 // warm reader decodes the next body without allocating. That is also what a
-// parked reader holds: its ring buffer and output buffer each grow up to the
-// window a stream declares. So only a reader whose last stream declared at
-// most brotliParkedMaxWindowBits is parked warm; one released from a larger
-// window is Closed first, which hands the ring buffer back to go-brrr's own
-// pool and drops the rest.
+// parked reader holds, so only a reader whose stream declared at most
+// brotliParkedMaxWindowBits goes back to the pool; one from a larger window is
+// dropped, ring buffer and all.
 //
 // The window is not capped below RFC 7932's own limit, lgwin 24 (16MiB). That
 // is what the reference encoder declares whenever it compresses a pipe, so a
@@ -94,15 +92,30 @@ var zstdDecoderPool = sync.Pool{
 // decode grow its ring buffer to the declared window and flush a ring buffer's
 // worth of output, about 32MiB at lgwin 24 - bounded per request, as zstd's
 // window cap bounds a zstd frame.
-var brotliReaderPool = sync.Pool{
+var brotliReaderPool readerPool = &sync.Pool{
 	New: func() any { return brrr.NewReader(nil) },
 }
 
+// readerPool is the part of sync.Pool the brotli reader pool is used through,
+// so a test can count what goes in and out of it.
+type readerPool interface {
+	Get() any
+	Put(x any)
+}
+
 // brotliParkedMaxWindowBits is the largest window, lgwin 22 (4MiB), that a
-// pooled brotli reader keeps its state for. It covers what encoders declare by
-// default - the reference library's lgwin 22, nodecore's own lgwin 18 - and
-// bounds a parked reader near decoderMaxWindow, what a pooled zstd decoder
-// may keep.
+// pooled brotli reader is kept for. It covers what encoders declare by default
+// - the reference library's lgwin 22, nodecore's own lgwin 18.
+//
+// What a parked reader holds then grows with the bodies it has decoded: its
+// ring buffer and output buffer are sized to the output, so after ordinary RPC
+// bodies each is at most the largest body rounded up to a power of two. The
+// worst case, on crafted input, is about 16MiB: an output buffer of the 4MiB
+// window plus append's slack, about 5MiB; a ring buffer of up to 8MiB, since
+// go-brrr recycles the smaller rings any decode grows out of and a warm reader
+// may be handed one outgrown by a larger window; and up to about 2.5MiB of
+// Huffman tables for a stream that uses the maximum number of them. A pooled
+// zstd decoder may keep 8MiB.
 const brotliParkedMaxWindowBits = 22
 
 // WrapReader returns a reader that decodes r according to contentEncoding.
@@ -248,8 +261,7 @@ func wrapBrotliReader(r io.Reader) (io.ReadCloser, error) {
 	}
 	lgwin := brotliStreamWindowBits(header[0])
 
-	// New cannot fail, so the pool holds nothing but readers.
-	decoder := brotliReaderPool.Get().(*brrr.Reader)
+	decoder := acquireBrotliReader(lgwin)
 	decoder.Reset(buffered)
 	stream := &brotliStream{decoder: decoder, source: buffered}
 
@@ -279,22 +291,47 @@ func wrapBrotliReader(r io.Reader) (io.ReadCloser, error) {
 	}, nil
 }
 
-// releaseBrotliReader returns a decoder to the pool, warm or cold by the
-// window its stream declared.
-func releaseBrotliReader(decoder *brrr.Reader, lgwin int) {
-	resetBrotliReader(decoder, lgwin)
-	brotliReaderPool.Put(decoder)
+// acquireBrotliReader takes a warm decoder from the pool for a stream it may be
+// parked from afterwards. A stream with a larger window gets a fresh one, which
+// is dropped when the body is done, so it never costs the pool a warm reader.
+// That includes a few first bytes that are not large windows in practice -
+// the reference encoder's empty stream 0x3f, and gzip's 0x1f or a BOM
+// mislabelled br - each costing one reader's allocation.
+func acquireBrotliReader(lgwin int) *brrr.Reader {
+	if !brotliWindowParks(lgwin) {
+		return brrr.NewReader(nil)
+	}
+	// New cannot fail, so the pool holds nothing but readers.
+	return brotliReaderPool.Get().(*brrr.Reader)
 }
 
-// resetBrotliReader lets go of the body a decoder was reading. Reset alone
-// keeps the decode state for the next body. Close drops it first, for a stream
-// that declared a window too large to park - or the large-window form, which
-// the decoder refuses anyway.
-func resetBrotliReader(decoder *brrr.Reader, lgwin int) {
-	if lgwin == 0 || lgwin > brotliParkedMaxWindowBits {
-		_ = decoder.Close()
+// releaseBrotliReader returns a decoder to the pool warm, or drops it if its
+// stream declared a window too large to park.
+func releaseBrotliReader(decoder *brrr.Reader, lgwin int) {
+	if parkBrotliReader(decoder, lgwin) {
+		brotliReaderPool.Put(decoder)
+	}
+}
+
+// parkBrotliReader lets go of the body a decoder was reading and reports
+// whether the decoder is fit to pool. Reset keeps its decode state warm for the
+// next body. A decoder from a larger window - or from the large-window form,
+// which it refuses anyway - is left alone, not Closed: Close would hand its
+// ring buffer to go-brrr's own pool, and the next decoder to grow its ring
+// would take it from there and park it warm, whatever its own window. Left
+// alone, the ring goes to the GC with the decoder.
+func parkBrotliReader(decoder *brrr.Reader, lgwin int) bool {
+	if !brotliWindowParks(lgwin) {
+		return false
 	}
 	decoder.Reset(nil)
+	return true
+}
+
+// brotliWindowParks reports whether a decoder may be pooled after a stream
+// that declared lgwin; 0 is the large-window form.
+func brotliWindowParks(lgwin int) bool {
+	return lgwin != 0 && lgwin <= brotliParkedMaxWindowBits
 }
 
 // brotliStreamWindowBits decodes the window a brotli stream declares in its

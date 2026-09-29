@@ -218,10 +218,14 @@ var brotliReaderPool = sync.Pool{New: func() any { return brrr.NewReader(nil) }}
 5. **Otherwise** return a `pooledReader` whose `Reader` is the decoded byte
    followed by the decoder, and whose `release` is `Reset(nil)` (drops `r`,
    keeps the ring buffer, output buffer and tables warm for the next body) →
-   `Put`. A stream whose first byte declared a window above lgwin 22 (4 MiB) is
-   `Close`d first, which hands the ring buffer back to go-brrr's own pool and
-   zeroes the decode state, so a parked reader holds at most about 8 MiB - the
-   bound a pooled zstd decoder has.
+   `Put`. A stream whose first byte declared a window above lgwin 22 (4 MiB)
+   decodes on a fresh reader that is dropped afterwards, ring buffer and all.
+   It is deliberately not `Close`d: `Close` hands the ring buffer to go-brrr's
+   own pool, where the next reader that grows its ring would take it and park
+   it warm. A parked reader's buffers are sized to the output it decoded; the
+   worst case on crafted input is about 16 MiB (a ~5 MiB output buffer, an up
+   to 8 MiB ring recycled from a larger window's decode, ~2.5 MiB of Huffman
+   tables).
 
 **Bytes after the end of the stream are rejected.** brotli has no
 concatenation — unlike gzip members or zstd frames, a second stream is not a
@@ -243,9 +247,10 @@ The eager read in step 3 happens before `WrapReader` returns, so no `Close` can
 race it. It blocks until the first meta-block produces output — the brotli
 analogue of zstd blocking on its four magic bytes.
 
-A pooled reader idles at ~43 KiB (its fixed 32 KiB input buffer). The ring
-buffer lives in go-brrr's own process-wide pool between decodes and is cleared
-by the GC.
+A pooled reader keeps its decode state warm between bodies: ~44 KiB of fixed
+state (32 KiB of it the input buffer) plus a ring buffer and output buffer
+sized to the largest output it has decoded, up to about 16 MiB on crafted input
+(step 5). Like every pooled codec, it is cleared by the GC.
 
 ## 6. The edges
 
@@ -296,7 +301,8 @@ All mappings exist today; brotli only feeds into them.
   to br. An operator can restore the old offer per connector with
   `headers: {Accept-Encoding: "zstd, gzip"}`.
 - **Memory.** A pooled brotli encoder holds ~1.8 MiB once used, about a zstd
-  encoder's 1.7 MiB. A pooled decoder idles at ~43 KiB. A crafted `br` request
+  encoder's 1.7 MiB. A pooled decoder holds ~44 KiB plus buffers sized to what
+  it last decoded, up to ~16 MiB on crafted input. A crafted `br` request
   body can make one decode peak at ~32 MiB (§3); nothing bounds the number of
   concurrent decodes, exactly as for zstd today.
 - **Contract changes in existing tests.** `Negotiate` answers differently for
