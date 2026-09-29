@@ -428,11 +428,11 @@ func (p *pooledReader) Read(b []byte) (int, error) {
 	defer func() {
 		p.mu.Lock()
 		p.readers--
-		free := p.takeOwnershipLocked()
+		release := p.takeOwnershipLocked()
 		p.mu.Unlock()
-		if free {
+		if release != nil {
 			// Close arrived mid-read and left the codec to us.
-			p.release()
+			release()
 		}
 	}()
 	return p.Reader.Read(b)
@@ -441,21 +441,27 @@ func (p *pooledReader) Read(b []byte) (int, error) {
 func (p *pooledReader) Close() error {
 	p.mu.Lock()
 	p.closed = true
-	free := p.takeOwnershipLocked()
+	release := p.takeOwnershipLocked()
 	p.mu.Unlock()
-	if free {
-		p.release()
+	if release != nil {
+		release()
 	}
 	return nil
 }
 
-// takeOwnershipLocked reports whether the caller is the one that must release
-// the codec: the body is closed, no read is still inside it, and nobody has
-// released it yet. Exactly one caller ever gets a true out of this.
-func (p *pooledReader) takeOwnershipLocked() bool {
+// takeOwnershipLocked hands the caller the release func if it is the one that
+// must release the codec: the body is closed, no read is still inside it, and
+// nobody has released it yet. Exactly one caller ever gets it. The body forgets
+// the codec as it does - no Read can reach it again - because a closed body
+// can stay reachable long after: the ingress leaves it on the request, which
+// echo keeps in a pooled context. A codec dropped rather than pooled, like a
+// brotli decoder from a large window, would otherwise stay reachable with it.
+func (p *pooledReader) takeOwnershipLocked() func() {
 	if !p.closed || p.readers > 0 || p.freed {
-		return false
+		return nil
 	}
 	p.freed = true
-	return true
+	release := p.release
+	p.Reader, p.release = nil, nil
+	return release
 }

@@ -6,9 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"weak"
 
 	brrr "github.com/molecule-man/go-brrr"
 	"github.com/stretchr/testify/assert"
@@ -65,6 +67,46 @@ func TestPooledReaderReleasesOnlyAfterTheParkedReadReturns(t *testing.T) {
 	_, err := reader.Read(make([]byte, 8))
 	assert.ErrorIs(t, err, fs.ErrClosed)
 	assert.EqualValues(t, 1, releases.Load(), "a later Close or Read released the codec a second time")
+}
+
+// A closed body can outlive its codec by a long way: the ingress leaves it on
+// the request, which echo keeps in a pooled context, and a streamed response
+// body stays reachable from whoever held it. So once the codec is released,
+// the body must stop keeping it reachable - through its Reader or through the
+// release func. For a brotli decoder dropped after a large window, that is
+// 32MiB of ring and output buffer held until the pool lets the request go.
+func TestPooledReaderLetsGoOfItsCodecOnceReleased(t *testing.T) {
+	for _, closeMidRead := range []bool{false, true} {
+		entered, unblock := make(chan struct{}), make(chan struct{})
+		reader, collected := func() (*pooledReader, weak.Pointer[[1 << 20]byte]) {
+			codec := new([1 << 20]byte)
+			return &pooledReader{
+				Reader: readerFunc(func([]byte) (int, error) {
+					if closeMidRead {
+						close(entered)
+						<-unblock
+					}
+					return int(codec[0]), io.EOF
+				}),
+				release: func() { codec[1] = 1 },
+			}, weak.Make(codec)
+		}()
+
+		if closeMidRead {
+			readDone := make(chan struct{})
+			go func() { _, _ = reader.Read(make([]byte, 1)); close(readDone) }()
+			<-entered
+			require.NoError(t, reader.Close())
+			close(unblock)
+			<-readDone
+		} else {
+			require.NoError(t, reader.Close())
+		}
+		runtime.GC()
+
+		assert.Nil(t, collected.Value(), "a released body kept its codec reachable (close mid-read: %v)", closeMidRead)
+		runtime.KeepAlive(reader)
+	}
 }
 
 // With no Read in flight the first Close releases at once, and only once.
