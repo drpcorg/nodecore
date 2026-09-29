@@ -79,7 +79,11 @@ func selectorGroupKey(children []RequestSelector) string {
 // union ⊤), NOT complements. An empty result means the request is unconstrained
 // over node class and shares the default cache entry, leaving keys for
 // label-free traffic byte-identical to before.
+//
+// The upstream_id pins (see SplitUpstreamPins) are routing, not a node class:
+// pinned and unpinned requests share the entry.
 func LabelCacheKey(selectors []RequestSelector) string {
+	_, selectors = SplitUpstreamPins(selectors)
 	// Top-level selectors are applied conjunctively, like an implicit AND.
 	return labelClassKey(RequestAndSelector{Children: selectors})
 }
