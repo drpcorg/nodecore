@@ -77,7 +77,7 @@ func resolveSource(
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
 ) (string, subengine.SourceBuilder, SubFilter) {
-	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+	if !request.UpstreamPins().Pinned() && settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
 	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
@@ -85,13 +85,13 @@ func resolveSource(
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
 		}
 	}
-	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if !request.UpstreamPins().Pinned() && settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
 	// local regardless of settings; it builds its own pending-tx source internally.
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
-		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
+		return scopedPendingKey(localDrpcPendingTxKey, request.Selectors()), newDrpcPendingTxSourceBuilder(supervisor, chain, engine, request.Selectors()...), nil
 	}
 	if isGrpcStream(request) {
 		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix

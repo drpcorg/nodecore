@@ -34,6 +34,9 @@ type ServerConfig struct {
 	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
 	// as a client IP.
 	TrustedProxies []string `yaml:"trusted-proxies"`
+	// GrpcUpstreamStatusInterval is the minimum gap between two
+	// SubscribeUpstreamStatus responses of a chain.
+	GrpcUpstreamStatusInterval time.Duration `yaml:"grpc-upstream-status-interval"`
 
 	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
 	trustedProxyPrefixes []netip.Prefix
@@ -111,6 +114,12 @@ func (s *ServerConfig) validate() error {
 	}
 	if s.HealthPort < 0 {
 		return fmt.Errorf("incorrect health port - %d", s.HealthPort)
+	}
+	if s.GrpcUpstreamStatusInterval < minGrpcUpstreamStatusInterval || s.GrpcUpstreamStatusInterval > maxGrpcUpstreamStatusInterval {
+		return fmt.Errorf(
+			"incorrect grpc upstream status interval - %s, must be within [%s, %s]",
+			s.GrpcUpstreamStatusInterval, minGrpcUpstreamStatusInterval, maxGrpcUpstreamStatusInterval,
+		)
 	}
 
 	ports := mapset.NewThreadUnsafeSet[int](s.Port)

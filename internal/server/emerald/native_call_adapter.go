@@ -135,6 +135,7 @@ type replyMeta struct {
 	finalization        *dshackle.FinalizationData
 	headers             []*dshackle.KeyValue
 	trailers            []*dshackle.KeyValue
+	nodeLevelError      bool
 }
 
 func newReplyMeta(wrapper *protocol.ResponseHolderWrapper) replyMeta {
@@ -146,6 +147,7 @@ func newReplyMeta(wrapper *protocol.ResponseHolderWrapper) replyMeta {
 		finalization:        nativeCallFinalizationData(wrapper),
 		headers:             mapHeaders(headers),
 		trailers:            mapHeaders(trailers),
+		nodeLevelError:      protocol.IsNodeLevelError(wrapper.Response),
 	}
 }
 
@@ -155,6 +157,7 @@ func (m replyMeta) stamp(item *dshackle.NativeCallReplyItem) *dshackle.NativeCal
 	item.Finalization = m.finalization
 	item.ResponseHeaders = m.headers
 	item.ResponseTrailers = m.trailers
+	item.NodeLevelError = m.nodeLevelError
 	return item
 }
 

@@ -2,6 +2,7 @@ package ws_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -158,4 +159,30 @@ func TestGenericRequestOpCancelMarksCompletedAndClosesResponseChannel(t *testing
 		t.Fatal("expected response channel to close")
 	}
 	assert.Eventually(t, op.IsCompleted, 1*time.Second, 50*time.Millisecond)
+}
+
+func TestGenericRequestOpConcurrentCancelAndWrite(t *testing.T) {
+	for range 100 {
+		op := ws.NewGenericRequestOp(t.Context(), "request-1", "eth_subscribe", "newHeads", func(ws.RequestOperation) {})
+		message := &protocol.WsResponse{Id: "1", Type: protocol.Ws}
+		start := make(chan struct{})
+		var writers sync.WaitGroup
+		for range 8 {
+			writers.Go(func() {
+				<-start
+				for range 100 {
+					op.Write(message, ws.MessageResponse)
+				}
+			})
+		}
+		writers.Go(func() { <-start; op.Cancel() })
+		close(start)
+		writers.Wait()
+		op.Cancel()
+		// Writing after closure must never panic, even when select could choose send.
+		op.Write(message, ws.MessageResponse)
+		for range op.GetChannel(ws.MessageResponse) {
+		}
+		require.True(t, op.IsCompleted())
+	}
 }

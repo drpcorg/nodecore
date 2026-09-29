@@ -69,6 +69,10 @@ func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*u
 	return s.sm.Subscribe(name)
 }
 
+func (s *fakeChainSupervisor) UpstreamsChanged() <-chan struct{} {
+	return nil
+}
+
 var _ upstreams.ChainSupervisor = (*fakeChainSupervisor)(nil)
 
 // A subscription block (RawData = the ws newHeads header) is forwarded verbatim

@@ -38,6 +38,8 @@ type ChainSupervisor interface {
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
+	// UpstreamsChanged is closed by the next change of an upstream state
+	UpstreamsChanged() <-chan struct{}
 }
 
 type UpstreamSupervisor interface {

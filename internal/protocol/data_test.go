@@ -101,6 +101,38 @@ func TestGetResponseType(t *testing.T) {
 	}
 }
 
+func TestIsNodeLevelError(t *testing.T) {
+	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}, false, "eth")
+	pinned := protocol.NoAvailableUpstreamsError()
+	pinned.NodeLevel = true
+	upstreamError := func(message string) protocol.ResponseHolder {
+		return protocol.NewHttpUpstreamResponse("1", []byte(`{"id":1,"jsonrpc":"2.0","error":{"message":"`+message+`","code":-32000}}`), 200, protocol.JsonRpc)
+	}
+
+	nodeLevel := map[string]protocol.ResponseHolder{
+		"transport failure":   protocol.NewPartialFailure(request, protocol.ServerErrorWithCause(errors.New("upstream a request failed"))),
+		"read failure":        protocol.NewPartialFailure(request, protocol.ServerErrorWithCause(errors.New("unable to read response from upstream a"))),
+		"retryable error":     upstreamError("missing trie node"),
+		"upstream rate limit": upstreamError("Too Many Requests"),
+		"pin":                 protocol.NewTotalFailure(request, pinned),
+	}
+	for name, response := range nodeLevel {
+		assert.True(t, protocol.IsNodeLevelError(response), name)
+	}
+
+	requestLevel := map[string]protocol.ResponseHolder{
+		"success":           protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc),
+		"reverted":          upstreamError("execution reverted"),
+		"invalid params":    protocol.NewTotalFailure(request, protocol.InvalidParamsError("bad")),
+		"unpinned no route": protocol.NewTotalFailure(request, protocol.NoAvailableUpstreamsError()),
+		"ctx":               protocol.NewTotalFailure(request, protocol.CtxError(errors.New("canceled"))),
+		"nil":               nil,
+	}
+	for name, response := range requestLevel {
+		assert.False(t, protocol.IsNodeLevelError(response), name)
+	}
+}
+
 func TestDefaultUpstreamState(t *testing.T) {
 	caps := mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap)
 	defaultUpState := protocol.DefaultUpstreamState(mocks.NewMethodsMock(), caps, "55", nil, nil)

@@ -20,6 +20,7 @@ type UpstreamRestRequest struct {
 	specMethod    *specs.Method
 	observer      *RequestObserver
 	selectors     []RequestSelector
+	pins          UpstreamPins
 	isStream      bool
 
 	requestKeyOnce sync.Once
@@ -50,6 +51,7 @@ func NewInternalUpstreamRestRequestWithBody(methodTemplate string, requestParams
 
 func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestParams, body []byte, specName string, selectors ...RequestSelector) *UpstreamRestRequest {
 	specMethod := specs.GetSpecMethodWithFallback(specName, methodTemplate)
+	pins, _ := SplitUpstreamPins(selectors)
 	return &UpstreamRestRequest{
 		id:            id,
 		method:        methodTemplate,
@@ -58,6 +60,7 @@ func NewUpstreamRestRequest(id, methodTemplate string, requestParams *RequestPar
 		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(methodTemplate),
 		specMethod:    specMethod,
 		selectors:     selectors,
+		pins:          pins,
 	}
 }
 
@@ -118,6 +121,10 @@ func (u *UpstreamRestRequest) RequestParams() *RequestParams {
 
 func (u *UpstreamRestRequest) Selectors() []RequestSelector {
 	return append([]RequestSelector(nil), u.selectors...)
+}
+
+func (u *UpstreamRestRequest) UpstreamPins() UpstreamPins {
+	return u.pins
 }
 
 // calculateRestHash derives a REST request's identity from everything that

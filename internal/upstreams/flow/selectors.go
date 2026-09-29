@@ -36,6 +36,8 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.PredictLowerBound(boundType, timeOffset)
 	}
 
+	// the pins are no matchers: filterUpstreams enforces them as a gate
+	_, selectors = protocol.SplitUpstreamPins(selectors)
 	matchers := make([]Matcher, 0, len(selectors))
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
@@ -131,6 +133,21 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	default:
 		return unsupported(fmt.Sprintf("unsupported selector %T", selector))
 	}
+}
+
+// pinMiss is the reason of a pinned request none of whose pinned upstreams
+// is among the candidates; present tells whether any of them is here at all.
+func pinMiss(pins protocol.UpstreamPins, chainSupervisor upstreams.ChainSupervisor) PinResponse {
+	present := false
+	if chainSupervisor != nil {
+		for _, id := range pins[0] {
+			if pins.Admits(id) && chainSupervisor.GetUpstreamState(id) != nil {
+				present = true
+				break
+			}
+		}
+	}
+	return PinResponse{ids: pins.Ids(), present: present}
 }
 
 type UpstreamOrder func([]string) []string

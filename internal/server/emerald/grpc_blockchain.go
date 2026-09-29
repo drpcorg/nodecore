@@ -59,6 +59,20 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream)
 }
 
+func (s *GrpcBlockchainService) SubscribeUpstreamStatus(request *dshackle.SubscribeUpstreamStatusRequest, stream dshackle.Blockchain_SubscribeUpstreamStatusServer) error {
+	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
+		return err
+	}
+	if request == nil {
+		return status.Error(codes.Internal, "request is nil")
+	}
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
+		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
+	}
+
+	return SubscribeUpstreamStatus(s.appCtx.UpstreamSupervisor, request, stream, upstreamStatusInterval(s.appCtx.AppConfig))
+}
+
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {
 	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
 		return err

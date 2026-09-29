@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -201,15 +202,18 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 	// Quorum requests may only be served by drpc upstreams via an HTTP-capable
 	// connector, since only they return QR signature headers we can verify.
 	if quorumRequested {
-		sorted := e.registry.GetSortedUpstreams(e.chain, request.Method())
+		sorted := withUnrated(request, e.registry.GetSortedUpstreams(e.chain, request.Method()), chainSupervisor)
 		drpcIds := filterQuorumCapableUpstreams(sorted, e.upstreamSupervisor, request.RequestType())
 		if len(drpcIds) == 0 {
 			return NewFailingStrategy(protocol.QuorumNotSupportedError("no DRPC upstream with an HTTP connector available for this chain"))
 		}
+		if err := quorumPinError(request, drpcIds, chainSupervisor); err != nil {
+			return NewFailingStrategy(err)
+		}
 		return NewSpecificOrderUpstreamStrategy(drpcIds, chainSupervisor).WithAdditionalMatchers(additionalMatchers).WithOrder(order)
 	}
 	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil {
-		return NewLabelGroupStrategy(e.chain, request.Method(), cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
+		return NewLabelGroupStrategy(e.chain, request, cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
 			WithAdditionalMatchers(additionalMatchers).
 			WithOrder(order)
 	}
@@ -219,6 +223,21 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 	default: // rating
 		return NewRatingStrategy(e.chain, request.Method(), additionalMatchers, chainSupervisor, e.registry).WithOrder(order)
 	}
+}
+
+// quorumPinError fails a pinned quorum request whose pinned upstreams are no
+// DRPC upstreams that can sign.
+func quorumPinError(request protocol.RequestHolder, drpcIds []string, chainSupervisor upstreams.ChainSupervisor) *protocol.ResponseError {
+	pins := pinsOf(request)
+	if !pins.Pinned() || slices.ContainsFunc(drpcIds, pins.Admits) {
+		return nil
+	}
+	err := protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector")
+	if miss := pinMiss(pins, chainSupervisor); !miss.present {
+		err = miss.error()
+	}
+	err.NodeLevel = true
+	return err
 }
 
 // filterQuorumCapableUpstreams keeps only DRPC upstreams that expose a

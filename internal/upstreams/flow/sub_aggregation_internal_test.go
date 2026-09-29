@@ -39,6 +39,10 @@ func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstre
 	return nil
 }
 
+func (s *stubChainSupervisor) UpstreamsChanged() <-chan struct{} {
+	return nil
+}
+
 var _ upstreams.ChainSupervisor = (*stubChainSupervisor)(nil)
 
 // allLocalSubs enables every local subscription type, the default behavior.
