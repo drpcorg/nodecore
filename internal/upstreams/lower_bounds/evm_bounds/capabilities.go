@@ -44,8 +44,8 @@ const (
 // EvmCapabilities caches the upstream's eth_capabilities report (geth >= 1.17.4), which
 // states the oldest served block per data type and replaces the per-type binary searches.
 // One instance is shared by all lower-bound detectors of an upstream, so the method is
-// called once per result window instead of once per bound type. The values are trusted
-// as reported; the probe path stays intact for upstreams without the method.
+// called once per result window instead of once per bound type. A reported bound is checked
+// one block below; the probe path stays intact for upstreams without the method.
 type EvmCapabilities struct {
 	upstreamId      string
 	chain           *chains.ConfiguredChain
@@ -333,5 +333,14 @@ func (e *EvmLowerBoundDetector) detectFromCapabilities(ctx context.Context) ([]p
 		}
 		results = append(results, protocol.NewLowerBoundDataNow(res.bound, boundType))
 	}
+	// the upstream may serve more than it reports: data one block below goes to the search
+	if main, _ := snapshot.resource(e.MainBoundType); main.bound > 1 && hasDataAt(ctx, e.probe, main.bound-1) {
+		return nil, false
+	}
 	return results, true
+}
+
+func hasDataAt(ctx context.Context, probe func(context.Context, int64) (bool, error), height int64) bool {
+	available, err := probe(ctx, height)
+	return err == nil && available
 }

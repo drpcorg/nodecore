@@ -129,6 +129,7 @@ func TestProofDetectorSyncStatusRejectedFallsToCapabilitiesEveryCycle(t *testing
 			connector := mocks.NewConnectorMock()
 			expectProofsSyncStatus(connector, protocol.NewHttpUpstreamResponseWithError(tc.respErr)).Times(2)
 			expectCapabilities(connector, evmOK(capsProofsBelowHead)).Once()
+			expectProofsAbove(connector, 42)
 			detector := proofDetector(connector)
 
 			first, err := detector.DetectLowerBound(context.Background())
@@ -163,6 +164,7 @@ func TestProofDetectorSyncStatusMalformedOrEmptyFallsToCapabilities(t *testing.T
 			connector := mocks.NewConnectorMock()
 			expectProofsSyncStatus(connector, evmOK(tc.body)).Once()
 			expectCapabilities(connector, evmOK(capsProofsBelowHead)).Once()
+			expectProofsAbove(connector, 42)
 			detector := proofDetector(connector)
 
 			result, err := detector.DetectLowerBound(context.Background())

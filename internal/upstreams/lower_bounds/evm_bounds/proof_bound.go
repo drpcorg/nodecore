@@ -20,7 +20,8 @@ const evmProofsSyncStatusMethod = "debug_proofsSyncStatus"
 // stateproofs.oldestBlock at the head while --proofs-history serves a window 129600 blocks
 // deep. Sources in order, every cycle, with no cached verdicts:
 //  1. debug_proofsSyncStatus (op-reth): earliest of the reported window.
-//  2. eth_capabilities: stateproofs.oldestBlock, trusted only when it is below head.number.
+//  2. eth_capabilities: stateproofs.oldestBlock, trusted only when it is below head.number
+//     and eth_getProof has nothing one block below it.
 //  3. eth_getProof binary search.
 type EvmProofLowerBoundDetector struct {
 	*lower_bounds.LowerBoundSearchCalculator
@@ -125,6 +126,9 @@ func (e *EvmProofLowerBoundDetector) detectFromCapabilities(ctx context.Context)
 			"upstream '%s' %s reports proofs from %d with head %d, ignoring it for the proof bound",
 			e.UpstreamId, evmCapabilitiesMethod, res.bound, snapshot.head,
 		)
+		return nil, false
+	}
+	if res.bound > 1 && hasDataAt(ctx, e.hasProof, res.bound-1) {
 		return nil, false
 	}
 	return e.LowerBoundResults(res.bound), true

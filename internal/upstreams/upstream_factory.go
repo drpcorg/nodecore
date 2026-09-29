@@ -114,11 +114,40 @@ func createRateLimiter(
 	return rt, autoTuneRateLimiter
 }
 
-func createLowerBoundsProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) lower_bounds.LowerBoundProcessor {
-	if *options.DisableLowerBoundsDetection {
+func createLowerBoundsProcessor(
+	ctx context.Context,
+	chainSpecific chains_specific.ChainSpecific,
+	conf *config.Upstream,
+) lower_bounds.LowerBoundProcessor {
+	var detected lower_bounds.LowerBoundProcessor
+	if !*conf.Options.DisableLowerBoundsDetection {
+		detected = chainSpecific.LowerBoundProcessor()
+	}
+	manual := manualLowerBounds(conf.LowerBounds)
+	if len(manual) == 0 {
+		return detected
+	}
+	// every chain family builds a GenericLowerBoundProcessor; nil means no detection
+	generic, ok := detected.(*lower_bounds.GenericLowerBoundProcessor)
+	if detected != nil && !ok {
+		log.Panic().Msgf("upstream '%s': lower-bounds needs a *GenericLowerBoundProcessor, got %T", conf.Id, detected)
+	}
+	return lower_bounds.WithManualBounds(ctx, conf.Id, manual, generic)
+}
+
+func manualLowerBounds(bounds config.UpstreamLowerBounds) map[protocol.LowerBoundType]int64 {
+	if len(bounds) == 0 {
 		return nil
 	}
-	return chainSpecific.LowerBoundProcessor()
+	manual := make(map[protocol.LowerBoundType]int64, len(bounds))
+	for name, bound := range bounds {
+		boundType, ok := protocol.ParseLowerBoundType(name)
+		if !ok {
+			log.Panic().Msgf("unknown lower bound type '%s'", name)
+		}
+		manual[boundType] = bound
+	}
+	return manual
 }
 
 func createConnector(

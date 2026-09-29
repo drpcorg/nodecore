@@ -74,7 +74,7 @@ func CreateLowerBoundsEventProcessor(
 	conf *config.Upstream,
 	chainSpecific chains_specific.ChainSpecific,
 ) event_processors.UpstreamStateEventProcessor {
-	lowerBoundProcessor := createLowerBoundsProcessor(chainSpecific, conf.Options)
+	lowerBoundProcessor := createLowerBoundsProcessor(ctx, chainSpecific, conf)
 	if lowerBoundProcessor == nil {
 		return nil
 	}
