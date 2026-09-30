@@ -109,6 +109,7 @@ func upstreamStatusInterval(appConfig *config.AppConfig) time.Duration {
 type upstreamStatusProducer struct {
 	groupStream    dshackle.Blockchain_SubscribeNodeGroupStatusServer
 	fullSeparation bool
+	compactUpdates bool
 	stream         dshackle.Blockchain_SubscribeUpstreamStatusServer
 	cancel         context.CancelFunc
 	requested      mapset.Set[dshackle.ChainRef]
@@ -123,12 +124,14 @@ type upstreamStatusProducer struct {
 
 // upstreamStatusChain is what the stream last sent for a chain.
 type upstreamStatusChain struct {
-	sentNetwork *dshackle.ChainDescription
-	sentGroups  map[string]*dshackle.NodeGroupStatus
-	ref         dshackle.ChainRef
-	subMethods  mapset.Set[string]
-	announced   bool
-	nextFull    time.Time
+	compactUpdates bool
+	groupTracker   upstreams.NodeGroupTracker
+	sentNetwork    *dshackle.ChainDescription
+	sentGroups     map[string]*dshackle.NodeGroupStatus
+	ref            dshackle.ChainRef
+	subMethods     mapset.Set[string]
+	announced      bool
+	nextFull       time.Time
 	// the snapshots sent (the supervisor never mutates a stored one), each
 	// with the pass that last saw it
 	sent map[string]sentUpstream
@@ -146,9 +149,10 @@ func (p *upstreamStatusProducer) newChain(chain chains.Chain) *upstreamStatusCha
 		return nil
 	}
 	return &upstreamStatusChain{
-		ref:        ref,
-		subMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
-		sent:       make(map[string]sentUpstream),
+		ref:            ref,
+		compactUpdates: p.compactUpdates,
+		subMethods:     specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
+		sent:           make(map[string]sentUpstream),
 	}
 }
 

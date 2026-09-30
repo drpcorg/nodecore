@@ -19,12 +19,12 @@ func SubscribeNodeGroupStatusWithResync(supervisor upstreams.UpstreamSupervisor,
 	if supervisor == nil {
 		return errNilUpstreamSupervisor
 	}
-	producer := &upstreamStatusProducer{groupStream: stream, fullSeparation: request.GetFullSeparation(), requested: mapset.NewThreadUnsafeSet(request.GetChains()...), interval: interval, resyncInterval: resync}
+	producer := &upstreamStatusProducer{groupStream: stream, compactUpdates: request.GetCompactUpdates(), fullSeparation: request.GetFullSeparation(), requested: mapset.NewThreadUnsafeSet(request.GetChains()...), interval: interval, resyncInterval: resync}
 	return producer.subscribe(supervisor, stream.Context())
 }
 
 func (c *upstreamStatusChain) groupResponse(supervisor upstreams.ChainSupervisor, now time.Time, resync time.Duration, fullSeparation bool) *dshackle.SubscribeNodeGroupStatusResponse {
-	groups := upstreams.NodeGroups(supervisor, fullSeparation)
+	groups := c.groupTracker.Snapshot(supervisor, fullSeparation)
 	if !c.announced && len(groups) == 0 {
 		return nil
 	}
@@ -35,12 +35,34 @@ func (c *upstreamStatusChain) groupResponse(supervisor upstreams.ChainSupervisor
 	current := make(map[string]*dshackle.NodeGroupStatus, len(groups))
 	for _, id := range slices.Sorted(maps.Keys(groups)) {
 		group := groups[id]
-		description := toFullResponse(int(c.ref), group.State).ChainDescription
-		canonicalGroupEvents(description.ChainEvent)
-		wire := &dshackle.NodeGroupStatus{NodeGroupId: id, Status: ChainStatusToApi(group.State.Status).GetStatus(), Head: HeadToApi(group.State.HeadData.Head).GetHead(), Description: description.ChainEvent, UpstreamIndices: group.Indices}
+		head := HeadToApi(group.State.HeadData.Head).GetHead()
+		var description []*dshackle.ChainEvent
+		if previous := c.sentGroups[id]; group.DescriptionUnchanged && previous != nil {
+			if proto.Equal(head, previous.Head) {
+				current[id] = previous
+				if full {
+					response.Groups = append(response.Groups, previous)
+				}
+				continue
+			}
+			description = slices.Clone(previous.Description)
+			for i, event := range description {
+				if event.GetHead() != nil {
+					description[i] = &dshackle.ChainEvent{ChainEvent: &dshackle.ChainEvent_Head{Head: head}}
+				}
+			}
+		} else {
+			description = toFullResponse(int(c.ref), group.State).ChainDescription.ChainEvent
+			canonicalGroupEvents(description)
+		}
+		wire := &dshackle.NodeGroupStatus{NodeGroupId: id, Status: ChainStatusToApi(group.State.Status).GetStatus(), Head: head, Description: description, UpstreamIndices: group.Indices}
 		current[id] = wire
 		if full || !proto.Equal(wire, c.sentGroups[id]) {
-			response.Groups = append(response.Groups, wire)
+			if c.compactUpdates && !full && group.DescriptionUnchanged {
+				response.Groups = append(response.Groups, &dshackle.NodeGroupStatus{NodeGroupId: id, Status: wire.Status, Head: head})
+			} else {
+				response.Groups = append(response.Groups, wire)
+			}
 		}
 	}
 	if !full {

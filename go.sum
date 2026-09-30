@@ -82,6 +82,8 @@ github.com/drpcorg/public v1.4.7-0.20260929165153-8e07ec391d03 h1:FME0cV08jHak4g
 github.com/drpcorg/public v1.4.7-0.20260929165153-8e07ec391d03/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
 github.com/drpcorg/public v1.4.7-0.20260930124929-08eade621df4 h1:zHdfg7pU7RvWyQdtKtw6DC8eiEg2qlCBYB4MIeLflmE=
 github.com/drpcorg/public v1.4.7-0.20260930124929-08eade621df4/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
+github.com/drpcorg/public v1.4.7-0.20260930132241-ed1204985daa h1:AOk5rhmZWzZweryDlOt17dIU/VZRt0xIHP/MGcr8pGQ=
+github.com/drpcorg/public v1.4.7-0.20260930132241-ed1204985daa/go.mod h1:aKZZzx5T7vzonwa9eMDX6AVuZnRdc6dUnY5dCU2uIcc=
 github.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/qyY=
 github.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/emicklei/dot v1.6.2 h1:08GN+DD79cy/tzN6uLCT84+2Wk9u+wvqP+Hkx/dIR8A=

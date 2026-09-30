@@ -160,12 +160,15 @@ when methods are banned or labels are redetected.
 
 A response describes one chain. The initial response and periodic resync replace
 its complete group catalog. Deltas contain complete descriptions of changed
-groups and explicit `removed_node_group_ids`. Every response includes nodecore's
+groups and explicit `removed_node_group_ids`. With `compact_updates: true`,
+head-only deltas omit unchanged descriptions and member indices; clients retain
+the previous metadata. Initial snapshots and resync are always complete. Every response includes nodecore's
 authoritative complete network description. Member runtime indices support sticky
 filter ownership; clients do not reconstruct IDs or resolve execution membership.
 
 Group snapshots reuse the existing merge functions and height fork choice over
-current members. They are rebuilt on coalesced status notifications using the
+current members. Immutable metadata is cached across head-only updates and
+invalidated by state/membership changes. They are rebuilt on coalesced status notifications using the
 same throttle and resync lifecycle as upstream status. Network lag validation
 remains authoritative; a lagging group cannot promote its members by comparing
 only against its own head. Empty groups disappear from the catalog.
@@ -181,3 +184,5 @@ the cache, while head updates retain it.
 Calls and subscriptions use the existing pinned execution paths. A downstream
 retry may select another group, while each individual attempt stays within its
 selected group. The legacy chain and diagnostic upstream streams remain available.
+
+Measured costs and reproduction commands: [group status performance](node-group-performance.md).

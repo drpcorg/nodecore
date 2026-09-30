@@ -10,9 +10,10 @@ import (
 )
 
 type NodeGroupSnapshot struct {
-	Id      string
-	State   ChainSupervisorState
-	Indices map[string]string
+	Id                   string
+	State                ChainSupervisorState
+	Indices              map[string]string
+	DescriptionUnchanged bool
 }
 
 // NodeGroups applies the existing merge pipeline independently to each group.
@@ -20,7 +21,22 @@ type NodeGroupSnapshot struct {
 // authoritative network lag validation. Rebuilding the small snapshot makes
 // removals, reorgs and membership changes explicit, with no second event queue.
 func NodeGroups(supervisor ChainSupervisor, full bool) map[string]*NodeGroupSnapshot {
+	return new(NodeGroupTracker).Snapshot(supervisor, full)
+}
+
+// NodeGroupTracker belongs to one status stream. Descriptions are immutable and
+// reused across head-only snapshots; membership/state changes rebuild the owning
+// group. It does not change network validation or retain removed members.
+type NodeGroupTracker struct {
+	states map[string]*protocol.UpstreamState
+	groups map[string]*NodeGroupSnapshot
+	full   bool
+}
+
+func (tracker *NodeGroupTracker) Snapshot(supervisor ChainSupervisor, full bool) map[string]*NodeGroupSnapshot {
 	groups := make(map[string]*NodeGroupSnapshot)
+	states := make(map[string]*protocol.UpstreamState)
+	dirty := make(map[string]bool)
 	members := make(map[string][]*protocol.UpstreamState)
 	choices := make(map[string]*fork_choice.HeightForkChoice)
 	ids := supervisor.GetUpstreamIds()
@@ -30,7 +46,11 @@ func NodeGroups(supervisor ChainSupervisor, full bool) map[string]*NodeGroupSnap
 		if state == nil {
 			continue
 		}
+		states[id] = state
 		key := protocol.NodeGroupID(id, state, full)
+		if tracker.full != full || !state.SameGroupDescription(tracker.states[id]) {
+			dirty[key] = true
+		}
 		group := groups[key]
 		if group == nil {
 			group = &NodeGroupSnapshot{Id: key, State: ChainSupervisorState{Status: protocol.Unavailable}, Indices: make(map[string]string)}
@@ -47,6 +67,13 @@ func NodeGroups(supervisor ChainSupervisor, full bool) map[string]*NodeGroupSnap
 	}
 	subMethods := specs.GetSubMethods(chains.GetMethodSpecNameByChain(supervisor.GetChain()))
 	for key, group := range groups {
+		if previous := tracker.groups[key]; previous != nil && !dirty[key] && len(previous.Indices) == len(group.Indices) {
+			head, status := group.State.HeadData, group.State.Status
+			group.State = previous.State
+			group.State.HeadData, group.State.Status = head, status
+			group.DescriptionUnchanged = true
+			continue
+		}
 		available := members[key]
 		state := &group.State
 		state.Methods = processUpstreamMethods(available)
@@ -56,5 +83,6 @@ func NodeGroups(supervisor ChainSupervisor, full bool) map[string]*NodeGroupSnap
 		state.Caps = processCaps(available)
 		state.SubMethods = ProcessSubMethods(subMethods, state.Methods, state.Caps)
 	}
+	tracker.states, tracker.groups, tracker.full = states, groups, full
 	return groups
 }
