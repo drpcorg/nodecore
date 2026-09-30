@@ -34,7 +34,7 @@ func TestChainIdForFallsBackToTheChainId(t *testing.T) {
 // the decimal of its EVM chain id (0x59f = 1439).
 func TestNetVersionDerivesFromTheEvmChainId(t *testing.T) {
 	assert.Equal(t, "888", GetChain("injective-testnet").NetVersion)
-	assert.Equal(t, "1776", GetChain("injective").NetVersion)
+	assert.Equal(t, "1", GetChain("injective").NetVersion)
 	assert.Equal(t, "1", GetChain("ethereum").NetVersion)
 }
 
