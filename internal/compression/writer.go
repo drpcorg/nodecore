@@ -7,6 +7,7 @@ import (
 
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
+	brrr "github.com/molecule-man/go-brrr"
 )
 
 // encoderWindow caps the back-reference distance of a pooled zstd encoder,
@@ -48,8 +49,44 @@ var zstdEncoderPool = sync.Pool{
 	},
 }
 
-// Writer is a compressing writer for one response body. Both pooled codecs
-// satisfy it natively.
+// brotliQuality and brotliWindowBits configure the pooled brotli encoder,
+// chosen as the other two were: cheapest first. Measured on mainnet bodies
+// against the gzip and zstd encoders above, pooled (µs -> bytes out):
+//
+//	payload                  gzip BestSpeed     zstd SpeedFastest   br q1, lgwin 18
+//	45 B eth_blockNumber     1.4 -> 70          0.1 -> 58           2.0 -> 49
+//	26 KB block, hashes      102 -> 12,921      104 -> 12,324       99 -> 13,690
+//	497 KB eth_getLogs       625 -> 50,330      589 -> 40,730       348 -> 44,356
+//	668 KB block, full txs   1,359 -> 112,505   1,224 -> 101,030    719 -> 105,523
+//
+// Quality 1 costs about half of gzip's CPU on large bodies and comes out
+// smaller. Quality 0 is cheaper again but larger than gzip there, which is the
+// one thing brotli is offered for; quality 2 cost 1.2-2.4x quality 1's CPU for
+// under 1% on large bodies. The window is zstd's encoderWindow for the same
+// reason as zstd's: lgwin 16 came out both larger and slower on the large
+// bodies, and lgwin 22 bought 1-2% for another 1.3MiB held by every pooled
+// encoder. At quality 1 the encoder never announces less than lgwin 18.
+const (
+	brotliQuality    = 1
+	brotliWindowBits = 18 // 256KiB, encoderWindow's size
+)
+
+// A pooled brotli writer is Reset on every checkout, and that is also what
+// keeps its compressor warm: go-brrr frees the compressor on Close only for a
+// writer that has never been Reset.
+var brotliWriterPool = sync.Pool{
+	New: func() any {
+		writer, err := brrr.NewWriterOptions(io.Discard, brotliQuality,
+			brrr.WriterOptions{LGWin: brotliWindowBits})
+		if err != nil {
+			return err
+		}
+		return writer
+	},
+}
+
+// Writer is a compressing writer for one response body. Every pooled codec
+// satisfies it natively.
 type Writer interface {
 	io.WriteCloser
 	// Flush pushes everything written so far to the underlying writer, so a
@@ -69,6 +106,8 @@ func AcquireWriter(scheme Scheme, w io.Writer) (Writer, error) {
 		pooled = gzipWriterPool.Get()
 	case Zstd:
 		pooled = zstdEncoderPool.Get()
+	case Brotli:
+		pooled = brotliWriterPool.Get()
 	default:
 		return nil, fmt.Errorf("%w: no encoder for %q", ErrUnsupportedEncoding, scheme)
 	}
@@ -90,5 +129,7 @@ func ReleaseWriter(w Writer) {
 		gzipWriterPool.Put(writer)
 	case *zstd.Encoder:
 		zstdEncoderPool.Put(writer)
+	case *brrr.Writer:
+		brotliWriterPool.Put(writer)
 	}
 }

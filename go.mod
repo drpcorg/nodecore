@@ -26,6 +26,7 @@ require (
 	github.com/klauspost/compress v1.20.0
 	github.com/labstack/echo-contrib v0.50.1
 	github.com/labstack/echo/v4 v4.15.4
+	github.com/molecule-man/go-brrr v1.1.1
 	github.com/pashagolub/pgxmock/v5 v5.2.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.3

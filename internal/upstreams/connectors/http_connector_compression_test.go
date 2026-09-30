@@ -3,7 +3,9 @@ package connectors_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -17,6 +19,7 @@ import (
 	"github.com/drpcorg/public/pkg/methods"
 	"github.com/klauspost/compress/gzip"
 	"github.com/klauspost/compress/zstd"
+	brrr "github.com/molecule-man/go-brrr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +41,10 @@ func encodeUpstream(t *testing.T, scheme string, plain []byte) []byte {
 		_, err = w.Write(plain)
 		require.NoError(t, err)
 		require.NoError(t, w.Close())
+	case "br":
+		out, err := brrr.Compress(plain, 5)
+		require.NoError(t, err)
+		return out
 	default:
 		return plain
 	}
@@ -67,23 +74,38 @@ func restConnectorFor(t *testing.T, cfg *config.ApiConnectorConfig) *connectors.
 	return connector
 }
 
-// Go's transport only ever negotiates gzip on its own, so zstd has to be
-// offered explicitly - which also hands nodecore the job of decoding both.
-func TestUpstreamRequestOffersZstdAndGzip(t *testing.T) {
+// lowRedundancy is hex text that no coding compresses much. The teardown test
+// sends half an encoded body and holds the rest back, and half of a body that
+// compresses to a few dozen bytes may not reach the end of brotli's first
+// meta-block header - which the connector decodes before it hands back the
+// stream, so the request would park there instead of streaming.
+func lowRedundancy(n int) []byte {
+	rng := rand.New(rand.NewPCG(1, 2))
+	raw := make([]byte, n/2)
+	for i := range raw {
+		raw[i] = byte(rng.Uint32())
+	}
+	return []byte(hex.EncodeToString(raw))
+}
+
+// Go's transport only ever negotiates gzip on its own, so zstd and brotli have
+// to be offered explicitly - which also hands nodecore the job of decoding
+// every coding.
+func TestUpstreamRequestOffersEveryCoding(t *testing.T) {
 	srv, offered := upstreamServing(t, "", upstreamBody)
 	connector := restConnectorFor(t, &config.ApiConnectorConfig{Url: srv.URL})
 
 	r := connector.SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
 
 	require.False(t, r.HasError())
-	assert.Equal(t, "zstd, gzip", *offered)
+	assert.Equal(t, "zstd, br, gzip", *offered)
 }
 
 // Whatever coding the node answers with, the framework above the connector
 // must see plain JSON: the connector strips Content-Encoding, so compressed
 // bytes leaving here would reach the client unlabelled and unreadable.
 func TestUpstreamResponseIsDecoded(t *testing.T) {
-	for _, scheme := range []string{"zstd", "gzip", ""} {
+	for _, scheme := range []string{"zstd", "br", "gzip", ""} {
 		name := scheme
 		if name == "" {
 			name = "identity"
@@ -107,7 +129,7 @@ func TestUpstreamResponseIsDecoded(t *testing.T) {
 // The streaming path never buffers the body, so it needs the decoder wired
 // into the stream itself rather than around a finished response.
 func TestUpstreamStreamedResponseIsDecoded(t *testing.T) {
-	for _, scheme := range []string{"zstd", "gzip"} {
+	for _, scheme := range []string{"zstd", "br", "gzip"} {
 		t.Run(scheme, func(te *testing.T) {
 			plain := bytes.Repeat([]byte(`{"chunk":"0123456789"}`), 512)
 			srv, _ := upstreamServing(te, scheme, plain)
@@ -129,20 +151,24 @@ func TestUpstreamStreamedResponseIsDecoded(t *testing.T) {
 
 // An operator who pins Accept-Encoding on the connector has a reason - a node
 // that mishandles one of the codings, most likely - and the connector must
-// not talk over them.
+// not talk over them. Whatever they pin is still decoded.
 func TestConfiguredAcceptEncodingIsNotOverridden(t *testing.T) {
-	srv, offered := upstreamServing(t, "gzip", upstreamBody)
-	connector := restConnectorFor(t, &config.ApiConnectorConfig{
-		Url:     srv.URL,
-		Headers: map[string]string{"Accept-Encoding": "gzip"},
-	})
+	for _, pinned := range []string{"gzip", "br"} {
+		t.Run(pinned, func(te *testing.T) {
+			srv, offered := upstreamServing(te, pinned, upstreamBody)
+			connector := restConnectorFor(te, &config.ApiConnectorConfig{
+				Url:     srv.URL,
+				Headers: map[string]string{"Accept-Encoding": pinned},
+			})
 
-	r := connector.SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
+			r := connector.SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
 
-	require.False(t, r.HasError())
-	assert.Equal(t, "gzip", *offered)
-	assert.Equal(t, upstreamBody, r.ResponseResult(),
-		"a pinned coding must still be decoded")
+			require.False(te, r.HasError())
+			assert.Equal(te, pinned, *offered)
+			assert.Equal(te, upstreamBody, r.ResponseResult(),
+				"a pinned coding must still be decoded")
+		})
+	}
 }
 
 // A node answering with a coding nodecore never offered has broken the
@@ -151,7 +177,7 @@ func TestConfiguredAcceptEncodingIsNotOverridden(t *testing.T) {
 func TestUnsupportedUpstreamCodingFails(t *testing.T) {
 	srv, _ := upstreamServing(t, "", upstreamBody)
 	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Encoding", "br")
+		w.Header().Set("Content-Encoding", "deflate")
 		_, _ = w.Write(upstreamBody)
 	})
 	connector := restConnectorFor(t, &config.ApiConnectorConfig{Url: srv.URL})
@@ -175,6 +201,8 @@ func TestUpstreamEmptyBodyWithAContentEncodingStillSucceeds(t *testing.T) {
 		{"200 with an empty zstd body", http.StatusOK, "zstd"},
 		{"204 labelled gzip", http.StatusNoContent, "gzip"},
 		{"204 labelled zstd", http.StatusNoContent, "zstd"},
+		{"200 with an empty br body", http.StatusOK, "br"},
+		{"204 labelled br", http.StatusNoContent, "br"},
 	}
 
 	for _, tt := range tests {
@@ -223,9 +251,9 @@ func TestUpstreamFrameAboveTheWindowCapFails(t *testing.T) {
 // must not go back to the pool while that read is in flight; if it does, the
 // teardown deadlocks on the decoder it is trying to drain.
 func TestUpstreamStreamTornDownWhileStillBeingRead(t *testing.T) {
-	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip} {
+	for _, scheme := range []compression.Scheme{compression.Zstd, compression.Gzip, compression.Brotli} {
 		t.Run(string(scheme), func(te *testing.T) {
-			plain := bytes.Repeat([]byte(`{"chunk":"0123456789abcdef"},`), 2048)
+			plain := lowRedundancy(64 << 10)
 			encoded := encodeUpstream(te, string(scheme), plain)
 
 			// Send enough of the body for a read to be under way, then hold the
@@ -310,11 +338,12 @@ func TestUpstreamStreamTornDownWhileStillBeingRead(t *testing.T) {
 
 // A client that walks away mid-response must not be charged to the node. The
 // decode path reads the first bytes of the body - gzip parses its header, zstd
-// peeks its frame magic - so a cancelled context surfaces right here, as a read
-// failure like any other. Calling that a partial failure both penalises a
-// healthy upstream and retries a request nobody is waiting for any more.
+// peeks its frame magic, brotli decodes its first byte - so a cancelled context
+// surfaces right here, as a read failure like any other. Calling that a partial
+// failure both penalises a healthy upstream and retries a request nobody is
+// waiting for any more.
 func TestCancelledDecodeIsAContextFailureRatherThanTheUpstreamsFault(t *testing.T) {
-	for _, scheme := range []string{"gzip", "zstd"} {
+	for _, scheme := range []string{"gzip", "zstd", "br"} {
 		t.Run(scheme, func(te *testing.T) {
 			headersOut := make(chan struct{})
 			release := make(chan struct{})
@@ -347,6 +376,27 @@ func TestCancelledDecodeIsAContextFailureRatherThanTheUpstreamsFault(t *testing.
 			require.True(te, ok, "expected an error reply, got %T", response)
 			assert.Equal(te, protocol.TotalFailure, replyError.ErrorKind)
 			assert.False(te, protocol.IsRetryable(response), "a cancelled request must not be retried")
+		})
+	}
+}
+
+// A node that labels a body with a coding it did not use is at fault, and the
+// request is a partial failure: retried elsewhere, and scored against the node.
+func TestUpstreamBodyNotInItsDeclaredCodingIsAPartialFailure(t *testing.T) {
+	for _, scheme := range []string{"gzip", "zstd", "br"} {
+		t.Run(scheme, func(te *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Encoding", scheme)
+				_, _ = w.Write(upstreamBody)
+			}))
+			defer srv.Close()
+
+			response := restConnectorFor(te, &config.ApiConnectorConfig{Url: srv.URL}).
+				SendRequest(context.Background(), protocol.NewUpstreamRestRequest("1", "GET#/status", nil, nil, ""))
+
+			replyError, ok := response.(*protocol.ReplyError)
+			require.True(te, ok, "expected an error reply, got %T", response)
+			assert.Equal(te, protocol.PartialFailure, replyError.ErrorKind)
 		})
 	}
 }
