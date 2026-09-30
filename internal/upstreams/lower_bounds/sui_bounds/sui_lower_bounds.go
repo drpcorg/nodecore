@@ -15,8 +15,8 @@ import (
 	"github.com/failsafe-go/failsafe-go/retrypolicy"
 )
 
-// Pruned deployments slide the lowest available checkpoints up continuously;
-// re-poll often to keep the bounds close to the real retention boundary.
+// Pruned deployments slide the lowest available checkpoint up continuously;
+// re-poll often to keep the bound close to the real retention boundary.
 const suiPeriod = 2 * time.Minute
 
 const (
@@ -24,12 +24,21 @@ const (
 	suiRetryDelay    = 500 * time.Millisecond
 )
 
-// SuiLowerBoundDetector reads both bounds from the same GetServiceInfo poll
-// the other probes use: lowest_available_checkpoint (checkpoint/transaction
-// data) becomes the block bound, lowest_available_checkpoint_objects (object
-// data) becomes the state bound. A zero or absent field means the node did
-// not report that boundary; the bound is simply skipped for the tick and the
-// previously published value stays.
+// SuiLowerBoundDetector reads the checkpoint floor from the same
+// GetServiceInfo poll the other probes use. lowest_available_checkpoint is
+// the earliest checkpoint whose summary, transactions, effects and events the
+// node still serves, i.e. the floor every checkpoint-addressed read
+// (GetCheckpoint, ListCheckpoints, ListTransactions, ListEvents) is checked
+// against - the block bound.
+//
+// lowest_available_checkpoint_objects is ignored on purpose. Since sui-node
+// v1.66 the node folds the object-version floor into
+// lowest_available_checkpoint and echoes the same number into the objects
+// field, which is deprecated; and no Sui gRPC read addresses state by
+// checkpoint, so there is nothing a separate state bound could route.
+//
+// A zero or absent field means the node did not report the floor; the bound
+// is skipped for the tick and the previously published value stays.
 type SuiLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -64,18 +73,17 @@ func (s *SuiLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 		return nil, fmt.Errorf("cannot fetch the sui service info for upstream '%s': %w", s.upstreamId, err)
 	}
 
-	bounds := make([]protocol.LowerBoundData, 0, 2)
-	if lowest := serviceInfo.GetLowestAvailableCheckpoint(); lowest > 0 {
-		bounds = append(bounds, protocol.NewLowerBoundDataNow(int64(lowest), protocol.BlockBound)) //nolint:gosec // checkpoint sequences are far below int64 max
+	lowest := serviceInfo.GetLowestAvailableCheckpoint()
+	if lowest == 0 {
+		return nil, nil
 	}
-	if lowestObjects := serviceInfo.GetLowestAvailableCheckpointObjects(); lowestObjects > 0 {
-		bounds = append(bounds, protocol.NewLowerBoundDataNow(int64(lowestObjects), protocol.StateBound)) //nolint:gosec // checkpoint sequences are far below int64 max
-	}
-	return bounds, nil
+	return []protocol.LowerBoundData{
+		protocol.NewLowerBoundDataNow(int64(lowest), protocol.BlockBound), //nolint:gosec // checkpoint sequences are far below int64 max
+	}, nil
 }
 
 func (s *SuiLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
-	return []protocol.LowerBoundType{protocol.BlockBound, protocol.StateBound}
+	return []protocol.LowerBoundType{protocol.BlockBound}
 }
 
 func (s *SuiLowerBoundDetector) Period() time.Duration {

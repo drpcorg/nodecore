@@ -197,14 +197,16 @@ func TestSuiLowerBoundDetector(t *testing.T) {
 	bounds, err := detector.DetectLowerBound(ctx)
 	require.NoError(t, err)
 
-	require.Len(t, bounds, 2)
+	// lowest_available_checkpoint_objects (50000 here) is deliberately ignored:
+	// since sui-node v1.66 it duplicates lowest_available_checkpoint, and the
+	// Sui gRPC surface has no "state at checkpoint N" read to route on anyway.
+	require.Len(t, bounds, 1)
 	assert.Equal(t, int64(1000), bounds[0].Bound)
 	assert.Equal(t, protocol.BlockBound, bounds[0].Type)
-	assert.Equal(t, int64(50000), bounds[1].Bound)
-	assert.Equal(t, protocol.StateBound, bounds[1].Type)
+	assert.Equal(t, []protocol.LowerBoundType{protocol.BlockBound}, detector.SupportedTypes())
 }
 
-func TestSuiLowerBoundDetectorSkipsAbsentBounds(t *testing.T) {
+func TestSuiLowerBoundDetectorSkipsAbsentBound(t *testing.T) {
 	ctx := context.Background()
 	conn := mocks.NewConnectorMock()
 	serviceInfo := fullServiceInfo()
@@ -214,6 +216,5 @@ func TestSuiLowerBoundDetectorSkipsAbsentBounds(t *testing.T) {
 	bounds, err := sui_bounds.NewSuiLowerBoundDetector("id", chains.GetChain("sui").Chain, time.Second, conn).DetectLowerBound(ctx)
 	require.NoError(t, err)
 
-	require.Len(t, bounds, 1)
-	assert.Equal(t, protocol.StateBound, bounds[0].Type)
+	assert.Empty(t, bounds)
 }
