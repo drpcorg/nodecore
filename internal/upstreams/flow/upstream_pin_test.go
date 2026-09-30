@@ -34,6 +34,7 @@ func pinTestRequest(method string, selectors ...protocol.RequestSelector) protoc
 func pinTestMethods(method string) *mocks.MethodsMock {
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet(method))
+	methodsMock.On("GetMethod", mock.Anything).Return(nil)
 	methodsMock.On("HasMethod", method).Return(true)
 	methodsMock.On("HasMethod", mock.Anything).Return(false)
 	return methodsMock
@@ -94,10 +95,10 @@ func TestUpstreamPinsAreAGate(t *testing.T) {
 	}
 
 	pins, rest := protocol.SplitUpstreamPins(selectors)
-	assert.Equal(t, protocol.UpstreamPins{{"a", "b"}, {"b", "c"}}, pins)
-	assert.True(t, pins.Admits("b"))
-	assert.False(t, pins.Admits("a"))
-	assert.False(t, pins.Admits("c"))
+	assert.Equal(t, protocol.UpstreamPins{{Values: []string{"a", "b"}}, {Values: []string{"b", "c"}}}, pins)
+	assert.True(t, pins.Matches("b", &protocol.UpstreamState{}))
+	assert.False(t, pins.Matches("a", &protocol.UpstreamState{}))
+	assert.False(t, pins.Matches("c", &protocol.UpstreamState{}))
 	assert.Equal(t, []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{geth}}, or, pin()}, rest)
 	assert.Equal(t, pins, pinTestRequest("eth_call", selectors...).UpstreamPins())
 
@@ -387,4 +388,21 @@ func TestPinnedIntegrityRerouteStaysInsideThePin(t *testing.T) {
 
 	assert.Equal(t, []byte(`"0x6c"`), response.Response.ResponseResult())
 	ups.assertNotSent(t, "high")
+}
+
+func TestNodeGroupGateAllStrategiesAndUnratedMembers(t *testing.T) {
+	chain := pinTestChain(t, "eth_call", "a", "b", "c")
+	// Give the third member another label partition.
+	state := *chain.GetUpstreamState("c")
+	state.Labels = protocol.NewLabels()
+	state.Labels.AddLabel("client_type", "erigon")
+	chain.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "c", EventType: &protocol.StateUpstreamEvent{State: &state}})
+	require.Eventually(t, func() bool { return chain.GetUpstreamState("c").Labels == state.Labels }, time.Second, time.Millisecond)
+	id := protocol.NodeGroupID("a", chain.GetUpstreamState("a"), false)
+	request := pinTestRequest("eth_call", protocol.RequestLabelSelector{Name: protocol.NodeGroupLabel, Values: []string{id}})
+	for _, strategy := range []UpstreamStrategy{NewGenericStrategy(chain), ratingStrategyOf(chain, "c"), NewSpecificOrderUpstreamStrategy([]string{"c", "a", "b"}, chain)} {
+		assert.ElementsMatch(t, []string{"a", "b"}, selectAll(t, strategy, request))
+	}
+	singleton := pinTestRequest("eth_call", protocol.RequestLabelSelector{Name: protocol.NodeGroupLabel, Values: []string{protocol.NodeGroupID("a", chain.GetUpstreamState("a"), true)}})
+	assert.Equal(t, []string{"a"}, selectAll(t, ratingStrategyOf(chain, "b"), singleton))
 }

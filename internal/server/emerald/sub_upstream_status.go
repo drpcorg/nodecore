@@ -46,17 +46,19 @@ func SubscribeUpstreamStatusWithResync(
 	if upstreamSupervisor == nil {
 		return errNilUpstreamSupervisor
 	}
-	if interval <= 0 {
-		interval = config.DefaultGrpcUpstreamStatusInterval
+	producer := &upstreamStatusProducer{stream: stream, requested: mapset.NewThreadUnsafeSet(request.GetChains()...), interval: interval, resyncInterval: resyncInterval}
+	return producer.subscribe(upstreamSupervisor, stream.Context())
+}
+
+func (producer *upstreamStatusProducer) subscribe(upstreamSupervisor upstreams.UpstreamSupervisor, parent context.Context) error {
+	if upstreamSupervisor == nil {
+		return errNilUpstreamSupervisor
 	}
-	ctx, cancel := context.WithCancel(stream.Context())
-	producer := &upstreamStatusProducer{
-		stream:         stream,
-		cancel:         cancel,
-		requested:      mapset.NewThreadUnsafeSet(request.GetChains()...),
-		interval:       interval,
-		resyncInterval: resyncInterval,
+	if producer.interval <= 0 {
+		producer.interval = config.DefaultGrpcUpstreamStatusInterval
 	}
+	ctx, cancel := context.WithCancel(parent)
+	producer.cancel = cancel
 
 	// a new chain supervisor only triggers a look at them all, so a dropped
 	// event loses nothing
@@ -105,6 +107,8 @@ func upstreamStatusInterval(appConfig *config.AppConfig) time.Duration {
 }
 
 type upstreamStatusProducer struct {
+	groupStream    dshackle.Blockchain_SubscribeNodeGroupStatusServer
+	fullSeparation bool
 	stream         dshackle.Blockchain_SubscribeUpstreamStatusServer
 	cancel         context.CancelFunc
 	requested      mapset.Set[dshackle.ChainRef]
@@ -119,10 +123,12 @@ type upstreamStatusProducer struct {
 
 // upstreamStatusChain is what the stream last sent for a chain.
 type upstreamStatusChain struct {
-	ref        dshackle.ChainRef
-	subMethods mapset.Set[string]
-	announced  bool
-	nextFull   time.Time
+	sentNetwork *dshackle.ChainDescription
+	sentGroups  map[string]*dshackle.NodeGroupStatus
+	ref         dshackle.ChainRef
+	subMethods  mapset.Set[string]
+	announced   bool
+	nextFull    time.Time
 	// the snapshots sent (the supervisor never mutates a stored one), each
 	// with the pass that last saw it
 	sent map[string]sentUpstream
@@ -196,12 +202,22 @@ func (p *upstreamStatusProducer) send(ctx context.Context, chainSupervisor upstr
 	if ctx.Err() != nil {
 		return false, false
 	}
-	response := chain.response(chainSupervisor, time.Now(), p.resyncInterval)
-	if response == nil {
-		return false, true
+	var err error
+	if p.groupStream != nil {
+		response := chain.groupResponse(chainSupervisor, time.Now(), p.resyncInterval, p.fullSeparation)
+		if response == nil {
+			return false, true
+		}
+		err = p.groupStream.Send(response)
+	} else {
+		response := chain.response(chainSupervisor, time.Now(), p.resyncInterval)
+		if response == nil {
+			return false, true
+		}
+		err = p.stream.Send(response)
 	}
-	if err := p.stream.Send(response); err != nil {
-		log.Error().Err(err).Msg("failed to send a SubscribeUpstreamStatusResponse")
+	if err != nil {
+		log.Error().Err(err).Msg("failed to send nodecore status")
 		p.sendErr = err
 		p.cancel()
 		return false, false

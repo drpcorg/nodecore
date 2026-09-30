@@ -191,7 +191,6 @@ func (b *GenericChainSupervisor) processEvents() {
 					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
 						upHead := upState.HeadData
 						b.upstreamStates.Delete(event.Id)
-						b.upstreamsChanged.Notify()
 						delete(b.lastOver, event.Id)
 
 						b.updateState()
@@ -207,13 +206,11 @@ func (b *GenericChainSupervisor) processEvents() {
 						newUpState := *upState
 						newUpState.HeadData = eventType.Head
 						b.upstreamStates.Store(event.Id, &newUpState)
-						b.upstreamsChanged.Notify()
 					}
 					b.updateHead(event.Id, eventType)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
-					b.upstreamStates.Store(event.Id, eventType.State)
-					b.upstreamsChanged.Notify()
+					b.upstreamStates.Store(event.Id, eventType.State.WithNodeGroupCache())
 					b.updateState()
 				case *protocol.ValidUpstreamEvent:
 					// Symmetric to RemoveUpstreamEvent: a recovered upstream is
@@ -223,14 +220,14 @@ func (b *GenericChainSupervisor) processEvents() {
 					// those events are suppressed unless some sub-state differs.
 					if eventType.State != nil {
 						availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
-						b.upstreamStates.Store(event.Id, eventType.State)
-						b.upstreamsChanged.Notify()
+						b.upstreamStates.Store(event.Id, eventType.State.WithNodeGroupCache())
 						b.updateState()
 						if !eventType.State.HeadData.IsEmptyByHeight() {
 							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})
 						}
 					}
 				}
+				b.upstreamsChanged.Notify()
 			}
 		}
 	}

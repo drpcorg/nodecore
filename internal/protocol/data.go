@@ -440,6 +440,8 @@ const (
 )
 
 type UpstreamState struct {
+	// Initialized for supervisor snapshots; copied head updates share the cache.
+	nodeGroupID     func() string
 	Status          AvailabilityStatus
 	HeadData        Block
 	UpstreamMethods methods.Methods

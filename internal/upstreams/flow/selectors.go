@@ -140,8 +140,8 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 func pinMiss(pins protocol.UpstreamPins, chainSupervisor upstreams.ChainSupervisor) PinResponse {
 	present := false
 	if chainSupervisor != nil {
-		for _, id := range pins[0] {
-			if pins.Admits(id) && chainSupervisor.GetUpstreamState(id) != nil {
+		for _, id := range chainSupervisor.GetUpstreamIds() {
+			if pins.Matches(id, chainSupervisor.GetUpstreamState(id)) {
 				present = true
 				break
 			}

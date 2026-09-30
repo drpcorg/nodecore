@@ -133,7 +133,7 @@ func (b *GenericStrategy) SelectUpstream(request protocol.RequestHolder) (string
 	upstreamIds := b.chainSupervisor.GetUpstreamIds()
 	// under a pin the rotation runs over the pinned upstreams, so they share evenly
 	if pins := pinsOf(request); pins.Pinned() {
-		upstreamIds = slices.DeleteFunc(upstreamIds, func(id string) bool { return !pins.Admits(id) })
+		upstreamIds = slices.DeleteFunc(upstreamIds, func(id string) bool { return !pins.Matches(id, b.chainSupervisor.GetUpstreamState(id)) })
 	}
 	if len(upstreamIds) == 0 {
 		return "", noUpstreamsError(request, b.chainSupervisor)
@@ -178,7 +178,7 @@ func filterUpstreams(
 	for i := 0; i < len(upstreamIds); i++ {
 		upstreamState := chainSupervisor.GetUpstreamState(upstreamIds[i])
 		// an upstream outside the pins is no candidate, not even for the error
-		if upstreamState == nil || !pins.Admits(upstreamIds[i]) {
+		if upstreamState == nil || !pins.Matches(upstreamIds[i], upstreamState) {
 			continue
 		}
 		admitted = true
@@ -223,8 +223,8 @@ func withUnrated(request protocol.RequestHolder, rated []string, chainSupervisor
 		return rated
 	}
 	var unrated []string
-	for _, id := range pins[0] {
-		if pins.Admits(id) && !slices.Contains(rated, id) && !slices.Contains(unrated, id) && chainSupervisor.GetUpstreamState(id) != nil {
+	for _, id := range chainSupervisor.GetUpstreamIds() {
+		if pins.Matches(id, chainSupervisor.GetUpstreamState(id)) && !slices.Contains(rated, id) && !slices.Contains(unrated, id) {
 			unrated = append(unrated, id)
 		}
 	}

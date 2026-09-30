@@ -229,7 +229,7 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 // DRPC upstreams that can sign.
 func quorumPinError(request protocol.RequestHolder, drpcIds []string, chainSupervisor upstreams.ChainSupervisor) *protocol.ResponseError {
 	pins := pinsOf(request)
-	if !pins.Pinned() || slices.ContainsFunc(drpcIds, pins.Admits) {
+	if !pins.Pinned() || slices.ContainsFunc(drpcIds, func(id string) bool { return pins.Matches(id, chainSupervisor.GetUpstreamState(id)) }) {
 		return nil
 	}
 	err := protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector")
