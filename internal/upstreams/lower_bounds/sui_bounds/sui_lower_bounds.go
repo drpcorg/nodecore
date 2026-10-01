@@ -37,8 +37,11 @@ const (
 // field, which is deprecated; and no Sui gRPC read addresses state by
 // checkpoint, so there is nothing a separate state bound could route.
 //
-// A zero or absent field means the node did not report the floor; the bound
-// is skipped for the tick and the previously published value stays.
+// sui-node always sets the field and reports an explicit 0 when nothing has
+// been pruned, so 0 means archive and is published as 1 (the predictor's
+// archive value). Only an absent field means the node did not report the
+// floor; then the bound is skipped for the tick and the previously published
+// value stays.
 type SuiLowerBoundDetector struct {
 	upstreamId      string
 	connector       connectors.ApiConnector
@@ -73,12 +76,12 @@ func (s *SuiLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 		return nil, fmt.Errorf("cannot fetch the sui service info for upstream '%s': %w", s.upstreamId, err)
 	}
 
-	lowest := serviceInfo.GetLowestAvailableCheckpoint()
-	if lowest == 0 {
+	if serviceInfo.LowestAvailableCheckpoint == nil {
 		return nil, nil
 	}
+	lowest := max(int64(serviceInfo.GetLowestAvailableCheckpoint()), 1) //nolint:gosec // checkpoint sequences are far below int64 max
 	return []protocol.LowerBoundData{
-		protocol.NewLowerBoundDataNow(int64(lowest), protocol.BlockBound), //nolint:gosec // checkpoint sequences are far below int64 max
+		protocol.NewLowerBoundDataNow(lowest, protocol.BlockBound),
 	}, nil
 }
 

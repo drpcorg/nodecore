@@ -206,6 +206,25 @@ func TestSuiLowerBoundDetector(t *testing.T) {
 	assert.Equal(t, []protocol.LowerBoundType{protocol.BlockBound}, detector.SupportedTypes())
 }
 
+// sui-node always sets lowest_available_checkpoint and reports an explicit 0
+// when nothing has been pruned. That node is an archive, so the bound is 1
+// (the predictor's archive value), never a skipped tick: an upstream without
+// a block bound would be treated as unavailable for every checkpoint read.
+func TestSuiLowerBoundDetectorArchiveNodeReportsOne(t *testing.T) {
+	ctx := context.Background()
+	conn := mocks.NewConnectorMock()
+	serviceInfo := fullServiceInfo()
+	serviceInfo.LowestAvailableCheckpoint = new(uint64(0))
+	conn.On("SendRequest", mock.Anything, mock.Anything).Return(serviceInfoResponse(t, serviceInfo)).Once()
+
+	bounds, err := sui_bounds.NewSuiLowerBoundDetector("id", chains.GetChain("sui").Chain, time.Second, conn).DetectLowerBound(ctx)
+	require.NoError(t, err)
+
+	require.Len(t, bounds, 1)
+	assert.Equal(t, int64(1), bounds[0].Bound)
+	assert.Equal(t, protocol.BlockBound, bounds[0].Type)
+}
+
 func TestSuiLowerBoundDetectorSkipsAbsentBound(t *testing.T) {
 	ctx := context.Background()
 	conn := mocks.NewConnectorMock()
