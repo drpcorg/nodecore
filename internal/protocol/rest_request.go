@@ -161,4 +161,12 @@ func calculateRestHash(method string, params *RequestParams, body []byte, select
 	return calculateHash(buf.Bytes())
 }
 
+// AppendSelectors adds routing selectors to the request. Call it before the
+// request enters the execution flow: selectors are read without a lock, and a
+// hash already computed does not see selectors added later.
+func (u *UpstreamRestRequest) AppendSelectors(selectors ...RequestSelector) {
+	u.selectors = append(u.Selectors(), selectors...)
+}
+
 var _ RequestHolder = (*UpstreamRestRequest)(nil)
+var _ SelectorAppender = (*UpstreamRestRequest)(nil)

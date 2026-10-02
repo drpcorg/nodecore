@@ -3,6 +3,7 @@ package flow
 import (
 	"fmt"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/rs/zerolog/log"
 )
@@ -303,6 +304,38 @@ func (l *LabelExistsMatcher) Match(_ string, state *protocol.UpstreamState) Matc
 		}
 	}
 	return ExistsResponse{l.name}
+}
+
+// GroupLabelsLookup returns the config group-labels of an upstream, or nil
+// when the upstream is unknown.
+type GroupLabelsLookup func(upstreamId string) mapset.Set[string]
+
+type GroupLabelResponse struct{ labels []string }
+
+func (g GroupLabelResponse) Type() MatchResponseType { return SelectorType }
+func (g GroupLabelResponse) Cause() string {
+	return fmt.Sprintf("Upstream has none of group-labels %v", g.labels)
+}
+
+// GroupLabelMatcher admits an upstream carrying at least one of labels among
+// its config group-labels. Group-labels live on the upstream's config, not in
+// its state, so they are resolved by id.
+type GroupLabelMatcher struct {
+	labels []string
+	lookup GroupLabelsLookup
+}
+
+func NewGroupLabelMatcher(labels []string, lookup GroupLabelsLookup) *GroupLabelMatcher {
+	return &GroupLabelMatcher{labels: labels, lookup: lookup}
+}
+
+func (g *GroupLabelMatcher) Match(upstreamId string, _ *protocol.UpstreamState) MatchResponse {
+	if g.lookup != nil {
+		if upstreamLabels := g.lookup(upstreamId); upstreamLabels != nil && upstreamLabels.ContainsAny(g.labels...) {
+			return SuccessResponse{}
+		}
+	}
+	return GroupLabelResponse{g.labels}
 }
 
 type HeightMatcher struct{ height int64 }

@@ -56,6 +56,11 @@ func (a *AppConfig) validate() error {
 	if err := a.UpstreamConfig.validate(rateLimitBudgetNames, a.ServerConfig.TorUrl); err != nil {
 		return err
 	}
+	if a.AuthConfig != nil {
+		if err := a.AuthConfig.validateKeyUpstreams(a.UpstreamConfig); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

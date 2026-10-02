@@ -71,6 +71,16 @@ type KeySettingsConfig struct {
 	Methods       *AuthMethods   `yaml:"methods"`
 	AuthContracts *AuthContracts `yaml:"contracts"`
 	CorsOrigins   []string       `yaml:"cors-origins"`
+	Upstreams     *KeyUpstreams  `yaml:"upstreams"`
+}
+
+// KeyUpstreams restricts which upstreams may serve a key's requests. It is a
+// filter, not a balancer: the chain's balancing strategy (rating, base or
+// label-balancing) still picks among the upstreams that pass it.
+type KeyUpstreams struct {
+	// GroupLabels admits an upstream that carries at least one of these
+	// config group-labels (the same labels label-balancing groups by).
+	GroupLabels []string `yaml:"group-labels"`
 }
 
 type AuthMethods struct {
@@ -199,6 +209,58 @@ func keyNoSettingsError(keyType IntegrationType) error {
 func (l *LocalKeyConfig) validate() error {
 	if l.Key == "" {
 		return errors.New("'key' field is empty")
+	}
+	if l.KeySettingsConfig != nil && l.KeySettingsConfig.Upstreams != nil {
+		if err := l.KeySettingsConfig.Upstreams.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (k *KeyUpstreams) validate() error {
+	if len(k.GroupLabels) == 0 {
+		return errors.New("upstreams.group-labels must contain at least one label")
+	}
+	seen := mapset.NewThreadUnsafeSet[string]()
+	for _, label := range k.GroupLabels {
+		if label == "" {
+			return errors.New("upstreams.group-labels must not contain an empty label")
+		}
+		if seen.Contains(label) {
+			return fmt.Errorf("upstreams.group-labels contains a duplicate label '%s'", label)
+		}
+		seen.Add(label)
+	}
+	return nil
+}
+
+// validateKeyUpstreams rejects a key filter naming a group-label no upstream
+// carries: such a key would silently be served by nothing, and a typo is far
+// likelier than an intent to disable the key.
+func (a *AuthConfig) validateKeyUpstreams(upstreamConfig *UpstreamConfig) error {
+	if !a.Enabled {
+		return nil
+	}
+	known := mapset.NewThreadUnsafeSet[string]()
+	if upstreamConfig != nil {
+		for _, upstream := range upstreamConfig.Upstreams {
+			known.Append(upstream.GroupLabels...)
+		}
+	}
+	for _, keyConfig := range a.KeyConfigs {
+		if keyConfig.LocalKeyConfig == nil || keyConfig.LocalKeyConfig.KeySettingsConfig == nil {
+			continue
+		}
+		keyUpstreams := keyConfig.LocalKeyConfig.KeySettingsConfig.Upstreams
+		if keyUpstreams == nil {
+			continue
+		}
+		for _, label := range keyUpstreams.GroupLabels {
+			if !known.Contains(label) {
+				return fmt.Errorf("error during '%s' key config validation, cause: upstreams.group-labels has '%s', which no upstream carries", keyConfig.Id, label)
+			}
+		}
 	}
 	return nil
 }

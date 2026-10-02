@@ -368,3 +368,37 @@ func TestRequestHashCarriesLabelKey(t *testing.T) {
 	heightOnly := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth", protocol.RequestHeightSelector{Height: 100})
 	assert.Equal(t, noLabel.RequestHash(), heightOnly.RequestHash())
 }
+
+func TestGroupLabelSelectorKeyIsOrderIndependent(t *testing.T) {
+	a := protocol.RequestGroupLabelSelector{Labels: []string{"fast", "archive"}}
+	b := protocol.RequestGroupLabelSelector{Labels: []string{"archive", "fast"}}
+	assert.Equal(t, "group(archive|fast)", a.Key())
+	assert.Equal(t, a.Key(), b.Key())
+	assert.NotEqual(t, a.Key(), protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}.Key())
+}
+
+// A group-label restriction picks which upstreams serve a request, not what
+// they answer, so it must not split the cache.
+func TestLabelCacheKeyIgnoresGroupLabelSelector(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	assert.Empty(t, protocol.LabelCacheKey([]protocol.RequestSelector{group}))
+	assert.Equal(t,
+		protocol.LabelCacheKey([]protocol.RequestSelector{label("region", "us")}),
+		protocol.LabelCacheKey([]protocol.RequestSelector{label("region", "us"), group}),
+	)
+}
+
+func TestAppendSelectorsKeepsExistingSelectors(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	requests := []protocol.RequestHolder{
+		protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_call"}, false, "eth", label("region", "us")),
+		protocol.NewUpstreamRestRequest("1", "/status", nil, nil, "eth", label("region", "us")),
+		protocol.NewUpstreamGrpcRequest("1", "/svc/Method", nil, nil, "eth", label("region", "us")),
+	}
+	for _, request := range requests {
+		appender, ok := request.(protocol.SelectorAppender)
+		assert.True(t, ok, "%T must accept selectors", request)
+		appender.AppendSelectors(group)
+		assert.Equal(t, []protocol.RequestSelector{label("region", "us"), group}, request.Selectors())
+	}
+}
