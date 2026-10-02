@@ -79,6 +79,9 @@ const (
 type BlockUpdate struct {
 	Block protocol.Block
 	Kind  UpdateKind
+	// Seen is when the head that produced this update was read; consumers that
+	// wait on a block anchor the wait to it, so queued blocks do not add up.
+	Seen time.Time
 }
 
 // ringEntry remembers the (height, hash) the tracker last considered canonical at
@@ -343,6 +346,7 @@ func StreamBlockUpdates(
 			continue
 		}
 		fed = head
+		seen := time.Now()
 
 		updates, err := t.advanceWithAncestors(srcCtx, head, resolve)
 		if err != nil {
@@ -354,6 +358,7 @@ func StreamBlockUpdates(
 			updates = t.advance(head)
 		}
 		for _, update := range updates {
+			update.Seen = seen
 			select {
 			case out <- update:
 			case <-srcCtx.Done():
