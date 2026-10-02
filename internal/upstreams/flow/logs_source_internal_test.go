@@ -110,7 +110,7 @@ func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
 	connHigh.On("SendRequest", mock.Anything, mock.Anything).Return(protocol.NewSimpleHttpUpstreamResponse("1", logsJSON, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, upstreamId, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Second)
+	logs, upstreamId, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(time.Second))
 
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
@@ -134,7 +134,7 @@ func TestFetchBlockLogsGivesUpWithoutUpstreamAtHeight(t *testing.T) {
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
 	start := time.Now()
-	logs, upstreamId, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, 200*time.Millisecond)
+	logs, upstreamId, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(200*time.Millisecond))
 
 	require.Error(t, err)
 	assert.GreaterOrEqual(t, time.Since(start), 200*time.Millisecond)
@@ -175,7 +175,7 @@ func TestFetchBlockLogsWaitsForUpstreamWithMethod(t *testing.T) {
 	}()
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, 3*time.Second)
+	logs, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(3*time.Second))
 
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
@@ -201,14 +201,39 @@ func TestFetchBlockLogsRetriesUpstreamError(t *testing.T) {
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, 3*time.Second)
+	logs, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(3*time.Second))
 
 	require.NoError(t, err)
 	require.Len(t, logs, 1)
 	conn.AssertNumberOfCalls(t, "SendRequest", 2)
 }
 
-// An upstream that keeps erroring makes fetchBlockLogs error after giveUp.
+// A deadline already in the past still gets one attempt, and no waiting: a block
+// queued behind a slow one does not add its own full wait.
+func TestFetchBlockLogsPastDeadlineTriesOnce(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "high", 100)
+
+	conn := mocks.NewConnectorMock()
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "high").Return(up).Maybe()
+	conn.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	start := time.Now()
+	_, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(-time.Second))
+
+	require.Error(t, err)
+	assert.Less(t, time.Since(start), 100*time.Millisecond)
+	conn.AssertNumberOfCalls(t, "SendRequest", 1)
+}
+
+// An upstream that keeps erroring makes fetchBlockLogs error at the deadline.
 func TestFetchBlockLogsGivesUpOnPersistentError(t *testing.T) {
 	specs_utils.LoadMethodSpecs()
 
@@ -225,7 +250,7 @@ func TestFetchBlockLogsGivesUpOnPersistentError(t *testing.T) {
 		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, 200*time.Millisecond)
+	logs, _, err := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(200*time.Millisecond))
 
 	require.Error(t, err)
 	assert.Nil(t, logs)

@@ -63,9 +63,10 @@ const (
 	// logsUpstreamWaitStep up to logsUpstreamWaitMax.
 	logsUpstreamWaitStep = 50 * time.Millisecond
 	logsUpstreamWaitMax  = time.Second
-	// A block waits logsGiveUpBlocks block times, clamped to [min, max], before it
-	// is skipped. Blocks are processed in order, so the cap also bounds how long
-	// one unservable block (e.g. orphaned while waiting) delays the next ones.
+	// A block may wait until logsGiveUpBlocks block times, clamped to [min, max],
+	// after its head arrived; then it is skipped. The wait is anchored to the
+	// arrival, not to when processing starts, so blocks queued behind a waiting
+	// one do not add up: the stream never lags the head by more than this.
 	logsGiveUpBlocks = 2
 	logsGiveUpMin    = 3 * time.Second
 	logsGiveUpMax    = 15 * time.Second
@@ -108,7 +109,7 @@ func newLogsSourceBuilder(
 		out := make(chan protocol.SubResponse, logsBufferSize)
 		updates := make(chan subengine.BlockUpdate, 64)
 
-		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates, blockByHashResolver(supervisor, chain, chainSup, registry, giveUp))
+		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates, blockByHashResolver(supervisor, chain, chainSup, registry), giveUp)
 
 		go func() {
 			defer close(out)
@@ -140,7 +141,7 @@ func newLogsSourceBuilder(
 					}
 					switch update.Kind {
 					case subengine.BlockNew:
-						logs, upstreamId, err := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, update.Block, giveUp)
+						logs, upstreamId, err := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, update.Block, update.Seen.Add(giveUp))
 						if err != nil {
 							continue // skipped (logged and counted)
 						}
@@ -189,7 +190,8 @@ func newLogsSourceBuilder(
 	}
 }
 
-// logsGiveUp is how long one block may wait for an upstream able to serve it.
+// logsGiveUp is how long after its head arrived a block may wait for an
+// upstream able to serve it.
 func logsGiveUp(chain chains.Chain) time.Duration {
 	giveUp := logsGiveUpBlocks * chains.GetChain(chain.String()).Settings.ExpectedBlockTime
 	return min(max(giveUp, logsGiveUpMin), logsGiveUpMax)
@@ -197,7 +199,7 @@ func logsGiveUp(chain chains.Chain) time.Duration {
 
 // fetchBlockLogs returns the raw log objects of block, fetched via eth_getLogs on
 // an upstream chosen by height, plus the serving upstream id. It errors when no
-// upstream served the block within giveUp; the caller then skips the block.
+// upstream served the block by deadline; the caller then skips the block.
 func fetchBlockLogs(
 	ctx context.Context,
 	supervisor upstreams.UpstreamSupervisor,
@@ -205,7 +207,7 @@ func fetchBlockLogs(
 	chainSup upstreams.ChainSupervisor,
 	registry *rating.RatingRegistry,
 	block protocol.Block,
-	giveUp time.Duration,
+	deadline time.Time,
 ) ([]json.RawMessage, string, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"eth_getLogs",
@@ -237,10 +239,10 @@ func fetchBlockLogs(
 		return true
 	}
 
-	resp, reason, err := sendUntil(ctx, supervisor, chain, request, newStrategy, giveUp, parse)
+	resp, reason, err := sendUntil(ctx, supervisor, chain, request, newStrategy, deadline, parse)
 	if err != nil {
 		if ctx.Err() == nil {
-			log.Warn().Err(err).Msgf("subengine: no upstream served eth_getLogs for block %d (%s) on %s within %s; skipping block's logs", block.Height, block.Hash.ToHexWithPrefix(), chain, giveUp)
+			log.Warn().Err(err).Msgf("subengine: no upstream served eth_getLogs for block %d (%s) on %s in time; skipping block's logs", block.Height, block.Hash.ToHexWithPrefix(), chain)
 			logsBlocksSkippedMetric.WithLabelValues(chain.String(), reason).Inc()
 		}
 		return nil, "", err
@@ -250,12 +252,12 @@ func fetchBlockLogs(
 
 // blockByHashResolver lets the block-update stream fetch the merged head's
 // ancestors by hash: heights the head jumped over, or the new chain after a reorg.
+// It keeps trying until ctx's deadline.
 func blockByHashResolver(
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
 	chainSup upstreams.ChainSupervisor,
 	registry *rating.RatingRegistry,
-	giveUp time.Duration,
 ) subengine.BlockResolver {
 	return func(ctx context.Context, hash blockchain.HashId) (protocol.Block, error) {
 		request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByHash", []any{hash.ToHexWithPrefix(), false}, chain)
@@ -283,7 +285,8 @@ func blockByHashResolver(
 			}
 			return block.Hash.Equals(hash)
 		}
-		if _, _, err := sendUntil(ctx, supervisor, chain, request, newStrategy, giveUp, parse); err != nil {
+		deadline, _ := ctx.Deadline()
+		if _, _, err := sendUntil(ctx, supervisor, chain, request, newStrategy, deadline, parse); err != nil {
 			return protocol.Block{}, err
 		}
 		return block, nil
@@ -291,16 +294,17 @@ func blockByHashResolver(
 }
 
 // sendUntil sends request to a strategy-chosen upstream until accept takes its
-// result or giveUp passes. An upstream error or a rejected result moves on to the
-// next-best upstream; when none is selectable, it backs off and re-selects from
-// the full list. On failure reason names the last cause, for the skip metric.
+// result or deadline passes, making at least one attempt. An upstream error or a
+// rejected result moves on to the next-best upstream; when none is selectable, it
+// backs off and re-selects from the full list. On failure reason names the last
+// cause, for the skip metric.
 func sendUntil(
 	ctx context.Context,
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
 	request protocol.RequestHolder,
 	newStrategy func() UpstreamStrategy,
-	giveUp time.Duration,
+	deadline time.Time,
 	accept func(result []byte) bool,
 ) (*protocol.ResponseHolderWrapper, string, error) {
 	start := time.Now()
@@ -322,10 +326,11 @@ func sendUntil(
 		if fresh {
 			reason = "no_upstream"
 		}
-		if time.Since(start) >= giveUp {
+		left := time.Until(deadline)
+		if left <= 0 {
 			return nil, reason, err
 		}
-		wait = min(max(2*wait, logsUpstreamWaitStep), logsUpstreamWaitMax)
+		wait = min(max(2*wait, logsUpstreamWaitStep), logsUpstreamWaitMax, left)
 		select {
 		case <-ctx.Done():
 			return nil, reason, ctx.Err()

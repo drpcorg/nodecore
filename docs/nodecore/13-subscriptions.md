@@ -125,8 +125,9 @@ the one upstream source.
   reached the block (the head may come from an upstream without the method), and upstream errors are
   retried. Heights the merged head jumped over, and the new chain after a reorg, are fetched by
   parent hash and announced in order (up to 128 blocks back). A block that still cannot be served
-  within 2 block times (clamped to 3s–15s) is skipped, logged and counted; a head whose ancestors
-  cannot be fetched is announced with the gap, also logged and counted. The source ends only when no
+  within 2 block times (clamped to 3s–15s) of its head's arrival is skipped, logged and counted;
+  since the wait counts from the arrival, the stream never lags the head by more than that. A head
+  whose ancestors cannot be fetched in that time is announced with the gap, also logged and counted. The source ends only when no
   upstream retains the `logs` capability.
 
 ### newPendingTransactions

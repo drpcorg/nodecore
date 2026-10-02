@@ -3,6 +3,7 @@ package subengine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -66,6 +67,9 @@ const (
 type BlockUpdate struct {
 	Block protocol.Block
 	Kind  UpdateKind
+	// Seen is when the head that produced this update arrived; consumers anchor
+	// their waits to it so a backlog cannot make the stream fall further behind.
+	Seen time.Time
 }
 
 // ringEntry remembers the (height, hash) the tracker last considered canonical at
@@ -259,9 +263,10 @@ func (t *blockTracker) advanceWithAncestors(ctx context.Context, block protocol.
 // to out until srcCtx is cancelled or the head subscription closes. It owns its
 // blockTracker and closes out on return, so the consumer exits deterministically
 // (via its `if !ok` branch) even when the head subscription closes while srcCtx
-// is still live. It backfills the heads' missing ancestors via resolve; a head
-// whose ancestors cannot be fetched is logged, counted and announced as is.
-func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervisor, out chan<- BlockUpdate, resolve BlockResolver) {
+// is still live. It backfills the heads' missing ancestors via resolve, within
+// backfillWait of the head's arrival; a head whose ancestors cannot be fetched is
+// logged, counted and announced as is.
+func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervisor, out chan<- BlockUpdate, resolve BlockResolver, backfillWait time.Duration) {
 	defer close(out)
 
 	sub := chainSup.SubscribeState(fmt.Sprintf("subengine_logs_%s_%s", chainSup.GetChain(), uuid.NewString()))
@@ -282,7 +287,10 @@ func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervis
 				if !ok {
 					continue
 				}
-				updates, err := t.advanceWithAncestors(srcCtx, head.Head, resolve)
+				seen := time.Now()
+				backfillCtx, cancel := context.WithDeadline(srcCtx, seen.Add(backfillWait))
+				updates, err := t.advanceWithAncestors(backfillCtx, head.Head, resolve)
+				cancel()
 				if err != nil {
 					if srcCtx.Err() != nil {
 						return
@@ -292,6 +300,7 @@ func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervis
 					updates = t.advance(head.Head)
 				}
 				for _, update := range updates {
+					update.Seen = seen
 					select {
 					case out <- update:
 					case <-srcCtx.Done():

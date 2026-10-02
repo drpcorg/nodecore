@@ -480,7 +480,7 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 
 **Type:** Counter
 
-**Description:** The total number of blocks whose logs could not be served within the give-up time (2 block times, clamped to 3s–15s) and were skipped. The block's logs are missing from every `logs` subscriber on that chain.
+**Description:** The total number of blocks whose logs could not be served within the give-up time (2 block times, clamped to 3s–15s, counted from the head's arrival) and were skipped. The block's logs are missing from every `logs` subscriber on that chain.
 
 **Labels:**
 
