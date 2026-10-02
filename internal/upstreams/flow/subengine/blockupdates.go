@@ -3,6 +3,7 @@ package subengine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -32,8 +33,32 @@ var reorgClampedMetric = prometheus.NewCounterVec(
 	[]string{"chain"},
 )
 
+// backfillFailedMetric counts heads whose missing ancestors could not be fetched;
+// such a head is announced as is, leaving the gap.
+var backfillFailedMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: config.AppName,
+		Subsystem: "logs_source",
+		Name:      "backfill_failed_total",
+		Help:      "The total number of heads whose missing ancestors could not be fetched (announced with a gap)",
+	},
+	[]string{"chain"},
+)
+
+// headLagMetric is how many blocks the logs head (eligible upstreams only) is
+// behind the chain's merged head.
+var headLagMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: config.AppName,
+		Subsystem: "logs_source",
+		Name:      "head_lag_blocks",
+		Help:      "How many blocks the logs source head is behind the chain head",
+	},
+	[]string{"chain"},
+)
+
 func init() {
-	prometheus.MustRegister(reorgClampedMetric)
+	prometheus.MustRegister(reorgClampedMetric, backfillFailedMetric, headLagMetric)
 }
 
 // UpdateKind classifies a BlockUpdate.
@@ -77,10 +102,11 @@ type ringEntry struct {
 // when the max height CHANGES, which still constrains what this tracker can see:
 //   - A same-height 1-block reorg with no height movement is invisible (it
 //     self-heals on the next height change via the parent/hash mismatch).
-//   - Forward gaps (height jumps N -> N+2) are not backfilled.
+//   - advance alone does not backfill: heights the head jumped over (N -> N+2)
+//     and the new chain below a reorged tip are never announced.
+//     advanceWithAncestors fetches them first (see needsParent).
 //   - Reorg reconciliation is bounded by the ring window: orphans deeper than
-//     historyRingSize have already been evicted, and the reorged-in block at the
-//     same height as a dropped tip is not backfilled.
+//     historyRingSize have already been evicted.
 type blockTracker struct {
 	ring    []ringEntry
 	haveTip bool
@@ -191,39 +217,147 @@ func (t *blockTracker) put(block protocol.Block) {
 	}
 }
 
-// StreamBlockUpdates taps the chain head stream and pushes ordered BlockUpdates
-// to out until srcCtx is cancelled or the head subscription closes. It owns its
-// blockTracker and closes out on return, so the consumer exits deterministically
-// (via its `if !ok` branch) even when the head subscription closes while srcCtx
-// is still live.
-func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervisor, out chan<- BlockUpdate) {
+// needsParent reports whether block does not link to what was announced, so its
+// parent must be announced first: the head jumped over the parent's height, or
+// the parent at an announced height has a different hash (a reorg below the tip
+// whose new chain was never announced). A parent below the window or at a height
+// never announced cannot be linked against and is left to advance.
+func (t *blockTracker) needsParent(block protocol.Block) bool {
+	if !t.haveTip || block.Height == 0 || len(block.ParentHash) == 0 {
+		return false
+	}
+	ph := block.Height - 1
+	if ph > t.tipH {
+		return true
+	}
+	e := t.ring[ph%historyRingSize]
+	return e.populated && e.height == ph && !e.hash.Equals(block.ParentHash)
+}
+
+// BlockResolver fetches the header of the block with hash at height.
+type BlockResolver func(ctx context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error)
+
+// maxBackfillBlocks bounds how many ancestors of one head are fetched; a deeper
+// gap is left unfilled.
+const maxBackfillBlocks = 32
+
+// advanceWithAncestors is advance that first announces the ancestors block does
+// not link to, fetched by parent hash and fed oldest-first, so their NEW/DROP
+// updates come out of the regular advance logic. It errors when an ancestor
+// cannot be fetched or the gap exceeds maxBackfillBlocks.
+func (t *blockTracker) advanceWithAncestors(ctx context.Context, block protocol.Block, resolve BlockResolver) ([]BlockUpdate, error) {
+	pending := []protocol.Block{block}
+	for t.needsParent(pending[0]) {
+		if len(pending) > maxBackfillBlocks {
+			return nil, fmt.Errorf("block %d does not link within %d ancestors", block.Height, maxBackfillBlocks)
+		}
+		child := pending[0]
+		parent, err := resolve(ctx, child.ParentHash, child.Height-1)
+		if err != nil {
+			return nil, fmt.Errorf("fetch parent of block %d: %w", child.Height, err)
+		}
+		if parent.Height+1 != child.Height || !parent.Hash.Equals(child.ParentHash) {
+			return nil, fmt.Errorf("parent of block %d resolved to %d %s", child.Height, parent.Height, parent.Hash.ToHexWithPrefix())
+		}
+		pending = append([]protocol.Block{parent}, pending...)
+	}
+	var updates []BlockUpdate
+	for _, b := range pending {
+		updates = append(updates, t.advance(b)...)
+	}
+	return updates, nil
+}
+
+// bestHead is the highest head among the eligible upstream states. On a tie it
+// keeps current, so upstreams on different forks at one height do not flap.
+func bestHead(states []*protocol.UpstreamState, eligible func(*protocol.UpstreamState) bool, current protocol.Block) (protocol.Block, bool) {
+	var best protocol.Block
+	found := false
+	for _, st := range states {
+		if st == nil || !eligible(st) || st.HeadData.IsEmptyByHeight() || len(st.HeadData.Hash) == 0 {
+			continue
+		}
+		h := st.HeadData
+		if !found || h.Height > best.Height || (h.Height == best.Height && h.Hash.Equals(current.Hash)) {
+			best, found = h, true
+		}
+	}
+	return best, found
+}
+
+// logsHeadRecheck is how often the stream re-reads the upstream heads: the chain
+// state publishes only when the merged head moves, not when an eligible upstream
+// catches up to it.
+const logsHeadRecheck = 50 * time.Millisecond
+
+// StreamBlockUpdates pushes ordered BlockUpdates to out until srcCtx is cancelled
+// or the chain state subscription closes. The head it follows is the highest head
+// among the eligible upstreams - the ones the consumer can query - not the
+// chain's merged head, which may come from an upstream the consumer cannot use.
+// It is re-read on every chain state event and every logsHeadRecheck. Missing
+// ancestors of a head are fetched via resolve; a head whose ancestors cannot be
+// fetched is logged, counted and announced as is. It owns its blockTracker and
+// closes out on return, so the consumer exits deterministically (via its `if !ok`
+// branch).
+func StreamBlockUpdates(
+	srcCtx context.Context,
+	chainSup upstreams.ChainSupervisor,
+	out chan<- BlockUpdate,
+	eligible func(*protocol.UpstreamState) bool,
+	resolve BlockResolver,
+) {
 	defer close(out)
 
 	sub := chainSup.SubscribeState(fmt.Sprintf("subengine_logs_%s_%s", chainSup.GetChain(), uuid.NewString()))
 	defer sub.Unsubscribe()
+	recheck := time.NewTicker(logsHeadRecheck)
+	defer recheck.Stop()
 
 	t := newBlockTracker()
 	t.chain = chainSup.GetChain()
+	var fed protocol.Block
 	for {
 		select {
 		case <-srcCtx.Done():
 			return
-		case event, ok := <-sub.Events:
+		case _, ok := <-sub.Events:
 			if !ok {
 				return
 			}
-			for _, wrapper := range event.Wrappers {
-				head, ok := wrapper.(*upstreams.HeadWrapper)
-				if !ok {
-					continue
-				}
-				for _, update := range t.advance(head.Head) {
-					select {
-					case out <- update:
-					case <-srcCtx.Done():
-						return
-					}
-				}
+		case <-recheck.C:
+		}
+
+		ids := chainSup.GetUpstreamIds()
+		states := make([]*protocol.UpstreamState, 0, len(ids))
+		for _, id := range ids {
+			states = append(states, chainSup.GetUpstreamState(id))
+		}
+		head, ok := bestHead(states, eligible, fed)
+		if !ok {
+			continue
+		}
+		if chainHead := chainSup.GetChainState().HeadData.Head.Height; chainHead >= head.Height {
+			headLagMetric.WithLabelValues(t.chain.String()).Set(float64(chainHead - head.Height))
+		}
+		if head.Height == fed.Height && head.Hash.Equals(fed.Hash) {
+			continue
+		}
+		fed = head
+
+		updates, err := t.advanceWithAncestors(srcCtx, head, resolve)
+		if err != nil {
+			if srcCtx.Err() != nil {
+				return
+			}
+			log.Warn().Err(err).Msgf("subengine: cannot backfill the head of %s; announcing it with a gap", t.chain)
+			backfillFailedMetric.WithLabelValues(t.chain.String()).Inc()
+			updates = t.advance(head)
+		}
+		for _, update := range updates {
+			select {
+			case out <- update:
+			case <-srcCtx.Done():
+				return
 			}
 		}
 	}

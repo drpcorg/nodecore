@@ -3,6 +3,8 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
@@ -11,7 +13,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -45,6 +49,9 @@ const (
 	// logsFetchAttempts bounds the per-block walk down the rating list when an
 	// upstream errors on eth_getLogs before the block is skipped.
 	logsFetchAttempts = 3
+	// logsLostCheck is how often the source checks the chain still has LogsCap
+	// while no block arrives.
+	logsLostCheck = time.Second
 )
 
 // newLogsSourceBuilder builds the chain's single shared "all logs" source: for
@@ -53,6 +60,12 @@ const (
 // happens in the processor. Upstream selection is by the block's HEIGHT (any
 // available upstream at >= that height), not by the head producer, so a producer
 // that has since gone away does not break log delivery.
+//
+// Blocks are announced from the heads of the upstreams that can serve them
+// (available, with eth_getLogs), not from the chain's merged head: that one may
+// come from an upstream without eth_getLogs, and its block would be skipped
+// because no upstream that has the method had reached it yet. Heights that head
+// jumps over, and the new chain after a reorg, are fetched by parent hash.
 //
 // Reorgs are handled via the block-update stream (see subengine.StreamBlockUpdates):
 // a dropped block's cached logs are re-emitted with removed:true. The source
@@ -77,7 +90,7 @@ func newLogsSourceBuilder(
 		out := make(chan protocol.SubResponse, logsBufferSize)
 		updates := make(chan subengine.BlockUpdate, 64)
 
-		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates)
+		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates, canServeLogs, blockByHashResolver(supervisor, chain, chainSup, registry))
 
 		go func() {
 			defer close(out)
@@ -88,10 +101,20 @@ func newLogsSourceBuilder(
 				return
 			}
 
+			// updates follow only upstreams with eth_getLogs, so they stop once none
+			// is left; check for the lost capability on a timer too
+			lostCheck := time.NewTicker(logsLostCheck)
+			defer lostCheck.Stop()
+
 			for {
 				select {
 				case <-srcCtx.Done():
 					return
+				case <-lostCheck.C:
+					if logsLost() {
+						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
+						return
+					}
 				case update, ok := <-updates:
 					if !ok {
 						return
@@ -207,6 +230,59 @@ func fetchBlockLogs(
 	log.Warn().Msgf("subengine: eth_getLogs errored on all %d attempts for block %d on %s; skipping block's logs", logsFetchAttempts, block.Height, chain)
 	logsBlocksSkippedMetric.WithLabelValues(chain.String(), "upstream_error").Inc()
 	return nil, ""
+}
+
+// logsMatcher is what fetchBlockLogs selects upstreams by, besides the height.
+var logsMatcher = NewMultiMatcher(NewStatusMatcher(), NewMethodMatcher("eth_getLogs"))
+
+// canServeLogs reports whether fetchBlockLogs may pick the upstream; its head
+// drives the logs source.
+func canServeLogs(state *protocol.UpstreamState) bool {
+	return logsMatcher.Match("", state).Type() == SuccessType
+}
+
+// blockByHashResolver lets the block-update stream fetch the head's ancestors by
+// hash: heights the head jumped over, or the new chain after a reorg.
+func blockByHashResolver(
+	supervisor upstreams.UpstreamSupervisor,
+	chain chains.Chain,
+	chainSup upstreams.ChainSupervisor,
+	registry *rating.RatingRegistry,
+) subengine.BlockResolver {
+	return func(ctx context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
+		request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByHash", []any{hash.ToHexWithPrefix(), false}, chain)
+		if err != nil {
+			return protocol.Block{}, err
+		}
+		strategy := NewRatingStrategy(chain, "eth_getBlockByHash", []Matcher{NewHeightMatcher(int64(height))}, chainSup, registry)
+		for attempt := 0; attempt < logsFetchAttempts; attempt++ {
+			resp, err := selectAndSend(ctx, supervisor, request, strategy)
+			if err != nil {
+				return protocol.Block{}, err
+			}
+			if resp.Response.HasError() {
+				continue
+			}
+			var header struct {
+				Hash   string           `json:"hash"`
+				Parent string           `json:"parentHash"`
+				Number *rpc.BlockNumber `json:"number"`
+			}
+			// null: this upstream does not know the block
+			if err := sonic.Unmarshal(resp.Response.ResponseResult(), &header); err != nil || header.Number == nil {
+				continue
+			}
+			block := protocol.Block{
+				Height:     uint64(header.Number.Int64()),
+				Hash:       blockchain.NewHashIdFromString(header.Hash),
+				ParentHash: blockchain.NewHashIdFromString(header.Parent),
+			}
+			if block.Hash.Equals(hash) {
+				return block, nil
+			}
+		}
+		return protocol.Block{}, fmt.Errorf("no upstream returned block %s", hash.ToHexWithPrefix())
+	}
 }
 
 // setRemovedTrue returns a copy of an eth log object with "removed" set to true,
