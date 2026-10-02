@@ -1,6 +1,8 @@
 package subengine
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -309,6 +311,134 @@ func TestDropFromHeightZeroNoUnderflow(t *testing.T) {
 	drops := tr.dropFrom(0)
 	require.Len(t, drops, 1)
 	assert.Equal(t, uint64(0), drops[0].Block.Height)
+}
+
+// --- advanceWithAncestors ---------------------------------------------------
+
+// resolverOf serves the given blocks by hash and counts the calls.
+func resolverOf(blocks ...protocol.Block) (BlockResolver, *int) {
+	byHash := map[string]protocol.Block{}
+	for _, b := range blocks {
+		byHash[b.Hash.ToHex()] = b
+	}
+	calls := 0
+	return func(_ context.Context, hash blockchain.HashId) (protocol.Block, error) {
+		calls++
+		b, ok := byHash[hash.ToHex()]
+		if !ok {
+			return protocol.Block{}, errors.New("unknown block")
+		}
+		return b, nil
+	}, &calls
+}
+
+func advanceOK(t *testing.T, tr *blockTracker, b protocol.Block, resolve BlockResolver) []BlockUpdate {
+	t.Helper()
+	updates, err := tr.advanceWithAncestors(context.Background(), b, resolve)
+	require.NoError(t, err)
+	return updates
+}
+
+// A head that jumps over heights gets them announced first, oldest-first.
+func TestAdvanceWithAncestorsBackfillsForwardGap(t *testing.T) {
+	resolve, calls := resolverOf(blk(2, "bb", "aa"), blk(3, "cc", "bb"))
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+
+	assertUpdates(t, advanceOK(t, tr, blk(4, "dd", "cc"), resolve), []wantUpdate{
+		{2, "bb", BlockNew}, {3, "cc", BlockNew}, {4, "dd", BlockNew},
+	})
+	assert.Equal(t, 2, *calls)
+}
+
+// A head built on a different tip: the old tip is dropped and the new chain's
+// block at that height - which advance alone never announces - is announced.
+func TestAdvanceWithAncestorsAnnouncesReorgedInParent(t *testing.T) {
+	resolve, _ := resolverOf(blk(2, "b2", "aa"))
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+	advanceOK(t, tr, blk(2, "bb", "aa"), resolve)
+
+	assertUpdates(t, advanceOK(t, tr, blk(3, "cc", "b2"), resolve), []wantUpdate{
+		{2, "bb", BlockDrop}, {2, "b2", BlockNew}, {3, "cc", BlockNew},
+	})
+}
+
+// A gap on top of a reorg: the walk goes down to the fork point, the orphaned
+// tip is dropped and every block of the new chain is announced.
+func TestAdvanceWithAncestorsReorgBehindGap(t *testing.T) {
+	resolve, calls := resolverOf(blk(3, "c2", "bb"), blk(4, "d2", "c2"))
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+	advanceOK(t, tr, blk(2, "bb", "aa"), resolve)
+	advanceOK(t, tr, blk(3, "cc", "bb"), resolve)
+
+	assertUpdates(t, advanceOK(t, tr, blk(5, "ee", "d2"), resolve), []wantUpdate{
+		{3, "cc", BlockDrop}, {3, "c2", BlockNew}, {4, "d2", BlockNew}, {5, "ee", BlockNew},
+	})
+	assert.Equal(t, 2, *calls)
+}
+
+// Linked heads, the first head and benign rollbacks never call the resolver.
+func TestAdvanceWithAncestorsNoFetchWhenLinked(t *testing.T) {
+	resolve, calls := resolverOf()
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(7, "aa", "00"), resolve) // first head: nothing to link to
+	advanceOK(t, tr, blk(8, "bb", "aa"), resolve)
+	advanceOK(t, tr, blk(9, "cc", "bb"), resolve)
+	assert.Empty(t, advanceOK(t, tr, blk(8, "bb", "aa"), resolve))                // rollback on the same chain
+	assertUpdates(t, advanceOK(t, tr, blk(8, "b2", "aa"), resolve), []wantUpdate{ // reorg below the tip
+		{9, "cc", BlockDrop}, {8, "bb", BlockDrop}, {8, "b2", BlockNew},
+	})
+	assert.Equal(t, 0, *calls)
+}
+
+// A failed fetch errors without announcing anything, so the stream can stop
+// instead of leaving a hole.
+func TestAdvanceWithAncestorsResolveError(t *testing.T) {
+	resolve, _ := resolverOf()
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+
+	updates, err := tr.advanceWithAncestors(context.Background(), blk(3, "cc", "bb"), resolve)
+	require.Error(t, err)
+	assert.Empty(t, updates)
+	assert.Equal(t, uint64(1), tr.tipH, "tracker state is untouched")
+}
+
+// A resolved block that is not the requested parent is rejected.
+func TestAdvanceWithAncestorsRejectsWrongParent(t *testing.T) {
+	resolve, _ := resolverOf(blk(5, "bb", "aa")) // right hash, wrong height
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+
+	_, err := tr.advanceWithAncestors(context.Background(), blk(3, "cc", "bb"), resolve)
+	require.Error(t, err)
+}
+
+// A gap deeper than maxBackfillBlocks errors instead of walking on.
+func TestAdvanceWithAncestorsGapTooDeep(t *testing.T) {
+	var chain []protocol.Block
+	for h := uint64(2); h <= maxBackfillBlocks+3; h++ {
+		chain = append(chain, blk(h, hexFor(h), hexFor(h-1)))
+	}
+	resolve, _ := resolverOf(chain...)
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, hexFor(1), "00"), resolve)
+
+	top := uint64(maxBackfillBlocks + 4)
+	_, err := tr.advanceWithAncestors(context.Background(), blk(top, hexFor(top), hexFor(top-1)), resolve)
+	require.Error(t, err)
+}
+
+// A head without a parent hash cannot be linked and is advanced as before.
+func TestAdvanceWithAncestorsEmptyParentAdvancesAsBefore(t *testing.T) {
+	resolve, calls := resolverOf()
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+	got := advanceOK(t, tr, protocol.Block{Height: 3, Hash: blockchain.NewHashIdFromString("cc")}, resolve)
+	assertUpdates(t, got, []wantUpdate{{3, "cc", BlockNew}})
+	assert.Equal(t, 0, *calls)
 }
 
 // hexFor returns a short, unique, valid hex string for a height.

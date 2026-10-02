@@ -474,22 +474,55 @@ These metrics track internal subscription manager performance (used for event pr
 
 ## Logs Subscription Metrics
 
-Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A non-zero value on either counter means subscribers may have silently missed log events.
+Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). Blocks are not skipped silently: a block that cannot be served in time terminates the source, so subscribers get an error instead of a gap. A non-zero `blocks_skipped_total` or `backfill_failed_total` therefore means terminated subscriptions, not missing events.
 
 ### `nodecore_logs_source_blocks_skipped_total`
 
 **Type:** Counter
 
-**Description:** The total number of blocks whose logs could not be served and were skipped. The block's logs are silently missing from every `logs` subscriber on that chain.
+**Description:** The total number of blocks whose logs could not be served within the give-up time (10 block times, clamped to 3s–60s). The source then terminates and every `logs` subscriber on that chain gets an error.
 
 **Labels:**
 
 - `chain` - The blockchain network (e.g., ethereum)
-- `reason` - Why the block was skipped: `build` (failed to build the `eth_getLogs` request), `no_upstream` (no upstream at the block height / strategy exhausted), `parse` (failed to parse the `eth_getLogs` result), `upstream_error` (every attempt returned an upstream error)
+- `reason` - Why the block could not be served: `build` (failed to build the `eth_getLogs` request), `no_upstream` (no upstream with `eth_getLogs` reached the block height), `upstream_error` (upstreams kept erroring or returning an unparsable result)
 
 **Source:** `internal/upstreams/flow/logs_source.go`
 
-**Use Case:** Alert on gaps in delivered `logs`; a sustained `no_upstream` rate indicates insufficient upstream coverage at the chain head.
+**Use Case:** Alert on terminated `logs` subscriptions; a sustained `no_upstream` rate indicates insufficient `eth_getLogs` coverage at the chain head.
+
+---
+
+### `nodecore_logs_source_upstream_wait_seconds`
+
+**Type:** Histogram
+
+**Description:** How long a logs source request waited for an upstream able to serve it, observed only when it had to wait. For `eth_getLogs` this is typically the head coming from an upstream without the method while the ones with it are a moment behind.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+- `method` - `eth_getLogs` (a block's logs) or `eth_getBlockByHash` (a backfilled ancestor)
+
+**Source:** `internal/upstreams/flow/logs_source.go`
+
+**Use Case:** See how far behind the head the `eth_getLogs`-capable upstreams are; waits close to the give-up time precede terminations.
+
+---
+
+### `nodecore_logs_source_backfill_failed_total`
+
+**Type:** Counter
+
+**Description:** The total number of heads whose missing ancestors (heights the merged head jumped over, or the new chain after a reorg) could not be fetched by hash, or lay deeper than 128 blocks. The block-update stream then closes and the logs source terminates.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+
+**Source:** `internal/upstreams/flow/subengine/blockupdates.go`
+
+**Use Case:** Detect head-stream gaps the source could not reconcile.
 
 ---
 
