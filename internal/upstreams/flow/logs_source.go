@@ -20,14 +20,14 @@ import (
 )
 
 // logsBlocksSkippedMetric counts blocks whose logs could not be served before the
-// give-up deadline; the source then terminates, so subscribers get an error
-// instead of a gap. The reason label says why.
+// give-up deadline and were skipped (subscribers miss that block's logs). The
+// reason label says why.
 var logsBlocksSkippedMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: config.AppName,
 		Subsystem: "logs_source",
 		Name:      "blocks_skipped_total",
-		Help:      "The total number of blocks whose logs could not be served in time (the source terminates), by reason",
+		Help:      "The total number of blocks whose logs could not be served in time and were skipped, by reason",
 	},
 	[]string{"chain", "reason"},
 )
@@ -63,11 +63,12 @@ const (
 	// logsUpstreamWaitStep up to logsUpstreamWaitMax.
 	logsUpstreamWaitStep = 50 * time.Millisecond
 	logsUpstreamWaitMax  = time.Second
-	// A block waits logsGiveUpBlocks block times, clamped to [min, max], before the
-	// source terminates.
-	logsGiveUpBlocks = 10
+	// A block waits logsGiveUpBlocks block times, clamped to [min, max], before it
+	// is skipped. Blocks are processed in order, so the cap also bounds how long
+	// one unservable block (e.g. orphaned while waiting) delays the next ones.
+	logsGiveUpBlocks = 2
 	logsGiveUpMin    = 3 * time.Second
-	logsGiveUpMax    = time.Minute
+	logsGiveUpMax    = 15 * time.Second
 )
 
 // newLogsSourceBuilder builds the chain's single shared "all logs" source: for
@@ -77,12 +78,11 @@ const (
 // available upstream at >= that height), not by the head producer, so a producer
 // that has since gone away does not break log delivery.
 //
-// No block is skipped silently. A block waits for an upstream able to serve it:
-// the merged head may come from an upstream without eth_getLogs while the ones
-// with it are a moment behind. Heights the merged head jumped over, and the new
-// chain after a reorg, are backfilled by the block-update stream. A block that
-// cannot be served in time terminates the source, so subscribers get an error
-// instead of a gap.
+// A block waits for an upstream able to serve it: the merged head may come from
+// an upstream without eth_getLogs while the ones with it are a moment behind.
+// Heights the merged head jumped over, and the new chain after a reorg, are
+// backfilled by the block-update stream. A block that cannot be served in time
+// is skipped, logged and counted.
 //
 // Reorgs are handled via the block-update stream (see subengine.StreamBlockUpdates):
 // a dropped block's cached logs are re-emitted with removed:true. The source
@@ -132,7 +132,7 @@ func newLogsSourceBuilder(
 					return
 				case update, ok := <-updates:
 					if !ok {
-						return // the stream gave up on a backfill: the engine reports a total failure
+						return
 					}
 					if logsLost() {
 						fail()
@@ -142,8 +142,7 @@ func newLogsSourceBuilder(
 					case subengine.BlockNew:
 						logs, upstreamId, err := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, update.Block, giveUp)
 						if err != nil {
-							fail()
-							return
+							continue // skipped (logged and counted)
 						}
 						// Parse each log's filterable fields once here; every client's
 						// SubFilter then reads the shared parsed view instead of
@@ -197,8 +196,8 @@ func logsGiveUp(chain chains.Chain) time.Duration {
 }
 
 // fetchBlockLogs returns the raw log objects of block, fetched via eth_getLogs on
-// an upstream chosen by height, plus the serving upstream id. It errors only when
-// no upstream served the block within giveUp.
+// an upstream chosen by height, plus the serving upstream id. It errors when no
+// upstream served the block within giveUp; the caller then skips the block.
 func fetchBlockLogs(
 	ctx context.Context,
 	supervisor upstreams.UpstreamSupervisor,
@@ -241,7 +240,7 @@ func fetchBlockLogs(
 	resp, reason, err := sendUntil(ctx, supervisor, chain, request, newStrategy, giveUp, parse)
 	if err != nil {
 		if ctx.Err() == nil {
-			log.Warn().Err(err).Msgf("subengine: no upstream served eth_getLogs for block %d on %s within %s; terminating the logs source", block.Height, chain, giveUp)
+			log.Warn().Err(err).Msgf("subengine: no upstream served eth_getLogs for block %d (%s) on %s within %s; skipping block's logs", block.Height, block.Hash.ToHexWithPrefix(), chain, giveUp)
 			logsBlocksSkippedMetric.WithLabelValues(chain.String(), reason).Inc()
 		}
 		return nil, "", err

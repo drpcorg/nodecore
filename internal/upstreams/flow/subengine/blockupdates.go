@@ -33,13 +33,13 @@ var reorgClampedMetric = prometheus.NewCounterVec(
 )
 
 // backfillFailedMetric counts heads whose missing ancestors could not be fetched;
-// the block-update stream then closes and the logs source terminates.
+// such a head is announced as is, leaving the gap.
 var backfillFailedMetric = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: config.AppName,
 		Subsystem: "logs_source",
 		Name:      "backfill_failed_total",
-		Help:      "The total number of heads whose missing ancestors could not be fetched (the logs source terminates)",
+		Help:      "The total number of heads whose missing ancestors could not be fetched (announced with a gap)",
 	},
 	[]string{"chain"},
 )
@@ -225,7 +225,7 @@ func (t *blockTracker) needsParent(block protocol.Block) bool {
 type BlockResolver func(ctx context.Context, hash blockchain.HashId) (protocol.Block, error)
 
 // maxBackfillBlocks bounds how many ancestors of one head are fetched; a deeper
-// gap fails the stream rather than being announced with a hole.
+// gap is left unfilled.
 const maxBackfillBlocks = 128
 
 // advanceWithAncestors is advance that first announces the ancestors block does
@@ -259,8 +259,8 @@ func (t *blockTracker) advanceWithAncestors(ctx context.Context, block protocol.
 // to out until srcCtx is cancelled or the head subscription closes. It owns its
 // blockTracker and closes out on return, so the consumer exits deterministically
 // (via its `if !ok` branch) even when the head subscription closes while srcCtx
-// is still live. It backfills the heads' missing ancestors via resolve and
-// returns when that fails, so the consumer never sees a hole.
+// is still live. It backfills the heads' missing ancestors via resolve; a head
+// whose ancestors cannot be fetched is logged, counted and announced as is.
 func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervisor, out chan<- BlockUpdate, resolve BlockResolver) {
 	defer close(out)
 
@@ -284,11 +284,12 @@ func StreamBlockUpdates(srcCtx context.Context, chainSup upstreams.ChainSupervis
 				}
 				updates, err := t.advanceWithAncestors(srcCtx, head.Head, resolve)
 				if err != nil {
-					if srcCtx.Err() == nil {
-						log.Warn().Err(err).Msgf("subengine: cannot backfill the head of %s; closing the block-update stream", t.chain)
-						backfillFailedMetric.WithLabelValues(t.chain.String()).Inc()
+					if srcCtx.Err() != nil {
+						return
 					}
-					return
+					log.Warn().Err(err).Msgf("subengine: cannot backfill the head of %s; announcing it with a gap", t.chain)
+					backfillFailedMetric.WithLabelValues(t.chain.String()).Inc()
+					updates = t.advance(head.Head)
 				}
 				for _, update := range updates {
 					select {

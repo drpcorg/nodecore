@@ -121,12 +121,13 @@ the one upstream source.
   deeper than the bounded history window are clamped (tracked by a metric).
 - **Selectors bypass local logs**: as noted in the [fallback rule](#local-subscriptions-vs-node-backed-passthrough),
   a logs request with effective selectors uses a node-backed passthrough instead.
-- **No silent gaps**: a block waits for an upstream that has `eth_getLogs` and has reached the block
-  (the head may come from an upstream without the method), and upstream errors are retried. Heights
-  the merged head jumped over, and the new chain after a reorg, are fetched by parent hash and
-  announced in order. A block that cannot be served within 10 block times (clamped to 3s–60s), or
-  a gap deeper than 128 blocks, terminates the source: subscribers get an error and resubscribe
-  rather than miss logs. The source also ends when no upstream retains the `logs` capability.
+- **Waiting instead of skipping**: a block waits for an upstream that has `eth_getLogs` and has
+  reached the block (the head may come from an upstream without the method), and upstream errors are
+  retried. Heights the merged head jumped over, and the new chain after a reorg, are fetched by
+  parent hash and announced in order (up to 128 blocks back). A block that still cannot be served
+  within 2 block times (clamped to 3s–15s) is skipped, logged and counted; a head whose ancestors
+  cannot be fetched is announced with the gap, also logged and counted. The source ends only when no
+  upstream retains the `logs` capability.
 
 ### newPendingTransactions
 

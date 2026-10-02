@@ -474,13 +474,13 @@ These metrics track internal subscription manager performance (used for event pr
 
 ## Logs Subscription Metrics
 
-Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). Blocks are not skipped silently: a block that cannot be served in time terminates the source, so subscribers get an error instead of a gap. A non-zero `blocks_skipped_total` or `backfill_failed_total` therefore means terminated subscriptions, not missing events.
+Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A block waits for an upstream able to serve it before it is skipped, so a non-zero `blocks_skipped_total` or `backfill_failed_total` means subscribers missed log events despite the wait.
 
 ### `nodecore_logs_source_blocks_skipped_total`
 
 **Type:** Counter
 
-**Description:** The total number of blocks whose logs could not be served within the give-up time (10 block times, clamped to 3s–60s). The source then terminates and every `logs` subscriber on that chain gets an error.
+**Description:** The total number of blocks whose logs could not be served within the give-up time (2 block times, clamped to 3s–15s) and were skipped. The block's logs are missing from every `logs` subscriber on that chain.
 
 **Labels:**
 
@@ -489,7 +489,7 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 
 **Source:** `internal/upstreams/flow/logs_source.go`
 
-**Use Case:** Alert on terminated `logs` subscriptions; a sustained `no_upstream` rate indicates insufficient `eth_getLogs` coverage at the chain head.
+**Use Case:** Alert on gaps in delivered `logs`; a sustained `no_upstream` rate indicates insufficient `eth_getLogs` coverage at the chain head.
 
 ---
 
@@ -506,7 +506,7 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 
 **Source:** `internal/upstreams/flow/logs_source.go`
 
-**Use Case:** See how far behind the head the `eth_getLogs`-capable upstreams are; waits close to the give-up time precede terminations.
+**Use Case:** See how far behind the head the `eth_getLogs`-capable upstreams are; waits close to the give-up time precede skipped blocks.
 
 ---
 
@@ -514,7 +514,7 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 
 **Type:** Counter
 
-**Description:** The total number of heads whose missing ancestors (heights the merged head jumped over, or the new chain after a reorg) could not be fetched by hash, or lay deeper than 128 blocks. The block-update stream then closes and the logs source terminates.
+**Description:** The total number of heads whose missing ancestors (heights the merged head jumped over, or the new chain after a reorg) could not be fetched by hash, or lay deeper than 128 blocks. Such a head is announced as is, so the missing blocks' logs are not delivered.
 
 **Labels:**
 
@@ -522,7 +522,7 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 
 **Source:** `internal/upstreams/flow/subengine/blockupdates.go`
 
-**Use Case:** Detect head-stream gaps the source could not reconcile.
+**Use Case:** Alert on head-stream gaps the source could not fill.
 
 ---
 
