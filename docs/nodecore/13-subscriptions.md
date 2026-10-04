@@ -70,7 +70,7 @@ There are four local source types:
 
 | Topic | How it is synthesized | Capability gate | Config flag |
 |---|---|---|---|
-| `newHeads` | Taps the chain's merged head stream (the fork-choice winner) and forwards head notifications | `NewHeadsCap` | `enable-new-heads` |
+| `newHeads` | Forwards one ws head notification per chain head height, in order | `NewHeadsCap` | `enable-new-heads` |
 | `logs` | One shared unfiltered log stream built from per-block `eth_getLogs`; per-client address/topic filtering | `LogsCap` | `enable-logs` |
 | `newPendingTransactions` | Merges the `newPendingTransactions` feeds from every WebSocket upstream and de-duplicates hashes | `PendingTxCap` | `enable-new-pending-transactions` |
 | `drpc_pendingTransactions` | Reuses the shared pending-hash source and enriches each hash via `eth_getTransactionByHash` | `PendingTxCap` | *always local (ungated)* |
@@ -105,8 +105,11 @@ off per chain/upstream with [`disable-liveness-subscription-validation`](05-upst
 ### newHeads
 
 There is one merged head per chain, so the local `newHeads` source is **one source per chain** and
-ignores request selectors. It taps the chain's head stream and forwards the upstream head
-notification payload verbatim.
+ignores request selectors. It forwards the upstream head notification payload verbatim, one per
+chain head height and in order. When the fork choice takes a height from a head without a
+notification payload (a polled upstream, or a head learnt from a response), the height is announced
+once a ws upstream reports the same block; a height already passed by the announced head is not
+sent. Heights that were never announced are counted in `nodecore_new_heads_skipped_total`.
 
 ### logs
 

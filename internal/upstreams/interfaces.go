@@ -38,6 +38,7 @@ type ChainSupervisor interface {
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
+	SubscribeNewHeads(name string) *utils.Subscription[*HeadWrapper]
 }
 
 type UpstreamSupervisor interface {

@@ -38,6 +38,9 @@ func (s *stubChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return nil
 }
+func (s *stubChainSupervisor) SubscribeNewHeads(string) *utils.Subscription[*upstreams.HeadWrapper] {
+	return nil
+}
 
 var _ upstreams.ChainSupervisor = (*stubChainSupervisor)(nil)
 

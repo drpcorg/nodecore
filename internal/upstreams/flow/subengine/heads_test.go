@@ -17,17 +17,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeChainSupervisor is a minimal ChainSupervisor whose head stream the test
+// fakeChainSupervisor is a minimal ChainSupervisor whose newHeads feed the test
 // drives directly. Like the real supervisor it stores state before publishing,
 // so GetChainState is authoritative when an event is observed.
 type fakeChainSupervisor struct {
 	sm    *utils.SubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]
+	heads *utils.SubscriptionManager[*upstreams.HeadWrapper]
 	mu    sync.Mutex
 	state upstreams.ChainSupervisorState
 }
 
 func newFakeChainSupervisor() *fakeChainSupervisor {
-	return &fakeChainSupervisor{sm: utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake")}
+	return &fakeChainSupervisor{
+		sm:    utils.NewSubscriptionManager[*upstreams.ChainSupervisorStateWrapperEvent]("fake"),
+		heads: utils.NewSubscriptionManager[*upstreams.HeadWrapper]("fake_heads"),
+	}
 }
 
 func (s *fakeChainSupervisor) setCaps(caps mapset.Set[protocol.Cap]) {
@@ -37,9 +41,7 @@ func (s *fakeChainSupervisor) setCaps(caps mapset.Set[protocol.Cap]) {
 }
 
 func (s *fakeChainSupervisor) publishHead(block protocol.Block, upstreamId string) {
-	s.sm.Publish(&upstreams.ChainSupervisorStateWrapperEvent{
-		Wrappers: []upstreams.ChainSupervisorStateWrapper{upstreams.NewHeadWrapper(block, upstreamId)},
-	})
+	s.heads.Publish(upstreams.NewHeadWrapper(block, upstreamId))
 }
 
 func (s *fakeChainSupervisor) publishCaps(caps mapset.Set[protocol.Cap]) {
@@ -68,12 +70,14 @@ func (s *fakeChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return s.sm.Subscribe(name)
 }
+func (s *fakeChainSupervisor) SubscribeNewHeads(name string) *utils.Subscription[*upstreams.HeadWrapper] {
+	return s.heads.Subscribe(name)
+}
 
 var _ upstreams.ChainSupervisor = (*fakeChainSupervisor)(nil)
 
-// A subscription block (RawData = the ws newHeads header) is forwarded verbatim
-// and stamped with the producing upstream; a head without RawData (a polled
-// block) is not a subscription notification and is skipped.
+// A feed head (RawData = the ws newHeads header) is forwarded verbatim and
+// stamped with the producing upstream; a head without RawData is skipped.
 func TestNewHeadsSourceForwardsSubscriptionBlocks(t *testing.T) {
 	chainSup := newFakeChainSupervisor()
 	chainSup.setCaps(mapset.NewThreadUnsafeSet(protocol.WsCap, protocol.NewHeadsCap))
@@ -93,7 +97,7 @@ func TestNewHeadsSourceForwardsSubscriptionBlocks(t *testing.T) {
 	assert.Equal(t, "up1", first.GetUpstreamId())
 	assert.Equal(t, header, first.GetMessage()) // forwarded verbatim
 
-	// a polled head (no RawData) is skipped; the next subscription block arrives
+	// a head without RawData is skipped; the next subscription block arrives
 	chainSup.publishHead(protocol.Block{Height: 2}, "up2")
 	next := []byte(`{"number":"0x3"}`)
 	chainSup.publishHead(protocol.Block{Height: 3, RawData: next}, "up1")

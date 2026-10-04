@@ -1339,3 +1339,35 @@ func TestChainSupervisorSubMethodsRequireSupportedSubscribeMethod(t *testing.T) 
 		return state.Caps.Contains(protocol.NewHeadsCap) && !state.Methods.HasMethod("eth_subscribe") && state.SubMethods.Cardinality() == 0
 	}, eventuallyWait, eventuallyTick)
 }
+
+// A polled head wins the fork choice; the same block arriving later over ws is announced on
+// the newHeads feed and leaves the state stream alone.
+func TestChainSupervisorAnnouncesLateSubscriptionHead(t *testing.T) {
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	newHeads := chainSupervisor.SubscribeNewHeads(t.Name())
+	states := chainSupervisor.SubscribeState(t.Name())
+	go chainSupervisor.Start()
+
+	polled := protocol.NewBlock(100, 0, blockchain.NewHashIdFromString("aa"), blockchain.NewHashIdFromString("a0"))
+	subscribed := polled
+	subscribed.RawData = []byte(`{"number":"0x64","hash":"0xaa"}`)
+	publishHeadEvent(chainSupervisor, "poll", protocol.Available, polled)
+	publishHeadEvent(chainSupervisor, "ws", protocol.Available, subscribed)
+
+	select {
+	case head := <-newHeads.Events:
+		assert.Equal(t, "ws", head.UpstreamId)
+		assert.Equal(t, subscribed.RawData, head.Head.RawData)
+	case <-time.After(time.Second):
+		t.Fatal("expected the ws head to be announced")
+	}
+
+	event := <-states.Events
+	require.Len(t, event.Wrappers, 1)
+	assert.Equal(t, "poll", event.Wrappers[0].(*upstreams.HeadWrapper).UpstreamId)
+	select {
+	case event := <-states.Events:
+		t.Fatalf("unexpected state event %v", event.Wrappers)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
