@@ -54,6 +54,8 @@ type GenericChainSupervisor struct {
 	roundRobinIndex atomic.Uint64
 
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+	newHeads        *newHeadsFeed
+	newHeadsManager *utils.SubscriptionManager[*HeadWrapper]
 }
 
 func NewGenericChainSupervisor(
@@ -92,6 +94,8 @@ func NewGenericChainSupervisor(
 		getUpstream:     getUpstream,
 		lastOver:        make(map[string]bool),
 		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
+		newHeads:        &newHeadsFeed{chain: chain.String()},
+		newHeadsManager: utils.NewSubscriptionManager[*HeadWrapper]("chain_supervisor_new_heads"),
 	}
 }
 
@@ -136,6 +140,12 @@ func (b *GenericChainSupervisor) PublishUpstreamEvent(event protocol.UpstreamEve
 
 func (b *GenericChainSupervisor) SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent] {
 	return b.subStateManager.Subscribe(name)
+}
+
+// SubscribeNewHeads streams the heads to announce to newHeads subscribers, each with its
+// subscription payload in RawData.
+func (b *GenericChainSupervisor) SubscribeNewHeads(name string) *utils.Subscription[*HeadWrapper] {
+	return b.newHeadsManager.Subscribe(name)
 }
 
 func (b *GenericChainSupervisor) GetUpstreamState(upstreamId string) *protocol.UpstreamState {
@@ -230,6 +240,7 @@ func (b *GenericChainSupervisor) processEvents() {
 func (b *GenericChainSupervisor) updateHead(upstreamId string, headEvent *protocol.HeadUpstreamEvent) {
 	newState := b.state.Load()
 	var headWrapper *ChainSupervisorStateWrapperEvent
+	var newHead *HeadWrapper
 	if headEvent != nil && !headEvent.Head.IsEmptyByHeight() {
 		updated, head := b.fc.Choose(upstreamId, headEvent)
 		if updated {
@@ -240,6 +251,9 @@ func (b *GenericChainSupervisor) updateHead(upstreamId string, headEvent *protoc
 				}
 			}
 		}
+		if announced, ok := b.newHeads.onHead(headEvent, updated, head); ok {
+			newHead = NewHeadWrapper(announced, upstreamId)
+		}
 	} else if headEvent != nil {
 		newState.HeadData = NewChainHeadData(protocol.ZeroBlock{}, upstreamId)
 	}
@@ -247,6 +261,9 @@ func (b *GenericChainSupervisor) updateHead(upstreamId string, headEvent *protoc
 	b.state.Store(newState)
 	if headWrapper != nil {
 		b.subStateManager.Publish(headWrapper)
+	}
+	if newHead != nil {
+		b.newHeadsManager.Publish(newHead)
 	}
 	b.calculateHeadLags()
 }

@@ -13,6 +13,7 @@ This document describes all Prometheus metrics exposed by nodecore on the `metri
 - [WebSocket Metrics](#websocket-metrics)
 - [Subscription Utilities Metrics](#subscription-utilities-metrics)
 - [Logs Subscription Metrics](#logs-subscription-metrics)
+- [newHeads Subscription Metrics](#newheads-subscription-metrics)
 
 ---
 
@@ -538,3 +539,23 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 **Source:** `internal/upstreams/flow/subengine/blockupdates.go`
 
 **Use Case:** Detect deep reorgs that exceed the reconciliation window, where some `removed` events are silently dropped.
+
+---
+
+## newHeads Subscription Metrics
+
+Metrics for the chain's newHeads feed behind the locally-synthesized `newHeads` subscription source.
+
+### `nodecore_new_heads_skipped_total`
+
+**Type:** Counter
+
+**Description:** The total number of heights the newHeads feed jumped over without announcing: no ws upstream reported that height before a higher one was announced. Every `newHeads` subscriber on the chain missed these heads.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., hyperliquid)
+
+**Source:** `internal/upstreams/new_heads_feed.go`
+
+**Use Case:** Alert on gaps in delivered `newHeads`.

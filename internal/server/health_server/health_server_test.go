@@ -110,6 +110,9 @@ func (h *healthChainSupervisorStub) PublishUpstreamEvent(event protocol.Upstream
 func (h *healthChainSupervisorStub) SubscribeState(name string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
 	return nil
 }
+func (h *healthChainSupervisorStub) SubscribeNewHeads(name string) *utils.Subscription[*upstreams.HeadWrapper] {
+	return nil
+}
 
 var _ upstreams.ChainSupervisor = (*healthChainSupervisorStub)(nil)
 var _ upstreams.UpstreamSupervisor = (*healthSupervisorStub)(nil)
