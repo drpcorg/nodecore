@@ -121,6 +121,14 @@ the one upstream source.
   deeper than the bounded history window are clamped (tracked by a metric).
 - **Selectors bypass local logs**: as noted in the [fallback rule](#local-subscriptions-vs-node-backed-passthrough),
   a logs request with effective selectors uses a node-backed passthrough instead.
+- **Head of the logs stream**: blocks are announced from the highest head among the upstreams that
+  can serve them (available, with `eth_getLogs`), not from the chain's merged head. A head from an
+  upstream without `eth_getLogs` therefore does not announce a block until an upstream that has the
+  method reaches it, so the logs stream lags the chain head by that upstream's lag instead of skipping
+  the block. Upstream heads are re-read on every chain state change and every 50 ms.
+- **Backfill**: heights that head jumps over, and the new chain after a reorg, are fetched by parent
+  hash (`eth_getBlockByHash`, up to 32 blocks back) and announced in order. A deeper gap, or a failed
+  fetch, announces the head with the gap.
 - A block whose logs cannot be fetched is skipped (counted, not fatal); the source ends only when no
   upstream retains the `logs` capability.
 
@@ -205,8 +213,9 @@ Subscription activity is exposed on the metrics port (see [Prometheus metrics](0
 - [Subscription Utilities Metrics](08-prometheus-metrics.md#subscription-utilities-metrics) — event
   rate, active subscription count, and unread/backpressure gauges for the aggregation channels.
 - [Logs Subscription Metrics](08-prometheus-metrics.md#logs-subscription-metrics) — the local logs
-  source counters `nodecore_logs_source_blocks_skipped_total` (by reason) and
-  `nodecore_logs_source_reorg_clamped_total`.
+  source counters `nodecore_logs_source_blocks_skipped_total` (by reason),
+  `nodecore_logs_source_backfill_failed_total` and `nodecore_logs_source_reorg_clamped_total`, and the
+  `nodecore_logs_source_head_lag_blocks` gauge.
 
 ## See also
 

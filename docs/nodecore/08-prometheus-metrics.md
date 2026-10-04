@@ -474,7 +474,7 @@ These metrics track internal subscription manager performance (used for event pr
 
 ## Logs Subscription Metrics
 
-Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A non-zero value on either counter means subscribers may have silently missed log events.
+Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A non-zero value on any of the counters means subscribers may have silently missed log events.
 
 ### `nodecore_logs_source_blocks_skipped_total`
 
@@ -490,6 +490,38 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 **Source:** `internal/upstreams/flow/logs_source.go`
 
 **Use Case:** Alert on gaps in delivered `logs`; a sustained `no_upstream` rate indicates insufficient upstream coverage at the chain head.
+
+---
+
+### `nodecore_logs_source_backfill_failed_total`
+
+**Type:** Counter
+
+**Description:** The total number of heads whose missing ancestors (heights the logs head jumped over, or the new chain after a reorg) could not be fetched by hash, or lay deeper than 32 blocks. Such a head is announced as is, so the missing blocks' logs are not delivered.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+
+**Source:** `internal/upstreams/flow/subengine/blockupdates.go`
+
+**Use Case:** Alert on gaps in the logs head that could not be filled.
+
+---
+
+### `nodecore_logs_source_head_lag_blocks`
+
+**Type:** Gauge
+
+**Description:** How many blocks the head of the logs source - the highest head among available upstreams with `eth_getLogs` - is behind the chain's merged head. Logs are delivered with this lag.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+
+**Source:** `internal/upstreams/flow/subengine/blockupdates.go`
+
+**Use Case:** See when the upstreams that can serve `eth_getLogs` trail the chain head, which delays log delivery.
 
 ---
 
