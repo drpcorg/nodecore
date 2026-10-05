@@ -129,6 +129,13 @@ the one upstream source.
 - **Backfill**: heights that head jumps over, and the new chain after a reorg, are fetched by parent
   hash (`eth_getBlockByHash`, up to 32 blocks back) and announced in order. A deeper gap, or a failed
   fetch, announces the head with the gap.
+- **Not-ready blocks**: an upstream may announce a block before it can serve its logs - erigon
+  dispatches `newHeads` before it commits the block, cosmos-evm nodes index the block hash after the
+  header event. An answer such as `block range extends beyond current head block`, `block not
+  found`, `unknown block` or `header not found` moves on to the next upstream, as any error does; when
+  no upstream at the height could serve the block, they are asked again with a backoff (100 ms to
+  1 s) until one block time after the head arrived (clamped to 1–3 s). Other errors are not waited on:
+  an upstream that answered one is not asked again for that block.
 - A block whose logs cannot be fetched is skipped (counted, not fatal); the source ends only when no
   upstream retains the `logs` capability.
 
