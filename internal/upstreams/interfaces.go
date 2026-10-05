@@ -38,6 +38,9 @@ type ChainSupervisor interface {
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
+	// SubscribeHead is a head feed over the upstreams that are Available and pass
+	// filter, re-evaluated on every upstream event. See HeadFeedEvent.
+	SubscribeHead(name string, filter FilterUpstream) *HeadFeedSubscription
 }
 
 type UpstreamSupervisor interface {

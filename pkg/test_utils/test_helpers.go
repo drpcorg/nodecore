@@ -188,7 +188,7 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice, nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -376,7 +376,7 @@ func newTestChainOptions() *chains.Options {
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice, nil, false, nil)
 
 	go chainSupervisor.Start()
 

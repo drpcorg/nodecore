@@ -527,22 +527,6 @@ The skip warning in the log carries the last upstream id and its error message (
 
 ---
 
-### `nodecore_logs_source_head_lag_blocks`
-
-**Type:** Gauge
-
-**Description:** How many blocks the head of the logs source - the highest head among available upstreams with `eth_getLogs` - is behind the chain's merged head. Logs are delivered with this lag.
-
-**Labels:**
-
-- `chain` - The blockchain network (e.g., ethereum)
-
-**Source:** `internal/upstreams/flow/subengine/blockupdates.go`
-
-**Use Case:** See when the upstreams that can serve `eth_getLogs` trail the chain head, which delays log delivery.
-
----
-
 ### `nodecore_logs_source_reorg_clamped_total`
 
 **Type:** Counter

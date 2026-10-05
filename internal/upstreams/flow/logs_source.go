@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -62,9 +63,6 @@ const (
 	// logsFetchAttempts bounds the per-block walk down the rating list when an
 	// upstream errors on eth_getLogs before the block is skipped.
 	logsFetchAttempts = 3
-	// logsLostCheck is how often the source checks the chain still has LogsCap
-	// while no block arrives.
-	logsLostCheck = time.Second
 	// A block the upstream reports as not ready yet is asked again with a backoff
 	// from logsNotReadyStep up to logsNotReadyMaxStep, until one block time after
 	// its head arrived, clamped to [logsNotReadyWaitMin, logsNotReadyWaitMax].
@@ -113,20 +111,22 @@ func logsNotReadyWait(chain chains.Chain) time.Duration {
 // available upstream at >= that height), not by the head producer, so a producer
 // that has since gone away does not break log delivery.
 //
-// Blocks are announced from the heads of the upstreams that can serve them
-// (available, with eth_getLogs), not from the chain's merged head: that one may
-// come from an upstream without eth_getLogs, and its block would be skipped
-// because no upstream that has the method had reached it yet. Heights that head
-// jumps over, and the new chain after a reorg, are fetched by parent hash.
+// Blocks are announced from a head feed filtered to the upstreams that can serve
+// them (available, with LogsCap, matching the client's selectors), not from the
+// chain's merged head: that one may come from an upstream without eth_getLogs,
+// and its block would be skipped because no upstream that has the method had
+// reached it yet. Heights that head jumps over, and the new chain after a reorg,
+// are fetched by parent hash.
 //
 // Reorgs are handled via the block-update stream (see subengine.StreamBlockUpdates):
 // a dropped block's cached logs are re-emitted with removed:true. The source
-// terminates (so clients fail over to the generic node-backed path) when the
-// chain loses LogsCap.
+// terminates with a terminal frame (clients resubscribe and are resolved afresh)
+// when the feed goes empty: no upstream passes the filter any more.
 func newLogsSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
 	registry *rating.RatingRegistry,
+	filter upstreams.FilterUpstream,
 ) subengine.SourceBuilder {
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		chainSup := supervisor.GetChainSupervisor(chain)
@@ -136,45 +136,26 @@ func newLogsSourceBuilder(
 
 		notReadyWait := logsNotReadyWait(chain)
 
-		logsLost := func() bool {
-			caps := chainSup.GetChainState().Caps
-			return caps == nil || !caps.Contains(protocol.LogsCap)
-		}
-
 		out := make(chan protocol.SubResponse, logsBufferSize)
 		updates := make(chan subengine.BlockUpdate, 64)
 
-		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates, canServeLogs, blockByHashResolver(supervisor, chain, chainSup, registry))
+		feed := chainSup.SubscribeHead(fmt.Sprintf("subengine_logs_%s_%s", chain, uuid.NewString()), filter)
+		go subengine.StreamBlockUpdates(srcCtx, chain, feed, updates, blockByHashResolver(supervisor, chain, chainSup, registry))
 
 		go func() {
 			defer close(out)
 			cache := newLogCache(logsCacheSize)
 
-			if logsLost() {
-				out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
-				return
-			}
-
-			// updates follow only upstreams with eth_getLogs, so they stop once none
-			// is left; check for the lost capability on a timer too
-			lostCheck := time.NewTicker(logsLostCheck)
-			defer lostCheck.Stop()
-
 			for {
 				select {
 				case <-srcCtx.Done():
 					return
-				case <-lostCheck.C:
-					if logsLost() {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
-						return
-					}
 				case update, ok := <-updates:
 					if !ok {
-						return
-					}
-					if logsLost() {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
+						// the feed went empty: no upstream can serve logs any more
+						if srcCtx.Err() == nil {
+							out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
+						}
 						return
 					}
 					switch update.Kind {
@@ -333,15 +314,6 @@ func errorMessage(err *protocol.ResponseError) string {
 		return ""
 	}
 	return err.Message
-}
-
-// logsMatcher is what fetchBlockLogs selects upstreams by, besides the height.
-var logsMatcher = NewMultiMatcher(NewStatusMatcher(), NewMethodMatcher("eth_getLogs"))
-
-// canServeLogs reports whether fetchBlockLogs may pick the upstream; its head
-// drives the logs source.
-func canServeLogs(state *protocol.UpstreamState) bool {
-	return logsMatcher.Match("", state).Type() == SuccessType
 }
 
 // blockByHashResolver lets the block-update stream fetch the head's ancestors by

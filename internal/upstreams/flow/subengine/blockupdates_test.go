@@ -3,10 +3,14 @@ package subengine
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -441,48 +445,115 @@ func TestAdvanceWithAncestorsEmptyParentAdvancesAsBefore(t *testing.T) {
 	assert.Equal(t, 0, *calls)
 }
 
-// --- bestHead ------------------------------------------------------------
+// --- StreamBlockUpdates ---------------------------------------------------
 
-func headState(status protocol.AvailabilityStatus, b protocol.Block) *protocol.UpstreamState {
-	return &protocol.UpstreamState{Status: status, HeadData: b}
+type streamHarness struct {
+	feed         chan upstreams.HeadFeedEvent
+	out          chan BlockUpdate
+	unsubscribed atomic.Bool
+	cancel       context.CancelFunc
 }
 
-func available(st *protocol.UpstreamState) bool { return st.Status == protocol.Available }
-
-// The highest eligible head wins; ineligible upstreams are ignored even when ahead.
-func TestBestHeadIgnoresIneligible(t *testing.T) {
-	states := []*protocol.UpstreamState{
-		headState(protocol.Unavailable, blk(105, "ee", "dd")),
-		headState(protocol.Available, blk(103, "cc", "bb")),
-		headState(protocol.Available, blk(101, "aa", "00")),
-		nil,
-	}
-	head, ok := bestHead(states, available, protocol.Block{})
-	require.True(t, ok)
-	assert.Equal(t, uint64(103), head.Height)
+func startStream(resolve BlockResolver) *streamHarness {
+	h := &streamHarness{feed: make(chan upstreams.HeadFeedEvent, 16), out: make(chan BlockUpdate, 64)}
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+	sub := upstreams.NewHeadFeedSubscription(h.feed, func() { h.unsubscribed.Store(true) })
+	go StreamBlockUpdates(ctx, chains.ETHEREUM, sub, h.out, resolve)
+	return h
 }
 
-// On a tie at the top height the head already followed is kept, so two
-// upstreams on different forks do not make the stream flap.
-func TestBestHeadKeepsCurrentOnTie(t *testing.T) {
-	states := []*protocol.UpstreamState{
-		headState(protocol.Available, blk(103, "c1", "bb")),
-		headState(protocol.Available, blk(103, "c2", "bb")),
-	}
-	head, _ := bestHead(states, available, blk(103, "c2", "bb"))
-	assert.Equal(t, blockchain.NewHashIdFromString("c2"), head.Hash)
-	head, _ = bestHead(states, available, blk(103, "c1", "bb"))
-	assert.Equal(t, blockchain.NewHashIdFromString("c1"), head.Hash)
+func (h *streamHarness) head(b protocol.Block) {
+	h.feed <- upstreams.HeadUpdated{Head: b, UpstreamId: "up1"}
 }
 
-// No eligible upstream with a head - nothing to follow.
-func TestBestHeadNone(t *testing.T) {
-	states := []*protocol.UpstreamState{
-		headState(protocol.Unavailable, blk(105, "ee", "dd")),
-		headState(protocol.Available, protocol.Block{}),
+func readUpdate(t *testing.T, h *streamHarness) BlockUpdate {
+	t.Helper()
+	select {
+	case u, ok := <-h.out:
+		require.True(t, ok, "out closed unexpectedly")
+		return u
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for a block update")
+		return BlockUpdate{}
 	}
-	_, ok := bestHead(states, available, protocol.Block{})
-	assert.False(t, ok)
+}
+
+func assertOutClosed(t *testing.T, h *streamHarness) {
+	t.Helper()
+	select {
+	case u, ok := <-h.out:
+		require.False(t, ok, "expected out closed, got %+v", u)
+	case <-time.After(time.Second):
+		t.Fatal("out not closed")
+	}
+}
+
+func noResolve(_ context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
+	return protocol.Block{}, errors.New("unexpected resolve of " + hash.ToHex())
+}
+
+func TestStreamBlockUpdatesFollowsFeed(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	before := time.Now()
+	h.head(blk(1, "aa", "00"))
+	h.head(blk(2, "bb", "aa"))
+	u1, u2 := readUpdate(t, h), readUpdate(t, h)
+	assertUpdates(t, []BlockUpdate{u1, u2}, []wantUpdate{{1, "aa", BlockNew}, {2, "bb", BlockNew}})
+	assert.False(t, u1.Seen.Before(before), "Seen is stamped when the head is read")
+}
+
+func TestStreamBlockUpdatesClosesOutOnEmpty(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	h.head(blk(1, "aa", "00"))
+	readUpdate(t, h)
+	h.feed <- upstreams.HeadFeedEmpty{}
+	assertOutClosed(t, h)
+	assert.True(t, h.unsubscribed.Load())
+}
+
+func TestStreamBlockUpdatesClosesOutWhenFeedCloses(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	close(h.feed)
+	assertOutClosed(t, h)
+}
+
+func TestStreamBlockUpdatesClosesOutOnCancel(t *testing.T) {
+	h := startStream(noResolve)
+
+	h.cancel()
+	assertOutClosed(t, h)
+	assert.True(t, h.unsubscribed.Load())
+}
+
+func TestStreamBlockUpdatesBackfillsViaResolver(t *testing.T) {
+	resolve := func(_ context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
+		require.Equal(t, uint64(2), height)
+		return blk(2, "bb", "aa"), nil
+	}
+	h := startStream(resolve)
+	defer h.cancel()
+
+	h.head(blk(1, "aa", "00"))
+	readUpdate(t, h)
+	h.head(blk(3, "cc", "bb")) // 2 was skipped by the feed
+	assertUpdates(t, []BlockUpdate{readUpdate(t, h), readUpdate(t, h)}, []wantUpdate{{2, "bb", BlockNew}, {3, "cc", BlockNew}})
+}
+
+func TestStreamBlockUpdatesAnnouncesWithGapWhenResolveFails(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	h.head(blk(1, "aa", "00"))
+	readUpdate(t, h)
+	h.head(blk(3, "cc", "bb"))
+	assertUpdates(t, []BlockUpdate{readUpdate(t, h)}, []wantUpdate{{3, "cc", BlockNew}})
 }
 
 // hexFor returns a short, unique, valid hex string for a height.

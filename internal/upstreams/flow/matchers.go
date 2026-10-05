@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/rs/zerolog/log"
 )
 
@@ -124,21 +125,32 @@ func NewMethodMatcher(method string) *MethodMatcher {
 
 var _ Matcher = (*MethodMatcher)(nil)
 
-type WsCapMatcher struct {
+// CapMatcher passes upstreams that advertise cap. method names the subscription
+// the check is made for, so the failure reads like any other unsupported method.
+type CapMatcher struct {
+	cap    protocol.Cap
 	method string
 }
 
-func (w *WsCapMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
-	if state.Caps.ContainsOne(protocol.WsCap) {
-		return SuccessResponse{}
-	}
-	return MethodResponse{method: w.method}
+func NewCapMatcher(cap protocol.Cap, method string) *CapMatcher {
+	return &CapMatcher{cap: cap, method: method}
 }
 
-var _ Matcher = (*WsCapMatcher)(nil)
+func (c *CapMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if state.Caps != nil && state.Caps.ContainsOne(c.cap) {
+		return SuccessResponse{}
+	}
+	return MethodResponse{method: c.method}
+}
 
-func NewWsCapMatcher(method string) *WsCapMatcher {
-	return &WsCapMatcher{method: method}
+var _ Matcher = (*CapMatcher)(nil)
+
+// matcherFilter adapts a Matcher to the supervisor's FilterUpstream: an upstream
+// passes when the matcher succeeds. Used to build filtered head feeds.
+func matcherFilter(m Matcher) upstreams.FilterUpstream {
+	return func(upId string, state *protocol.UpstreamState) bool {
+		return m.Match(upId, state).Type() == SuccessType
+	}
 }
 
 type UpstreamIndexMatcher struct {
