@@ -124,6 +124,16 @@ func assertSubscriptionAdvertised(t *testing.T, status *dshackle.SubscribeChainS
 	t.Fatalf("subscription %q is not advertised: %+v", want, status)
 }
 
+func latestBlockSelector() *dshackle.Selector {
+	return &dshackle.Selector{
+		SelectorType: &dshackle.Selector_HeightSelector{
+			HeightSelector: &dshackle.HeightSelector{
+				HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_LATEST},
+			},
+		},
+	}
+}
+
 func hardhatSawLogsSubscribe(t *testing.T, ctx context.Context, upstream *harness.RPCNode, address string) bool {
 	t.Helper()
 	resp := harness.HardhatRPC(t, ctx, upstream.Endpoint, "hardhat_getE2ERequests", []any{})
