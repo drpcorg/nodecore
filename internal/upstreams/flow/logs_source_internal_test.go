@@ -13,11 +13,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -29,6 +31,16 @@ func logsTestUpConfig() *config.Upstream {
 		PollInterval: 10 * time.Millisecond,
 		Options:      &chains.Options{InternalTimeout: 5 * time.Second},
 	}
+}
+
+// logsTestUpstream is test_utils.TestEvmUpstream with its own id, as in
+// production, where the response's upstream id is the one the strategy selected.
+func logsTestUpstream(id string, connector connectors.ApiConnector) *upstreams.GenericUpstream {
+	cfg := logsTestUpConfig()
+	cfg.Id = id
+	state := utils.NewAtomic[protocol.UpstreamState]()
+	state.Store(protocol.DefaultUpstreamState(logsMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil))
+	return upstreams.NewGenericUpstreamWithParams(id, chains.ETHEREUM, []connectors.ApiConnector{connector}, cfg, "00012", state, nil, nil, nil, false)
 }
 
 func logsMethodsMock() *mocks.MethodsMock {
@@ -259,6 +271,38 @@ func TestFetchBlockLogsNotReadyFallsThroughToNextUpstream(t *testing.T) {
 		assert.Less(t, time.Since(start), logsNotReadyStep/2)
 		connGeth.AssertNumberOfCalls(t, "SendRequest", 1)
 	}
+}
+
+// An upstream that fails with another error at the same height is asked once:
+// it neither uses up the attempts while the other upstream is not ready nor
+// is asked again every round.
+func TestFetchBlockLogsNotReadyWithFailingUpstream(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "erigon", 100)
+	publishLogsUpstream(chSup, "broken", 100)
+
+	connErigon := mocks.NewConnectorMock()
+	connBroken := mocks.NewConnectorMock()
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "erigon").Return(logsTestUpstream("erigon", connErigon)).Maybe()
+	upSup.On("GetUpstream", "broken").Return(logsTestUpstream("broken", connBroken)).Maybe()
+	connErigon.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", protocol.ResponseErrorWithMessage("block range extends beyond current head block"), protocol.JsonRpc)).Times(3)
+	connErigon.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
+	connBroken.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(2*time.Second))
+
+	require.Len(t, logs, 1)
+	assert.Equal(t, "erigon", upstreamId)
+	connErigon.AssertNumberOfCalls(t, "SendRequest", 4)
+	connBroken.AssertNumberOfCalls(t, "SendRequest", 1)
 }
 
 // Other upstream errors are not waited on.

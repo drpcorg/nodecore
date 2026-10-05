@@ -257,8 +257,14 @@ func fetchBlockLogs(
 	// Select any available, best-rated upstream whose head is at >= the block's
 	// height. A fresh strategy carries the height matcher; repeated SelectUpstream
 	// calls walk down the rating list (selectedUpstreams dedup).
-	newStrategy := func() UpstreamStrategy {
-		return NewRatingStrategy(chain, "eth_getLogs", []Matcher{NewHeightMatcher(int64(block.Height))}, chainSup, registry)
+	// upstreams that answered another error are not asked again in later rounds
+	var failed []string
+	newStrategy := func() *RatingStrategy {
+		strategy := NewRatingStrategy(chain, "eth_getLogs", []Matcher{NewHeightMatcher(int64(block.Height))}, chainSup, registry)
+		for _, id := range failed {
+			strategy.selectedUpstreams.Add(id)
+		}
+		return strategy
 	}
 	strategy := newStrategy()
 	wait := logsNotReadyStep
@@ -298,6 +304,7 @@ func fetchBlockLogs(
 			if blockNotReady(lastErr) {
 				notReady = true
 			} else {
+				failed = append(failed, resp.UpstreamId)
 				attempt++
 			}
 			continue // try the next-best upstream
