@@ -87,7 +87,11 @@ func localSourceFilter(
 	matchers := []Matcher{NewStatusMatcher(), NewCapMatcher(cap, topic)}
 	selectorMatchers, _ := buildSelectorRouting(request.Selectors(), supervisor, chainSup)
 	matchers = append(matchers, selectorMatchers...)
-	return matcherFilter(NewMultiMatcher(matchers...))
+	match := matcherFilter(NewMultiMatcher(matchers...))
+	pins := request.UpstreamPins()
+	return func(id string, state *protocol.UpstreamState) bool {
+		return pins.Matches(id, state) && match(id, state)
+	}
 }
 
 // hasUpstream reports whether some upstream of the chain passes filter right
@@ -164,7 +168,9 @@ func resolveSource(
 		}
 		return resolvedSource{key: localKey(localNewHeadsPrefix, request), builder: subengine.NewHeadsSourceBuilder(supervisor, chain, filter)}, nil
 	}
-	if settings.Logs && isLogsRequest(request) {
+	// Local logs fetch block data through a chain-wide strategy. Pinned requests
+	// must stay on the node-backed path until those internal fetches are scoped too.
+	if !request.UpstreamPins().Pinned() && settings.Logs && isLogsRequest(request) {
 		// the request is checked before the upstreams: a malformed filter object
 		// is the client's mistake whatever the chain looks like
 		logFilter, err := parseLogFilter(request)
@@ -177,13 +183,13 @@ func resolveSource(
 		}
 		return resolvedSource{key: localKey(localLogsPrefix, request), builder: newLogsSourceBuilder(supervisor, chain, registry, filter), filter: logFilter}, nil
 	}
-	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if !request.UpstreamPins().Pinned() && settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return resolvedSource{key: localPendingTxKey, builder: newPendingTxSourceBuilder(supervisor, chain)}, nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
 	// local regardless of settings; it builds its own pending-tx source internally.
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
-		return resolvedSource{key: localDrpcPendingTxKey, builder: newDrpcPendingTxSourceBuilder(supervisor, chain, engine)}, nil
+		return resolvedSource{key: scopedPendingKey(localDrpcPendingTxKey, request.Selectors()), builder: newDrpcPendingTxSourceBuilder(supervisor, chain, engine, request.Selectors()...)}, nil
 	}
 	if isGrpcStream(request) {
 		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix

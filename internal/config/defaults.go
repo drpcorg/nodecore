@@ -14,6 +14,10 @@ import (
 const (
 	defaultPort     = 9090
 	defaultInterval = 1 * time.Minute
+
+	DefaultGrpcUpstreamStatusInterval = 25 * time.Millisecond
+	minGrpcUpstreamStatusInterval     = 5 * time.Millisecond
+	maxGrpcUpstreamStatusInterval     = time.Second
 )
 
 func (a *AppConfig) setDefaults() {
@@ -103,6 +107,9 @@ func (s *ServerConfig) setDefaults() {
 	}
 	if s.HealthPort == 0 {
 		s.HealthPort = 9096
+	}
+	if s.GrpcUpstreamStatusInterval == 0 {
+		s.GrpcUpstreamStatusInterval = DefaultGrpcUpstreamStatusInterval
 	}
 	if s.PyroscopeConfig == nil {
 		s.PyroscopeConfig = &PyroscopeConfig{}

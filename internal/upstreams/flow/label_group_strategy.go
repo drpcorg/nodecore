@@ -45,19 +45,20 @@ type LabelGroupStrategy struct {
 }
 
 // NewLabelGroupStrategy builds a LabelGroupStrategy from the rating registry:
-// it takes the rating-sorted upstreams for (chain, method) and partitions them
+// it takes the rating-sorted upstreams for (chain, method), plus the unrated
+// pinned ones of a pinned request, and partitions them
 // into ordered groups per the label-balancing config (see PartitionLabelGroups),
 // reading each upstream's config group-labels via the supervisor. This mirrors
 // NewRatingStrategy, which likewise pulls its sorted list from the registry.
 func NewLabelGroupStrategy(
 	chain chains.Chain,
-	method string,
+	request protocol.RequestHolder,
 	labelBalancing *config.LabelBalancingConfig,
 	chainSupervisor upstreams.ChainSupervisor,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	registry *rating.RatingRegistry,
 ) *LabelGroupStrategy {
-	sorted := registry.GetSortedUpstreams(chain, method)
+	sorted := withUnrated(request, registry.GetSortedUpstreams(chain, request.Method()), chainSupervisor)
 	includeDefault := labelBalancing.IncludeDefault == nil || *labelBalancing.IncludeDefault
 	groups := PartitionLabelGroups(sorted, labelBalancing.Order, includeDefault, func(id string) mapset.Set[string] {
 		up := upstreamSupervisor.GetUpstream(id)
@@ -94,7 +95,7 @@ func (s *LabelGroupStrategy) WithAdditionalMatchers(additionalMatchers []Matcher
 
 func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (string, error) {
 	if len(s.groups) == 0 {
-		return "", protocol.NoAvailableUpstreamsError()
+		return "", noUpstreamsError(request, s.chainSupervisor)
 	}
 
 	s.cursorMu.Lock()
@@ -108,9 +109,13 @@ func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (str
 
 	var currentReason MatchResponse
 	var trace *UpstreamsMatchTrace
+	exhausted := false
 	for ; idx < len(s.groups); idx++ {
 		selectedUpstream, reason, groupTrace := filterUpstreams(&s.mu, request, s.groups[idx], s.chainSupervisor, s.selectedUpstreams, s.additionalMatchers, s.order)
-		trace = groupTrace
+		// a group without the pinned upstreams has nothing to trace
+		if _, absent := reason.(PinResponse); !absent {
+			trace = groupTrace
+		}
 		if selectedUpstream != "" {
 			s.cursorMu.Lock()
 			s.currentGroupIdx = idx
@@ -118,7 +123,9 @@ func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (str
 			return selectedUpstream, nil
 		}
 		// group is exhausted (all tried) or dead (nothing selectable) -> fall through
-		if reason != nil && (currentReason == nil || reason.Type() < currentReason.Type()) {
+		if reason == nil {
+			exhausted = true
+		} else if currentReason == nil || reason.Type() < currentReason.Type() {
 			currentReason = reason
 		}
 	}
@@ -126,7 +133,13 @@ func (s *LabelGroupStrategy) SelectUpstream(request protocol.RequestHolder) (str
 	s.currentGroupIdx = idx
 	s.cursorMu.Unlock()
 
-	return "", selectionError(currentReason, trace)
+	// a group without the pinned upstreams says they are absent, a group that
+	// has tried them all shows they are here
+	if _, absent := currentReason.(PinResponse); absent && exhausted {
+		currentReason = nil
+	}
+
+	return "", selectionError(request, currentReason, trace)
 }
 
 var _ UpstreamStrategy = (*LabelGroupStrategy)(nil)

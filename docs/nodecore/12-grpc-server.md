@@ -44,9 +44,17 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeNodeGroupStatus(SubscribeNodeGroupStatusRequest) → stream SubscribeNodeGroupStatusResponse`**
+
+  Streams nodecore-owned groups and the authoritative network view. See [Node group discovery](#node-group-status-and-execution) below for snapshots, deltas and execution selectors.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
+
+  A label selector named `upstream_id`, at the top level or under an AND of the request (or item) selector, pins the call to the upstreams whose runtime upstream ID is among its values: retries, hedges, the integrity re-route, label-group balancing and broadcast / maximum-value / not-null dispatch all stay inside the pin, a pinned upstream the rating has not listed yet is a candidate too, and `balancing: base` rotates over the pinned upstreams, so they share the calls evenly. When none of the pinned upstreams is here the item fails with the no-available-upstreams code (`1` on a JSON-RPC item) and the message `pinned upstreams not present: <ids>`; pinned upstreams that are here but cannot serve the call, or are not among the candidates (outside every label group, not a DRPC upstream for a quorum read), fail as an unpinned call would. Pins participate in the response-cache key, so different groups and upstream selectors do not share cached entries. Under OR or NOT, or without values, `upstream_id` is an ordinary label, which no upstream has.
+
+  `node_level_error` is set on an error reply that another upstream may answer: an upstream failure nodecore retries on another upstream (a transport, read or decode failure, or an upstream error it treats as retryable), or any selection error of a pinned call (pinned upstreams not present, none of them available, the method not supported or rate limited on them). It is not set for errors of the request itself (execution reverted, invalid params, a method the chain does not have).
 
 - **`NativeSubscribe(NativeSubscribeRequest) → stream NativeSubscribeReplyItem`**
 
@@ -136,3 +144,41 @@ For a TLS or authenticated setup, swap `insecure.NewCredentials()` for proper cr
 ## Observability
 
 The gRPC API does not have a dedicated set of Prometheus metrics today; calls made through `NativeCall` and `NativeSubscribe` flow through the same request pipeline as HTTP calls, so they show up under the existing `nodecore_request_*` and `nodecore_upstream_*` metrics (see [Prometheus metrics](08-prometheus-metrics.md)).
+
+
+### Node group status and execution
+
+`SubscribeNodeGroupStatus` is the group discovery API. The optional `chains`
+filter limits networks; `full_separation` requests one upstream per group.
+Otherwise groups share all labels and the sorted supported call-method set.
+Subscription methods do not affect membership. IDs are opaque and can change
+when methods are banned or labels are redetected.
+
+A response describes one chain. The initial response and periodic resync replace
+its complete group catalog. Deltas contain complete descriptions of changed
+groups and explicit `removed_node_group_ids`. With `compact_updates: true`,
+head-only deltas omit unchanged descriptions and member indices; clients retain
+the previous metadata. Initial snapshots and resync are always complete. Every response includes nodecore's
+authoritative complete network description. Member runtime indices support sticky
+filter ownership; clients do not reconstruct IDs or resolve execution membership.
+
+Group snapshots reuse the existing merge functions and height fork choice over
+current members. Immutable metadata is cached across head-only updates and
+invalidated by state/membership changes. They are rebuilt on coalesced status notifications using the
+configured throttle (25ms by default) and periodic resync (60s, with a randomized first offset). Network lag validation
+remains authoritative; a lagging group cannot promote its members by comparing
+only against its own head. Empty groups disappear from the catalog.
+
+To execute within a group, send a `node_group_id` label selector with exactly one
+value, at the top level or under AND. It combines with normal selectors. Nodecore
+checks current membership during candidate selection, including unrated members.
+An unknown, removed or empty group never falls back to the network. Multiple IDs
+and group selectors under OR/NOT fail closed. Both normal and singleton group IDs
+are supported. State snapshots cache the group key; state publication invalidates
+the cache, while head updates retain it.
+
+Calls and subscriptions use the existing pinned execution paths. A downstream
+retry may select another group, while each individual attempt stays within its
+selected group. The legacy chain and diagnostic upstream streams remain available.
+
+Measured costs and reproduction commands: [group status performance](node-group-performance.md).

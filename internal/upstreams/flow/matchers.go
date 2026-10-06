@@ -16,6 +16,8 @@ const (
 	RateLimiterType
 	UpstreamIndexType
 	SelectorType
+	// the weakest reason: any cause from a pinned upstream beats it
+	PinType
 	SuccessType
 )
 
@@ -200,6 +202,22 @@ type LabelResponse struct {
 func (l LabelResponse) Type() MatchResponseType { return SelectorType }
 func (l LabelResponse) Cause() string {
 	return fmt.Sprintf("No label `%s` with values %v", l.name, l.values)
+}
+
+type PinResponse struct {
+	ids     []string
+	present bool
+}
+
+func (p PinResponse) Type() MatchResponseType { return PinType }
+func (p PinResponse) Cause() string           { return p.error().Message }
+
+// error: pinned upstreams that are here but no candidates fail like any other
+func (p PinResponse) error() *protocol.ResponseError {
+	if p.present {
+		return protocol.NoAvailableUpstreamsError()
+	}
+	return protocol.PinnedUpstreamsNotPresentError(p.ids)
 }
 
 type ExistsResponse struct{ name string }

@@ -71,6 +71,10 @@ func (s *fakeChainSupervisor) SubscribeState(string) *utils.Subscription[*upstre
 	return nil
 }
 
+func (s *fakeChainSupervisor) UpstreamsChanged() <-chan struct{} {
+	return nil
+}
+
 var _ upstreams.ChainSupervisor = (*fakeChainSupervisor)(nil)
 
 func matchAll(string, *protocol.UpstreamState) bool { return true }
