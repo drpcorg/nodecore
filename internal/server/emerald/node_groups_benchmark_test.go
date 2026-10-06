@@ -55,7 +55,7 @@ func groupBenchFixture(b testing.TB, nodes, groups, extraMethods int) *groupBenc
 		s.states[id] = state.WithNodeGroupCache()
 		protocol.NodeGroupID(id, s.states[id], false)
 	}
-	snapshots := upstreams.NodeGroups(s, false)
+	snapshots := new(upstreams.NodeGroupTracker).Snapshot(s, false)
 	for _, g := range snapshots {
 		s.network = g.State
 		break
@@ -82,9 +82,9 @@ func BenchmarkNodeGroupStatus(b *testing.B) {
 					b.Run(fmt.Sprintf("N%d/G%d/Extra%d/Singleton%t/S%d/%s", size.nodes, size.groups, size.methods, singleton, subscribers, mode), func(b *testing.B) {
 						supervisor := groupBenchFixture(b, size.nodes, size.groups, size.methods)
 						now := time.Now()
-						streams := make([]*upstreamStatusChain, subscribers)
+						streams := make([]*nodeGroupStatusChain, subscribers)
 						for i := range streams {
-							streams[i] = &upstreamStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
+							streams[i] = &nodeGroupStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
 							streams[i].groupResponse(supervisor, now, time.Hour, singleton)
 							streams[i].nextFull = now.Add(time.Hour)
 						}
@@ -126,7 +126,7 @@ func BenchmarkNodeGroupColdSubscriber(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				stream := &upstreamStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
+				stream := &nodeGroupStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
 				response := stream.groupResponse(supervisor, now, time.Hour, singleton)
 				payload, err := proto.Marshal(response)
 				if err != nil {
@@ -146,9 +146,9 @@ func BenchmarkNodeGroupHeadBurst(b *testing.B) {
 		b.Run(fmt.Sprintf("N128/Extra200/Singleton%t/S8", singleton), func(b *testing.B) {
 			supervisor := groupBenchFixture(b, 128, 8, 200)
 			now := time.Now()
-			streams := make([]*upstreamStatusChain, 8)
+			streams := make([]*nodeGroupStatusChain, 8)
 			for i := range streams {
-				streams[i] = &upstreamStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
+				streams[i] = &nodeGroupStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
 				streams[i].groupResponse(supervisor, now, time.Hour, singleton)
 				streams[i].nextFull = now.Add(time.Hour)
 			}

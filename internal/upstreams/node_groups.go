@@ -10,18 +10,9 @@ import (
 )
 
 type NodeGroupSnapshot struct {
-	Id                   string
 	State                ChainSupervisorState
 	Indices              map[string]string
 	DescriptionUnchanged bool
-}
-
-// NodeGroups applies the existing merge pipeline independently to each group.
-// These heads are observability only: upstream statuses already include the
-// authoritative network lag validation. Rebuilding the small snapshot makes
-// removals, reorgs and membership changes explicit, with no second event queue.
-func NodeGroups(supervisor ChainSupervisor, full bool) map[string]*NodeGroupSnapshot {
-	return new(NodeGroupTracker).Snapshot(supervisor, full)
 }
 
 // NodeGroupTracker belongs to one status stream. Descriptions are immutable and
@@ -53,7 +44,7 @@ func (tracker *NodeGroupTracker) Snapshot(supervisor ChainSupervisor, full bool)
 		}
 		group := groups[key]
 		if group == nil {
-			group = &NodeGroupSnapshot{Id: key, State: ChainSupervisorState{Status: protocol.Unavailable}, Indices: make(map[string]string)}
+			group = &NodeGroupSnapshot{State: ChainSupervisorState{Status: protocol.Unavailable}, Indices: make(map[string]string)}
 			groups[key] = group
 			choices[key] = fork_choice.NewHeightForkChoice()
 		}

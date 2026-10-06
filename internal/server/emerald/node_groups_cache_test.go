@@ -19,7 +19,7 @@ import (
 // after every kind of change. Previous wire messages must remain immutable.
 func TestNodeGroupDescriptionCache(t *testing.T) {
 	s := groupBenchFixture(t, 4, 2, 0)
-	cached := &upstreamStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
+	cached := &nodeGroupStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
 	now := time.Now()
 	fullSeparation := false
 	check := func() *dshackle.SubscribeNodeGroupStatusResponse {
@@ -30,7 +30,7 @@ func TestNodeGroupDescriptionCache(t *testing.T) {
 		}
 		actual := cached.groupResponse(s, now, time.Hour, fullSeparation)
 		cached.nextFull = now.Add(time.Hour)
-		fresh := new(upstreamStatusChain)
+		fresh := new(nodeGroupStatusChain)
 		fresh.ref = cached.ref
 		fresh.announced = true
 		expected := fresh.groupResponse(s, now, time.Hour, fullSeparation)
@@ -94,7 +94,7 @@ func TestNodeGroupDescriptionCache(t *testing.T) {
 
 func TestNodeGroupCacheDoesNotRetainRetiredGroups(t *testing.T) {
 	s := groupBenchFixture(t, 8, 2, 0)
-	stream := &upstreamStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
+	stream := &nodeGroupStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
 	now := time.Now()
 	for i := 0; i < 1000; i++ {
 		next := *s.states["node-000"]
@@ -110,8 +110,8 @@ func TestNodeGroupCacheDoesNotRetainRetiredGroups(t *testing.T) {
 func TestCompactGroupUpdatesAreOptIn(t *testing.T) {
 	s := groupBenchFixture(t, 4, 2, 0)
 	now := time.Now()
-	regular := &upstreamStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
-	compact := &upstreamStatusChain{ref: regular.ref, compactUpdates: true}
+	regular := &nodeGroupStatusChain{ref: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET}
+	compact := &nodeGroupStatusChain{ref: regular.ref, compactUpdates: true}
 	require.True(t, proto.Equal(regular.groupResponse(s, now, time.Hour, false), compact.groupResponse(s, now, time.Hour, false)))
 	regular.nextFull = now.Add(time.Hour)
 	compact.nextFull = regular.nextFull

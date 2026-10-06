@@ -14,16 +14,16 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Both status APIs share wakeups, throttling, cancellation and serialized sends.
+// SubscribeNodeGroupStatusWithResync streams groups with a caller-chosen resync interval.
 func SubscribeNodeGroupStatusWithResync(supervisor upstreams.UpstreamSupervisor, request *dshackle.SubscribeNodeGroupStatusRequest, stream dshackle.Blockchain_SubscribeNodeGroupStatusServer, interval, resync time.Duration) error {
 	if supervisor == nil {
 		return errNilUpstreamSupervisor
 	}
-	producer := &upstreamStatusProducer{groupStream: stream, compactUpdates: request.GetCompactUpdates(), fullSeparation: request.GetFullSeparation(), requested: mapset.NewThreadUnsafeSet(request.GetChains()...), interval: interval, resyncInterval: resync}
+	producer := &nodeGroupStatusProducer{groupStream: stream, compactUpdates: request.GetCompactUpdates(), fullSeparation: request.GetFullSeparation(), requested: mapset.NewThreadUnsafeSet(request.GetChains()...), interval: interval, resyncInterval: resync}
 	return producer.subscribe(supervisor, stream.Context())
 }
 
-func (c *upstreamStatusChain) groupResponse(supervisor upstreams.ChainSupervisor, now time.Time, resync time.Duration, fullSeparation bool) *dshackle.SubscribeNodeGroupStatusResponse {
+func (c *nodeGroupStatusChain) groupResponse(supervisor upstreams.ChainSupervisor, now time.Time, resync time.Duration, fullSeparation bool) *dshackle.SubscribeNodeGroupStatusResponse {
 	groups := c.groupTracker.Snapshot(supervisor, fullSeparation)
 	if !c.announced && len(groups) == 0 {
 		return nil

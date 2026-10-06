@@ -44,19 +44,15 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
-- **`SubscribeUpstreamStatus(SubscribeUpstreamStatusRequest) → stream SubscribeUpstreamStatusResponse`**
+- **`SubscribeNodeGroupStatus(SubscribeNodeGroupStatusRequest) → stream SubscribeNodeGroupStatusResponse`**
 
-  Server-streaming RPC: the state of every upstream, the inputs of the merged view `SubscribeChainStatus` streams (which is unaffected). `chains` limits the stream to those chains, including ones added later; empty means every chain, and unknown refs are ignored.
-
-  Each response is one chain. A full response lists **all** its upstreams (`upstream_id`, `status`, `head`), so an upstream missing from it is gone; any other response is a delta with only the upstreams that are new or changed and `removed_upstream_ids`. `description` is what `SubscribeChainStatus` sends for a chain (methods, subscriptions, lower bounds, finalization, labels as one `NodeDetails` with quorum 1), built from that upstream alone whatever its status; it is present only for upstreams that are new or whose description or status changed. A chain is first sent once it has an upstream; its first response is full (`full_response`, `build_info`, every description), and so is one every 60 s after that, so a consumer can repair what a lossy hop dropped. The first of those resyncs comes at a random offset within the 60 s, so the fulls of the chains are spread rather than sent at once.
-
-  A chain is sent when one of its upstreams changes (head, status, description, added or removed), at once, but at most once per `server.grpc-upstream-status-interval` (default `25ms`): changes within that gap go out together as one response. What is sent is read at the moment of sending and compared with what the stream last sent for the chain, so nothing is queued or dropped and a slow consumer gets fewer, fresher responses; a chain that does not change costs nothing. `upstream_id` is the id `NativeCallReplyItem.upstream_id` names the upstream by.
+  Streams nodecore-owned groups and the authoritative network view. See [Node group discovery](#node-group-status-and-execution) below for snapshots, deltas and execution selectors.
 
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
 
-  A label selector named `upstream_id`, at the top level or under an AND of the request (or item) selector, pins the call to the upstreams whose [`SubscribeUpstreamStatus`](#blockchainservice) id is among its values: retries, hedges, the integrity re-route, label-group balancing and broadcast / maximum-value / not-null dispatch all stay inside the pin, a pinned upstream the rating has not listed yet is a candidate too, and `balancing: base` rotates over the pinned upstreams, so they share the calls evenly. When none of the pinned upstreams is here the item fails with the no-available-upstreams code (`1` on a JSON-RPC item) and the message `pinned upstreams not present: <ids>`; pinned upstreams that are here but cannot serve the call, or are not among the candidates (outside every label group, not a DRPC upstream for a quorum read), fail as an unpinned call would. Pins participate in the response-cache key, so different groups and upstream selectors do not share cached entries. Under OR or NOT, or without values, `upstream_id` is an ordinary label, which no upstream has.
+  A label selector named `upstream_id`, at the top level or under an AND of the request (or item) selector, pins the call to the upstreams whose runtime upstream ID is among its values: retries, hedges, the integrity re-route, label-group balancing and broadcast / maximum-value / not-null dispatch all stay inside the pin, a pinned upstream the rating has not listed yet is a candidate too, and `balancing: base` rotates over the pinned upstreams, so they share the calls evenly. When none of the pinned upstreams is here the item fails with the no-available-upstreams code (`1` on a JSON-RPC item) and the message `pinned upstreams not present: <ids>`; pinned upstreams that are here but cannot serve the call, or are not among the candidates (outside every label group, not a DRPC upstream for a quorum read), fail as an unpinned call would. Pins participate in the response-cache key, so different groups and upstream selectors do not share cached entries. Under OR or NOT, or without values, `upstream_id` is an ordinary label, which no upstream has.
 
   `node_level_error` is set on an error reply that another upstream may answer: an upstream failure nodecore retries on another upstream (a transport, read or decode failure, or an upstream error it treats as retryable), or any selection error of a pinned call (pinned upstreams not present, none of them available, the method not supported or rate limited on them). It is not set for errors of the request itself (execution reverted, invalid params, a method the chain does not have).
 
@@ -169,7 +165,7 @@ filter ownership; clients do not reconstruct IDs or resolve execution membership
 Group snapshots reuse the existing merge functions and height fork choice over
 current members. Immutable metadata is cached across head-only updates and
 invalidated by state/membership changes. They are rebuilt on coalesced status notifications using the
-same throttle and resync lifecycle as upstream status. Network lag validation
+configured throttle (25ms by default) and periodic resync (60s, with a randomized first offset). Network lag validation
 remains authoritative; a lagging group cannot promote its members by comparing
 only against its own head. Empty groups disappear from the catalog.
 
