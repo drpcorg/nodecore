@@ -29,7 +29,7 @@ func (tracker *NodeGroupTracker) Snapshot(supervisor ChainSupervisor, full bool)
 	states := make(map[string]*protocol.UpstreamState)
 	dirty := make(map[string]bool)
 	members := make(map[string][]*protocol.UpstreamState)
-	choices := make(map[string]*fork_choice.HeightForkChoice)
+	choices := make(map[string]fork_choice.ForkChoice)
 	ids := supervisor.GetUpstreamIds()
 	slices.Sort(ids)
 	for _, id := range ids {

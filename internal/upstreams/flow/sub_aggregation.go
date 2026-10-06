@@ -16,29 +16,26 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/google/uuid"
+	"github.com/samber/lo"
 )
 
-// localNewHeadsKey is the aggregation key for the locally-synthesized newHeads
-// source. The local source taps the chain's single merged-head stream and
-// ignores request selectors, so all local newHeads subscribers must collapse
-// onto one source regardless of their selectors (one head tap per chain).
-const localNewHeadsKey = "local|newHeads"
+// localNewHeadsPrefix starts the aggregation key of the locally-synthesized
+// newHeads source. The source follows a head feed filtered by the client's
+// selectors, so clients with different selectors get different sources; see
+// localKey.
+const localNewHeadsPrefix = "local|newHeads"
 
-// localLogsKey is the aggregation key for the locally-synthesized logs source.
-// All logs subscribers on a chain share ONE all-logs source (no address/topic
-// filter in the source); per-client filtering happens in the processor. The key
-// is therefore per-chain, NOT RequestHash-based (which would split the source
-// per filter and defeat sharing). Selectors are ignored for the same reason the
-// newHeads key ignores them - there is a single merged head per chain - and
-// resolveSource only takes the local path when no effective routing selectors
-// are present. RequestAnySelector is a no-op and must not block the local path.
-const localLogsKey = "local|logs"
+// localLogsPrefix starts the aggregation key of the locally-synthesized logs
+// source. All logs subscribers with the same selectors share ONE all-logs source
+// (no address/topic filter in the source); per-client filtering happens in the
+// processor. Params are therefore not part of the key; see localKey.
+const localLogsPrefix = "local|logs"
 
 // localPendingTxKey is the aggregation key for the locally-synthesized
 // newPendingTransactions source. It opens eth_subscribe("newPendingTransactions")
 // on every ws-capable upstream of the chain, merges them and dedupes by hash, so
 // all clients must collapse onto one source regardless of selectors (one mempool
-// tap per chain) - same rationale as localNewHeadsKey.
+// tap per chain), unlike the per-selector newHeads and logs keys.
 const localPendingTxKey = "local|newPendingTransactions"
 
 // localDrpcPendingTxKey is the aggregation key for drpc_pendingTransactions: it
@@ -60,14 +57,101 @@ const genericSubscriptionBufferSize = 4096
 // never catch up, so it is better cut off early by the subengine.
 const blockSubscribeBufferSize = 100
 
-// resolveSource decides how the shared source for this subscription is produced
-// and returns its aggregation key alongside the builder, keeping the local-vs-
-// generic decision and the key in one place:
-//   - locally-synthesized newHeads (one source per chain) when the chain has a
-//     WS-head-capable upstream, or
+// localKey is the aggregation key of a local source: its prefix plus the key of
+// the request's routing selectors, so identical filters share one source and
+// different filters do not. Selectors that compile to no matcher (sort hints
+// such as a block tag) order the generic path's candidates but do not filter a
+// head feed, so they are left out. Params are not part of it either: the local
+// sources carry the whole chain and per-client filtering happens in the
+// processor.
+func localKey(prefix string, request protocol.RequestHolder) string {
+	routing := make([]protocol.RequestSelector, 0, len(request.Selectors()))
+	for _, selector := range request.Selectors() {
+		if matcher, _ := compileSelector(selector, nil); matcher != nil {
+			routing = append(routing, selector)
+		}
+	}
+	return prefix + "|" + selectorKey(routing)
+}
+
+// localSourceFilter admits the upstreams a local source may follow: available,
+// advertising cap, and matching the client's selectors. topic names the
+// subscription in match traces.
+func localSourceFilter(
+	cap protocol.Cap,
+	topic string,
+	request protocol.RequestHolder,
+	supervisor upstreams.UpstreamSupervisor,
+	chainSup upstreams.ChainSupervisor,
+) upstreams.FilterUpstream {
+	matchers := []Matcher{NewStatusMatcher(), NewCapMatcher(cap, topic)}
+	selectorMatchers, _ := buildSelectorRouting(request.Selectors(), supervisor, chainSup)
+	matchers = append(matchers, selectorMatchers...)
+	match := matcherFilter(NewMultiMatcher(matchers...))
+	pins := request.UpstreamPins()
+	return func(id string, state *protocol.UpstreamState) bool {
+		return pins.Matches(id, state) && match(id, state)
+	}
+}
+
+// hasUpstream reports whether some upstream of the chain passes filter right
+// now - the same question the head feed answers, asked before building a source
+// so a request fails up front instead of building a source that terminates at
+// once.
+func hasUpstream(chainSup upstreams.ChainSupervisor, filter upstreams.FilterUpstream) bool {
+	noOrder := func(_, _ lo.Tuple2[string, *protocol.UpstreamState]) int { return 0 }
+	return len(chainSup.GetSortedUpstreamIds(filter, noOrder)) > 0
+}
+
+// localFeedFilter builds the head-feed filter of a local source and checks that
+// some upstream passes it right now. When none does - the chain has no upstream
+// at all, none advertises cap (a polled-head chain), all capable ones are
+// unavailable, or the client's selectors exclude them - the subscription fails
+// with NoAvailableUpstreamsError. Local subscriptions are opt-out per chain
+// (local-subscriptions in chain-defaults); with them on, a client is served
+// locally or not at all, never silently rerouted to a node it did not select
+// or whose head is polled. A chain that cannot serve a topic locally must have
+// the topic's flag turned off.
+func localFeedFilter(
+	cap protocol.Cap,
+	topic string,
+	chain chains.Chain,
+	request protocol.RequestHolder,
+	supervisor upstreams.UpstreamSupervisor,
+) (upstreams.FilterUpstream, error) {
+	chainSup := supervisor.GetChainSupervisor(chain)
+	if chainSup == nil {
+		return nil, protocol.NoAvailableUpstreamsError()
+	}
+	filter := localSourceFilter(cap, topic, request, supervisor, chainSup)
+	if !hasUpstream(chainSup, filter) {
+		return nil, protocol.NoAvailableUpstreamsError()
+	}
+	return filter, nil
+}
+
+// resolvedSource is how the shared source for a subscription is produced: its
+// aggregation key, its builder, and the per-client filter applied to its events
+// (nil when the source emits only what the client asked for).
+type resolvedSource struct {
+	key     string
+	builder subengine.SourceBuilder
+	filter  SubFilter
+}
+
+// resolveSource decides how the shared source for this subscription is produced,
+// keeping the local-vs-generic decision and the key in one place:
+//   - locally-synthesized newHeads (one source per selector) over the available
+//     upstreams with a subscription-driven head that match the client's
+//     selectors, or
+//   - locally-synthesized logs (one source per selector) over the available
+//     upstreams with LogsCap that match the client's selectors, or
 //   - locally-aggregated newPendingTransactions/drpc_pendingTransactions (one
 //     source per chain) when the chain has a ws-capable upstream, or
 //   - the default node-backed passthrough, keyed by method+params+selectors.
+//
+// With local newHeads or logs enabled for the chain, no matching upstream right
+// now is an error rather than a fallback (see localFeedFilter).
 func resolveSource(
 	chain chains.Chain,
 	supervisor upstreams.UpstreamSupervisor,
@@ -76,22 +160,36 @@ func resolveSource(
 	registry *rating.RatingRegistry,
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
-) (string, subengine.SourceBuilder, SubFilter) {
-	if !request.UpstreamPins().Pinned() && settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
-		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
-	}
-	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
-		if filter, err := parseLogFilter(request); err == nil {
-			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
+) (resolvedSource, error) {
+	if settings.NewHeads && isNewHeadsRequest(request) {
+		filter, err := localFeedFilter(protocol.NewHeadsCap, "newHeads", chain, request, supervisor)
+		if err != nil {
+			return resolvedSource{}, err
 		}
+		return resolvedSource{key: localKey(localNewHeadsPrefix, request), builder: subengine.NewHeadsSourceBuilder(supervisor, chain, filter)}, nil
+	}
+	// Local logs fetch block data through a chain-wide strategy. Pinned requests
+	// must stay on the node-backed path until those internal fetches are scoped too.
+	if !request.UpstreamPins().Pinned() && settings.Logs && isLogsRequest(request) {
+		// the request is checked before the upstreams: a malformed filter object
+		// is the client's mistake whatever the chain looks like
+		logFilter, err := parseLogFilter(request)
+		if err != nil {
+			return resolvedSource{}, protocol.InvalidParamsError(err.Error())
+		}
+		filter, err := localFeedFilter(protocol.LogsCap, "logs", chain, request, supervisor)
+		if err != nil {
+			return resolvedSource{}, err
+		}
+		return resolvedSource{key: localKey(localLogsPrefix, request), builder: newLogsSourceBuilder(supervisor, chain, registry, filter), filter: logFilter}, nil
 	}
 	if !request.UpstreamPins().Pinned() && settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
-		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
+		return resolvedSource{key: localPendingTxKey, builder: newPendingTxSourceBuilder(supervisor, chain)}, nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
 	// local regardless of settings; it builds its own pending-tx source internally.
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
-		return scopedPendingKey(localDrpcPendingTxKey, request.Selectors()), newDrpcPendingTxSourceBuilder(supervisor, chain, engine, request.Selectors()...), nil
+		return resolvedSource{key: scopedPendingKey(localDrpcPendingTxKey, request.Selectors()), builder: newDrpcPendingTxSourceBuilder(supervisor, chain, engine, request.Selectors()...)}, nil
 	}
 	if isGrpcStream(request) {
 		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix
@@ -102,9 +200,9 @@ func resolveSource(
 		// aggregation of gRPC streams is implemented: subscriptions then fall
 		// through to the shared subscriptionKey below (finite streams must
 		// still never be shared).
-		return fmt.Sprintf("%s|%s", subscriptionKey(request), uuid.NewString()), newGenericSourceBuilder(supervisor, request, strategy), nil
+		return resolvedSource{key: fmt.Sprintf("%s|%s", subscriptionKey(request), uuid.NewString()), builder: newGenericSourceBuilder(supervisor, request, strategy)}, nil
 	}
-	return subscriptionKey(request), newGenericSourceBuilder(supervisor, request, strategy), nil
+	return resolvedSource{key: subscriptionKey(request), builder: newGenericSourceBuilder(supervisor, request, strategy)}, nil
 }
 
 // isGrpcStream reports whether request is a gRPC server-streaming call of
@@ -117,16 +215,6 @@ func isGrpcStream(request protocol.RequestHolder) bool {
 // completion, not a failure.
 func isFiniteGrpcStream(request protocol.RequestHolder) bool {
 	return request.SpecMethod() != nil && request.SpecMethod().GrpcCallType() == specs.GrpcCallTypeServerStreamFinite
-}
-
-func hasEffectiveSelectors(selectors []protocol.RequestSelector) bool {
-	for _, selector := range selectors {
-		if _, ok := selector.(protocol.RequestAnySelector); ok {
-			continue
-		}
-		return true
-	}
-	return false
 }
 
 // subscribeTopic returns the first param of an eth_subscribe request (the topic,
@@ -158,19 +246,6 @@ func isNewHeadsRequest(request protocol.RequestHolder) bool {
 	return ok && topic == "newHeads"
 }
 
-// localNewHeadsAvailable reports whether the chain can synthesize newHeads
-// locally, i.e. some available upstream has a subscription-driven head
-// (NewHeadsCap). A json-rpc/rest head connector does not get the cap, so such
-// chains correctly fall back to the generic node-backed source.
-func localNewHeadsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSupervisor) bool {
-	chainSup := supervisor.GetChainSupervisor(chain)
-	if chainSup == nil {
-		return false
-	}
-	caps := chainSup.GetChainState().Caps
-	return caps != nil && caps.Contains(protocol.NewHeadsCap)
-}
-
 // isLogsRequest reports whether request is eth_subscribe("logs", ...).
 func isLogsRequest(request protocol.RequestHolder) bool {
 	topic, ok := subscribeTopic(request)
@@ -190,18 +265,6 @@ func isPendingTxRequest(request protocol.RequestHolder) bool {
 func isDrpcPendingTxRequest(request protocol.RequestHolder) bool {
 	topic, ok := subscribeTopic(request)
 	return ok && topic == "drpc_pendingTransactions"
-}
-
-// localLogsAvailable reports whether the chain can synthesize logs locally, i.e.
-// some available upstream has a ws-driven head and eth_getLogs (LogsCap). Chains
-// without it fall back to the generic node-backed source.
-func localLogsAvailable(chain chains.Chain, supervisor upstreams.UpstreamSupervisor) bool {
-	chainSup := supervisor.GetChainSupervisor(chain)
-	if chainSup == nil {
-		return false
-	}
-	caps := chainSup.GetChainState().Caps
-	return caps != nil && caps.Contains(protocol.LogsCap)
 }
 
 // localPendingTxAvailable reports whether the chain can aggregate pending-tx
@@ -227,14 +290,19 @@ func subscriptionKey(request protocol.RequestHolder) string {
 // selectorKey produces a stable string for a selector tree so that identical
 // subscriptions routed the same way collide, while differently-routed ones do
 // not. Per-selector encoding is RequestSelector.Key (deterministic regardless
-// of ordering within and/or groups).
+// of ordering within and/or groups). RequestAnySelector has no routing effect
+// (compileSelector yields no matcher for it), so it is left out: a request
+// carrying it routes, and therefore shares a source, like one without selectors.
 func selectorKey(selectors []protocol.RequestSelector) string {
-	if len(selectors) == 0 {
-		return ""
-	}
 	parts := make([]string, 0, len(selectors))
 	for _, selector := range selectors {
+		if _, ok := selector.(protocol.RequestAnySelector); ok {
+			continue
+		}
 		parts = append(parts, selector.Key())
+	}
+	if len(parts) == 0 {
+		return ""
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ",")

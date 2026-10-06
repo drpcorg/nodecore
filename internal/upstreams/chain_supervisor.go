@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,7 @@ type GenericChainSupervisor struct {
 	ctx             context.Context
 	chain           chains.Chain
 	fc              choice.ForkChoice
+	newFc           func() choice.ForkChoice
 	state           *utils.Atomic[ChainSupervisorState]
 	eventsChan      chan protocol.UpstreamEvent
 	upstreamStates  *utils.CMap[string, *protocol.UpstreamState]
@@ -55,12 +57,18 @@ type GenericChainSupervisor struct {
 
 	subStateManager  *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
 	upstreamsChanged utils.Signal
+
+	// feeds are the live filtered head feeds (SubscribeHead). feedsMu guards the
+	// map, feedsClosed and every send/close on a feed's channel.
+	feedsMu     sync.Mutex
+	feeds       map[*headFeed]struct{}
+	feedsClosed bool
 }
 
 func NewGenericChainSupervisor(
 	ctx context.Context,
 	chain chains.Chain,
-	fc choice.ForkChoice,
+	newFc func() choice.ForkChoice,
 	tracker dimensions.DimensionTracker,
 	validateLag bool,
 	getUpstream func(string) Upstream,
@@ -83,7 +91,9 @@ func NewGenericChainSupervisor(
 		ctx:             ctx,
 		tracker:         tracker,
 		chain:           chain,
-		fc:              fc,
+		fc:              newFc(),
+		newFc:           newFc,
+		feeds:           make(map[*headFeed]struct{}),
 		eventsChan:      make(chan protocol.UpstreamEvent, 100),
 		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
 		state:           state,
@@ -183,6 +193,7 @@ func (b *GenericChainSupervisor) processEvents() {
 	for {
 		select {
 		case <-b.ctx.Done():
+			b.closeFeeds()
 			return
 		case event, ok := <-b.eventsChan:
 			if ok {
@@ -195,6 +206,7 @@ func (b *GenericChainSupervisor) processEvents() {
 
 						b.updateState()
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
+						b.updateFeeds(event.Id)
 					}
 				case *protocol.HeadUpstreamEvent:
 					// Keep the per-upstream snapshot's head fresh - head updates
@@ -208,10 +220,12 @@ func (b *GenericChainSupervisor) processEvents() {
 						b.upstreamStates.Store(event.Id, &newUpState)
 					}
 					b.updateHead(event.Id, eventType)
+					b.updateFeeds(event.Id)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
 					b.upstreamStates.Store(event.Id, eventType.State.WithNodeGroupCache())
 					b.updateState()
+					b.updateFeeds(event.Id)
 				case *protocol.ValidUpstreamEvent:
 					// Symmetric to RemoveUpstreamEvent: a recovered upstream is
 					// re-registered right away from the event's state snapshot.
@@ -225,6 +239,7 @@ func (b *GenericChainSupervisor) processEvents() {
 						if !eventType.State.HeadData.IsEmptyByHeight() {
 							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})
 						}
+						b.updateFeeds(event.Id)
 					}
 				}
 				b.upstreamsChanged.Notify()

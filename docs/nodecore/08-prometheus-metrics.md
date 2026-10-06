@@ -474,7 +474,7 @@ These metrics track internal subscription manager performance (used for event pr
 
 ## Logs Subscription Metrics
 
-Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A non-zero value on either counter means subscribers may have silently missed log events.
+Metrics for the locally-synthesized EVM `logs` subscription source (one shared `eth_getLogs` per block, fanned out to all subscribers). A non-zero value on any of the counters means subscribers may have silently missed log events.
 
 ### `nodecore_logs_source_blocks_skipped_total`
 
@@ -485,11 +485,45 @@ Metrics for the locally-synthesized EVM `logs` subscription source (one shared `
 **Labels:**
 
 - `chain` - The blockchain network (e.g., ethereum)
-- `reason` - Why the block was skipped: `build` (failed to build the `eth_getLogs` request), `no_upstream` (no upstream at the block height / strategy exhausted), `parse` (failed to parse the `eth_getLogs` result), `upstream_error` (every attempt returned an upstream error)
+- `reason` - Why the block was skipped: `build` (failed to build the `eth_getLogs` request), `no_upstream` (no upstream at the block height / strategy exhausted), `parse` (failed to parse the `eth_getLogs` result), `upstream_error` (every attempt returned an upstream error), `not_ready` (the upstreams at the height reported the block as not available yet until the wait ended)
+
+The skip warning in the log carries the last upstream id and its error message (`upstream`, `upstream_error`).
 
 **Source:** `internal/upstreams/flow/logs_source.go`
 
 **Use Case:** Alert on gaps in delivered `logs`; a sustained `no_upstream` rate indicates insufficient upstream coverage at the chain head.
+
+---
+
+### `nodecore_logs_source_backfill_failed_total`
+
+**Type:** Counter
+
+**Description:** The total number of heads whose missing ancestors (heights the logs head jumped over, or the new chain after a reorg) could not be fetched by hash, or lay deeper than 32 blocks. Such a head is announced as is, so the missing blocks' logs are not delivered.
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+
+**Source:** `internal/upstreams/flow/subengine/blockupdates.go`
+
+**Use Case:** Alert on gaps in the logs head that could not be filled.
+
+---
+
+### `nodecore_logs_source_not_ready_retries_total`
+
+**Type:** Counter
+
+**Description:** The total number of times `eth_getLogs` for a block was asked again, from the top of the rating list, because no upstream at the height could serve it yet and at least one reported it as not available yet (for example erigon's `block range extends beyond current head block` right after it announced the block).
+
+**Labels:**
+
+- `chain` - The blockchain network (e.g., ethereum)
+
+**Source:** `internal/upstreams/flow/logs_source.go`
+
+**Use Case:** See which chains' upstreams announce blocks before they can serve them; a high rate together with `blocks_skipped_total{reason="not_ready"}` means the wait is too short for that node.
 
 ---
 

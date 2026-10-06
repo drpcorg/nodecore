@@ -140,6 +140,10 @@ func (s *fakeChainSupervisor) UpstreamsChanged() <-chan struct{} {
 	return nil
 }
 
+func (s *fakeChainSupervisor) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {
+	return nil
+}
+
 func (s *fakeChainSupervisor) SetState(state upstreams.ChainSupervisorState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

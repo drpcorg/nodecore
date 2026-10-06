@@ -39,15 +39,35 @@ func testEthSubscribeRequestWithId(id string) protocol.RequestHolder {
 }
 
 func newSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx flow.SubCtx) *flow.SubscriptionRequestProcessor {
-	// No local-newHeads availability, so these tests exercise the generic
-	// node-backed path; tests that want local synthesis override this.
+	// Local subscriptions off, so these tests exercise the generic node-backed
+	// path (with them on, newHeads is served locally or fails).
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
-	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil, allLocalSubs)
+	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil, config.LocalSubSettings{})
 }
 
 // allLocalSubs enables every local subscription type (the default).
 var allLocalSubs = config.LocalSubSettings{NewHeads: true, Logs: true, PendingTx: true}
+
+// With local newHeads enabled and no upstream able to serve it, the client gets
+// a terminal "no available upstreams" frame; nothing is routed to a node.
+func TestSubscriptionRequestProcessorLocalNewHeadsWithoutCapableUpstreamFails(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
+	strategy := mocks.NewMockStrategy()
+	request := testEthSubscribeRequest()
+	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
+	processor := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, allLocalSubs)
+
+	response := processor.ProcessRequest(context.Background(), strategy, request)
+
+	errorWrapper := <-response.(*flow.SubscriptionResponse).ResponseWrappers
+	strategy.AssertNotCalled(t, "SelectUpstream", mock.Anything)
+	upSupervisor.AssertNotCalled(t, "GetUpstream", mock.Anything)
+	assert.Equal(t, "223", errorWrapper.RequestId)
+	assert.True(t, errorWrapper.Response.HasError())
+	assert.Equal(t, protocol.NoAvailableUpstreamsError(), errorWrapper.Response.GetError())
+}
 
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
@@ -208,12 +228,12 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx := context.Background()
 
-	// No local-newHeads availability → both clients use the generic path.
+	// Local subscriptions off → both clients use the generic path.
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	// One shared engine backs both client processors.
 	engine := subengine.NewRegistry(ctx).Get(chains.ETHEREUM)
-	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, allLocalSubs)
-	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, allLocalSubs)
+	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, config.LocalSubSettings{})
+	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, config.LocalSubSettings{})
 
 	req1 := testEthSubscribeRequestWithId("c1")
 	req2 := testEthSubscribeRequestWithId("c2")

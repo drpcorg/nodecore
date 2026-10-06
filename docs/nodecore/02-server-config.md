@@ -37,7 +37,7 @@ server:
 
 ## Fields
 
-- `port` - The main HTTP port where nodecore listens for incoming RPC requests. Request and response bodies on this port are gzip/zstd [compressed](15-compression.md) by content negotiation; there is nothing to configure. **_Default_**: `9090`
+- `port` - The main HTTP port where nodecore listens for incoming RPC requests. Request and response bodies on this port are gzip/zstd/brotli [compressed](15-compression.md) by content negotiation; there is nothing to configure. **_Default_**: `9090`
 - `grpc-port` - Port exposing the [gRPC API](12-grpc-server.md) for querying upstream/chain state. Disabled by default; set explicitly to enable
 - `grpc-upstream-status-interval` - The minimum gap between two [`SubscribeNodeGroupStatus`](12-grpc-server.md) responses of a chain: changes within it go out together, with the latest state. `0` means the default; a value outside `5ms`..`1s` is a config error. **_Default_**: `25ms`
 - `grpc-ingress-port` - Port exposing the [gRPC chain ingress](14-grpc-ingress.md): native gRPC chain traffic (e.g. Sui's `sui.rpc.v2`) routed through the same execution flow as HTTP requests. Disabled by default. This is a **separate server** from `grpc-port` — different clients and auth models — reusing the same `tls` config; either can run without the other

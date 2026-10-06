@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
@@ -45,7 +46,10 @@ func TestCompressServesTheNegotiatedCoding(t *testing.T) {
 		{"gzip client", "gzip", "gzip"},
 		{"client offering both prefers zstd", "gzip, zstd", "zstd"},
 		{"client refusing zstd still gets gzip", "zstd;q=0, gzip", "gzip"},
-		{"unknown coding is not compressed", "br", ""},
+		{"brotli client", "br", "br"},
+		{"a browser without zstd gets brotli", "gzip, deflate, br", "br"},
+		{"client offering zstd and brotli prefers zstd", "br, zstd", "zstd"},
+		{"unknown coding is not compressed", "deflate", ""},
 		{"no header is not compressed", "", ""},
 	}
 
@@ -71,7 +75,7 @@ func TestCompressServesTheNegotiatedCoding(t *testing.T) {
 // client, so the header is announced whether or not this response was
 // compressed.
 func TestCompressAlwaysVariesOnAcceptEncoding(t *testing.T) {
-	for _, acceptEncoding := range []string{"", "gzip", "zstd"} {
+	for _, acceptEncoding := range []string{"", "gzip", "zstd", "br"} {
 		rec := serveCompressed(t, acceptEncoding)
 
 		assert.Contains(t, rec.Header().Values(echo.HeaderVary), echo.HeaderAcceptEncoding)
@@ -254,7 +258,7 @@ func TestCompressReadsEveryAcceptEncodingFieldLine(t *testing.T) {
 		expected string
 	}{
 		{"a refusal on a later line still counts", []string{"zstd;q=0", "gzip"}, "gzip"},
-		{"a coding on a later line is still offered", []string{"br", "zstd"}, "zstd"},
+		{"a coding on a later line is still offered", []string{"deflate", "zstd"}, "zstd"},
 		{"split across lines the way a proxy might", []string{"gzip;q=0.5", "zstd;q=0.1"}, "gzip"},
 	}
 
@@ -288,4 +292,79 @@ func decodeBody(t *testing.T, contentEncoding string, raw []byte) []byte {
 	out, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	return out
+}
+
+// A streamed response is only streamed if a flush gets its bytes through the
+// codec and all the way to the client. The handler below will not write its
+// second chunk until the client has decoded the first, so a codec that holds
+// flushed bytes back hangs the exchange instead of passing.
+func TestCompressStreamsFlushedChunksToTheClient(t *testing.T) {
+	first := []byte(`{"chunk":"first"}`)
+	second := []byte(`{"chunk":"second"}`)
+
+	for _, scheme := range []string{"gzip", "zstd", "br"} {
+		t.Run(scheme, func(te *testing.T) {
+			firstDecoded := make(chan struct{})
+			e := echo.New()
+			e.Use(http_server.Compress())
+			e.GET("/", func(c echo.Context) error {
+				c.Response().Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+				c.Response().WriteHeader(http.StatusOK)
+				if _, err := c.Response().Write(first); err != nil {
+					return err
+				}
+				c.Response().Flush()
+				select {
+				case <-firstDecoded:
+				case <-time.After(5 * time.Second):
+					return nil
+				}
+				_, err := c.Response().Write(second)
+				return err
+			})
+			srv := httptest.NewServer(e)
+			defer srv.Close()
+
+			// An explicit Accept-Encoding also keeps Go's transport from
+			// decoding gzip behind the test's back.
+			req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
+			require.NoError(te, err)
+			req.Header.Set(echo.HeaderAcceptEncoding, scheme)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(te, err)
+			defer func() { _ = resp.Body.Close() }()
+			require.Equal(te, scheme, resp.Header.Get(echo.HeaderContentEncoding))
+
+			type result struct {
+				reader io.ReadCloser
+				chunk  []byte
+				err    error
+			}
+			done := make(chan result, 1)
+			go func() {
+				reader, err := compression.WrapReader(scheme, resp.Body)
+				if err != nil {
+					done <- result{err: err}
+					return
+				}
+				chunk := make([]byte, len(first))
+				_, err = io.ReadFull(reader, chunk)
+				done <- result{reader: reader, chunk: chunk, err: err}
+			}()
+			var got result
+			select {
+			case got = <-done:
+			case <-time.After(5 * time.Second):
+				te.Fatal("the flushed chunk never reached the client")
+			}
+			require.NoError(te, got.err)
+			defer func() { require.NoError(te, got.reader.Close()) }()
+			assert.Equal(te, first, got.chunk)
+
+			close(firstDecoded)
+			rest, err := io.ReadAll(got.reader)
+			require.NoError(te, err)
+			assert.Equal(te, second, rest)
+		})
+	}
 }

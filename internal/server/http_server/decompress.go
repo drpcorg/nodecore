@@ -18,11 +18,11 @@ import (
 // MaxDecodedRequestBytes caps how much a single request body may decode to.
 //
 // A compressed body is a size multiplier whose factor the sender chooses:
-// DEFLATE tops out near 1000:1, zstd has no comparable ceiling, so without a
-// cap a few hundred kilobytes on the wire can ask nodecore to hold gigabytes -
-// from anyone who can reach the port. The window cap in internal/compression
-// bounds what one frame header can make a decoder allocate; this bounds what
-// the decoded bytes themselves can.
+// DEFLATE tops out near 1000:1, zstd and brotli have no comparable ceiling, so
+// without a cap a few hundred kilobytes on the wire can ask nodecore to hold
+// gigabytes - from anyone who can reach the port. The window cap in
+// internal/compression bounds what one frame header can make a decoder
+// allocate; this bounds what the decoded bytes themselves can.
 //
 // 32MiB is far above anything JSON-RPC produces in practice - a batch of ten
 // thousand calls is on the order of a megabyte - so it is a ceiling on abuse

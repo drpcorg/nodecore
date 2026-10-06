@@ -49,7 +49,7 @@ func publishPinTestUpstream(chainSupervisor upstreams.ChainSupervisor, id string
 func pinTestChain(t *testing.T, method string, ids ...string) upstreams.ChainSupervisor {
 	t.Helper()
 	specs_utils.LoadMethodSpecs()
-	chainSupervisor := upstreams.NewGenericChainSupervisor(t.Context(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(t.Context(), chains.ETHEREUM, fork_choice.NewHeightForkChoice, nil, false, nil)
 	go chainSupervisor.Start()
 	for _, id := range ids {
 		publishPinTestUpstream(chainSupervisor, id, protocol.Available, 100, method)
@@ -369,7 +369,7 @@ func TestPinnedNotNullStaysInsideThePin(t *testing.T) {
 
 func TestPinnedIntegrityRerouteStaysInsideThePin(t *testing.T) {
 	specs_utils.LoadMethodSpecs()
-	chainSupervisor := upstreams.NewGenericChainSupervisor(t.Context(), chains.ETHEREUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(t.Context(), chains.ETHEREUM, fork_choice.NewHeightForkChoice, nil, false, nil)
 	go chainSupervisor.Start()
 	publishPinTestUpstream(chainSupervisor, "low", protocol.Available, 5, specs.EthBlockNumber)
 	publishPinTestUpstream(chainSupervisor, "mid", protocol.Available, 108, specs.EthBlockNumber)

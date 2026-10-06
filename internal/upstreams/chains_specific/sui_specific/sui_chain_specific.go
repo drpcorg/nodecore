@@ -145,6 +145,9 @@ func (s *SuiChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 		sui_bounds.NewSuiLowerBoundDetector(
 			s.upstreamId, s.configuredChain.Chain, s.internalTimeout, s.connector,
 		),
+		sui_bounds.NewSuiEpochLowerBoundDetector(
+			s.upstreamId, s.configuredChain.Chain, s.internalTimeout, s.connector,
+		),
 	}
 	return lower_bounds.NewGenericLowerBoundProcessor(
 		s.ctx, s.upstreamId, s.configuredChain.AverageRemoveSpeed(), detectors,

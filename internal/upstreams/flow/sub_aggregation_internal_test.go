@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -14,11 +15,15 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
-// stubChainSupervisor exposes a fixed ChainSupervisorState for gating tests.
+// stubChainSupervisor exposes a fixed ChainSupervisorState and a fixed set of
+// upstream states for gating tests.
 type stubChainSupervisor struct {
-	state upstreams.ChainSupervisorState
+	state  upstreams.ChainSupervisorState
+	states map[string]*protocol.UpstreamState
 }
 
 func (s *stubChainSupervisor) Start()                                        {}
@@ -26,16 +31,26 @@ func (s *stubChainSupervisor) GetChain() chains.Chain                        { r
 func (s *stubChainSupervisor) GetChainState() upstreams.ChainSupervisorState { return s.state }
 func (s *stubChainSupervisor) GetMethod(string) *specs.Method                { return nil }
 func (s *stubChainSupervisor) GetMethods() []string                          { return nil }
-func (s *stubChainSupervisor) GetUpstreamState(string) *protocol.UpstreamState {
-	return nil
+func (s *stubChainSupervisor) GetUpstreamState(id string) *protocol.UpstreamState {
+	return s.states[id]
 }
-func (s *stubChainSupervisor) GetSortedUpstreamIds(upstreams.FilterUpstream, upstreams.SortUpstream) []string {
-	return nil
+func (s *stubChainSupervisor) GetSortedUpstreamIds(filter upstreams.FilterUpstream, _ upstreams.SortUpstream) []string {
+	ids := make([]string, 0, len(s.states))
+	for id, state := range s.states {
+		if filter(id, state) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }
 func (s *stubChainSupervisor) GetUpstreamIds() []string                    { return nil }
 func (s *stubChainSupervisor) NextIndex() uint64                           { return 0 }
 func (s *stubChainSupervisor) PublishUpstreamEvent(protocol.UpstreamEvent) {}
 func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent] {
+	return nil
+}
+func (s *stubChainSupervisor) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {
 	return nil
 }
 
@@ -48,15 +63,38 @@ var _ upstreams.ChainSupervisor = (*stubChainSupervisor)(nil)
 // allLocalSubs enables every local subscription type, the default behavior.
 var allLocalSubs = config.LocalSubSettings{NewHeads: true, Logs: true, PendingTx: true}
 
-// allCapsSupervisor reports a chain capable of every local subscription type.
-func allCapsSupervisor() *mocks.UpstreamSupervisorMock {
+// capsSupervisor reports a chain with one available upstream advertising caps,
+// with labels, and the chain-wide Caps union set to the same caps.
+func capsSupervisor(labels map[string]string, caps ...protocol.Cap) *mocks.UpstreamSupervisorMock {
+	methodsMock := mocks.NewMethodsMock()
+	methodsMock.On("HasMethod", mock.Anything).Return(true).Maybe()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](caps...), "idx", nil, nil)
+	state.Status = protocol.Available
+	state.HeadData = protocol.Block{Height: 100}
+	state.Labels = protocol.NewLabels()
+	for k, v := range labels {
+		state.Labels.AddLabel(k, v)
+	}
 	sup := mocks.NewUpstreamSupervisorMock()
 	sup.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
-		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](
-			protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap,
-		)},
+		state:  upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](caps...)},
+		states: map[string]*protocol.UpstreamState{"up1": &state},
 	})
 	return sup
+}
+
+// unavailableCapsSupervisor is capsSupervisor whose only upstream is Unavailable:
+// the chain can serve the topic locally, just not right now.
+func unavailableCapsSupervisor(caps ...protocol.Cap) *mocks.UpstreamSupervisorMock {
+	sup := capsSupervisor(nil, caps...)
+	stub := sup.GetChainSupervisor(chains.ETHEREUM).(*stubChainSupervisor)
+	stub.states["up1"].Status = protocol.Unavailable
+	return sup
+}
+
+// allCapsSupervisor reports a chain capable of every local subscription type.
+func allCapsSupervisor() *mocks.UpstreamSupervisorMock {
+	return capsSupervisor(nil, protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap, protocol.PendingTxCap)
 }
 
 func subscribeRequest(params string) protocol.RequestHolder {
@@ -73,21 +111,22 @@ func TestResolveSourceRespectsLocalSubSettings(t *testing.T) {
 	drpcPendingTx := subscribeRequest(`["drpc_pendingTransactions"]`)
 
 	resolve := func(req protocol.RequestHolder, settings config.LocalSubSettings) string {
-		key, _, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), req, nil, nil, nil, settings)
-		return key
+		src, err := resolveSource(chains.ETHEREUM, allCapsSupervisor(), req, nil, nil, nil, settings)
+		require.NoError(t, err)
+		return src.key
 	}
 
 	t.Run("all enabled - every type local", func(t *testing.T) {
-		assert.Equal(t, localNewHeadsKey, resolve(newHeads, allLocalSubs))
-		assert.Equal(t, localLogsKey, resolve(logs, allLocalSubs))
+		assert.True(t, strings.HasPrefix(resolve(newHeads, allLocalSubs), localNewHeadsPrefix+"|"))
+		assert.True(t, strings.HasPrefix(resolve(logs, allLocalSubs), localLogsPrefix+"|"))
 		assert.Equal(t, localPendingTxKey, resolve(pendingTx, allLocalSubs))
 		assert.Equal(t, localDrpcPendingTxKey, resolve(drpcPendingTx, allLocalSubs))
 	})
 
 	t.Run("master off - falls back to generic except drpc", func(t *testing.T) {
 		off := config.LocalSubSettings{}
-		assert.NotEqual(t, localNewHeadsKey, resolve(newHeads, off))
-		assert.NotEqual(t, localLogsKey, resolve(logs, off))
+		assert.False(t, strings.HasPrefix(resolve(newHeads, off), localNewHeadsPrefix))
+		assert.False(t, strings.HasPrefix(resolve(logs, off), localLogsPrefix))
 		assert.NotEqual(t, localPendingTxKey, resolve(pendingTx, off))
 		// drpc_pendingTransactions is never gated.
 		assert.Equal(t, localDrpcPendingTxKey, resolve(drpcPendingTx, off))
@@ -95,32 +134,82 @@ func TestResolveSourceRespectsLocalSubSettings(t *testing.T) {
 
 	t.Run("per-type override - only logs stays local", func(t *testing.T) {
 		logsOnly := config.LocalSubSettings{Logs: true}
-		assert.NotEqual(t, localNewHeadsKey, resolve(newHeads, logsOnly))
-		assert.Equal(t, localLogsKey, resolve(logs, logsOnly))
+		assert.False(t, strings.HasPrefix(resolve(newHeads, logsOnly), localNewHeadsPrefix))
+		assert.True(t, strings.HasPrefix(resolve(logs, logsOnly), localLogsPrefix+"|"))
 		assert.NotEqual(t, localPendingTxKey, resolve(pendingTx, logsOnly))
 		assert.Equal(t, localDrpcPendingTxKey, resolve(drpcPendingTx, logsOnly))
 	})
 }
 
-func TestLocalNewHeadsAvailable(t *testing.T) {
-	// nil chain supervisor → not available
+func newHeadsRequest(selectors ...protocol.RequestSelector) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth", selectors...)
+}
+
+func TestResolveSourceNewHeadsGate(t *testing.T) {
+	resolve := func(sup *mocks.UpstreamSupervisorMock, req protocol.RequestHolder) string {
+		src, err := resolveSource(chains.ETHEREUM, sup, req, nil, nil, nil, allLocalSubs)
+		require.NoError(t, err)
+		return src.key
+	}
+	local := func(key string) bool { return strings.HasPrefix(key, localNewHeadsPrefix+"|") }
+
+	// websocket head connector -> NewHeadsCap -> local
+	assert.True(t, local(resolve(capsSupervisor(nil, protocol.WsCap, protocol.NewHeadsCap), newHeadsRequest())))
+
+	// a selector some upstream satisfies -> local, and the key carries the selector
+	reth := protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}
+	key := resolve(capsSupervisor(map[string]string{"client": "reth"}, protocol.WsCap, protocol.NewHeadsCap), newHeadsRequest(reth))
+	assert.Equal(t, localKey(localNewHeadsPrefix, newHeadsRequest(reth)), key)
+	assert.NotEqual(t, localKey(localNewHeadsPrefix, newHeadsRequest()), key, "different selectors -> different sources")
+}
+
+// With local newHeads enabled, no upstream passing the full filter right now is
+// an error, never a silent fallback onto a node the client did not ask for or
+// whose head is polled.
+func TestResolveSourceNewHeadsErrorsWhenNoneMatches(t *testing.T) {
+	resolveErr := func(sup *mocks.UpstreamSupervisorMock, req protocol.RequestHolder) error {
+		_, err := resolveSource(chains.ETHEREUM, sup, req, nil, nil, nil, allLocalSubs)
+		return err
+	}
+	reth := protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}
+
+	// a selector no upstream satisfies
+	err := resolveErr(capsSupervisor(map[string]string{"client": "geth"}, protocol.WsCap, protocol.NewHeadsCap), newHeadsRequest(reth))
+	require.Error(t, err)
+	assert.Equal(t, protocol.NoAvailableUpstreamsError().Message, err.(*protocol.ResponseError).Message)
+
+	// the only capable upstream is unavailable
+	require.Error(t, resolveErr(unavailableCapsSupervisor(protocol.WsCap, protocol.NewHeadsCap), newHeadsRequest()))
+
+	// an unsupported selector (sort-bearing inside OR) compiles to a matcher no
+	// upstream passes
+	unsupported := protocol.RequestOrSelector{Children: []protocol.RequestSelector{
+		protocol.RequestBlockTagSelector{Tag: protocol.BlockTagLatest},
+		reth,
+	}}
+	require.Error(t, resolveErr(capsSupervisor(map[string]string{"client": "reth"}, protocol.WsCap, protocol.NewHeadsCap), newHeadsRequest(unsupported)))
+
+	// no upstream advertises NewHeadsCap at all (polled heads): with local
+	// newHeads enabled that is an error too, the operator must turn the flag off
+	require.Error(t, resolveErr(capsSupervisor(nil, protocol.WsCap), newHeadsRequest()))
+
+	// no chain supervisor at all
 	supNil := mocks.NewUpstreamSupervisorMock()
 	supNil.On("GetChainSupervisor", chains.ETHEREUM).Return(nil)
-	assert.False(t, localNewHeadsAvailable(chains.ETHEREUM, supNil))
+	require.Error(t, resolveErr(supNil, newHeadsRequest()))
 
-	// json-rpc head connector → no NewHeadsCap → falls back to generic
-	supRpc := mocks.NewUpstreamSupervisorMock()
-	supRpc.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
-		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap)},
-	})
-	assert.False(t, localNewHeadsAvailable(chains.ETHEREUM, supRpc))
+	// with the flag off the same chain takes the node path, no error
+	src, err := resolveSource(chains.ETHEREUM, capsSupervisor(nil, protocol.WsCap), newHeadsRequest(), nil, nil, nil, config.LocalSubSettings{})
+	require.NoError(t, err)
+	assert.False(t, strings.HasPrefix(src.key, localNewHeadsPrefix))
+}
 
-	// websocket head connector → NewHeadsCap → local synthesis
-	supSub := mocks.NewUpstreamSupervisorMock()
-	supSub.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
-		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap)},
-	})
-	assert.True(t, localNewHeadsAvailable(chains.ETHEREUM, supSub))
+func TestSelectorKeyIgnoresAnySelector(t *testing.T) {
+	assert.Equal(t, "", selectorKey([]protocol.RequestSelector{protocol.RequestAnySelector{}}))
+	label := protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}
+	assert.Equal(t,
+		selectorKey([]protocol.RequestSelector{label}),
+		selectorKey([]protocol.RequestSelector{protocol.RequestAnySelector{}, label}))
 }
 
 func TestSelectorKeyIsOrderIndependent(t *testing.T) {
@@ -216,71 +305,101 @@ func TestLocalPendingTxAvailable(t *testing.T) {
 	assert.True(t, localPendingTxAvailable(chains.ETHEREUM, supWs))
 }
 
-func TestLocalLogsAvailable(t *testing.T) {
-	supNil := mocks.NewUpstreamSupervisorMock()
-	supNil.On("GetChainSupervisor", chains.ETHEREUM).Return(nil)
-	assert.False(t, localLogsAvailable(chains.ETHEREUM, supNil))
-
-	// ws head connector without eth_getLogs → NewHeadsCap but no LogsCap
-	supHeads := mocks.NewUpstreamSupervisorMock()
-	supHeads.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
-		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap)},
-	})
-	assert.False(t, localLogsAvailable(chains.ETHEREUM, supHeads))
-
-	// ws head connector with eth_getLogs → LogsCap → local synthesis
-	supLogs := mocks.NewUpstreamSupervisorMock()
-	supLogs.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
-		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)},
-	})
-	assert.True(t, localLogsAvailable(chains.ETHEREUM, supLogs))
-}
-
-func TestHasEffectiveSelectors(t *testing.T) {
-	assert.False(t, hasEffectiveSelectors(nil))
-	assert.False(t, hasEffectiveSelectors([]protocol.RequestSelector{protocol.RequestAnySelector{}}))
-	assert.True(t, hasEffectiveSelectors([]protocol.RequestSelector{protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}}))
-	assert.True(t, hasEffectiveSelectors([]protocol.RequestSelector{
-		protocol.RequestAnySelector{},
-		protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}},
-	}))
-}
-
 func logsRequest(params string, selectors ...protocol.RequestSelector) protocol.RequestHolder {
 	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth", selectors...)
 }
 
-func logsSupervisor() *mocks.UpstreamSupervisorMock {
-	sup := mocks.NewUpstreamSupervisorMock()
-	sup.On("GetChainSupervisor", chains.ETHEREUM).Return(&stubChainSupervisor{
-		state: upstreams.ChainSupervisorState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)},
-	})
-	return sup
+func TestResolveSourceLogsGate(t *testing.T) {
+	resolve := func(sup *mocks.UpstreamSupervisorMock, req protocol.RequestHolder) string {
+		src, err := resolveSource(chains.ETHEREUM, sup, req, nil, nil, nil, allLocalSubs)
+		require.NoError(t, err)
+		return src.key
+	}
+	local := func(key string) bool { return strings.HasPrefix(key, localLogsPrefix+"|") }
+
+	// LogsCap -> local
+	assert.True(t, local(resolve(capsSupervisor(nil, protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap), logsRequest(`["logs",{}]`))))
 }
 
-func TestResolveSourceUsesLocalLogsForAnySelector(t *testing.T) {
-	tests := []struct {
-		name      string
-		selectors []protocol.RequestSelector
-		wantLocal bool
-	}{
-		{name: "no selectors", selectors: nil, wantLocal: true},
-		{name: "any selector", selectors: []protocol.RequestSelector{protocol.RequestAnySelector{}}, wantLocal: true},
-		{name: "label selector", selectors: []protocol.RequestSelector{protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}}, wantLocal: false},
-		{name: "any plus label selector", selectors: []protocol.RequestSelector{protocol.RequestAnySelector{}, protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}}, wantLocal: false},
+// Sort hints (block tags, predicted lower bounds) order the generic path's
+// candidates but do not filter a head feed, so they must not split local sources.
+func TestLocalKeyIgnoresSortOnlySelectors(t *testing.T) {
+	latest := protocol.RequestBlockTagSelector{Tag: protocol.BlockTagLatest}
+	label := protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}
+
+	assert.Equal(t, localKey(localLogsPrefix, logsRequest(`["logs",{}]`)), localKey(localLogsPrefix, logsRequest(`["logs",{}]`, latest)))
+	assert.Equal(t, localKey(localLogsPrefix, logsRequest(`["logs",{}]`, label)), localKey(localLogsPrefix, logsRequest(`["logs",{}]`, label, latest)))
+	assert.NotEqual(t, localKey(localLogsPrefix, logsRequest(`["logs",{}]`)), localKey(localLogsPrefix, logsRequest(`["logs",{}]`, label)))
+}
+
+// With local logs on, a malformed filter object is the client's mistake and is
+// rejected up front with invalid params, whatever the upstreams look like; it
+// is never handed to a node instead.
+func TestResolveSourceLogsRejectsMalformedFilter(t *testing.T) {
+	bad := logsRequest(`["logs",{"address":123}]`)
+
+	_, err := resolveSource(chains.ETHEREUM, capsSupervisor(nil, protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap), bad, nil, nil, nil, allLocalSubs)
+	require.Error(t, err)
+	assert.Equal(t, protocol.InvalidParams, err.(*protocol.ResponseError).Code)
+
+	// the same on a chain where nothing can serve logs right now
+	_, err = resolveSource(chains.ETHEREUM, capsSupervisor(nil, protocol.WsCap), bad, nil, nil, nil, allLocalSubs)
+	require.Error(t, err)
+	assert.Equal(t, protocol.InvalidParams, err.(*protocol.ResponseError).Code)
+
+	// with the flag off the node decides
+	src, err := resolveSource(chains.ETHEREUM, capsSupervisor(nil, protocol.WsCap), bad, nil, nil, nil, config.LocalSubSettings{})
+	require.NoError(t, err)
+	assert.False(t, strings.HasPrefix(src.key, localLogsPrefix))
+}
+
+func TestResolveSourceLogsSelectorsSelectTheSource(t *testing.T) {
+	reth := protocol.RequestLabelSelector{Name: "client", Values: []string{"reth"}}
+	rethSup := func() *mocks.UpstreamSupervisorMock {
+		return capsSupervisor(map[string]string{"client": "reth"}, protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)
+	}
+	resolve := func(sup *mocks.UpstreamSupervisorMock, req protocol.RequestHolder) string {
+		src, err := resolveSource(chains.ETHEREUM, sup, req, nil, nil, nil, allLocalSubs)
+		require.NoError(t, err)
+		return src.key
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			req := logsRequest(`["logs",{}]`, tc.selectors...)
-			key, _, _ := resolveSource(chains.ETHEREUM, logsSupervisor(), req, nil, nil, nil, allLocalSubs)
-			if tc.wantLocal {
-				assert.Equal(t, localLogsKey, key)
-			} else {
-				assert.NotEqual(t, localLogsKey, key)
-			}
-		})
-	}
+	plain := resolve(rethSup(), logsRequest(`["logs",{}]`))
+	anySel := resolve(rethSup(), logsRequest(`["logs",{}]`, protocol.RequestAnySelector{}))
+	withSel := resolve(rethSup(), logsRequest(`["logs",{}]`, reth))
+	assert.True(t, strings.HasPrefix(plain, localLogsPrefix+"|"))
+	assert.Equal(t, plain, anySel, "RequestAnySelector is a no-op")
+	assert.True(t, strings.HasPrefix(withSel, localLogsPrefix+"|"), "a satisfiable selector stays local")
+	assert.NotEqual(t, plain, withSel, "different selectors -> different sources")
+
+	// params do not split the source: per-client filtering happens in the processor
+	assert.Equal(t, plain, resolve(rethSup(), logsRequest(`["logs",{"address":"0xabc"}]`)))
+
+}
+
+// Same rule as newHeads: with local logs enabled, nothing matching now is an
+// error; only the flag turns the node path back on.
+func TestResolveSourceLogsErrorsWhenNoneMatches(t *testing.T) {
+	geth := protocol.RequestLabelSelector{Name: "client", Values: []string{"geth"}}
+	rethSup := capsSupervisor(map[string]string{"client": "reth"}, protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)
+	_, err := resolveSource(chains.ETHEREUM, rethSup, logsRequest(`["logs",{}]`, geth), nil, nil, nil, allLocalSubs)
+	require.Error(t, err)
+
+	_, err = resolveSource(chains.ETHEREUM, unavailableCapsSupervisor(protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap), logsRequest(`["logs",{}]`), nil, nil, nil, allLocalSubs)
+	require.Error(t, err)
+
+	// ws head without eth_getLogs: NewHeadsCap but no LogsCap anywhere
+	_, err = resolveSource(chains.ETHEREUM, capsSupervisor(nil, protocol.WsCap, protocol.NewHeadsCap), logsRequest(`["logs",{}]`), nil, nil, nil, allLocalSubs)
+	require.Error(t, err)
+
+	supNil := mocks.NewUpstreamSupervisorMock()
+	supNil.On("GetChainSupervisor", chains.ETHEREUM).Return(nil)
+	_, err = resolveSource(chains.ETHEREUM, supNil, logsRequest(`["logs",{}]`), nil, nil, nil, allLocalSubs)
+	require.Error(t, err)
+
+	src, err := resolveSource(chains.ETHEREUM, capsSupervisor(nil, protocol.WsCap, protocol.NewHeadsCap), logsRequest(`["logs",{}]`, geth), nil, nil, nil, config.LocalSubSettings{})
+	require.NoError(t, err)
+	assert.False(t, strings.HasPrefix(src.key, localLogsPrefix))
 }
 
 func TestParseLogFilterAndMatches(t *testing.T) {
@@ -399,8 +518,11 @@ func TestResolveSourceGrpcStreamKeyIsUniquePerRequest(t *testing.T) {
 	supervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 
-	key1, _, _ := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
-	key2, _, _ := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+	src1, err := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+	require.NoError(t, err)
+	src2, err := resolveSource(chains.SUI, supervisor, request, strategy, nil, nil, config.LocalSubSettings{})
+	require.NoError(t, err)
+	key1, key2 := src1.key, src2.key
 
 	prefix := subscriptionKey(request) + "|"
 	assert.True(t, strings.HasPrefix(key1, prefix))

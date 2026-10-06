@@ -70,18 +70,21 @@ There are four local source types:
 
 | Topic | How it is synthesized | Capability gate | Config flag |
 |---|---|---|---|
-| `newHeads` | Taps the chain's merged head stream (the fork-choice winner) and forwards head notifications | `NewHeadsCap` | `enable-new-heads` |
-| `logs` | One shared unfiltered log stream built from per-block `eth_getLogs`; per-client address/topic filtering | `LogsCap` | `enable-logs` |
+| `newHeads` | Follows a head feed over the available upstreams with a subscription-driven head that match the request's selectors, and forwards their head notifications | `NewHeadsCap` | `enable-new-heads` |
+| `logs` | One shared unfiltered log stream per selector set, built from per-block `eth_getLogs` on a head feed filtered to upstreams with `LogsCap`; per-client address/topic filtering | `LogsCap` | `enable-logs` |
 | `newPendingTransactions` | Merges the `newPendingTransactions` feeds from every WebSocket upstream and de-duplicates hashes | `PendingTxCap` | `enable-new-pending-transactions` |
 | `drpc_pendingTransactions` | Reuses the shared pending-hash source and enriches each hash via `eth_getTransactionByHash` | `PendingTxCap` | *always local (ungated)* |
 
-**Fallback rule.** nodecore falls back to a node-backed passthrough when any of these hold:
+**Fallback rule.** For `newHeads` and `logs`, nodecore uses a node-backed passthrough only when the
+topic's `local-subscriptions` flag is turned off. With the flag on (the default) the subscription is
+served locally or not at all: when no available upstream advertises the capability **and** matches
+the request's selectors right now - the chain's heads are all polled, every capable upstream is down,
+or the selectors exclude them all - the subscription fails with `no available upstreams` rather than
+being silently rerouted to a single node the client did not select. A chain that cannot serve a
+topic locally (for example an EVM chain whose upstreams all have a JSON-RPC head connector) must
+have that topic's flag turned off.
 
-- the topic's `local-subscriptions` flag is turned off,
-- no upstream on the chain has the required capability, or
-- (for `logs` only) the request carries effective routing selectors — a selector-constrained logs
-  subscription cannot be served from the shared all-upstream log stream, so it goes to a single
-  upstream.
+`newPendingTransactions` still falls back to a passthrough when no upstream has `PendingTxCap`.
 
 `drpc_pendingTransactions` is the exception: it is a synthetic method with no node-backed
 equivalent, so it is always served locally (subject only to an upstream having `PendingTxCap`).
@@ -104,25 +107,47 @@ off per chain/upstream with [`disable-liveness-subscription-validation`](05-upst
 
 ### newHeads
 
-There is one merged head per chain, so the local `newHeads` source is **one source per chain** and
-ignores request selectors. It taps the chain's head stream and forwards the upstream head
-notification payload verbatim.
+The local `newHeads` source follows a **filtered head feed**: the chain supervisor computes a head
+over only the available upstreams whose head is subscription-driven (`NewHeadsCap`) and that match
+the request's selectors, re-evaluated as upstreams come and go, lose capabilities or change status.
+The source forwards each head's upstream notification payload verbatim. The client whose
+subscription creates the source also receives the current head first; clients that join a source
+already running for the same selectors start at the next head. Clients with identical selectors
+share one source; different selectors get different sources (sort hints such as `latest` do not
+count, since they order candidates rather than filter them).
+The source ends with a terminal error when no upstream passes the filter any more; the client
+resubscribes, and the new subscription is resolved afresh.
 
 ### logs
 
-nodecore maintains a single **unfiltered "all logs"** source per chain: for each new block it fetches
-that block's logs (`eth_getLogs` by block hash, against any upstream at or above the block height)
-and emits them. Each client's `address`/`topics` filter from its `eth_subscribe("logs", {...})`
-request is then applied **locally**, so every client sees only its matching logs while still sharing
-the one upstream source.
+nodecore maintains a single **unfiltered "all logs"** source per chain and selector set: it follows
+a filtered head feed over the available upstreams that can serve logs (`LogsCap`, i.e. a
+subscription-driven head plus `eth_getLogs`) and match the request's selectors, and for each new
+block fetches that block's logs (`eth_getLogs` by block hash, against any upstream at or above the
+block height) and emits them. Each client's `address`/`topics` filter from its
+`eth_subscribe("logs", {...})` request is then applied **locally**, so every client sees only its
+matching logs while still sharing the one upstream source.
 
 - **Reorgs**: recent blocks' logs are cached. When a block is dropped by a reorg, its cached logs are
   re-emitted with `"removed": true`, matching standard `eth_subscribe("logs")` semantics. Reorgs
   deeper than the bounded history window are clamped (tracked by a metric).
-- **Selectors bypass local logs**: as noted in the [fallback rule](#local-subscriptions-vs-node-backed-passthrough),
-  a logs request with effective selectors uses a node-backed passthrough instead.
+- **Head of the logs stream**: blocks are announced from the head feed, so a block is never
+  announced before an upstream that can serve its logs has it. An upstream without `eth_getLogs`
+  that runs ahead does not announce blocks; the logs stream follows the capable upstreams instead.
+  Membership is re-evaluated on every upstream event (method ban, capability loss, status change,
+  removal), and the first announced block is the feed's current head.
+- **Backfill**: heights that head jumps over, and the new chain after a reorg, are fetched by parent
+  hash (`eth_getBlockByHash`, up to 32 blocks back) and announced in order. A deeper gap, or a failed
+  fetch, announces the head with the gap.
+- **Not-ready blocks**: an upstream may announce a block before it can serve its logs - erigon
+  dispatches `newHeads` before it commits the block, cosmos-evm nodes index the block hash after the
+  header event. An answer such as `block range extends beyond current head block`, `block not
+  found`, `unknown block` or `header not found` moves on to the next upstream, as any error does; when
+  no upstream at the height could serve the block, they are asked again with a backoff (100 ms to
+  1 s) until one block time after the head arrived (clamped to 1–3 s). Other errors are not waited on:
+  an upstream that answered one is not asked again for that block.
 - A block whose logs cannot be fetched is skipped (counted, not fatal); the source ends only when no
-  upstream retains the `logs` capability.
+  upstream passes the feed's filter any more.
 
 ### newPendingTransactions
 
@@ -182,8 +207,9 @@ local-subscriptions:
 Notes:
 
 - Settings are **per chain** only — there is no global or per-upstream override.
-- They only take effect where the chain actually has the capability; otherwise the topic falls back to
-  a node-backed passthrough regardless of the flag.
+- With a flag on, `newHeads` and `logs` are served locally or fail with `no available upstreams`;
+  turn the flag off for a chain that cannot serve the topic locally. `newPendingTransactions` still
+  falls back to a node-backed passthrough where no upstream has the capability.
 - `drpc_pendingTransactions` is **never** gated by these flags — it is always served locally, and it
   still taps the mempool on every WebSocket upstream even when `enable-new-pending-transactions: false`
   (see the warning under [drpc_pendingTransactions](#drpc_pendingtransactions)).
@@ -205,8 +231,8 @@ Subscription activity is exposed on the metrics port (see [Prometheus metrics](0
 - [Subscription Utilities Metrics](08-prometheus-metrics.md#subscription-utilities-metrics) — event
   rate, active subscription count, and unread/backpressure gauges for the aggregation channels.
 - [Logs Subscription Metrics](08-prometheus-metrics.md#logs-subscription-metrics) — the local logs
-  source counters `nodecore_logs_source_blocks_skipped_total` (by reason) and
-  `nodecore_logs_source_reorg_clamped_total`.
+  source counters `nodecore_logs_source_blocks_skipped_total` (by reason),
+  `nodecore_logs_source_backfill_failed_total` and `nodecore_logs_source_reorg_clamped_total`.
 
 ## See also
 

@@ -40,6 +40,9 @@ type ChainSupervisor interface {
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
 	// UpstreamsChanged is closed by the next change of an upstream state
 	UpstreamsChanged() <-chan struct{}
+	// SubscribeHead is a head feed over the upstreams that are Available and pass
+	// filter, re-evaluated on every upstream event. See HeadFeedEvent.
+	SubscribeHead(name string, filter FilterUpstream) *HeadFeedSubscription
 }
 
 type UpstreamSupervisor interface {

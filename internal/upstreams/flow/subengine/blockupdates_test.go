@@ -1,10 +1,16 @@
 package subengine
 
 import (
+	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -309,6 +315,245 @@ func TestDropFromHeightZeroNoUnderflow(t *testing.T) {
 	drops := tr.dropFrom(0)
 	require.Len(t, drops, 1)
 	assert.Equal(t, uint64(0), drops[0].Block.Height)
+}
+
+// --- advanceWithAncestors ---------------------------------------------------
+
+// resolverOf serves the given blocks by hash and counts the calls.
+func resolverOf(blocks ...protocol.Block) (BlockResolver, *int) {
+	byHash := map[string]protocol.Block{}
+	for _, b := range blocks {
+		byHash[b.Hash.ToHex()] = b
+	}
+	calls := 0
+	return func(_ context.Context, hash blockchain.HashId, _ uint64) (protocol.Block, error) {
+		calls++
+		b, ok := byHash[hash.ToHex()]
+		if !ok {
+			return protocol.Block{}, errors.New("unknown block")
+		}
+		return b, nil
+	}, &calls
+}
+
+func advanceOK(t *testing.T, tr *blockTracker, b protocol.Block, resolve BlockResolver) []BlockUpdate {
+	t.Helper()
+	updates, err := tr.advanceWithAncestors(context.Background(), b, resolve)
+	require.NoError(t, err)
+	return updates
+}
+
+// A head that jumps over heights gets them announced first, oldest-first.
+func TestAdvanceWithAncestorsBackfillsForwardGap(t *testing.T) {
+	resolve, calls := resolverOf(blk(2, "bb", "aa"), blk(3, "cc", "bb"))
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+
+	assertUpdates(t, advanceOK(t, tr, blk(4, "dd", "cc"), resolve), []wantUpdate{
+		{2, "bb", BlockNew}, {3, "cc", BlockNew}, {4, "dd", BlockNew},
+	})
+	assert.Equal(t, 2, *calls)
+}
+
+// A head built on a different tip: the old tip is dropped and the new chain's
+// block at that height - which advance alone never announces - is announced.
+func TestAdvanceWithAncestorsAnnouncesReorgedInParent(t *testing.T) {
+	resolve, _ := resolverOf(blk(2, "b2", "aa"))
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+	advanceOK(t, tr, blk(2, "bb", "aa"), resolve)
+
+	assertUpdates(t, advanceOK(t, tr, blk(3, "cc", "b2"), resolve), []wantUpdate{
+		{2, "bb", BlockDrop}, {2, "b2", BlockNew}, {3, "cc", BlockNew},
+	})
+}
+
+// A gap on top of a reorg: the walk goes down to the fork point, the orphaned
+// tip is dropped and every block of the new chain is announced.
+func TestAdvanceWithAncestorsReorgBehindGap(t *testing.T) {
+	resolve, calls := resolverOf(blk(3, "c2", "bb"), blk(4, "d2", "c2"))
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+	advanceOK(t, tr, blk(2, "bb", "aa"), resolve)
+	advanceOK(t, tr, blk(3, "cc", "bb"), resolve)
+
+	assertUpdates(t, advanceOK(t, tr, blk(5, "ee", "d2"), resolve), []wantUpdate{
+		{3, "cc", BlockDrop}, {3, "c2", BlockNew}, {4, "d2", BlockNew}, {5, "ee", BlockNew},
+	})
+	assert.Equal(t, 2, *calls)
+}
+
+// Linked heads, the first head and benign rollbacks never call the resolver.
+func TestAdvanceWithAncestorsNoFetchWhenLinked(t *testing.T) {
+	resolve, calls := resolverOf()
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(7, "aa", "00"), resolve) // first head: nothing to link to
+	advanceOK(t, tr, blk(8, "bb", "aa"), resolve)
+	advanceOK(t, tr, blk(9, "cc", "bb"), resolve)
+	assert.Empty(t, advanceOK(t, tr, blk(8, "bb", "aa"), resolve))                // rollback on the same chain
+	assertUpdates(t, advanceOK(t, tr, blk(8, "b2", "aa"), resolve), []wantUpdate{ // reorg below the tip
+		{9, "cc", BlockDrop}, {8, "bb", BlockDrop}, {8, "b2", BlockNew},
+	})
+	assert.Equal(t, 0, *calls)
+}
+
+// A failed fetch errors without announcing anything, so the stream can stop
+// instead of leaving a hole.
+func TestAdvanceWithAncestorsResolveError(t *testing.T) {
+	resolve, _ := resolverOf()
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+
+	updates, err := tr.advanceWithAncestors(context.Background(), blk(3, "cc", "bb"), resolve)
+	require.Error(t, err)
+	assert.Empty(t, updates)
+	assert.Equal(t, uint64(1), tr.tipH, "tracker state is untouched")
+}
+
+// A resolved block that is not the requested parent is rejected.
+func TestAdvanceWithAncestorsRejectsWrongParent(t *testing.T) {
+	resolve, _ := resolverOf(blk(5, "bb", "aa")) // right hash, wrong height
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+
+	_, err := tr.advanceWithAncestors(context.Background(), blk(3, "cc", "bb"), resolve)
+	require.Error(t, err)
+}
+
+// A gap deeper than maxBackfillBlocks errors instead of walking on.
+func TestAdvanceWithAncestorsGapTooDeep(t *testing.T) {
+	var chain []protocol.Block
+	for h := uint64(2); h <= maxBackfillBlocks+3; h++ {
+		chain = append(chain, blk(h, hexFor(h), hexFor(h-1)))
+	}
+	resolve, _ := resolverOf(chain...)
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, hexFor(1), "00"), resolve)
+
+	top := uint64(maxBackfillBlocks + 4)
+	_, err := tr.advanceWithAncestors(context.Background(), blk(top, hexFor(top), hexFor(top-1)), resolve)
+	require.Error(t, err)
+}
+
+// A head without a parent hash cannot be linked and is advanced as before.
+func TestAdvanceWithAncestorsEmptyParentAdvancesAsBefore(t *testing.T) {
+	resolve, calls := resolverOf()
+	tr := newBlockTracker()
+	advanceOK(t, tr, blk(1, "aa", "00"), resolve)
+	got := advanceOK(t, tr, protocol.Block{Height: 3, Hash: blockchain.NewHashIdFromString("cc")}, resolve)
+	assertUpdates(t, got, []wantUpdate{{3, "cc", BlockNew}})
+	assert.Equal(t, 0, *calls)
+}
+
+// --- StreamBlockUpdates ---------------------------------------------------
+
+type streamHarness struct {
+	feed         chan upstreams.HeadFeedEvent
+	out          chan BlockUpdate
+	unsubscribed atomic.Bool
+	cancel       context.CancelFunc
+}
+
+func startStream(resolve BlockResolver) *streamHarness {
+	h := &streamHarness{feed: make(chan upstreams.HeadFeedEvent, 16), out: make(chan BlockUpdate, 64)}
+	ctx, cancel := context.WithCancel(context.Background())
+	h.cancel = cancel
+	sub := upstreams.NewHeadFeedSubscription(h.feed, func() { h.unsubscribed.Store(true) })
+	go StreamBlockUpdates(ctx, chains.ETHEREUM, sub, h.out, resolve)
+	return h
+}
+
+func (h *streamHarness) head(b protocol.Block) {
+	h.feed <- upstreams.HeadUpdated{Head: b, UpstreamId: "up1"}
+}
+
+func readUpdate(t *testing.T, h *streamHarness) BlockUpdate {
+	t.Helper()
+	select {
+	case u, ok := <-h.out:
+		require.True(t, ok, "out closed unexpectedly")
+		return u
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for a block update")
+		return BlockUpdate{}
+	}
+}
+
+func assertOutClosed(t *testing.T, h *streamHarness) {
+	t.Helper()
+	select {
+	case u, ok := <-h.out:
+		require.False(t, ok, "expected out closed, got %+v", u)
+	case <-time.After(time.Second):
+		t.Fatal("out not closed")
+	}
+}
+
+func noResolve(_ context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
+	return protocol.Block{}, errors.New("unexpected resolve of " + hash.ToHex())
+}
+
+func TestStreamBlockUpdatesFollowsFeed(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	before := time.Now()
+	h.head(blk(1, "aa", "00"))
+	h.head(blk(2, "bb", "aa"))
+	u1, u2 := readUpdate(t, h), readUpdate(t, h)
+	assertUpdates(t, []BlockUpdate{u1, u2}, []wantUpdate{{1, "aa", BlockNew}, {2, "bb", BlockNew}})
+	assert.False(t, u1.Seen.Before(before), "Seen is stamped when the head is read")
+}
+
+func TestStreamBlockUpdatesClosesOutOnEmpty(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	h.head(blk(1, "aa", "00"))
+	readUpdate(t, h)
+	h.feed <- upstreams.HeadFeedEmpty{}
+	assertOutClosed(t, h)
+	assert.True(t, h.unsubscribed.Load())
+}
+
+func TestStreamBlockUpdatesClosesOutWhenFeedCloses(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	close(h.feed)
+	assertOutClosed(t, h)
+}
+
+func TestStreamBlockUpdatesClosesOutOnCancel(t *testing.T) {
+	h := startStream(noResolve)
+
+	h.cancel()
+	assertOutClosed(t, h)
+	assert.True(t, h.unsubscribed.Load())
+}
+
+func TestStreamBlockUpdatesBackfillsViaResolver(t *testing.T) {
+	resolve := func(_ context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
+		require.Equal(t, uint64(2), height)
+		return blk(2, "bb", "aa"), nil
+	}
+	h := startStream(resolve)
+	defer h.cancel()
+
+	h.head(blk(1, "aa", "00"))
+	readUpdate(t, h)
+	h.head(blk(3, "cc", "bb")) // 2 was skipped by the feed
+	assertUpdates(t, []BlockUpdate{readUpdate(t, h), readUpdate(t, h)}, []wantUpdate{{2, "bb", BlockNew}, {3, "cc", BlockNew}})
+}
+
+func TestStreamBlockUpdatesAnnouncesWithGapWhenResolveFails(t *testing.T) {
+	h := startStream(noResolve)
+	defer h.cancel()
+
+	h.head(blk(1, "aa", "00"))
+	readUpdate(t, h)
+	h.head(blk(3, "cc", "bb"))
+	assertUpdates(t, []BlockUpdate{readUpdate(t, h)}, []wantUpdate{{3, "cc", BlockNew}})
 }
 
 // hexFor returns a short, unique, valid hex string for a height.
