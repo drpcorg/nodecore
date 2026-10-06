@@ -99,7 +99,7 @@ func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authPro
 	}, methodsMock, nil)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(
-		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice(), dimensions.NewGenericDimensionTracker(), false, nil,
+		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice, dimensions.NewGenericDimensionTracker(), false, nil,
 	)
 	go chainSupervisor.Start()
 	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil)

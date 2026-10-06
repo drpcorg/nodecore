@@ -73,8 +73,8 @@ type rawLogFilter struct {
 
 // parseLogFilter extracts the filter object (params[1]) from an
 // eth_subscribe("logs", {...}) request. A missing object (`["logs"]`) yields a
-// match-everything filter; a malformed object returns an error so the caller can
-// fall back to the generic node-backed path.
+// match-everything filter; a malformed object returns an error, which the caller
+// reports to the client as invalid params.
 func parseLogFilter(request protocol.RequestHolder) (*logFilter, error) {
 	body, err := request.Body()
 	if err != nil {
@@ -96,9 +96,8 @@ func parseLogFilter(request protocol.RequestHolder) (*logFilter, error) {
 	}
 
 	// A present-but-malformed address would otherwise leave the address set empty
-	// and silently match EVERY address (the firehose). Reject it so the caller
-	// falls back to the generic node-backed path, where the node validates the
-	// filter itself.
+	// and silently match EVERY address (the firehose). Reject it; the caller
+	// answers the client with invalid params.
 	addrs, ok := parseStringOrArray(rf.Address)
 	if !ok {
 		return nil, errors.New("malformed address in logs filter")

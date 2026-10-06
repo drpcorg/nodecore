@@ -348,6 +348,10 @@ func TestSetRemovedTrue(t *testing.T) {
 
 // --- newLogsSourceBuilder (end-to-end source goroutine) ------------------
 
+// logsTestFilter is the filter the production code builds for a selector-less
+// logs request: available upstreams advertising LogsCap.
+var logsTestFilter = matcherFilter(NewMultiMatcher(NewStatusMatcher(), NewCapMatcher(protocol.LogsCap, "logs")))
+
 func logsCaps() mapset.Set[protocol.Cap] {
 	return mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)
 }
@@ -431,7 +435,7 @@ func TestLogsSourceEmitsPerLog(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, logsBufferSize, src.Buffer)
 
@@ -462,7 +466,7 @@ func TestLogsSourceReorgReemitsRemoved(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -484,7 +488,7 @@ func TestLogsSourceTerminatesWhenLogsCapAbsentAtStart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	r := readWsResponse(t, src.Events)
@@ -500,7 +504,7 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -514,9 +518,8 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 	require.NotNil(t, r.GetError(), "expected a terminal frame after LogsCap is lost")
 }
 
-// When eth_getLogs goes away on every upstream, no block arrives any more (the
-// stream follows only upstreams with the method); the source still terminates so
-// clients fall back to the node-backed path.
+// When eth_getLogs goes away on every upstream (LogsCap dropped), the feed goes
+// empty and the source terminates so clients fall back to the node-backed path.
 func TestLogsSourceTerminatesWhenLogsMethodGone(t *testing.T) {
 	oneLog := protocol.NewSimpleHttpUpstreamResponse("1",
 		[]byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc)
@@ -525,7 +528,7 @@ func TestLogsSourceTerminatesWhenLogsMethodGone(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -540,7 +543,7 @@ func TestLogsSourceTerminatesWhenLogsMethodGone(t *testing.T) {
 	chSup.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "up1", EventType: &protocol.StateUpstreamEvent{State: &state}})
 	publishHead(chSup, "up1", 101, "a1", "a0")
 
-	r := readWithin(t, src.Events, logsLostCheck+2*time.Second)
+	r := readWithin(t, src.Events, 3*time.Second)
 	require.NotNil(t, r.GetError(), "expected a terminal frame after eth_getLogs is gone")
 }
 
@@ -563,7 +566,7 @@ func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", logsCaps())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -603,7 +606,7 @@ func TestLogsSourceFollowsUpstreamWithMethod(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -643,7 +646,7 @@ func TestLogsSourceAnnouncesHeadWhenBackfillFails(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -651,7 +654,7 @@ func TestLogsSourceAnnouncesHeadWhenBackfillFails(t *testing.T) {
 	assertRemoved(t, readWsResponse(t, src.Events), false) // block 100
 
 	publishHead(chSup, "up1", 102, "a2", "a1") // 101 cannot be fetched
-	r := readWithin(t, src.Events, logsLostCheck+2*time.Second)
+	r := readWithin(t, src.Events, 3*time.Second)
 	assertRemoved(t, r, false)
 	assert.Contains(t, string(r.GetMessage()), "0xb2", "the next event is block 102's log")
 }
@@ -675,7 +678,7 @@ func TestLogsSourceBackfillsSkippedHeight(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", logsCaps())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -708,7 +711,7 @@ func TestLogsSourceRetriesNotReadyBlock(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)

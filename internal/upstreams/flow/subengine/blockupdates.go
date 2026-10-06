@@ -10,7 +10,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -45,20 +44,8 @@ var backfillFailedMetric = prometheus.NewCounterVec(
 	[]string{"chain"},
 )
 
-// headLagMetric is how many blocks the logs head (eligible upstreams only) is
-// behind the chain's merged head.
-var headLagMetric = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Namespace: config.AppName,
-		Subsystem: "logs_source",
-		Name:      "head_lag_blocks",
-		Help:      "How many blocks the logs source head is behind the chain head",
-	},
-	[]string{"chain"},
-)
-
 func init() {
-	prometheus.MustRegister(reorgClampedMetric, backfillFailedMetric, headLagMetric)
+	prometheus.MustRegister(reorgClampedMetric, backfillFailedMetric)
 }
 
 // UpdateKind classifies a BlockUpdate.
@@ -73,8 +60,7 @@ const (
 	BlockDrop
 )
 
-// BlockUpdate is a single canonical-chain transition derived from the merged
-// head stream. No upstream id is carried: the logs source picks an upstream by
+// BlockUpdate is a single canonical-chain transition derived from a head feed. No upstream id is carried: the logs source picks an upstream by
 // the block's height, not by the head producer.
 type BlockUpdate struct {
 	Block protocol.Block
@@ -101,7 +87,7 @@ type ringEntry struct {
 // slower upstream on the same chain) is a no-op, while a head that disagrees on
 // the hash at a height we already announced is a reorg.
 //
-// The merged head fork-choice (fork_choice/height_fc.go) republishes a head only
+// The head feed's fork choice (fork_choice/height_fc.go) reports a head only
 // when the max height CHANGES, which still constrains what this tracker can see:
 //   - A same-height 1-block reorg with no height movement is invisible (it
 //     self-heals on the next height change via the parent/hash mismatch).
@@ -271,91 +257,53 @@ func (t *blockTracker) advanceWithAncestors(ctx context.Context, block protocol.
 	return updates, nil
 }
 
-// bestHead is the highest head among the eligible upstream states. On a tie it
-// keeps current, so upstreams on different forks at one height do not flap.
-func bestHead(states []*protocol.UpstreamState, eligible func(*protocol.UpstreamState) bool, current protocol.Block) (protocol.Block, bool) {
-	var best protocol.Block
-	found := false
-	for _, st := range states {
-		if st == nil || !eligible(st) || st.HeadData.IsEmptyByHeight() || len(st.HeadData.Hash) == 0 {
-			continue
-		}
-		h := st.HeadData
-		if !found || h.Height > best.Height || (h.Height == best.Height && h.Hash.Equals(current.Hash)) {
-			best, found = h, true
-		}
-	}
-	return best, found
-}
-
-// logsHeadRecheck is how often the stream re-reads the upstream heads: the chain
-// state publishes only when the merged head moves, not when an eligible upstream
-// catches up to it.
-const logsHeadRecheck = 50 * time.Millisecond
-
 // StreamBlockUpdates pushes ordered BlockUpdates to out until srcCtx is cancelled
-// or the chain state subscription closes. The head it follows is the highest head
-// among the eligible upstreams - the ones the consumer can query - not the
-// chain's merged head, which may come from an upstream the consumer cannot use.
-// It is re-read on every chain state event and every logsHeadRecheck. Missing
-// ancestors of a head are fetched via resolve; a head whose ancestors cannot be
-// fetched is logged, counted and announced as is. It owns its blockTracker and
-// closes out on return, so the consumer exits deterministically (via its `if !ok`
-// branch).
+// or the feed ends. The head it follows is the feed's: the consumer subscribes
+// it over the upstreams it can query (ChainSupervisor.SubscribeHead with the
+// logs filter), so a block is never announced before an upstream that can serve
+// its logs has it. Missing ancestors of a head are fetched via resolve; a head
+// whose ancestors cannot be fetched is logged, counted and announced as is.
+//
+// HeadFeedEmpty - no upstream passes the filter any more - ends the stream. It
+// owns feed (unsubscribes on return) and its blockTracker, and closes out on
+// return, so the consumer exits deterministically (via its `if !ok` branch).
 func StreamBlockUpdates(
 	srcCtx context.Context,
-	chainSup upstreams.ChainSupervisor,
+	chain chains.Chain,
+	feed *upstreams.HeadFeedSubscription,
 	out chan<- BlockUpdate,
-	eligible func(*protocol.UpstreamState) bool,
 	resolve BlockResolver,
 ) {
 	defer close(out)
-
-	sub := chainSup.SubscribeState(fmt.Sprintf("subengine_logs_%s_%s", chainSup.GetChain(), uuid.NewString()))
-	defer sub.Unsubscribe()
-	recheck := time.NewTicker(logsHeadRecheck)
-	defer recheck.Stop()
+	defer feed.Unsubscribe()
 
 	t := newBlockTracker()
-	t.chain = chainSup.GetChain()
-	var fed protocol.Block
+	t.chain = chain
 	for {
+		var event upstreams.HeadFeedEvent
 		select {
 		case <-srcCtx.Done():
 			return
-		case _, ok := <-sub.Events:
+		case ev, ok := <-feed.Events:
 			if !ok {
 				return
 			}
-		case <-recheck.C:
+			event = ev
 		}
-
-		ids := chainSup.GetUpstreamIds()
-		states := make([]*protocol.UpstreamState, 0, len(ids))
-		for _, id := range ids {
-			states = append(states, chainSup.GetUpstreamState(id))
-		}
-		head, ok := bestHead(states, eligible, fed)
+		head, ok := event.(upstreams.HeadUpdated)
 		if !ok {
-			continue
+			return // HeadFeedEmpty: nothing can serve logs any more
 		}
-		if chainHead := chainSup.GetChainState().HeadData.Head.Height; chainHead >= head.Height {
-			headLagMetric.WithLabelValues(t.chain.String()).Set(float64(chainHead - head.Height))
-		}
-		if head.Height == fed.Height && head.Hash.Equals(fed.Hash) {
-			continue
-		}
-		fed = head
 		seen := time.Now()
 
-		updates, err := t.advanceWithAncestors(srcCtx, head, resolve)
+		updates, err := t.advanceWithAncestors(srcCtx, head.Head, resolve)
 		if err != nil {
 			if srcCtx.Err() != nil {
 				return
 			}
 			log.Warn().Err(err).Msgf("subengine: cannot backfill the head of %s; announcing it with a gap", t.chain)
 			backfillFailedMetric.WithLabelValues(t.chain.String()).Inc()
-			updates = t.advance(head)
+			updates = t.advance(head.Head)
 		}
 		for _, update := range updates {
 			update.Seen = seen
