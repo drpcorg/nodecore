@@ -136,7 +136,6 @@ func (h *GenericHeadProcessor) Start() {
 					return
 				case block, ok := <-h.head.HeadsChan():
 					if ok {
-						log.Info().Msgf("%s, %d - %s - %s", h.upstreamId, block.Height, block.Hash.ToHex(), block.ParentHash.ToHex())
 						log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
 						h.lastUpdate.Store(time.Now())
 						h.subManager.Publish(HeadBlockEvent{HeadData: block})
