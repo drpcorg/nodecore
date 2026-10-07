@@ -94,6 +94,22 @@ func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 	return nil
 }
 
+// RestrictUpstreams limits the request to upstreams carrying at least one of
+// groupLabels, by adding a group-label selector the execution flow routes on.
+// It fails closed: a request that cannot carry the selector is rejected
+// rather than served by an unrestricted upstream.
+func RestrictUpstreams(groupLabels []string, request protocol.RequestHolder) error {
+	if len(groupLabels) == 0 {
+		return nil
+	}
+	appender, ok := request.(protocol.SelectorAppender)
+	if !ok {
+		return fmt.Errorf("request of type %T cannot be restricted to the key's upstreams", request)
+	}
+	appender.AppendSelectors(protocol.RequestGroupLabelSelector{Labels: groupLabels})
+	return nil
+}
+
 type KeyEvent interface {
 	event()
 }

@@ -112,7 +112,11 @@ func (i *IntegrityRequestProcessor) handleResponse(
 		return response
 	}
 
-	upstreamStrategy := NewSpecificOrderUpstreamStrategy(sortedUpstreams, chainSupervisor)
+	// The retry keeps the handler's height order but must still honor the
+	// request's selectors (a client's own or an API key's upstream
+	// restriction), or it would escape to an upstream they exclude.
+	selectorMatchers, _ := buildSelectorRouting(request.Selectors(), i.upstreamSupervisor, chainSupervisor)
+	upstreamStrategy := NewSpecificOrderUpstreamStrategy(sortedUpstreams, chainSupervisor).WithAdditionalMatchers(selectorMatchers)
 	newResponse, err := executeUnaryRequest(ctx, i.chain, request, i.upstreamSupervisor, upstreamStrategy)
 	if err != nil {
 		return response

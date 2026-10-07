@@ -545,3 +545,42 @@ func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
 	assert.Equal(t, genericSubscriptionBufferSize, genericSourceBufferSize(newHeads))
 	assert.Less(t, blockSubscribeBufferSize, genericSubscriptionBufferSize)
 }
+
+// An API key's upstream restriction takes the node-backed path whenever the
+// local source is off: always for logs (selector-bearing logs requests never
+// use the shared source), and for newHeads/newPendingTransactions once their
+// local-subscriptions flags are disabled - the documented workaround until the
+// local sources honor selectors.
+func TestResolveSourceRoutesRestrictedSubscriptionsNodeBacked(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	resolve := func(params string, settings config.LocalSubSettings) string {
+		key, _, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), subscribeRequestWithSelectors(params, group), nil, nil, nil, settings)
+		return key
+	}
+
+	key := resolve(`["logs",{}]`, allLocalSubs)
+	assert.NotEqual(t, localLogsKey, key)
+	assert.Contains(t, key, group.Key())
+
+	logsOnly := config.LocalSubSettings{Logs: true}
+	for _, params := range []string{`["newHeads"]`, `["newPendingTransactions"]`} {
+		key := resolve(params, logsOnly)
+		assert.NotContains(t, key, "local|")
+		assert.Contains(t, key, group.Key())
+	}
+}
+
+// Subscriptions restricted to different upstreams must never share a source,
+// while equally restricted ones still do.
+func TestSubscriptionKeySeparatesGroupLabelRestrictions(t *testing.T) {
+	request := func(labels ...string) protocol.RequestHolder {
+		return subscribeRequestWithSelectors(`["newHeads"]`, protocol.RequestGroupLabelSelector{Labels: labels})
+	}
+	assert.NotEqual(t, subscriptionKey(request("archive")), subscriptionKey(request("full")))
+	assert.NotEqual(t, subscriptionKey(request("archive")), subscriptionKey(subscribeRequest(`["newHeads"]`)))
+	assert.Equal(t, subscriptionKey(request("archive", "fast")), subscriptionKey(request("fast", "archive")))
+}
+
+func subscribeRequestWithSelectors(params string, selectors ...protocol.RequestSelector) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth", selectors...)
+}
