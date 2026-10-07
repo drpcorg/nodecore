@@ -362,6 +362,39 @@ func TestPlainPlusRestAdditionalConnectorThenSuccess(t *testing.T) {
 		"head-connector defaults must pick the plain connector and skip rest-additional")
 }
 
+// grpc-additional is the gRPC twin of rest-additional: java-tron's solidity
+// port next to the full-node port. Two gRPC connectors on one upstream must
+// validate, the plain one must be the head connector and the upstream must
+// advertise gRPC.
+func TestGrpcPlusGrpcAdditionalConnectorsThenSuccess(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/tron-grpc-additional.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	upstream := appConfig.UpstreamConfig.Upstreams[0]
+	require.Len(t, upstream.Connectors, 2)
+	assert.Equal(t, specs.GrpcConnector.String(), upstream.HeadConnector)
+	assert.Equal(t, "true", upstream.Labels["has_grpc"])
+}
+
+func TestOnlyGrpcAdditionalConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/only-grpc-additional.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "additional api connector grpc-additional can't be the only upstream connector")
+}
+
+func TestGrpcAdditionalHeadConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/grpc-additional-head-connector.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "additional api connector type 'grpc-additional' is forbidden for head connector")
+}
+
+func TestOnionGrpcAdditionalConnectorThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/tor-onion-grpc-additional.yaml")
+	_, err := config.NewAppConfig()
+	assert.ErrorContains(t, err, "onion endpoints are not supported for the 'grpc-additional' connector")
+}
+
 func TestDefaultMode(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/upstreams/default-poll-interval.yaml")
 	appConfig, err := config.NewAppConfig()

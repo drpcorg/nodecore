@@ -7,16 +7,12 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 )
-
-// TRON produces a block every ~3s, so block timestamps (in ms) advance by
-// roughly tronBlockIntervalMs between consecutive blocks. Used to project
-// how many blocks the upstream "should" have produced since blockTime.
-const tronBlockIntervalMs int64 = 3000
 
 type TronPeersValidator struct {
 	upstreamId string
@@ -106,7 +102,6 @@ func (t *TronSyncingValidator) Validate() protocol.AvailabilityStatus {
 	var parsed struct {
 		BlockHeader struct {
 			RawData struct {
-				Number    int64 `json:"number"`
 				Timestamp int64 `json:"timestamp"`
 			} `json:"raw_data"`
 		} `json:"block_header"`
@@ -118,19 +113,9 @@ func (t *TronSyncingValidator) Validate() protocol.AvailabilityStatus {
 		return protocol.Unavailable
 	}
 
-	currentNum := parsed.BlockHeader.RawData.Number
-	blockTime := parsed.BlockHeader.RawData.Timestamp
-
-	expectedAhead := int64(0)
-	if drift := time.Now().UnixMilli() - blockTime; drift > 0 {
-		expectedAhead = drift / tronBlockIntervalMs
-	}
-	possibleHighest := currentNum + expectedAhead
-
-	if possibleHighest-currentNum > t.chain.Settings.Lags.Syncing {
-		return protocol.Syncing
-	}
-	return protocol.Available
+	return specific_helpers.TronSyncStatus(
+		parsed.BlockHeader.RawData.Timestamp, time.Now().UnixMilli(), t.chain.Settings.Lags.Syncing,
+	)
 }
 
 func (t *TronSyncingValidator) fetchLatestBlock() ([]byte, error) {

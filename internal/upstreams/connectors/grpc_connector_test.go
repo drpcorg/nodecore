@@ -39,6 +39,11 @@ func (a *authServerStub) Authenticate(ctx context.Context, request *dshackle.Aut
 
 func startGrpcConnector(t *testing.T, connectorConfig *config.ApiConnectorConfig, stub *authServerStub) *connectors.GrpcConnector {
 	t.Helper()
+	return startGrpcConnectorWithType(t, connectorConfig, specs.GrpcConnector, stub)
+}
+
+func startGrpcConnectorWithType(t *testing.T, connectorConfig *config.ApiConnectorConfig, connectorType specs.ApiConnectorType, stub *authServerStub) *connectors.GrpcConnector {
+	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 	dshackle.RegisterAuthServer(server, stub)
@@ -52,12 +57,22 @@ func startGrpcConnector(t *testing.T, connectorConfig *config.ApiConnectorConfig
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	connector := connectors.NewGrpcConnectorWithClientConn(conn, connectorConfig, "up-id")
+	connector := connectors.NewGrpcConnectorWithClientConn(conn, connectorConfig, connectorType, "up-id")
 	t.Cleanup(func() {
 		connector.Stop()
 		server.Stop()
 	})
 	return connector
+}
+
+func TestGrpcConnectorGetTypeFollowsTheConstructor(t *testing.T) {
+	connectorConfig := &config.ApiConnectorConfig{Url: "grpc://bufnet"}
+
+	primary := startGrpcConnector(t, connectorConfig, &authServerStub{})
+	assert.Equal(t, specs.GrpcConnector, primary.GetType())
+
+	additional := startGrpcConnectorWithType(t, connectorConfig, specs.GrpcAdditional, &authServerStub{})
+	assert.Equal(t, specs.GrpcAdditional, additional.GetType())
 }
 
 func grpcAuthRequest(t *testing.T, token string, headers map[string][]string) protocol.RequestHolder {
@@ -278,7 +293,7 @@ func startGrpcStreamConnector(t *testing.T, connectorConfig *config.ApiConnector
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	connector := connectors.NewGrpcConnectorWithClientConn(conn, connectorConfig, "up-id")
+	connector := connectors.NewGrpcConnectorWithClientConn(conn, connectorConfig, specs.GrpcConnector, "up-id")
 	t.Cleanup(func() {
 		connector.Stop()
 		server.Stop()
