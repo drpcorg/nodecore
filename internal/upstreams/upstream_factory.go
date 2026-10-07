@@ -186,7 +186,9 @@ func createConnector(
 	case specs.RestAdditional:
 		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
 	case specs.GrpcConnector:
-		return connectors.NewGrpcConnector(connectorConfig, upId)
+		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcConnector, upId)
+	case specs.GrpcAdditional:
+		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcAdditional, upId)
 	default:
 		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/public/pkg/dshackle"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -43,7 +44,7 @@ func newBlockingConnector(t *testing.T) *GrpcConnector {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	connector := NewGrpcConnectorWithClientConn(conn, &config.ApiConnectorConfig{Url: "grpc://bufnet"}, "up-id")
+	connector := NewGrpcConnectorWithClientConn(conn, &config.ApiConnectorConfig{Url: "grpc://bufnet"}, specs.GrpcConnector, "up-id")
 	t.Cleanup(func() {
 		connector.Stop()
 		server.Stop()
@@ -95,7 +96,7 @@ func TestGrpcConnectorStreamIsNotBoundByTheUnaryTimeout(t *testing.T) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(t, err)
-	connector := NewGrpcConnectorWithClientConn(conn, &config.ApiConnectorConfig{Url: "grpc://bufnet"}, "up-id")
+	connector := NewGrpcConnectorWithClientConn(conn, &config.ApiConnectorConfig{Url: "grpc://bufnet"}, specs.GrpcConnector, "up-id")
 	connector.requestTimeout = 20 * time.Millisecond
 	t.Cleanup(func() {
 		connector.Stop()

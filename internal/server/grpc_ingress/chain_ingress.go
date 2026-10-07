@@ -163,7 +163,7 @@ func (h *grpcRequestHandler) RequestDecode(_ context.Context) (*server_ctx.Reque
 	// (grpc-go only accepts /Service/Method and no JSON-RPC or REST method is
 	// named that way), but that is a naming convention, not a guarantee.
 	specMethod := specs.GetSpecMethod(specName, h.method)
-	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
+	if specMethod == nil || !slices.ContainsFunc(specMethod.GetApiConnectorTypes(), specs.IsGrpcApiConnectorType) {
 		return nil, protocol.ResponseErrorWithData(protocol.NoSupportedMethod, fmt.Sprintf("unknown method %s", h.method), nil)
 	}
 	requestFrame, err := h.receiveRequestFrame()

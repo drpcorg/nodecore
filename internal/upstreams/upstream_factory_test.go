@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/cosmos_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/polkadot_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -107,6 +108,31 @@ func TestUpstreamSpecificsShareTheObjectOnASingleConnector(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Same(t, specifics.probe, specifics.head)
+}
+
+// A grpc-only tron upstream probes over gRPC; with rest present rest wins the
+// probe role (default mode = lowest plain connector type).
+func TestTronUpstreamSpecificsPickGrpcOnlyWhenAlone(t *testing.T) {
+	ctx := context.Background()
+	conf := &config.Upstream{Id: "u1", PollInterval: time.Second, Options: newPolkadotTestOptions()}
+	grpcConnector := &stubConnector{connectorType: specs.GrpcConnector}
+	restConnector := &stubConnector{connectorType: specs.RestConnector}
+
+	alone, err := getUpstreamSpecifics(ctx, conf, &connectorsInfo{
+		internalRequestConnector: grpcConnector,
+		headConnector:            grpcConnector,
+		allConnectors:            []connectors.ApiConnector{grpcConnector},
+	}, chains.GetChain("tron"))
+	require.NoError(t, err)
+	assert.IsType(t, &tron_specific.TronGrpcSpecific{}, alone.probe)
+
+	mixed, err := getUpstreamSpecifics(ctx, conf, &connectorsInfo{
+		internalRequestConnector: restConnector,
+		headConnector:            restConnector,
+		allConnectors:            []connectors.ApiConnector{restConnector, grpcConnector},
+	}, chains.GetChain("tron"))
+	require.NoError(t, err)
+	assert.IsType(t, &tron_specific.TronRestSpecific{}, mixed.probe)
 }
 
 // A celestia DA node speaks go-jsonrpc channels over its websocket; every

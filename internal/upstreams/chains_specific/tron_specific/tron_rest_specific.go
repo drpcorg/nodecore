@@ -3,8 +3,6 @@ package tron_specific
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -13,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/specific_helpers"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/tron_labels"
@@ -79,19 +78,11 @@ func (t *TronRestSpecific) GetFinalizedBlock(ctx context.Context) (protocol.Bloc
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
-	parts := strings.Split(nodeInfoValue.SolidityBlock, ",")
-	if len(parts) < 1 {
-		return protocol.ZeroBlock{}, fmt.Errorf("invalid solidity block")
-	}
-	numParts := strings.Split(parts[0], ":")
-	if len(numParts) != 2 {
-		return protocol.ZeroBlock{}, fmt.Errorf("invalid solidity block")
-	}
-	num, err := strconv.ParseUint(numParts[1], 10, 64)
+	height, err := specific_helpers.ParseTronSolidityHeight(nodeInfoValue.SolidityBlock)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
 	}
-	return protocol.NewBlockWithHeight(num), nil
+	return protocol.NewBlockWithHeight(height), nil
 }
 
 func (t *TronRestSpecific) ParseBlock(bytes []byte) (protocol.Block, error) {
@@ -133,8 +124,10 @@ func (t *TronRestSpecific) SettingsValidators() []validations.Validator[validati
 	return nil
 }
 
-func (t *TronRestSpecific) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
-	return caps.DefaultCapDetectors(t.upstreamId, input.WsConnector)
+// CapDetectors returns nil: the tron spec declares no websocket connector, so
+// there is no capability to detect.
+func (t *TronRestSpecific) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
+	return nil
 }
 
 func (t *TronRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -210,10 +203,12 @@ func NewTronSpecific(
 	switch connector.GetType() {
 	case specs.RestConnector:
 		return newTronRestSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
+	case specs.GrpcConnector:
+		return newTronGrpcSpecific(ctx, upstreamId, connector, chain, pollInterval, options)
 	case specs.JsonRpcConnector:
 		return evm_specific.NewEvmChainSpecific(ctx, upstreamId, connector, []connectors.ApiConnector{connector}, chain, pollInterval, options, manualLabels), nil
 	default:
-		return nil, fmt.Errorf("tron specific supports only json-rpc or rest connector but not %s", connector.GetType())
+		return nil, fmt.Errorf("tron specific supports only json-rpc, rest or grpc connector but not %s", connector.GetType())
 	}
 }
 
