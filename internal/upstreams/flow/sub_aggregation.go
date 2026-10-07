@@ -2,7 +2,6 @@ package flow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -21,9 +20,8 @@ import (
 
 // localNewHeadsKey is the aggregation key for the locally-synthesized newHeads
 // source. The local source taps the chain's single merged-head stream and
-// cannot honor request selectors, so all local newHeads subscribers collapse
-// onto one source (one head tap per chain); resolveSource only takes the local
-// path when no effective routing selectors are present.
+// ignores request selectors, so all local newHeads subscribers must collapse
+// onto one source regardless of their selectors (one head tap per chain).
 const localNewHeadsKey = "local|newHeads"
 
 // localLogsKey is the aggregation key for the locally-synthesized logs source.
@@ -40,8 +38,7 @@ const localLogsKey = "local|logs"
 // newPendingTransactions source. It opens eth_subscribe("newPendingTransactions")
 // on every ws-capable upstream of the chain, merges them and dedupes by hash, so
 // all clients must collapse onto one source regardless of selectors (one mempool
-// tap per chain) - same rationale as localNewHeadsKey, including the local path
-// being skipped for selector-bearing requests.
+// tap per chain) - same rationale as localNewHeadsKey.
 const localPendingTxKey = "local|newPendingTransactions"
 
 // localDrpcPendingTxKey is the aggregation key for drpc_pendingTransactions: it
@@ -80,31 +77,19 @@ func resolveSource(
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
 ) (string, subengine.SourceBuilder, SubFilter) {
-	// The local sources merge every upstream of the chain, so they cannot honor
-	// routing selectors - a client's own or an API key's upstream restriction.
-	// A selector-bearing request takes the node-backed path instead, where the
-	// strategy routes on its selectors.
-	routed := hasEffectiveSelectors(request.Selectors())
-	if settings.NewHeads && !routed && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
+	if settings.NewHeads && isNewHeadsRequest(request) && localNewHeadsAvailable(chain, supervisor) {
 		return localNewHeadsKey, subengine.NewHeadsSourceBuilder(supervisor, chain), nil
 	}
-	if settings.Logs && !routed && isLogsRequest(request) && localLogsAvailable(chain, supervisor) {
+	if settings.Logs && isLogsRequest(request) && localLogsAvailable(chain, supervisor) && !hasEffectiveSelectors(request.Selectors()) {
 		if filter, err := parseLogFilter(request); err == nil {
 			return localLogsKey, newLogsSourceBuilder(supervisor, chain, registry), filter
 		}
 	}
-	if settings.PendingTx && !routed && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain), nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
 	// local regardless of settings; it builds its own pending-tx source internally.
-	// With routing selectors it has no path at all: fail rather than serve it
-	// from upstreams the selectors exclude.
-	if isDrpcPendingTxRequest(request) && routed {
-		return fmt.Sprintf("%s|%s", subscriptionKey(request), uuid.NewString()), func(context.Context) (*subengine.Source, error) {
-			return nil, protocol.ClientError(errors.New("drpc_pendingTransactions cannot be served with upstream selectors"))
-		}, nil
-	}
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return localDrpcPendingTxKey, newDrpcPendingTxSourceBuilder(supervisor, chain, engine), nil
 	}

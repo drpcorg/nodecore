@@ -1,7 +1,6 @@
 package flow
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -9,7 +8,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
-	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
@@ -426,46 +424,28 @@ func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
 	assert.Less(t, blockSubscribeBufferSize, genericSubscriptionBufferSize)
 }
 
-// A selector-bearing subscription (a client's own selector or an API key's
-// upstream restriction) skips the local sources, which merge every upstream of
-// the chain, and is routed on its selectors instead.
-func TestResolveSourceSkipsLocalSourcesForRoutedRequests(t *testing.T) {
+// An API key's upstream restriction takes the node-backed path whenever the
+// local source is off: always for logs (selector-bearing logs requests never
+// use the shared source), and for newHeads/newPendingTransactions once their
+// local-subscriptions flags are disabled - the documented workaround until the
+// local sources honor selectors.
+func TestResolveSourceRoutesRestrictedSubscriptionsNodeBacked(t *testing.T) {
 	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
-	resolve := func(params string, selectors ...protocol.RequestSelector) (string, subengine.SourceBuilder) {
-		request := subscribeRequestWithSelectors(params, selectors...)
-		key, builder, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), request, nil, nil, nil, allLocalSubs)
-		return key, builder
+	resolve := func(params string, settings config.LocalSubSettings) string {
+		key, _, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), subscribeRequestWithSelectors(params, group), nil, nil, nil, settings)
+		return key
 	}
 
-	for _, tc := range []struct {
-		params   string
-		localKey string
-	}{
-		{`["newHeads"]`, localNewHeadsKey},
-		{`["logs",{}]`, localLogsKey},
-		{`["newPendingTransactions"]`, localPendingTxKey},
-	} {
-		t.Run(tc.localKey, func(t *testing.T) {
-			key, _ := resolve(tc.params)
-			assert.Equal(t, tc.localKey, key)
+	key := resolve(`["logs",{}]`, allLocalSubs)
+	assert.NotEqual(t, localLogsKey, key)
+	assert.Contains(t, key, group.Key())
 
-			key, _ = resolve(tc.params, group)
-			assert.NotEqual(t, tc.localKey, key)
-			assert.Contains(t, key, group.Key())
-
-			// RequestAnySelector routes nothing and keeps the local source.
-			key, _ = resolve(tc.params, protocol.RequestAnySelector{})
-			assert.Equal(t, tc.localKey, key)
-		})
+	logsOnly := config.LocalSubSettings{Logs: true}
+	for _, params := range []string{`["newHeads"]`, `["newPendingTransactions"]`} {
+		key := resolve(params, logsOnly)
+		assert.NotContains(t, key, "local|")
+		assert.Contains(t, key, group.Key())
 	}
-
-	t.Run("drpc_pendingTransactions fails", func(t *testing.T) {
-		key, builder := resolve(`["drpc_pendingTransactions"]`, group)
-		assert.NotEqual(t, localDrpcPendingTxKey, key)
-		source, err := builder(context.Background())
-		assert.Nil(t, source)
-		assert.ErrorContains(t, err, "cannot be served with upstream selectors")
-	})
 }
 
 // Subscriptions restricted to different upstreams must never share a source,
