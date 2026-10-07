@@ -105,7 +105,7 @@ func (d *DrpcKeyConfig) keyCfg() {}
 
 func (l *LocalKeyConfig) keyCfg() {}
 
-func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
+func (a *AuthConfig) validate(integrationCfg *IntegrationConfig, upstreamCfg *UpstreamConfig) error {
 	if !a.Enabled {
 		return nil
 	}
@@ -117,6 +117,7 @@ func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
 	if len(a.KeyConfigs) > 0 {
 		keyIds := mapset.NewThreadUnsafeSet[string]()
 		keys := mapset.NewThreadUnsafeSet[string]()
+		groupLabels := upstreamGroupLabels(upstreamCfg)
 		for i, keyConfig := range a.KeyConfigs {
 			if keyConfig.Id == "" {
 				return fmt.Errorf("error during key config validation, cause: no key id under index %d", i)
@@ -127,7 +128,7 @@ func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
 			if keyConfig.LocalKeyConfig != nil && keys.ContainsOne(keyConfig.LocalKeyConfig.Key) {
 				return fmt.Errorf("error during key config validation, local key '%s' already exists", keyConfig.LocalKeyConfig.Key)
 			}
-			if err := keyConfig.validate(integrationCfg); err != nil {
+			if err := keyConfig.validate(integrationCfg, groupLabels); err != nil {
 				return fmt.Errorf("error during '%s' key config validation, cause: %s", keyConfig.Id, err.Error())
 			}
 			keyIds.Add(keyConfig.Id)
@@ -163,7 +164,7 @@ func (r *RequestStrategyConfig) validate() error {
 	return nil
 }
 
-func (k *KeyConfig) validate(integrationCfg *IntegrationConfig) error {
+func (k *KeyConfig) validate(integrationCfg *IntegrationConfig, groupLabels mapset.Set[string]) error {
 	if err := k.Type.validate(); err != nil {
 		return err
 	}
@@ -172,7 +173,7 @@ func (k *KeyConfig) validate(integrationCfg *IntegrationConfig) error {
 		if k.LocalKeyConfig == nil {
 			return keyNoSettingsError(k.Type)
 		}
-		if err := k.LocalKeyConfig.validate(); err != nil {
+		if err := k.LocalKeyConfig.validate(groupLabels); err != nil {
 			return err
 		}
 	case Drpc:
@@ -206,19 +207,22 @@ func keyNoSettingsError(keyType IntegrationType) error {
 	return fmt.Errorf("specified '%s' key management rule type but there are no its settings", keyType)
 }
 
-func (l *LocalKeyConfig) validate() error {
+func (l *LocalKeyConfig) validate(groupLabels mapset.Set[string]) error {
 	if l.Key == "" {
 		return errors.New("'key' field is empty")
 	}
 	if l.KeySettingsConfig != nil && l.KeySettingsConfig.Upstreams != nil {
-		if err := l.KeySettingsConfig.Upstreams.validate(); err != nil {
+		if err := l.KeySettingsConfig.Upstreams.validate(groupLabels); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (k *KeyUpstreams) validate() error {
+// validate also rejects a label no upstream carries (groupLabels): such a key
+// would silently be served by nothing, and a typo is far likelier than an
+// intent to disable the key.
+func (k *KeyUpstreams) validate(groupLabels mapset.Set[string]) error {
 	if len(k.GroupLabels) == 0 {
 		return errors.New("upstreams.group-labels must contain at least one label")
 	}
@@ -230,39 +234,24 @@ func (k *KeyUpstreams) validate() error {
 		if seen.Contains(label) {
 			return fmt.Errorf("upstreams.group-labels contains a duplicate label '%s'", label)
 		}
+		if !groupLabels.Contains(label) {
+			return fmt.Errorf("upstreams.group-labels has '%s', which no upstream carries", label)
+		}
 		seen.Add(label)
 	}
 	return nil
 }
 
-// validateKeyUpstreams rejects a key filter naming a group-label no upstream
-// carries: such a key would silently be served by nothing, and a typo is far
-// likelier than an intent to disable the key.
-func (a *AuthConfig) validateKeyUpstreams(upstreamConfig *UpstreamConfig) error {
-	if !a.Enabled {
-		return nil
-	}
-	known := mapset.NewThreadUnsafeSet[string]()
-	if upstreamConfig != nil {
-		for _, upstream := range upstreamConfig.Upstreams {
-			known.Append(upstream.GroupLabels...)
+// upstreamGroupLabels collects the group-labels carried by any configured
+// upstream.
+func upstreamGroupLabels(upstreamCfg *UpstreamConfig) mapset.Set[string] {
+	groupLabels := mapset.NewThreadUnsafeSet[string]()
+	if upstreamCfg != nil {
+		for _, upstream := range upstreamCfg.Upstreams {
+			groupLabels.Append(upstream.GroupLabels...)
 		}
 	}
-	for _, keyConfig := range a.KeyConfigs {
-		if keyConfig.LocalKeyConfig == nil || keyConfig.LocalKeyConfig.KeySettingsConfig == nil {
-			continue
-		}
-		keyUpstreams := keyConfig.LocalKeyConfig.KeySettingsConfig.Upstreams
-		if keyUpstreams == nil {
-			continue
-		}
-		for _, label := range keyUpstreams.GroupLabels {
-			if !known.Contains(label) {
-				return fmt.Errorf("error during '%s' key config validation, cause: upstreams.group-labels has '%s', which no upstream carries", keyConfig.Id, label)
-			}
-		}
-	}
-	return nil
+	return groupLabels
 }
 
 func (r RequestStrategyType) validate() error {
