@@ -8,7 +8,6 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
-	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
 // ErrUpstreamsNotStarted is returned by ApplyUpstreams before StartUpstreams has
@@ -107,33 +106,31 @@ func (b *GenericUpstreamSupervisor) ApplyUpstreams(upstreamConfigs []*config.Ups
 	return diff, nil
 }
 
-// validateUpstreams rejects a list that the supervisor could not run. It covers
-// what would otherwise fail only when an upstream is being created, which on a
-// running process is too late. applyMu must be held.
+// validateUpstreams rejects a list that the supervisor could not run. The list
+// usually comes from a config file that has just been validated, but
+// ApplyUpstreams is an entry point of its own, and what it lets through goes
+// straight into CreateUpstream, where a bad list panics. So the checks of the
+// list as a whole are run again, by the same function the config uses; on top
+// come the two checks only the running process can make. applyMu must be held.
 func (b *GenericUpstreamSupervisor) validateUpstreams(upstreamConfigs []*config.Upstream) error {
-	if len(upstreamConfigs) == 0 {
-		return errors.New("there must be at least one upstream")
+	if err := config.ValidateUpstreamList(upstreamConfigs); err != nil {
+		return err
 	}
 
-	ids := mapset.NewThreadUnsafeSet[string]()
 	newIds := 0
 	for _, upConfig := range upstreamConfigs {
-		if upConfig == nil || upConfig.Id == "" {
-			return errors.New("there is an upstream without id")
-		}
-		if !ids.Add(upConfig.Id) {
-			return fmt.Errorf("upstream with id '%s' already exists", upConfig.Id)
-		}
-		if !chains.IsSupported(upConfig.ChainName) {
-			return fmt.Errorf("upstream '%s' has not supported chain '%s'", upConfig.Id, upConfig.ChainName)
-		}
 		if upConfig.RateLimitBudget != "" {
-			// budgets are created at startup and are not reloaded
-			if b.rateLimitBudgetRegistry == nil {
-				return fmt.Errorf("upstream '%s' references non-existent rate limit budget '%s'", upConfig.Id, upConfig.RateLimitBudget)
+			// budgets are created at startup and are not reloaded: a budget
+			// that is in the file can still be missing here
+			registered := false
+			if b.rateLimitBudgetRegistry != nil {
+				_, registered = b.rateLimitBudgetRegistry.Get(upConfig.RateLimitBudget)
 			}
-			if _, ok := b.rateLimitBudgetRegistry.Get(upConfig.RateLimitBudget); !ok {
-				return fmt.Errorf("upstream '%s' references rate limit budget '%s' that doesn't exist in the running process", upConfig.Id, upConfig.RateLimitBudget)
+			if !registered {
+				return fmt.Errorf(
+					"upstream '%s' references non-existent rate limit budget '%s', budgets are created at startup",
+					upConfig.Id, upConfig.RateLimitBudget,
+				)
 			}
 		}
 		if _, ok := b.upstreamIndices[upConfig.Id]; !ok {

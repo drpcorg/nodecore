@@ -17,6 +17,7 @@ import (
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func reloadUpstreamConfig(id, chain, url string) *config.Upstream {
@@ -131,18 +132,18 @@ func TestValidateUpstreams(t *testing.T) {
 		upstream []*config.Upstream
 		err      string
 	}{
-		{name: "no upstreams", upstream: nil, err: "there must be at least one upstream"},
-		{name: "nil upstream", upstream: []*config.Upstream{eth, nil}, err: "there is an upstream without id"},
-		{name: "no id", upstream: []*config.Upstream{reloadUpstreamConfig("", "ethereum", "http://eth")}, err: "there is an upstream without id"},
+		{name: "no upstreams", upstream: nil, err: "there must be at least one upstream in the config"},
+		{name: "nil upstream", upstream: []*config.Upstream{eth, nil}, err: "error during upstream validation, cause: no upstream id under index 1"},
+		{name: "no id", upstream: []*config.Upstream{reloadUpstreamConfig("", "ethereum", "http://eth")}, err: "error during upstream validation, cause: no upstream id under index 0"},
 		{
 			name:     "duplicate id",
 			upstream: []*config.Upstream{eth, reloadUpstreamConfig("eth", "polygon", "http://polygon")},
-			err:      "upstream with id 'eth' already exists",
+			err:      "error during upstream validation, cause: upstream with id 'eth' already exists",
 		},
 		{
 			name:     "unknown chain",
 			upstream: []*config.Upstream{eth, reloadUpstreamConfig("no", "no-such-chain", "http://no")},
-			err:      "upstream 'no' has not supported chain 'no-such-chain'",
+			err:      "error during upstream 'no' validation, cause: not supported chain 'no-such-chain'",
 		},
 		{
 			name: "unknown rate limit budget",
@@ -151,7 +152,7 @@ func TestValidateUpstreams(t *testing.T) {
 				withBudget.RateLimitBudget = "budget"
 				return withBudget
 			}()},
-			err: "upstream 'eth' references non-existent rate limit budget 'budget'",
+			err: "upstream 'eth' references non-existent rate limit budget 'budget', budgets are created at startup",
 		},
 	}
 
@@ -351,4 +352,37 @@ upstream-config:
 
 	assert.Eventually(t, func() bool { return requestRegistryGoroutines() <= before }, 5*time.Second, 10*time.Millisecond,
 		"the request registry of the upstream that was never created is still running")
+}
+
+// The supervisor repeats the checks of the config validation on purpose, and
+// must then say the same thing in the same words.
+func TestValidateUpstreamsSpeaksLikeTheConfigValidation(t *testing.T) {
+	supervisor := newReloadTestSupervisor(t)
+	const header = "upstream-config:\n  upstreams:\n"
+	const eth = "    - id: eth\n      chain: ethereum\n      connectors:\n        - type: json-rpc\n          url: http://eth\n"
+
+	for name, file := range map[string]string{
+		"no upstreams":  "upstream-config:\n  upstreams: []\n",
+		"no id":         header + eth + "    - chain: polygon\n      connectors:\n        - type: json-rpc\n          url: http://polygon\n",
+		"duplicate id":  header + eth + eth,
+		"unknown chain": header + eth + "    - id: no\n      chain: no-such-chain\n      connectors:\n        - type: json-rpc\n          url: http://no\n",
+	} {
+		t.Run(name, func(te *testing.T) {
+			_, configErr := config.ParseAppConfig([]byte(file))
+			require.Error(te, configErr)
+
+			// the same list, as the supervisor would get it from another caller
+			var raw struct {
+				UpstreamConfig struct {
+					Upstreams []*config.Upstream `yaml:"upstreams"`
+				} `yaml:"upstream-config"`
+			}
+			require.NoError(te, yaml.Unmarshal([]byte(file), &raw))
+			supervisor.applyMu.Lock()
+			supervisorErr := supervisor.validateUpstreams(raw.UpstreamConfig.Upstreams)
+			supervisor.applyMu.Unlock()
+
+			assert.EqualError(te, supervisorErr, configErr.Error())
+		})
+	}
 }
