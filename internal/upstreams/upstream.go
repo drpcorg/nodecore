@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
@@ -252,9 +253,13 @@ func (u *GenericUpstream) Stop() {
 	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
 	u.PartialStop()
 
+	// a connector may wait for its requests in flight before it closes, so the
+	// connectors are stopped side by side and the waits don't add up
+	var stopped sync.WaitGroup
 	for _, connector := range u.apiConnectors {
-		connector.Stop()
+		stopped.Go(connector.Stop)
 	}
+	stopped.Wait()
 }
 
 func (u *GenericUpstream) Running() bool {
