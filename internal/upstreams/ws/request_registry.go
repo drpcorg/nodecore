@@ -127,8 +127,15 @@ func (b *GenericRequestRegistry) OnSubscriptionMessage(response *protocol.WsResp
 	b.sendCmd(newSubscriptionCommand(response))
 }
 
+// CancelAll ends every request and subscription of the registry and returns
+// once that is done, so the caller can rely on it before it goes on.
 func (b *GenericRequestRegistry) CancelAll() {
-	b.sendCmd(newCancelAllCommand())
+	done := make(chan struct{})
+	b.sendCmd(newCancelAllCommand(done))
+	select {
+	case <-b.ctx.Done():
+	case <-done:
+	}
 }
 
 func (b *GenericRequestRegistry) run() {

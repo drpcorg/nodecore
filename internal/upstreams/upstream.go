@@ -247,9 +247,14 @@ func (u *GenericUpstream) Start() {
 	})
 }
 
+// Stop takes the upstream down for good. The order matters: the connectors are
+// stopped while the upstream's context is still alive, because a websocket
+// connector and its request registry live on that context - cancelling it first
+// would close the socket under the requests the connector is about to wait
+// for, and would drop the command that ends its subscriptions. The context is
+// cancelled last, to release whatever is left bound to it.
 func (u *GenericUpstream) Stop() {
 	u.upstreamCtx.mainLifecycle.Stop()
-	u.upstreamCtx.cancelFunc()
 	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
 	u.PartialStop()
 
@@ -260,6 +265,8 @@ func (u *GenericUpstream) Stop() {
 		stopped.Go(connector.Stop)
 	}
 	stopped.Wait()
+
+	u.upstreamCtx.cancelFunc()
 }
 
 func (u *GenericUpstream) Running() bool {

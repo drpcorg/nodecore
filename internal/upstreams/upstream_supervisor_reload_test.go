@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/public/pkg/dshackle"
@@ -75,9 +76,8 @@ func serveEvmWs(
 			return
 		}
 		if request.Method != "eth_subscribe" {
-			if err := write(reply(request)); err != nil {
-				return
-			}
+			// answered off the read loop: a slow request must not hold the others
+			go func() { _ = write(reply(request)) }()
 			continue
 		}
 		if err := write(map[string]any{"jsonrpc": "2.0", "id": request.Id, "result": "0xsub"}); err != nil {
@@ -684,4 +684,103 @@ func TestApplyUpstreamsRemovesGrpcUpstream(t *testing.T) {
 	}, "the gRPC upstream was not replaced")
 	require.False(t, supervisor.GetUpstream("tron-grpc").GetConnector(specs.GrpcConnector).SendRequest(context.Background(), grpcNodeRequest(t, "/test.Node/Fast")).HasError())
 	waitFor(t, func() bool { return tronGrpc.open.Load() == 1 }, "the replaced gRPC upstream left its connection open")
+}
+
+func wsOnlyUpstreamConnector(t *testing.T, supervisor upstreams.UpstreamSupervisor, id string) connectors.ApiConnector {
+	t.Helper()
+	up := supervisor.GetUpstream(id)
+	require.NotNil(t, up)
+	connector := up.GetConnector(specs.WebsocketConnector)
+	require.NotNil(t, connector)
+	return connector
+}
+
+// A unary request that is on the websocket of an upstream when the upstream is
+// removed is answered: the socket must stay up until the request is done, and
+// the removal must not sit out the whole drain timeout either.
+func TestApplyUpstreamsLetsInFlightWebsocketRequestFinish(t *testing.T) {
+	wsConnections := &atomic.Int32{}
+	ethNode, polygonNode := newEvmNode(t, 1), newEvmNodeWithWs(t, 137, wsConnections)
+	eth := reloadUpstream{id: "eth-1", chain: "ethereum", url: ethNode.URL}
+	polygon := reloadUpstream{id: "polygon-ws", chain: "polygon", url: polygonNode.URL, ws: true}
+
+	supervisor := startReloadSupervisor(t, reloadAppConfig(t, eth, polygon))
+	waitFor(t, func() bool { return chainAvailable(supervisor, chains.POLYGON) }, "polygon is not available")
+	waitFor(t, func() bool { return wsConnections.Load() == 1 }, "the websocket connector didn't connect")
+	connector := wsOnlyUpstreamConnector(t, supervisor, "polygon-ws")
+
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", []any{"0x0000000000000000000000000000000000000001", "latest"}, chains.POLYGON)
+	require.NoError(t, err)
+	answered := make(chan protocol.ResponseHolder, 1)
+	go func() { answered <- connector.SendRequest(context.Background(), request) }()
+	time.Sleep(100 * time.Millisecond)
+
+	removalStarted := time.Now()
+	_, err = supervisor.ApplyUpstreams(reloadAppConfig(t, eth).UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+
+	select {
+	case response := <-answered:
+		require.False(t, response.HasError(), "the in-flight websocket request failed: %v", response.GetError())
+		assert.Equal(t, `"0x1"`, string(response.ResponseResult()))
+	case <-time.After(10 * time.Second):
+		t.Fatal("the in-flight websocket request never returned")
+	}
+	waitFor(t, func() bool { return wsConnections.Load() == 0 }, "the websocket of the removed upstream is still open")
+	waitFor(t, func() bool { return supervisor.GetUpstream("polygon-ws") == nil }, "the upstream is still registered")
+	// the request takes slowRequestDelay; anything close to the drain timeout
+	// means the removal waited on a socket that was already dead
+	assert.Less(t, time.Since(removalStarted), 3*time.Second)
+}
+
+// A subscription that runs on the websocket of a removed upstream is ended
+// explicitly: its channel is closed and the connector reports the disconnect,
+// which is what makes the subscription engine send a terminal frame to clients.
+func TestApplyUpstreamsEndsWebsocketSubscription(t *testing.T) {
+	wsConnections := &atomic.Int32{}
+	ethNode, polygonNode := newEvmNode(t, 1), newEvmNodeWithWs(t, 137, wsConnections)
+	eth := reloadUpstream{id: "eth-1", chain: "ethereum", url: ethNode.URL}
+	polygon := reloadUpstream{id: "polygon-ws", chain: "polygon", url: polygonNode.URL, ws: true}
+
+	supervisor := startReloadSupervisor(t, reloadAppConfig(t, eth, polygon))
+	waitFor(t, func() bool { return chainAvailable(supervisor, chains.POLYGON) }, "polygon is not available")
+	waitFor(t, func() bool { return wsConnections.Load() == 1 }, "the websocket connector didn't connect")
+	connector := wsOnlyUpstreamConnector(t, supervisor, "polygon-ws")
+
+	states := connector.SubscribeStates("test")
+	require.NotNil(t, states)
+	defer states.Unsubscribe()
+	request, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.POLYGON)
+	require.NoError(t, err)
+	subscription, err := connector.Subscribe(context.Background(), request)
+	require.NoError(t, err)
+	select {
+	case frame, ok := <-subscription.ResponseChan():
+		require.True(t, ok)
+		require.Nil(t, frame.GetError())
+	case <-time.After(5 * time.Second):
+		t.Fatal("the subscription delivers nothing")
+	}
+
+	_, err = supervisor.ApplyUpstreams(reloadAppConfig(t, eth).UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+
+	closed := false
+	for deadline := time.After(5 * time.Second); !closed; {
+		select {
+		case _, ok := <-subscription.ResponseChan():
+			closed = !ok
+		case <-deadline:
+			t.Fatal("the subscription of the removed upstream was left open")
+		}
+	}
+	disconnected := false
+	for deadline := time.After(5 * time.Second); !disconnected; {
+		select {
+		case state := <-states.Events:
+			disconnected = state == protocol.WsDisconnected
+		case <-deadline:
+			t.Fatal("the connector of the removed upstream never reported the disconnect")
+		}
+	}
 }
