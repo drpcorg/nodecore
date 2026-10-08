@@ -208,8 +208,9 @@ func TestStickyRequestUpstreamRemovedAfterSelection(t *testing.T) {
 	assert.Equal(t, expected, response.(*flow.UnaryResponse).ResponseWrapper)
 }
 
-// The upstream can also be removed while the request is in flight: the response
-// is still delivered, only without the upstream index a sticky id carries.
+// The upstream can also be removed while the request is in flight. Its answer
+// is an id on a node that is gone; without the upstream's index the id would
+// not even survive the next sticky request, so the client gets an error.
 func TestCreateStickyUpstreamRemovedInFlight(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	specMethod := specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil)
@@ -231,7 +232,10 @@ func TestCreateStickyUpstreamRemovedInFlight(t *testing.T) {
 	upSupervisor.AssertExpectations(t)
 	apiConnector.AssertExpectations(t)
 
-	wrapper := response.(*flow.UnaryResponse).ResponseWrapper
-	assert.Equal(t, "id", wrapper.UpstreamId)
-	assert.Equal(t, []byte(`"result"`), wrapper.Response.ResponseResult())
+	expected := &protocol.ResponseHolderWrapper{
+		UpstreamId: flow.NoUpstream,
+		RequestId:  request.Id(),
+		Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.NoAvailableUpstreamsError(), request.RequestType()),
+	}
+	assert.Equal(t, expected, response.(*flow.UnaryResponse).ResponseWrapper)
 }
