@@ -21,6 +21,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
+	"github.com/drpcorg/nodecore/internal/reload"
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -41,6 +42,7 @@ type App struct {
 	cacheProcessor     caches.CacheProcessor
 	outboxStorage      outbox.Storer
 	upstreamSupervisor upstreams.UpstreamSupervisor
+	configReloader     *reload.ConfigReloader
 
 	httpServer   *echo.Echo
 	healthServer *echo.Echo
@@ -117,6 +119,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		authProcessor:      authProcessor,
 		statsService:       statsService,
 		upstreamSupervisor: upstreamSupervisor,
+		configReloader:     reload.NewConfigReloader(config.ConfigPath(), appConfig, upstreamSupervisor),
 		httpServer:         httpServer,
 		healthServer:       healthServer,
 		grpcServer:         grpcServer,
@@ -128,6 +131,7 @@ func (a *App) Start() {
 	var shuttingDown atomic.Bool
 
 	go a.upstreamSupervisor.StartUpstreams()
+	go a.configReloader.Run(a.ctx)
 	go a.ratingRegistry.Start()
 	a.statsService.Start(a.outboxStorage)
 
