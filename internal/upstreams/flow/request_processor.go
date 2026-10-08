@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -31,7 +32,7 @@ var hedgeMetric = prometheus.NewCounterVec(
 )
 
 func init() {
-	prometheus.MustRegister(hedgeMetric)
+	upstreammetrics.MustRegister(hedgeMetric)
 }
 
 type ProcessedResponse interface {

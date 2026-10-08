@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"sync"
 	"time"
 
@@ -11,13 +12,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
-	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
-	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
 
@@ -350,15 +348,14 @@ func (b *GenericUpstreamSupervisor) waitUntilNotRouted(up Upstream) {
 
 // forgetUpstream drops what the rest of the process keeps per upstream, so that
 // a removed upstream leaves no stale gauges behind and an upstream that comes
-// back under the same id starts from a clean slate.
+// back under the same id starts from a clean slate. The metric series are
+// dropped in one place for every package: a metric with an "upstream" label is
+// listed in upstreammetrics where it is defined.
 func (b *GenericUpstreamSupervisor) forgetUpstream(up Upstream) {
 	if b.tracker != nil {
 		b.tracker.RemoveUpstream(up.GetChain(), up.GetId())
 	}
-	labels := prometheus.Labels{"chain": up.GetChain().String(), "upstream": up.GetId()}
-	availabilityMetric.DeletePartialMatch(labels)
-	event_processors.DeleteUpstreamMetrics(up.GetChain(), up.GetId())
-	ws.DeleteUpstreamMetrics(up.GetChain(), up.GetId())
+	upstreammetrics.Forget(up.GetId())
 }
 
 func createFlowExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor[*protocol.ResponseHolderWrapper] {

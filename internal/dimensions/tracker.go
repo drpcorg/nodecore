@@ -2,6 +2,7 @@ package dimensions
 
 import (
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
@@ -71,7 +72,7 @@ var finalizationLagMetric = prometheus.NewGaugeVec(
 )
 
 func init() {
-	prometheus.MustRegister(
+	upstreammetrics.MustRegister(
 		requestTotalMetric,
 		errorTotalMetric,
 		requestDurationMetric,
@@ -85,8 +86,8 @@ type DimensionTracker interface {
 	GetAllDimensions(chain chains.Chain, upstreamId, method string) *FullDimensions
 	GetUpstreamDimensions(chain chains.Chain, upstreamId, method string) *UpstreamDimensions
 	GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions
-	// RemoveUpstream forgets everything tracked for the upstream, its metric
-	// series included.
+	// RemoveUpstream forgets everything tracked for the upstream. Its metric
+	// series are dropped with the rest of them, by upstreammetrics.Forget.
 	RemoveUpstream(chain chains.Chain, upstreamId string)
 }
 
@@ -143,14 +144,6 @@ func (d *GenericDimensionTracker) RemoveUpstream(chain chains.Chain, upstreamId 
 		return true
 	})
 	d.chainDimensionsMap.Delete(newChainDimensionKey(chain, upstreamId))
-
-	labels := prometheus.Labels{"chain": chain.String(), "upstream": upstreamId}
-	requestTotalMetric.DeletePartialMatch(labels)
-	errorTotalMetric.DeletePartialMatch(labels)
-	requestDurationMetric.DeletePartialMatch(labels)
-	successfulRetriesMetric.DeletePartialMatch(labels)
-	headLagMetric.DeletePartialMatch(labels)
-	finalizationLagMetric.DeletePartialMatch(labels)
 }
 
 var _ DimensionTracker = (*GenericDimensionTracker)(nil)

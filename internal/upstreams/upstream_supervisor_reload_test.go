@@ -23,6 +23,7 @@ import (
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -257,6 +258,27 @@ func chainAvailable(supervisor upstreams.UpstreamSupervisor, chain chains.Chain)
 	return state.Status == protocol.Available && !state.HeadData.IsEmpty()
 }
 
+// upstreamSeries counts the exposed series of a metric that belong to an upstream.
+func upstreamSeries(t *testing.T, metric, upstreamId string) int {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	series := 0
+	for _, family := range families {
+		if family.GetName() != metric {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			for _, label := range m.GetLabel() {
+				if label.GetName() == "upstream" && label.GetValue() == upstreamId {
+					series++
+				}
+			}
+		}
+	}
+	return series
+}
+
 func waitFor(t *testing.T, condition func() bool, msg string) {
 	t.Helper()
 	require.Eventually(t, condition, 15*time.Second, 10*time.Millisecond, msg)
@@ -307,6 +329,12 @@ func TestApplyUpstreamsAddsAndRemovesChain(t *testing.T) {
 	require.NotNil(t, polygonSupervisor)
 	assert.Empty(t, polygonSupervisor.GetUpstreamIds())
 	assert.Equal(t, protocol.Unavailable, polygonSupervisor.GetChainState().Status)
+
+	// no gauge keeps reporting the last state of the removed upstream
+	for _, metric := range []string{"nodecore_upstream_availability_status", "nodecore_upstream_heads", "nodecore_upstream_head_lag"} {
+		assert.Zero(t, upstreamSeries(t, metric, "polygon-1"), metric)
+		assert.NotZero(t, upstreamSeries(t, metric, "eth-1"), metric)
+	}
 
 	// the other chain never noticed
 	assert.Same(t, ethUpstream, supervisor.GetUpstream("eth-1"))

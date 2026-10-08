@@ -2,8 +2,8 @@ package rating
 
 import (
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"reflect"
-	"slices"
 	"time"
 
 	"github.com/dop251/goja"
@@ -29,7 +29,7 @@ var rating = prometheus.NewGaugeVec(
 )
 
 func init() {
-	prometheus.MustRegister(rating)
+	upstreammetrics.MustRegister(rating)
 }
 
 // singleUpstreamRating is the rating published for the lone upstream of a
@@ -44,9 +44,6 @@ type RatingRegistry struct {
 	scoreFunc           goja.Callable
 	runtime             *goja.Runtime
 	sortedUpstreams     *utils.Atomic[*utils.CMap[chains.Chain, *utils.CMap[string, []string]]]
-	// ratedUpstreams is what the previous calculation saw per chain; an upstream
-	// that is no longer there gets its rating series dropped
-	ratedUpstreams map[chains.Chain][]string
 }
 
 func NewRatingRegistry(
@@ -65,7 +62,6 @@ func NewRatingRegistry(
 		runtime:             goja.New(),
 		calculationInterval: scorePolicyConfig.CalculationInterval,
 		sortedUpstreams:     sortedUpstreams,
-		ratedUpstreams:      make(map[chains.Chain][]string),
 	}
 }
 
@@ -105,7 +101,6 @@ func (r *RatingRegistry) calculateRating() {
 	for _, chSupervisor := range r.upstreamSupervisor.GetChainSupervisors() {
 		upstreamIds := chSupervisor.GetUpstreamIds()
 		methods := chSupervisor.GetMethods()
-		r.forgetGoneUpstreams(chSupervisor.GetChain(), upstreamIds)
 		// No upstreams => nothing to rate.
 		if len(upstreamIds) == 0 {
 			continue
@@ -179,15 +174,6 @@ func (r *RatingRegistry) calculateRating() {
 	}
 
 	r.sortedUpstreams.Store(newSortedUpstreams)
-}
-
-func (r *RatingRegistry) forgetGoneUpstreams(chain chains.Chain, upstreamIds []string) {
-	for _, upstreamId := range r.ratedUpstreams[chain] {
-		if !slices.Contains(upstreamIds, upstreamId) {
-			rating.DeletePartialMatch(prometheus.Labels{"chain": chain.String(), "upstream": upstreamId})
-		}
-	}
-	r.ratedUpstreams[chain] = upstreamIds
 }
 
 func (r *RatingRegistry) processScores(scoresAsObjects interface{}, chain chains.Chain, method string) error {

@@ -3,6 +3,7 @@ package upstreams
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"slices"
 	"strings"
 	"sync"
@@ -34,7 +35,7 @@ var availabilityMetric = prometheus.NewGaugeVec(
 )
 
 func init() {
-	prometheus.MustRegister(availabilityMetric)
+	upstreammetrics.MustRegister(availabilityMetric)
 }
 
 type GenericChainSupervisor struct {

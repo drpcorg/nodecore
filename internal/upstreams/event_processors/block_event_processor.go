@@ -3,6 +3,7 @@ package event_processors
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -35,15 +36,7 @@ var headsMetric = prometheus.NewGaugeVec(
 )
 
 func init() {
-	prometheus.MustRegister(blocksMetric, headsMetric)
-}
-
-// DeleteUpstreamMetrics drops the block and head gauges of an upstream that is
-// gone, so that they don't keep reporting its last heights.
-func DeleteUpstreamMetrics(chain chains.Chain, upstreamId string) {
-	labels := prometheus.Labels{"chain": chain.String(), "upstream": upstreamId}
-	blocksMetric.DeletePartialMatch(labels)
-	headsMetric.DeletePartialMatch(labels)
+	upstreammetrics.MustRegister(blocksMetric, headsMetric)
 }
 
 type BlockUpdateData interface {

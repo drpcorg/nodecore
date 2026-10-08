@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -26,14 +27,7 @@ var jsonRpcWsOperations = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 }, []string{"chain", "upstream"})
 
 func init() {
-	prometheus.MustRegister(jsonRpcWsConnectionsMetric, jsonRpcWsOperations)
-}
-
-// DeleteUpstreamMetrics drops the websocket gauges of an upstream that is gone.
-func DeleteUpstreamMetrics(chain chains.Chain, upstreamId string) {
-	labels := prometheus.Labels{"chain": chain.String(), "upstream": upstreamId}
-	jsonRpcWsConnectionsMetric.DeletePartialMatch(labels)
-	jsonRpcWsOperations.DeletePartialMatch(labels)
+	upstreammetrics.MustRegister(jsonRpcWsConnectionsMetric, jsonRpcWsOperations)
 }
 
 type RequestRegistry interface {
