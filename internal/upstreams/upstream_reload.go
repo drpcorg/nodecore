@@ -11,6 +11,10 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
+// ErrUpstreamsNotStarted is returned by ApplyUpstreams before StartUpstreams has
+// run. It says nothing about the list: the same call succeeds a moment later.
+var ErrUpstreamsNotStarted = errors.New("upstreams are not started yet")
+
 // UpstreamsDiff is what separates the running upstream set from a wanted one,
 // as sorted upstream ids.
 type UpstreamsDiff struct {
@@ -71,7 +75,7 @@ func (b *GenericUpstreamSupervisor) ApplyUpstreams(upstreamConfigs []*config.Ups
 	defer b.applyMu.Unlock()
 
 	if !b.started {
-		return UpstreamsDiff{}, errors.New("upstreams are not started yet")
+		return UpstreamsDiff{}, ErrUpstreamsNotStarted
 	}
 	if err := b.validateUpstreams(upstreamConfigs); err != nil {
 		return UpstreamsDiff{}, err

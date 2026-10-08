@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -74,6 +75,12 @@ func (a *applierStub) ApplyUpstreams(upstreamConfigs []*config.Upstream) (upstre
 	a.applied = append(a.applied, ids)
 	added, removed := lo.Difference(ids, previous)
 	return upstreams.UpstreamsDiff{Added: added, Removed: removed}, nil
+}
+
+func (a *applierStub) setErr(err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.err = err
 }
 
 func (a *applierStub) calls() [][]string {
@@ -243,7 +250,7 @@ func TestRunWatchesTheFile(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		reloader.Run(ctx)
+		reloader.Run(ctx, nil)
 	}()
 
 	writeConfig(t, path, ethAndPolygon+"  reload:\n    watch-interval: 100ms\n")
@@ -259,4 +266,81 @@ func TestRunWatchesTheFile(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("the reloader didn't stop with its context")
 	}
+}
+
+// A SIGHUP that arrived before the reloader started - while nodecore was still
+// starting - is not lost: it waits in the channel and is served first.
+func TestRunServesSignalThatArrivedBeforeStart(t *testing.T) {
+	reloader, applier, path := newTestReloader(t, ethOnly)
+	writeConfig(t, path, ethAndPolygon)
+	reloadSignals := make(chan os.Signal, 1)
+	reloadSignals <- syscall.SIGHUP
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go reloader.Run(ctx, reloadSignals)
+
+	require.Eventually(t, func() bool { return len(applier.calls()) == 1 }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, [][]string{{"eth-upstream", "polygon-upstream"}}, applier.calls())
+
+	// and every later one is served too
+	writeConfig(t, path, ethOnly)
+	reloadSignals <- syscall.SIGHUP
+	require.Eventually(t, func() bool { return len(applier.calls()) == 2 }, 5*time.Second, 5*time.Millisecond)
+}
+
+// "Not started yet" is not a verdict on the file: the watch keeps the content
+// and applies it as soon as the supervisor takes it, and the file is never
+// reported as rejected.
+func TestWatchRetriesContentRefusedForTransientReason(t *testing.T) {
+	reloader, applier, path := newTestReloader(t, ethOnly)
+	rejectedBefore := metricValue(t, reloadsMetric.WithLabelValues(resultRejected))
+	writeConfig(t, path, ethAndPolygon)
+	applier.setErr(upstreams.ErrUpstreamsNotStarted)
+
+	for i := 0; i < 4; i++ {
+		reloader.watch()
+	}
+	assert.Empty(t, applier.calls())
+	assert.Equal(t, float64(1), metricValue(t, lastReloadSuccessfulMetric))
+	assert.Equal(t, rejectedBefore, metricValue(t, reloadsMetric.WithLabelValues(resultRejected)))
+
+	applier.setErr(nil)
+	reloader.watch()
+	assert.Equal(t, [][]string{{"eth-upstream", "polygon-upstream"}}, applier.calls())
+	assert.Equal(t, float64(1), metricValue(t, lastReloadSuccessfulMetric))
+}
+
+// A refusal that is about the list itself is final for that content.
+func TestWatchReportsListRefusedBySupervisorOnce(t *testing.T) {
+	reloader, applier, path := newTestReloader(t, ethOnly)
+	rejectedBefore := metricValue(t, reloadsMetric.WithLabelValues(resultRejected))
+	writeConfig(t, path, ethAndPolygon)
+	applier.setErr(errors.New("budget doesn't exist"))
+
+	for i := 0; i < 5; i++ {
+		reloader.watch()
+	}
+
+	assert.Equal(t, rejectedBefore+1, metricValue(t, reloadsMetric.WithLabelValues(resultRejected)))
+	assert.Equal(t, float64(0), metricValue(t, lastReloadSuccessfulMetric))
+}
+
+func TestReloadTransientRefusalIsNotARejection(t *testing.T) {
+	reloader, applier, path := newTestReloader(t, ethOnly)
+	rejectedBefore := metricValue(t, reloadsMetric.WithLabelValues(resultRejected))
+	writeConfig(t, path, ethAndPolygon)
+	applier.setErr(upstreams.ErrUpstreamsNotStarted)
+
+	_, err := reloader.Reload()
+
+	assert.ErrorIs(t, err, upstreams.ErrUpstreamsNotStarted)
+	assert.Equal(t, float64(1), metricValue(t, lastReloadSuccessfulMetric))
+	assert.Equal(t, rejectedBefore, metricValue(t, reloadsMetric.WithLabelValues(resultRejected)))
+
+	// the watch still owes this content an attempt
+	applier.setErr(nil)
+	reloader.watch()
+	reloader.watch()
+	assert.Equal(t, [][]string{{"eth-upstream", "polygon-upstream"}}, applier.calls())
 }

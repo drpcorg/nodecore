@@ -3,11 +3,10 @@ package reload
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -91,13 +90,15 @@ func NewConfigReloader(path string, startupConfig *config.AppConfig, applier Ups
 	}
 }
 
-// Run reloads the config on every SIGHUP and, if the watch is enabled, whenever
-// the content of the config file changes. It returns when ctx is done.
-func (r *ConfigReloader) Run(ctx context.Context) {
-	sighup := make(chan os.Signal, 1)
-	signal.Notify(sighup, syscall.SIGHUP)
-	defer signal.Stop(sighup)
-
+// Run reloads the config on every signal from reloadSignals and, if the watch is
+// enabled, whenever the content of the config file changes. It returns when ctx
+// is done.
+//
+// The signals are not subscribed to here. SIGHUP terminates a process that has
+// not taken it over, so main does that before anything else and never gives it
+// back; a signal that arrived while nodecore was starting is waiting in the
+// channel and is served first.
+func (r *ConfigReloader) Run(ctx context.Context, reloadSignals <-chan os.Signal) {
 	var ticks <-chan time.Time
 	if r.watchInterval > 0 {
 		ticker := time.NewTicker(r.watchInterval)
@@ -112,15 +113,23 @@ func (r *ConfigReloader) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-sighup:
-			log.Info().Msg("got signal SIGHUP, reloading the config")
+		case sig := <-reloadSignals:
+			log.Info().Msgf("got signal %v, reloading the config", sig)
 			if _, err := r.Reload(); err != nil {
-				log.Error().Err(err).Msgf("config reload from %s is rejected, the running upstreams are left untouched", r.path)
+				r.logFailure(err)
 			}
 		case <-ticks:
 			r.watch()
 		}
 	}
+}
+
+func (r *ConfigReloader) logFailure(err error) {
+	if errors.Is(err, upstreams.ErrUpstreamsNotStarted) {
+		log.Warn().Err(err).Msgf("config reload from %s is not applied yet", r.path)
+		return
+	}
+	log.Error().Err(err).Msgf("config reload from %s is rejected, the running upstreams are left untouched", r.path)
 }
 
 // Reload reads the config file and applies its upstream list right away.
@@ -165,26 +174,35 @@ func (r *ConfigReloader) watch() {
 	}
 
 	if _, err = r.apply(file); err != nil {
-		log.Error().Err(err).Msgf("config reload from %s is rejected, the running upstreams are left untouched", r.path)
+		r.logFailure(err)
 	}
 }
 
+// apply loads the content and hands its upstream list to the supervisor. The
+// content counts as handled once there is a verdict on it - applied, or
+// rejected for what it says - so that the watch reports it once. A refusal that
+// is not about the content leaves it unhandled, and the watch tries again.
 func (r *ConfigReloader) apply(file []byte) (upstreams.UpstreamsDiff, error) {
-	r.handled = sha256.Sum256(file)
+	sum := sha256.Sum256(file)
 
 	loaded, err := parseConfig(file)
+	if err != nil {
+		r.handled = sum
+		reloadFailed()
+		return upstreams.UpstreamsDiff{}, err
+	}
+
+	diff, err := r.applier.ApplyUpstreams(loaded.UpstreamConfig.Upstreams)
+	if errors.Is(err, upstreams.ErrUpstreamsNotStarted) {
+		return upstreams.UpstreamsDiff{}, err
+	}
+	r.handled = sum
 	if err != nil {
 		reloadFailed()
 		return upstreams.UpstreamsDiff{}, err
 	}
 	if restartOnly := r.startupConfig.RestartOnlyChanges(loaded); len(restartOnly) > 0 {
-		log.Warn().Msgf("config sections %v differ from the running config but only the upstream list is reloaded, restart nodecore to apply them", restartOnly)
-	}
-
-	diff, err := r.applier.ApplyUpstreams(loaded.UpstreamConfig.Upstreams)
-	if err != nil {
-		reloadFailed()
-		return upstreams.UpstreamsDiff{}, err
+		log.Warn().Msgf("these config settings differ from the running ones and are not applied by a reload, restart nodecore to apply them: %v", restartOnly)
 	}
 
 	lastReloadSuccessfulMetric.Set(1)

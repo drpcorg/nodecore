@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -43,13 +44,16 @@ type App struct {
 	outboxStorage      outbox.Storer
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	configReloader     *reload.ConfigReloader
+	reloadSignals      <-chan os.Signal
 
 	httpServer   *echo.Echo
 	healthServer *echo.Echo
 	grpcServer   *grpc_server.GrpcServer
 }
 
-func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
+// NewApp builds the application. reloadSignals delivers the signals that ask
+// for a config reload; the caller owns the subscription.
+func NewApp(ctx context.Context, appConfig *config.AppConfig, reloadSignals <-chan os.Signal) (*App, error) {
 	integrationResolver := integration.NewIntegrationResolver(appConfig.IntegrationConfig)
 
 	authProcessor, err := auth.NewAuthProcessor(ctx, appConfig.AuthConfig, integrationResolver)
@@ -120,6 +124,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		statsService:       statsService,
 		upstreamSupervisor: upstreamSupervisor,
 		configReloader:     reload.NewConfigReloader(config.ConfigPath(), appConfig, upstreamSupervisor),
+		reloadSignals:      reloadSignals,
 		httpServer:         httpServer,
 		healthServer:       healthServer,
 		grpcServer:         grpcServer,
@@ -130,8 +135,11 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 func (a *App) Start() {
 	var shuttingDown atomic.Bool
 
-	go a.upstreamSupervisor.StartUpstreams()
-	go a.configReloader.Run(a.ctx)
+	go func() {
+		a.upstreamSupervisor.StartUpstreams()
+		// a reload needs started upstreams to compare the config file with
+		a.configReloader.Run(a.ctx, a.reloadSignals)
+	}()
 	go a.ratingRegistry.Start()
 	a.statsService.Start(a.outboxStorage)
 

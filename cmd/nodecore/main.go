@@ -31,6 +31,13 @@ const (
 func main() {
 	flag.Parse()
 
+	// SIGHUP reloads the upstream list. A process that has not taken the signal
+	// over is terminated by it, so it is taken over before anything else and
+	// never given back: a SIGHUP sent while nodecore is starting waits in the
+	// channel, one sent while it is shutting down is ignored.
+	reloadSignals := make(chan os.Signal, 1)
+	signal.Notify(reloadSignals, syscall.SIGHUP)
+
 	if path := os.Getenv(envExtraChainsPath); path != "" {
 		extra, err := os.ReadFile(path)
 		if err != nil {
@@ -67,7 +74,7 @@ func main() {
 		mainCtxCancel()
 	}()
 
-	nodeCoreApp, err := app.NewApp(mainCtx, appConfig)
+	nodeCoreApp, err := app.NewApp(mainCtx, appConfig, reloadSignals)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the app")
 	}
