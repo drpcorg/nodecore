@@ -792,7 +792,7 @@ nodecore can add, remove and replace upstreams while it is running. A reload doe
 
 | Trigger | When it is active | Behaviour |
 |---|---|---|
-| `SIGHUP` | always | The config file is re-read and applied immediately, e.g. `kill -HUP <pid>` or `docker kill --signal=HUP <container>`. |
+| `SIGHUP` | always | The config file is re-read and applied immediately, e.g. `kill -HUP <pid>` or `docker kill --signal=HUP <container>`. The signal never stops nodecore: one that arrives while nodecore is still starting is served as soon as the upstreams are started, one that arrives during the shutdown is ignored. |
 | File watch | when `reload.watch-interval` is set | nodecore re-reads the config file every `watch-interval` and reloads when its **content** changes (modification time is ignored). |
 
 `watch-interval` is `0` by default, which disables the watch; the smallest accepted value is `100ms`.
@@ -817,9 +817,15 @@ Only the `upstream-config.upstreams` list. The new list is compared with the run
 Things to know:
 
 - Settings are compared **after defaults are applied**. A change of `chain-defaults.<chain>.poll-interval`, of `chain-defaults.<chain>.options` or of `mode` therefore replaces every upstream that inherits the changed value.
-- A replaced upstream is briefly out of rotation, until its new instance passes the startup validation. If every upstream of a chain is replaced by the same reload, the chain is unavailable for that moment. Add and remove are the seamless operations; to change an upstream without a gap, add it under a new `id` first and remove the old one in a second reload.
-- Requests in flight on a removed upstream are allowed to finish. Over `json-rpc`, `rest` and `tendermint` connectors they simply run to completion. A `websocket` or `grpc` connector owns one connection, so nodecore first stops selecting the upstream, then waits up to 5 seconds for the unary requests that are already on that connection, and only then closes it; a request that is still running after that fails with a `Canceled` error.
-- Subscriptions and gRPC streams served by a removed upstream never end by themselves, so they are ended when its connection is closed: a gRPC stream receives `Canceled` (`grpc: the client connection is closing`), a websocket subscription the usual terminal error. Clients can resubscribe and are served by the remaining upstreams of the chain.
+- A replaced upstream is out of rotation from the moment the running instance is removed until its new instance has passed the startup validation. The new instance is started only after the old one is completely stopped, so the gap is the removal time below plus the validation of the new instance. If every upstream of a chain is replaced by the same reload, the chain is unavailable for that time. Add and remove are the seamless operations; to change an upstream without a gap, add it under a new `id` first and remove the old one in a second reload.
+- How long a removal takes. It has three steps, each with its own limit: the upstream stops being selected (normally milliseconds, at most 2 seconds); a `websocket` or `grpc` connector waits for the unary requests that are already on its connection (as long as they take, at most 5 seconds; nothing when there are none); the connections are closed (milliseconds; a websocket that is in the middle of a reconnect can take up to 5 seconds more). With no request in flight a removal takes tens of milliseconds; the worst case is about 7 seconds, 12 with a websocket caught in a dial.
+- Requests in flight on a removed upstream are allowed to finish. Over `json-rpc`, `rest` and `tendermint` connectors they simply run to completion. A `websocket` or `grpc` connector owns one connection, so nodecore first stops selecting the upstream, then waits up to 5 seconds for the unary requests that are already on that connection, and only then closes it; a request that is still running after that fails (`Canceled` on a `grpc` connector).
+- Subscriptions and streams served by a removed upstream never end by themselves, so nodecore ends them when it closes the connection, and tells the client:
+  - a subscription served by the upstream's `websocket` connector: a gRPC `NativeSubscribe` client receives the error `subscription total failure`, a WebSocket client has its connection to nodecore closed - the same as when an upstream's websocket drops by itself;
+  - a stream on the upstream's `grpc` connector: the client receives `Canceled` (`grpc: the client connection is closing`).
+
+  A client that subscribes again is served by the remaining upstreams of the chain.
+- A sticky method that creates an id on the upstream (such as `eth_newFilter`) and is in flight when the upstream is removed returns an error instead of the id: the id would live on a node nodecore no longer talks to.
 - Nothing connects to a removed upstream again: its gRPC and websocket connections are closed and its idle HTTP keep-alive connections are released.
 - An upstream keeps its internal index for the lifetime of the process, even across a removal or a replacement, so ids handed out by sticky methods (such as `eth_newFilter`) keep pointing at the upstream with the same `id`.
 - The metric series of a removed upstream are dropped, see [Prometheus metrics](08-prometheus-metrics.md#config-reload-metrics).
@@ -829,9 +835,10 @@ Things to know:
 Everything else in the config file keeps the value it had when nodecore started:
 
 - the whole `server`, `auth`, `cache`, `rate-limit`, `app-storages`, `integration` and `stats` sections;
-- in `upstream-config`: the global `failsafe-config`, `score-policy-config`, `integrity`, `label-balancing`, `balancing-strategy`, `reload` itself, and the per-chain routing settings of `chain-defaults` (`dispatch`, `label-balancing`, `balancing-strategy`, `local-subscriptions`, `validate-lag`).
+- in `upstream-config`: the global `failsafe-config`, `score-policy-config`, `integrity`, `label-balancing`, `balancing-strategy`, `reload` itself, and the per-chain routing settings of `chain-defaults` (`dispatch`, `label-balancing`, `balancing-strategy`, `local-subscriptions`, `validate-lag`);
+- what `mode` decides while requests are served: the `dispatch` and `validate-lag` defaults of the chains. (The upstream defaults of a new `mode` are applied, see above.)
 
-When a reload finds that one of these differs from the running config, it logs a warning that names the sections and still applies the upstream list.
+When a reload finds that one of these differs from the running config, it logs a warning that names each of them - for `chain-defaults` down to the chain and the setting, e.g. `upstream-config.chain-defaults.ethereum.dispatch` - and still applies the upstream list. A change of `chain-defaults.<chain>.poll-interval` or `options` is not in that warning: it is applied.
 
 Rate limit budgets are created at startup, so an upstream added by a reload can only reference a `rate-limit-budget` that already existed when nodecore started. An inline `rate-limit` or `rate-limit-auto-tune` on the upstream has no such restriction.
 
@@ -845,6 +852,8 @@ A reload parses and validates the **whole** file the same way startup does. If t
 
 The watch reports a rejected file once and looks again when its content changes.
 
+A refusal that is not about the file is not a rejection. The only one is a reload that reaches the upstream supervisor before the upstreams are started; it is logged as a warning (`is not applied yet`), does not touch the metrics, and the watch applies the same content on its next check.
+
 ### What is logged
 
 | Level | Message | Meaning |
@@ -854,7 +863,9 @@ The watch reports a rejected file once and looks again when its content changes.
 | `info` | `upstreams have been reloaded: added=[...], removed=[...], changed=[...]` | A reload was applied. |
 | `info` | `upstream <id> of <chain> has been removed` | A removed upstream is completely stopped. |
 | `info` | `config reload found no upstream changes` | A `SIGHUP` reload with nothing to do. |
-| `warn` | `config sections [...] differ from the running config but only the upstream list is reloaded, restart nodecore to apply them` | The file changes something that needs a restart. |
+| `warn` | `these config settings differ from the running ones and are not applied by a reload, restart nodecore to apply them: [...]` | The file changes something that needs a restart; the upstream list was applied. |
+| `warn` | `config reload from <path> is not applied yet` | The reload came before the upstreams were started; the watch retries it. |
+| `warn` | `<n> requests are still in flight on the <type> connector of upstream <id> after 5s, closing it anyway` | A removed upstream had requests that outlived the wait. |
 | `error` | `config reload from <path> is rejected, the running upstreams are left untouched` | The file was refused; the `error` field carries the reason. |
 
 ## Validators and labels

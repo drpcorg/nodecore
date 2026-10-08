@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-08
 - **Status:** Implemented — branch `arootman/hot-reload-upstreams`
-- **Area:** `internal/reload` (new), `internal/upstreams` (`upstream_supervisor.go`, `upstream_reload.go`), `internal/config` (`config.go`, `reload_config.go`), `internal/app`, `internal/dimensions`, `internal/rating`, `internal/upstreams/flow`, `test/e2e`
+- **Area:** `internal/reload` (new), `internal/upstreammetrics` (new), `pkg/reloadsignal` (new), `internal/upstreams` (`upstream_supervisor.go`, `upstream_reload.go`, `upstream.go`, `chain_supervisor.go`, `connectors`, `ws`), `internal/config` (`config.go`, `reload_config.go`), `internal/app`, `internal/dimensions`, `internal/rating`, `internal/upstreams/flow`, `test/e2e`
 
 ## 1. Problem
 
@@ -82,17 +82,23 @@ process.
 | What counts as changed | `reflect.DeepEqual` of the upstream config **after defaults** | Defaults merge `chain-defaults.<chain>.poll-interval`/`options` and the `mode` fallbacks into each upstream, so a changed default is seen as a change of exactly the upstreams it affects. |
 | Changed upstream | Remove, then start a new instance under the same id | One code path for everything. Starting the new instance first would need two live upstreams under one id, and ids key every per-upstream structure. |
 | Trigger | `SIGHUP` always; file watch opt-in (`upstream-config.reload.watch-interval`) | A signal works everywhere a process manager can send one. A watch is needed where nothing can (a ConfigMap volume). Opt-in, because until now editing the file of a running nodecore had no effect. |
+| Who owns `SIGHUP` | A leaf package subscribes in its `init` and never unsubscribes | An unsubscribed `SIGHUP` terminates the process. Once the docs tell operators to send it, it must not be fatal at any moment: not while nodecore starts, not while it shuts down. |
 | Watch mechanism | Poll the file and compare a SHA-256 of its content | No new dependency, and independent of how the file is replaced: in-place write, rename, a symlink swap. inotify-style watchers lose a file that is replaced by rename. |
 | Half-written files | The watch applies content only after reading it identical on two consecutive checks; `SIGHUP` applies immediately | Validation cannot catch this case: a YAML file cut at a line boundary is usually a valid, shorter config. |
 | Validation | The whole file goes through the startup parser, defaults and validation; then the supervisor checks the list against the running process | A reload accepts exactly the files a restart would accept, so a reload can never leave the process in a state the next restart refuses. |
 | Invalid file | Reject the whole reload, log at `error`, keep running | The alternative - applying the valid part - makes the running set depend on the order of mistakes. |
-| Restart-only sections changed | Warn, naming the sections, and still apply the upstream list | Rejecting would hold back an upstream change because of an unrelated edit; applying silently would hide that part of the file is not in effect. |
+| What makes a file "handled" | A verdict on its content: applied, or rejected for what it says | The watch reports a file once. A refusal that is not about the content ("upstreams are not started yet") must not use that one report up, or a good file is never applied. |
+| Restart-only settings changed | Warn, naming each setting, and still apply the upstream list. Only what a reload really leaves unapplied is named | Rejecting would hold back an upstream change because of an unrelated edit; applying silently would hide that part of the file is not in effect. A warning about a setting that *was* applied (a chain's `poll-interval`) sends the operator to restart for nothing. |
 | Upstream index | Bound to the upstream id for the process lifetime | The index is embedded in sticky ids (`eth_newFilter`). A re-added or replaced upstream must keep resolving them, and an index must never be handed to a different upstream. |
 | Who pauses and resumes an upstream | The goroutine that owns the upstream, not the supervisor's event loop | The event loop looked the upstream up by id. With ids that can be handed over to a new instance, the removal of the old instance stopped the new one (section 8). |
-| Order of a removal | Removal event -> wait until the chain no longer routes to it -> close connectors | Closing first leaves a window in which requests are still routed to a closed connector. |
+| Order of a removal | Removal event -> wait until the chain no longer routes to it -> drain and close connectors -> cancel the upstream's context | Closing first leaves a window in which requests are still routed to a closed connector. Cancelling the context first closes the websocket under the requests being drained and drops the command that ends its subscriptions. |
+| Subscriptions on a removed websocket upstream | Ended explicitly: every operation is cancelled and `WsDisconnected` is published before `Stop` returns | A client must get an error, not silence: silence can't be told from a quiet chain. |
 | Requests in flight on a removed upstream | Unary requests get up to 5 s to finish before a websocket or gRPC connection is closed; streams are ended with the connection; HTTP requests are never interrupted | Measured against a real gRPC node: without the wait every removal failed the 7-12 unary calls that were on the connection (section 12). Streams have no end to wait for. |
 | Chain without upstreams | Kept, reported `UNAVAILABLE` | The chain-status protocol has no "chain removed" message; consumers already handle a status change, and the chain can come back on the same stream. |
 | Per-upstream leftovers | Dropped on removal: dimension tracker entries and every metric series labelled with the upstream | A removed upstream must not keep reporting its last state, and one that comes back under the same id must not inherit old latency data. |
+| Where metric series are dropped | One list, `internal/upstreammetrics`: a metric with an `upstream` label registers there where it is defined; one `Forget(id)` on removal; a test scans the sources | Cleanup spread over the packages that own the metrics missed one (`hedge_hit`) on the first attempt. |
+| Sticky id created on an upstream removed in flight | The client gets an error | The id is on a node nodecore no longer talks to, and without the upstream index the next sticky request would cut the id's tail off as one. |
+| Chain head when an upstream leaves | Always decided by the fork choice | An upstream that leaves without a head (a dead node) must not zero the head the others provide. |
 
 ## 4. Terminology
 
@@ -172,8 +178,20 @@ upstream-config:
     watch-interval: 5s   # 0 (default) = no watch; minimum 100ms
 ```
 
-`ConfigReloader.Run` is started by `App.Start` next to `StartUpstreams`. It
-handles `SIGHUP` and, when `watch-interval` is set, a ticker:
+`SIGHUP` is subscribed to by `pkg/reloadsignal`, in its package `init`, and the
+subscription is never released; `main` passes the channel through `NewApp`. A
+process that has not subscribed is terminated by the signal, and subscribing
+inside the reloader left exactly that for the startup and for the shutdown.
+The package imports only the standard library so that its `init` runs early:
+it is the 28th of 371 package initializations, 4 ms into the process, where
+`main` begins after about 30 ms. A `SIGHUP` in those first milliseconds is
+still fatal; a parent that needs that covered starts nodecore with `SIGHUP`
+ignored, and the subscription takes the signal back.
+
+`App.Start` runs `StartUpstreams` and then `ConfigReloader.Run` in one
+goroutine, so a reload always finds started upstreams. `Run` serves the signal
+channel - a signal that arrived during the startup is waiting in it - and,
+when `watch-interval` is set, a ticker:
 
 ```go
 func (r *ConfigReloader) watch() {
@@ -194,21 +212,34 @@ func (r *ConfigReloader) watch() {
 }
 ```
 
-`handled` is set for rejected content too, so a broken file is reported once and
-not on every tick. `SIGHUP` calls `Reload`, which reads the file and applies it
-without the two-look rule. A mutex serializes the two triggers.
+`SIGHUP` calls `Reload`, which reads the file and applies it without the
+two-look rule. A mutex serializes the two triggers.
+
+`handled` is set by `apply` once there is a verdict on the content: applied, or
+rejected for what it says (it does not parse, does not validate, or the
+supervisor refuses the list). A broken file is therefore reported once and not
+on every tick. `upstreams.ErrUpstreamsNotStarted` is not a verdict: the content
+stays unhandled, nothing is counted as rejected, and the watch applies it on
+its next check.
 
 `apply`:
 
 1. `config.ParseAppConfig` inside a `recover`. The startup path is allowed to
    panic on a config it can't work with; a reload must only refuse it.
-2. `startupConfig.RestartOnlyChanges(loaded)` — names the restart-only sections
-   that differ and logs them as a warning.
-3. `applier.ApplyUpstreams(loaded.UpstreamConfig.Upstreams)`.
+2. `applier.ApplyUpstreams(loaded.UpstreamConfig.Upstreams)`.
+3. `startupConfig.RestartOnlyChanges(loaded)` — names the settings that differ
+   and that the reload did not apply, and logs them as a warning.
 4. Metrics and one log line with the diff.
 
-`RestartOnlyChanges` compares each section by its YAML form, not with
-`reflect.DeepEqual`. The running config carries state that is built while the
+`RestartOnlyChanges` names only what a reload leaves unapplied. Whole sections
+for everything outside `upstream-config`; inside it, of `chain-defaults` only
+the per-chain routing settings, each on its own
+(`upstream-config.chain-defaults.<chain>.dispatch`, `.label-balancing`,
+`.balancing-strategy`, `.local-subscriptions`, `.validate-lag`), because
+`poll-interval` and `options` are applied through the upstreams; and `mode`,
+for the `dispatch` and `validate-lag` defaults it decides at request time.
+
+It compares by YAML form, not with `reflect.DeepEqual`. The running config carries state that is built while the
 process works - `ScorePolicyConfig` caches its compiled score function on first
 use - and a struct comparison reported that as a change on every reload (found
 by the e2e test, section 11).
@@ -218,9 +249,10 @@ by the e2e test, section 11).
 - `chain-defaults.<chain>.poll-interval`, `chain-defaults.<chain>.options` and
   `mode` are inputs of the per-upstream defaults. They are folded into each
   upstream's config before the diff, so changing them **replaces the upstreams
-  that inherit the changed value** and leaves the others alone. The warning
-  about a restart-only section is still logged, because the same sections also
-  hold settings that are not applied.
+  that inherit the changed value** and leaves the others alone. A change of
+  `poll-interval` or `options` is not warned about. A change of `mode` is,
+  because `mode` also decides the chains' `dispatch` and `validate-lag`
+  defaults while requests are served, and that part is not applied.
 - An upstream's own `failsafe-config` is part of its config: changing it
   replaces that upstream.
 - The global `upstream-config.failsafe-config` builds the flow executor once at
@@ -267,18 +299,26 @@ delay every other change in the same file.
 `StartUpstreams` uses the same `startUpstream`, so an upstream added by a reload
 is started through exactly the startup path.
 
-`validateUpstreams` repeats, against the *running process*, the checks whose
-failure would otherwise surface only inside `CreateUpstream`:
+`validateUpstreams` exists because `ApplyUpstreams` is an entry point of its
+own: what it lets through goes straight into `CreateUpstream`, where a bad list
+panics, and it must not depend on its caller having validated a config file.
 
-- a non-empty list, no missing or duplicate ids, supported chains;
-- a `rate-limit-budget` must exist in the budget registry that was built at
-  startup. The file validation accepts a budget that is defined in the new
-  file; `createRateLimiter` would then `log.Panic` on it;
-- enough free upstream indices for the new ids.
+- The checks of the list as a whole - not empty, no missing or duplicate ids,
+  supported chains - are `config.ValidateUpstreamList`, the same function the
+  config validation starts with, so both report a problem in the same words.
+- Two checks only the running process can make:
+  - a `rate-limit-budget` must exist in the budget registry that was built at
+    startup. The file validation accepts a budget that is defined in the new
+    file; `createRateLimiter` would then `log.Panic` on it;
+  - enough free upstream indices for the new ids.
 
 A panic that still happens while an upstream added by a reload is being created
 is recovered in `createAndStartUpstream` and reported as a failed start of that
-upstream. At startup the same panic still stops the process, as before.
+upstream - and the upstream is taken down, not just forgotten. A panic in
+`Start` comes after the connectors are started, so the recover calls
+`up.Stop()`; `CreateUpstream` cancels its context when it panics half way, which
+releases the websocket request registry and the rate limit auto-tuner already
+bound to it. At startup the same panic still stops the process, as before.
 
 ## 8. Upstream ownership and removal (`internal/upstreams/upstream_supervisor.go`)
 
@@ -324,8 +364,27 @@ up.Stop()                     // connectors drain and close, see below
 b.forgetUpstream(up)          // dimensions + metric series
 ```
 
-`up.Stop()` was never called on a serving upstream before this change, so what
-its connectors do on `Stop` had not mattered:
+`up.Stop()` was never called on a serving upstream before this change, so
+neither its order nor what its connectors do on `Stop` had mattered.
+
+`GenericUpstream.Stop` stops the processors, then the connectors, and cancels
+the upstream's context **last**. The websocket loop and the websocket request
+registry both live on that context. With the cancel first, the loop closed the
+socket at once - so the drain below waited on a dead socket until its timeout,
+and the requests on it ran into their own timeouts - and the command that
+cancels the registry's operations was dropped, so a subscription on the removed
+upstream got neither an error nor a closed channel.
+
+`GenericWsProcessor.Stop` is synchronous: it ends the connection loop and waits
+(at most 5 s, for a loop caught in a dial) until the loop has closed the socket,
+`CancelAll` has cancelled every request and subscription - `CancelAll` now
+returns only when that is done - and `WsDisconnected` is published, as it is for
+a disconnect seen by the reader. A subscription source reacts to either the
+closed channel or the state and sends its clients the terminal failure. The
+reconnect backoff is bound to the context, so a loop that is between two
+attempts stops at once instead of sleeping the backoff out.
+
+What the connectors do:
 
 - **gRPC and websocket** connectors own one connection, and closing it fails
   every call on it. Every connector is wrapped in an `ObserverConnector`, which
@@ -369,13 +428,15 @@ Three properties make this safe:
 | `upstreamIndicesCounter` | Indices are handed out once, in config order | `upstreamIndices` map: an id keeps its index; new ids take the next one; the overflow check moved to validation |
 | `processEvents` | `GetUpstream(event.Id)` is the upstream that sent the event | Pause/resume moved to the owner goroutine |
 | `executeUnaryRequest` (`flow/request_processor.go`) | `GetUpstream` of a just-selected id is never nil | Returns `NoAvailableUpstreamsError` |
-| `StickyRequestProcessor` | `GetUpstream` of a response's upstream is never nil | The response is returned without the index suffix |
 | `GenericDimensionTracker` | Entries are never removed | `RemoveUpstream(chain, id)` drops the entries and the `nodecore_upstream_*` request and lag series |
-| `RatingRegistry` | A rated upstream is rated forever | Each calculation drops the rating series of ids that are no longer in the chain |
-| `UpstreamAutoTune` | Its gauge lives forever | The series is deleted when the upstream's context ends |
+| Metrics with an `upstream` label (14 vectors in 7 packages) | A series lives forever | Listed in `internal/upstreammetrics` at their definition; `Forget(id)` on removal |
 | `ObserverConnector.Stop`, `GenericUpstream.Stop` | `Stop` is not called while requests are being served | Unary requests in flight are drained before a gRPC or websocket connection is closed (section 8) |
 | `HttpConnector.Stop` | Nothing to release | Idle keep-alive connections are closed |
-| Chain supervisor, block processors, websocket registry | Gauges per upstream are never deleted | `forgetUpstream` deletes `availability_status`, `blocks`, `heads`, `json_ws_*` for the removed upstream |
+| `GenericUpstream.Stop` | The context can go first | Connectors first, context last (section 8) |
+| `GenericWsProcessor.Stop`, `CancelAll` | Fire and forget | Synchronous; the loop reports `WsDisconnected` on its way out |
+| `updateHead` (`chain_supervisor.go`) | An event with an empty head resets the chain head | It goes through the fork choice; the head is dropped only when no upstream has one |
+| `StickyRequestProcessor` | The upstream of a response exists | A sticky create whose upstream is gone returns an error |
+| `createAndStartUpstream` recover | Forgetting a failed upstream is enough | It is stopped |
 
 Checked and left alone:
 
@@ -411,15 +472,35 @@ Checked and left alone:
   as a start.
 - **Add, remove, add of one id in quick succession.** Each instance waits for
   the previous one; an instance cancelled while waiting exits without starting.
+- **`SIGHUP` at any moment.** Served when the reloader runs; one that arrives
+  during the startup waits in the channel, one that arrives during the shutdown
+  is dropped. Never fatal after the first milliseconds of the process
+  (section 6).
+- **Removing a dead upstream.** An upstream that never reported a head leaves
+  with an empty head in its removal event. The chain head stays what the fork
+  choice has from the other upstreams; before, it was reset to zero until the
+  next block, for the status stream and the integrity methods alike.
+- **How long a removal takes.** Routing stop (at most 2 s, normally
+  milliseconds), then the drain of a gRPC or websocket connector (at most 5 s,
+  nothing without requests in flight), then the close (milliseconds; at most
+  5 s for a websocket caught in a dial). Measured with real nodes: 0.02-0.06 s.
+  A replaced upstream waits for all of it before its new instance starts, and
+  then for the startup validation.
+- **Sticky create in flight.** Its upstream is gone when the answer arrives:
+  the client gets the "no available upstreams" error instead of an id.
 - **Requests in flight on a removed upstream.** Over HTTP the request finishes
   on the caller's context. Over gRPC and websocket a unary request gets up to
   5 s; one that is still running then fails with gRPC `Canceled` (`grpc: the
   client connection is closing`) or the websocket equivalent. A late request
   can re-create a few request-counter series for the removed upstream.
-- **Streams on a removed upstream.** A gRPC server stream or a websocket
-  subscription is ended when the connection is closed, about 0.2 s after the
-  reload in the measurements: the client receives `Canceled` as the terminal
-  frame and can resubscribe to the remaining upstreams.
+- **Streams on a removed upstream.** Ended when the connection is closed. A
+  stream on a gRPC connector: the client receives `Canceled` as the terminal
+  frame (0.2 s after the reload in the measurements). A subscription on a
+  websocket connector: a `NativeSubscribe` client receives `Internal:
+  subscription total failure`, a websocket client has its connection to
+  nodecore closed (0.01-0.05 s after the reload) - what they get when an
+  upstream's websocket drops by itself. Either can resubscribe to the remaining
+  upstreams.
 - **Replace with slow requests in flight.** The new instance of an id starts
   only after the old one is stopped, so a gRPC or websocket upstream that is
   being replaced can stay out for up to the 5 s drain on top of its startup
@@ -437,8 +518,12 @@ Checked and left alone:
 - **A rejected file followed by nothing.** The running set stays older than the
   file; `nodecore_config_last_reload_successful` stays 0 until a valid file is
   loaded.
-- **Reload before `StartUpstreams` ran.** `ApplyUpstreams` returns an error;
-  only a `SIGHUP` in the first moments of the process can hit this.
+- **Reload before `StartUpstreams` ran.** `ApplyUpstreams` returns
+  `ErrUpstreamsNotStarted`. The app starts the reloader after the upstreams, so
+  this is for other callers; the reloader treats it as "not yet" and not as a
+  rejected file.
+- **An upstream that panics while starting, reloaded again and again.** Each
+  attempt is stopped completely; nothing accumulates.
 - **Shutdown during a removal.** Every wait in the removal path also selects on
   the supervisor context.
 
@@ -474,21 +559,41 @@ Unit, `internal/upstreams`:
   in flight on gRPC and websocket connectors, gives up at the timeout, and does
   not wait on HTTP connectors or when nothing is in flight.
 
+  - a unary request in flight on the websocket of a removed upstream is
+    answered and the removal does not sit out the drain timeout; a
+    subscription on it gets its channel closed and the connector reports
+    `WsDisconnected` (both fail on the cancel-first order);
+  - an upstream whose `Start` panics is stopped; a panic inside
+    `CreateUpstream` leaves no request registry goroutine behind;
+  - the supervisor's list checks report the same errors as the config
+    validation.
+- `chain_supervisor`: removing an upstream with an empty head, and an empty
+  head event of one upstream, keep the chain head; the head goes when the last
+  one does.
+
 Unit, elsewhere:
+
+- `internal/upstreammetrics`: `Forget` drops the series of one upstream; a scan
+  of the sources fails for any metric vector with an `upstream` label that is
+  not in the list.
+- `pkg/reloadsignal`: a `SIGHUP` sent to the test process is delivered instead
+  of terminating it; the package imports only the standard library.
 
 - `internal/reload`: a reload applies the list; broken files (not YAML, empty,
   cut in the middle of an upstream, unknown chain, duplicate id, no upstreams,
   invalid server setting) are rejected without calling the supervisor; recovery
   after a rejected file; the two-look rule; a rejected file is reported once;
-  a missing file; the ticker-driven `Run`.
+  a missing file; the ticker-driven `Run`; a signal that was waiting before
+  `Run` started; a transient refusal is retried by the watch and is not a
+  rejection, while a list refused by the supervisor is reported once.
 - `internal/config`: `watch-interval` default and minimum; two loads of the full
   example config show no restart-only change, also after the running config
   compiled its score function; the upstream list is not a restart-only change;
-  changed sections are named.
-- `internal/dimensions`, `internal/rating`: per-upstream cleanup, scoped to the
-  chain.
-- `internal/upstreams/flow`: an upstream that disappears after selection, and
-  one that disappears while a sticky-create request is in flight.
+  a chain's `poll-interval` and `options` are not either; the routing settings
+  of a chain are named one by one.
+- `internal/dimensions`: per-upstream cleanup, scoped to the chain.
+- `internal/upstreams/flow`: an upstream that disappears after selection; a
+  sticky create whose upstream disappears in flight returns an error.
 
 E2E, `test/e2e/grpc` (`TestGrpcUpstreamsReloadKeepsConnection`): one gRPC
 connection and one `SubscribeChainStatus` stream are kept for the whole test.
@@ -505,10 +610,20 @@ connection and one `SubscribeChainStatus` stream are kept for the whole test.
 5. A valid file brings polygon back.
 6. The connection never left `READY` and the stream never returned an error.
 
-The e2e test runs on `test/e2e/internal/mocknode`, a small JSON-RPC node added
+`TestGrpcUpstreamsReloadEndsSubscriptionsOfRemovedUpstream`: a `NativeSubscribe`
+stream and a websocket client subscription, both served by the websocket of one
+upstream (local subscriptions off for the chain), receive events; the upstream
+is removed; both must end with an error within 15 s. Against an image built
+before the stop-order fix the gRPC stream stays open and the test fails; with
+it the stream ends with `Internal: subscription total failure` and the
+websocket client is disconnected, 0.4 s after the file is written (0.2 s watch).
+
+The e2e tests run on `test/e2e/internal/mocknode`, a small JSON-RPC node added
 with this change: it has no chain data behind it and needs no fork provider, so
-the test needs no credentials, and it can serve a second chain id and answer one
-method slowly, which a forked node cannot.
+the tests need no credentials, and it can serve a second chain id and answer one
+method slowly, which a forked node cannot. It serves JSON-RPC over HTTP and,
+on the same port, over a websocket with `eth_subscribe`; the websocket side is
+a few dozen lines of RFC 6455 so that the image builds without dependencies.
 
 ## 12. Real-data validation
 
@@ -588,30 +703,62 @@ the gRPC ingress with grpcurl.
   settle the process had 44 goroutines; after ten more cycles and another 45 s
   it had 44, with no stack that grew and no connection to the removed nodes.
 
+### Websocket upstreams
+
+The websocket path was run against a real Polygon node that serves HTTP and
+websocket on one port, in two shapes: the production one (`json-rpc` +
+`websocket`, head over the websocket) and a websocket-only upstream, where
+unary requests travel over the websocket too. Local subscriptions were off for
+the chain, so client subscriptions were served by the node. In flight at the
+removal: a `NativeSubscribe` stream, a websocket client subscription, and 12
+callers sending `eth_getBalance` back to back.
+
+| | cancel first (as first written) | connectors first |
+|---|---|---|
+| `NativeSubscribe` stream | silent; open until the process ended, 58 s later | `Internal: subscription total failure` 0.01-0.05 s after the removal |
+| Websocket client subscription | silent; the client gave up after 36 s | connection closed 0.01-0.05 s after the removal |
+| Unary calls in flight, websocket-only | all 12 hung until the client's 20 s timeout | 0 failed |
+| Removal time, websocket-only | 5.03 s (the whole drain timeout) | 0.06 s |
+| Removal time, production shape | 0.02 s | 0.02 s |
+| Unary calls in flight, production shape (they use `json-rpc`) | 0 failed | 0 failed |
+| Connections to the node after the removal | 0 | 0 |
+
+`SIGHUP` was sent to a real process at chosen moments: 3-10 ms after `exec` it
+is still fatal (the Go runtime has not reached the subscribing `init`); from
+20 ms on it is served as a reload once the upstreams are started, and a
+`SIGHUP` right after `SIGTERM` no longer changes the exit code (0). Before, a
+`SIGHUP` before the reloader started ended the process with exit code 129.
+
 ## 13. Key code references
 
 - `internal/reload/config_reloader.go` — `ConfigReloader`: `Run`, `Reload`,
   `watch`, `apply`, the three metrics.
+- `pkg/reloadsignal` — the `SIGHUP` subscription.
+- `internal/upstreammetrics` — `MustRegister`, `Track`, `Forget`.
 - `internal/config/config.go` — `ConfigPath`, `LoadAppConfig`, `ParseAppConfig`.
 - `internal/config/reload_config.go` — `ReloadConfig`, `RestartOnlyChanges`.
 - `internal/upstreams/upstream_reload.go` — `UpstreamsDiff`, `diffUpstreams`,
-  `ApplyUpstreams`, `validateUpstreams`.
+  `ApplyUpstreams`, `validateUpstreams`, `ErrUpstreamsNotStarted`;
+  `internal/config/upstream_config.go` — `ValidateUpstreamList`.
 - `internal/upstreams/upstream_supervisor.go` — `managedUpstream`,
   `startUpstream`, `upstreamIndex`, `runUpstream`, `createAndStartUpstream`,
   `forwardUpstreamEvent`, `removeUpstream`, `waitUntilNotRouted`,
   `forgetUpstream`, `processEvents`.
 - `internal/upstreams/chain_supervisor.go` — the existing `RemoveUpstreamEvent`
-  handling this change relies on.
+  handling this change relies on; `updateHead`.
+- `internal/upstreams/ws/ws_processor.go` — `Stop`, `stopLoop`;
+  `request_registry.go` — `CancelAll`.
 - `internal/upstreams/connectors/observer_connector.go` — the in-flight count
   and the drain in `Stop`; `http_connector.go` — `Stop`;
   `internal/upstreams/upstream.go` — `Stop`.
 - `internal/dimensions/tracker.go` — `RemoveUpstream`.
-- `internal/rating/registry.go` — `forgetGoneUpstreams`.
-- `internal/upstreams/flow/request_processor.go`,
-  `sticky_request_processor.go` — nil guards.
+- `internal/upstreams/flow/request_processor.go` — nil guard;
+  `sticky_request_processor.go` — error for a sticky create on a removed
+  upstream.
 - `internal/app/app.go` — the reloader is created in `NewApp` and started in
   `Start`.
 - `test/e2e/grpc/upstreams_reload_e2e_test.go`,
+  `upstreams_reload_subscriptions_e2e_test.go`,
   `test/e2e/internal/mocknode`, `test/e2e/internal/harness` (`StartMockNode`,
   `Nodecore.WriteConfig`, `Nodecore.LogCount`).
 - `docs/nodecore/05-upstream-config.md` (`reload`),
@@ -639,6 +786,15 @@ the gRPC ingress with grpcurl.
 - **Removing chain objects.** Would need a "chain removed" event for
   `SubscribeChainStatus` consumers; today the cost is one idle chain supervisor
   per chain that was ever configured.
+- **Series named after an upstream.** The `chanutil_*` metrics label their
+  series with a `source` that embeds the upstream id
+  (`<id>_upstream`, `upstream_supervisor_<id>_updates`). They have no
+  `upstream` label and are not dropped on removal.
+- **`nodecore_ratelimiter_auto_tune_tuned_rate_limit`** is documented but was
+  never registered with Prometheus, before this change and after it. It is in
+  the list of per-upstream metrics; exposing it is a separate fix.
+- **The first milliseconds of the process.** `SIGHUP` is fatal until the
+  runtime reaches the subscribing `init` (section 6).
 - **Should the watch be on by default?** It is off to keep the behaviour of
   existing deployments, where editing the file had no effect until a restart.
 - **Reload outcome on the health server.** `/status` could show the time and

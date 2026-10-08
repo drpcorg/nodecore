@@ -548,7 +548,7 @@ The skip warning in the log carries the last upstream id and its error message (
 
 These metrics describe the [reload](05-upstream-config.md#reload) of the upstream list.
 
-When a reload removes or replaces an upstream, every series labelled with that upstream is dropped from `nodecore_upstream_*`, `nodecore_request_json_ws_*` and `nodecore_ratelimiter_auto_tune_tuned_rate_limit`, so a removed upstream does not keep reporting its last state. Requests that were still in flight on the upstream when it was removed can bring a few `nodecore_upstream_requests_total`-style series back; they stay at their final value.
+When a reload removes or replaces an upstream, every series that carries that upstream in its `upstream` label is dropped, from every metric on this page that has the label (`nodecore_upstream_*`, `nodecore_request_hedge_hit`, `nodecore_request_json_ws_*`, `nodecore_ratelimiter_auto_tune_tuned_rate_limit`), so a removed upstream does not keep reporting its last state. Requests that were still in flight on the upstream when it was removed can bring a few `nodecore_upstream_requests_total`-style series back; they stay at their final value.
 
 ### `nodecore_config_reloads_total`
 
