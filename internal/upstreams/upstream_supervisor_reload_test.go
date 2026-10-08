@@ -380,7 +380,8 @@ func TestApplyUpstreamsReplacesChangedUpstream(t *testing.T) {
 		return ok && region == "eu"
 	}, "the replaced upstream didn't become available with its new config")
 	assert.True(t, newUpstream.Running())
-	assert.True(t, chainAvailable(supervisor, chains.ETHEREUM))
+	// the upstream's state can land before its first head, and the chain is not available without one
+	waitFor(t, func() bool { return chainAvailable(supervisor, chains.ETHEREUM) }, "ethereum didn't come back after the replace")
 	assert.Equal(t, []string{"eth-1"}, chainUpstreamIds(supervisor, chains.ETHEREUM))
 }
 
