@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,10 +19,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 )
 
 const slowRequestDelay = 700 * time.Millisecond
@@ -175,12 +179,16 @@ type reloadUpstream struct {
 	labels string
 	// ws adds a websocket connector to the same node
 	ws bool
+	// grpc adds a grpc connector to this address; the head stays on json-rpc
+	grpc string
 }
 
 // reloadAppConfig goes through the config parser, so the upstreams carry the same
 // defaults they have in a config file.
 func reloadAppConfig(t *testing.T, ups ...reloadUpstream) *config.AppConfig {
 	t.Helper()
+	// connector validation consults the method specs
+	specs_utils.LoadMethodSpecs()
 	var file strings.Builder
 	file.WriteString("upstream-config:\n  upstreams:\n")
 	for _, up := range ups {
@@ -201,6 +209,9 @@ func reloadAppConfig(t *testing.T, ups ...reloadUpstream) *config.AppConfig {
 `, up.id, up.chain, up.url)
 		if up.ws {
 			fmt.Fprintf(&file, "        - type: websocket\n          url: %s\n", strings.Replace(up.url, "http://", "ws://", 1))
+		}
+		if up.grpc != "" {
+			fmt.Fprintf(&file, "        - type: grpc\n          url: http://%s\n      head-connector: json-rpc\n", up.grpc)
 		}
 		if up.labels != "" {
 			fmt.Fprintf(&file, "      labels:\n        %s\n", up.labels)
@@ -482,4 +493,194 @@ func TestApplyUpstreamsLetsInFlightHttpRequestFinish(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the in-flight request never returned")
 	}
+}
+
+const (
+	grpcNodeSlowMethod   = "/test.Node/Slow"
+	grpcNodeStreamMethod = "/test.Node/Stream"
+)
+
+// grpcNode is a gRPC node on a real TCP port that counts its connections: the
+// ones it accepted so far and the ones that are open right now.
+type grpcNode struct {
+	addr     string
+	accepted atomic.Int32
+	open     atomic.Int32
+}
+
+type countingListener struct {
+	net.Listener
+	node *grpcNode
+}
+
+type countedConn struct {
+	net.Conn
+	node   *grpcNode
+	closed sync.Once
+}
+
+func (l *countingListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	l.node.accepted.Add(1)
+	l.node.open.Add(1)
+	return &countedConn{Conn: conn, node: l.node}, nil
+}
+
+func (c *countedConn) Close() error {
+	c.closed.Do(func() { c.node.open.Add(-1) })
+	return c.Conn.Close()
+}
+
+// newGrpcNode answers grpcNodeSlowMethod after slowRequestDelay and feeds
+// grpcNodeStreamMethod with a frame every 20ms for as long as the stream lives.
+func newGrpcNode(t *testing.T) *grpcNode {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	node := &grpcNode{addr: listener.Addr().String()}
+
+	server := grpc.NewServer(grpc.UnknownServiceHandler(func(_ any, stream grpc.ServerStream) error {
+		var request dshackle.Chain
+		if err := stream.RecvMsg(&request); err != nil {
+			return err
+		}
+		method, _ := grpc.MethodFromServerStream(stream)
+		if method == grpcNodeStreamMethod {
+			for height := uint64(1); ; height++ {
+				if err := stream.SendMsg(&dshackle.ChainHead{Height: height}); err != nil {
+					return err
+				}
+				select {
+				case <-stream.Context().Done():
+					return stream.Context().Err()
+				case <-time.After(20 * time.Millisecond):
+				}
+			}
+		}
+		if method == grpcNodeSlowMethod {
+			time.Sleep(slowRequestDelay)
+		}
+		return stream.SendMsg(&dshackle.ChainHead{Height: 7})
+	}))
+	go func() { _ = server.Serve(&countingListener{Listener: listener, node: node}) }()
+	t.Cleanup(server.Stop)
+	return node
+}
+
+func grpcNodeRequest(t *testing.T, method string) protocol.RequestHolder {
+	t.Helper()
+	body, err := proto.Marshal(&dshackle.Chain{Type: dshackle.ChainRef_CHAIN_ETHEREUM__MAINNET})
+	require.NoError(t, err)
+	return protocol.NewInternalUpstreamGrpcRequest(method, body, chains.TRON)
+}
+
+// An upstream with a gRPC connector, in the shape of a Tron node: JSON-RPC for
+// the head, gRPC next to it. Removing it must let a unary call that is already
+// on the gRPC connection finish, end the streams on it, close the connection
+// and never dial the node again.
+func TestApplyUpstreamsRemovesGrpcUpstream(t *testing.T) {
+	ethNode, tronNode, tronGrpc := newEvmNode(t, 1), newEvmNode(t, 0x2b6653dc), newGrpcNode(t)
+	eth := reloadUpstream{id: "eth-1", chain: "ethereum", url: ethNode.URL}
+	tron := reloadUpstream{id: "tron-grpc", chain: "tron", url: tronNode.URL, grpc: tronGrpc.addr}
+
+	supervisor := startReloadSupervisor(t, reloadAppConfig(t, eth))
+	waitFor(t, func() bool { return chainAvailable(supervisor, chains.ETHEREUM) }, "ethereum is not available")
+	ethUpstream := supervisor.GetUpstream("eth-1")
+
+	_, err := supervisor.ApplyUpstreams(reloadAppConfig(t, eth, tron).UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+	waitFor(t, func() bool { return chainAvailable(supervisor, chains.TRON) }, "tron is not available")
+	tronUpstream := supervisor.GetUpstream("tron-grpc")
+	connector := tronUpstream.GetConnector(specs.GrpcConnector)
+	require.NotNil(t, connector)
+
+	// the chain serves over its gRPC connector, on one connection
+	response := connector.SendRequest(context.Background(), grpcNodeRequest(t, "/test.Node/Fast"))
+	require.False(t, response.HasError())
+	assert.Equal(t, int32(1), tronGrpc.open.Load())
+
+	stream, err := connector.Subscribe(context.Background(), grpcNodeRequest(t, grpcNodeStreamMethod))
+	require.NoError(t, err)
+	select {
+	case frame := <-stream.ResponseChan():
+		require.Nil(t, frame.GetError())
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream delivers nothing")
+	}
+	answered := make(chan protocol.ResponseHolder, 1)
+	go func() {
+		answered <- connector.SendRequest(context.Background(), grpcNodeRequest(t, grpcNodeSlowMethod))
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	_, err = supervisor.ApplyUpstreams(reloadAppConfig(t, eth).UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+
+	// the unary call that was in flight is answered, over a connection that is
+	// still open at that moment
+	select {
+	case response := <-answered:
+		assert.False(t, response.HasError())
+		var head dshackle.ChainHead
+		require.NoError(t, proto.Unmarshal(response.ResponseResult(), &head))
+		assert.Equal(t, uint64(7), head.Height)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the in-flight call never returned")
+	}
+
+	// the stream is ended with an error frame once the connection is closed
+	var last protocol.SubResponse
+	streamEnded := false
+	for deadline := time.After(5 * time.Second); !streamEnded; {
+		select {
+		case frame, ok := <-stream.ResponseChan():
+			if !ok {
+				streamEnded = true
+				break
+			}
+			last = frame
+		case <-deadline:
+			t.Fatal("the stream of the removed upstream is still open")
+		}
+	}
+	require.NotNil(t, last)
+	require.NotNil(t, last.GetError())
+	assert.Contains(t, last.GetError().Message, "the client connection is closing")
+
+	waitFor(t, func() bool { return supervisor.GetUpstream("tron-grpc") == nil }, "the upstream is still registered")
+	waitFor(t, func() bool { return tronGrpc.open.Load() == 0 }, "the gRPC connection of the removed upstream is still open")
+	assert.False(t, tronUpstream.Running())
+	assert.Empty(t, chainUpstreamIds(supervisor, chains.TRON))
+
+	// a call on the removed upstream's connector fails right away, and nothing
+	// dials the node again
+	response = connector.SendRequest(context.Background(), grpcNodeRequest(t, "/test.Node/Fast"))
+	assert.True(t, response.HasError())
+	accepted := tronGrpc.accepted.Load()
+	time.Sleep(1500 * time.Millisecond)
+	assert.Equal(t, accepted, tronGrpc.accepted.Load())
+	assert.Zero(t, tronGrpc.open.Load())
+
+	assert.Same(t, ethUpstream, supervisor.GetUpstream("eth-1"))
+	assert.True(t, chainAvailable(supervisor, chains.ETHEREUM))
+
+	// replacing a gRPC upstream closes the old connection and opens one new
+	_, err = supervisor.ApplyUpstreams(reloadAppConfig(t, eth, tron).UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+	waitFor(t, func() bool { return chainAvailable(supervisor, chains.TRON) }, "tron didn't come back")
+	require.False(t, supervisor.GetUpstream("tron-grpc").GetConnector(specs.GrpcConnector).SendRequest(context.Background(), grpcNodeRequest(t, "/test.Node/Fast")).HasError())
+	firstInstance := supervisor.GetUpstream("tron-grpc")
+
+	tron.labels = "region: eu"
+	_, err = supervisor.ApplyUpstreams(reloadAppConfig(t, eth, tron).UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+	waitFor(t, func() bool {
+		up := supervisor.GetUpstream("tron-grpc")
+		return up != nil && up != firstInstance && chainAvailable(supervisor, chains.TRON)
+	}, "the gRPC upstream was not replaced")
+	require.False(t, supervisor.GetUpstream("tron-grpc").GetConnector(specs.GrpcConnector).SendRequest(context.Background(), grpcNodeRequest(t, "/test.Node/Fast")).HasError())
+	waitFor(t, func() bool { return tronGrpc.open.Load() == 1 }, "the replaced gRPC upstream left its connection open")
 }
