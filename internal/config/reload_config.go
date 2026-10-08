@@ -3,6 +3,8 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -25,10 +27,15 @@ func (r *ReloadConfig) validate() error {
 	return nil
 }
 
-// RestartOnlyChanges names the config sections that differ between the running
-// config and a newly loaded one and that a reload does not apply. Only
-// upstream-config.upstreams is reloaded; everything listed here keeps its
+// RestartOnlyChanges names the settings that differ between the running config
+// and a newly loaded one and that a reload does not apply; they keep their
 // startup value until the process is restarted.
+//
+// What a reload does apply is left out: the upstream list, and with it the
+// per-upstream defaults that chain-defaults (poll-interval, options) and mode
+// feed into each upstream. Of chain-defaults only the per-chain routing
+// settings are compared, and mode is reported for what it still decides at
+// request time.
 func (a *AppConfig) RestartOnlyChanges(loaded *AppConfig) []string {
 	changed := make([]string, 0)
 	check := func(name string, current, other any) {
@@ -46,8 +53,16 @@ func (a *AppConfig) RestartOnlyChanges(loaded *AppConfig) []string {
 	check("stats", a.StatsConfig, loaded.StatsConfig)
 
 	current, other := a.UpstreamConfig, loaded.UpstreamConfig
-	check("upstream-config.mode", current.Mode, other.Mode)
-	check("upstream-config.chain-defaults", current.ChainDefaults, other.ChainDefaults)
+	if current.Mode != other.Mode {
+		// the upstream defaults of the new mode are applied with the upstreams
+		changed = append(changed, "upstream-config.mode (the dispatch and validate-lag defaults of the chains)")
+	}
+	for _, chain := range slices.Sorted(maps.Keys(mergeKeys(current.ChainDefaults, other.ChainDefaults))) {
+		currentRouting, otherRouting := current.ChainDefaults[chain].routing(), other.ChainDefaults[chain].routing()
+		for i, setting := range chainRoutingSettings {
+			check(fmt.Sprintf("upstream-config.chain-defaults.%s.%s", chain, setting), currentRouting[i], otherRouting[i])
+		}
+	}
 	check("upstream-config.failsafe-config", current.FailsafeConfig, other.FailsafeConfig)
 	check("upstream-config.score-policy-config", current.ScorePolicyConfig, other.ScorePolicyConfig)
 	check("upstream-config.integrity", current.IntegrityConfig, other.IntegrityConfig)
@@ -56,6 +71,29 @@ func (a *AppConfig) RestartOnlyChanges(loaded *AppConfig) []string {
 	check("upstream-config.reload", current.Reload, other.Reload)
 
 	return changed
+}
+
+// chainRoutingSettings are the chain-defaults settings that are read while
+// requests are served, in the order routing returns them. The rest of
+// chain-defaults (poll-interval, options) only shapes upstreams.
+var chainRoutingSettings = []string{"dispatch", "label-balancing", "balancing-strategy", "local-subscriptions", "validate-lag"}
+
+func (c *ChainDefaults) routing() []any {
+	if c == nil {
+		c = &ChainDefaults{}
+	}
+	return []any{c.Dispatch, c.LabelBalancing, c.BalancingStrategy, c.LocalSubscriptions, c.ValidateLag}
+}
+
+func mergeKeys(first, second map[string]*ChainDefaults) map[string]struct{} {
+	keys := make(map[string]struct{}, len(first)+len(second))
+	for key := range first {
+		keys[key] = struct{}{}
+	}
+	for key := range second {
+		keys[key] = struct{}{}
+	}
+	return keys
 }
 
 // sameSettings compares two config sections by what a config file can say about

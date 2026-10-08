@@ -76,14 +76,61 @@ func TestRestartOnlyChangesNamesTheSections(t *testing.T) {
 
 	changed := strings.NewReplacer(
 		"port: 9090", "port: 9191",
-		"poll-interval: 30s", "poll-interval: 10s",
 	).Replace(reloadBaseConfig) + "  mode: strict\n  reload:\n    watch-interval: 1s\n"
 	loaded, err := config.ParseAppConfig([]byte(changed))
 	require.NoError(t, err)
 
 	assert.Equal(
 		t,
-		[]string{"server", "upstream-config.mode", "upstream-config.chain-defaults", "upstream-config.reload"},
+		[]string{"server", "upstream-config.mode (the dispatch and validate-lag defaults of the chains)", "upstream-config.reload"},
 		running.RestartOnlyChanges(loaded),
 	)
+}
+
+// poll-interval and options of chain-defaults only shape upstreams, and a
+// reload applies them by replacing those upstreams: telling the operator to
+// restart for them would be wrong.
+func TestRestartOnlyChangesIgnoresUpstreamDefaultsOfAChain(t *testing.T) {
+	running, err := config.ParseAppConfig([]byte(reloadBaseConfig))
+	require.NoError(t, err)
+
+	changed := strings.Replace(reloadBaseConfig, "poll-interval: 30s", "poll-interval: 10s\n      options:\n        validate-peers: true", 1)
+	loaded, err := config.ParseAppConfig([]byte(changed))
+	require.NoError(t, err)
+
+	assert.Empty(t, running.RestartOnlyChanges(loaded))
+	// and the change does reach the upstream
+	assert.NotEqual(t, running.UpstreamConfig.Upstreams[0].PollInterval, loaded.UpstreamConfig.Upstreams[0].PollInterval)
+}
+
+func TestRestartOnlyChangesNamesTheRoutingSettingsOfAChain(t *testing.T) {
+	running, err := config.ParseAppConfig([]byte(reloadBaseConfig))
+	require.NoError(t, err)
+
+	changed := strings.Replace(reloadBaseConfig, "poll-interval: 30s", `poll-interval: 30s
+      validate-lag: true
+      dispatch:
+        broadcast: true
+    polygon:
+      balancing-strategy: base
+      local-subscriptions:
+        enable: false
+      label-balancing:
+        order: [full]`, 1)
+	loaded, err := config.ParseAppConfig([]byte(changed))
+	require.NoError(t, err)
+
+	assert.Equal(
+		t,
+		[]string{
+			"upstream-config.chain-defaults.ethereum.dispatch",
+			"upstream-config.chain-defaults.ethereum.validate-lag",
+			"upstream-config.chain-defaults.polygon.label-balancing",
+			"upstream-config.chain-defaults.polygon.balancing-strategy",
+			"upstream-config.chain-defaults.polygon.local-subscriptions",
+		},
+		running.RestartOnlyChanges(loaded),
+	)
+	// the same in the other direction: a chain that lost its settings
+	assert.Len(t, loaded.RestartOnlyChanges(running), 5)
 }
