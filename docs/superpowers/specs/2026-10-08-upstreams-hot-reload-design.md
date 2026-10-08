@@ -90,6 +90,7 @@ process.
 | Upstream index | Bound to the upstream id for the process lifetime | The index is embedded in sticky ids (`eth_newFilter`). A re-added or replaced upstream must keep resolving them, and an index must never be handed to a different upstream. |
 | Who pauses and resumes an upstream | The goroutine that owns the upstream, not the supervisor's event loop | The event loop looked the upstream up by id. With ids that can be handed over to a new instance, the removal of the old instance stopped the new one (section 8). |
 | Order of a removal | Removal event -> wait until the chain no longer routes to it -> close connectors | Closing first leaves a window in which requests are still routed to a closed connector. |
+| Requests in flight on a removed upstream | Unary requests get up to 5 s to finish before a websocket or gRPC connection is closed; streams are ended with the connection; HTTP requests are never interrupted | Measured against a real gRPC node: without the wait every removal failed the 7-12 unary calls that were on the connection (section 12). Streams have no end to wait for. |
 | Chain without upstreams | Kept, reported `UNAVAILABLE` | The chain-status protocol has no "chain removed" message; consumers already handle a status change, and the chain can come back on the same stream. |
 | Per-upstream leftovers | Dropped on removal: dimension tracker entries and every metric series labelled with the upstream | A removed upstream must not keep reporting its last state, and one that comes back under the same id must not inherit old latency data. |
 
@@ -319,9 +320,26 @@ func (b *GenericUpstreamSupervisor) runUpstream(ctx, managed, previous, upstream
 b.publishEvent(protocol.UpstreamEvent{Id: up.GetId(), Chain: up.GetChain(), EventType: &protocol.RemoveUpstreamEvent{}})
 b.waitUntilNotRouted(up)      // chain supervisor dropped its state, at most 2s
 b.upstreams.Delete(up.GetId())
-up.Stop()
+up.Stop()                     // connectors drain and close, see below
 b.forgetUpstream(up)          // dimensions + metric series
 ```
+
+`up.Stop()` was never called on a serving upstream before this change, so what
+its connectors do on `Stop` had not mattered:
+
+- **gRPC and websocket** connectors own one connection, and closing it fails
+  every call on it. Every connector is wrapped in an `ObserverConnector`, which
+  now counts the unary requests between `SendRequest` and its return. Its `Stop`
+  waits for that count to reach zero, for at most `stopDrainTimeout` (5 s),
+  before it stops the connector underneath. Because routing has already dropped
+  the upstream, the count can only go down. Streams and subscriptions are not
+  counted: they never end by themselves and are ended by the close.
+- **HTTP** connectors (`json-rpc`, `rest`, `tendermint`) never interrupt a
+  request, so they are not waited for. Their `Stop` was empty and left the
+  keep-alive connections to the removed node open until the idle timeout; it
+  now calls `CloseIdleConnections`.
+- `GenericUpstream.Stop` stops its connectors side by side, so the waits of
+  several connectors of one upstream do not add up.
 
 Three properties make this safe:
 
@@ -355,6 +373,8 @@ Three properties make this safe:
 | `GenericDimensionTracker` | Entries are never removed | `RemoveUpstream(chain, id)` drops the entries and the `nodecore_upstream_*` request and lag series |
 | `RatingRegistry` | A rated upstream is rated forever | Each calculation drops the rating series of ids that are no longer in the chain |
 | `UpstreamAutoTune` | Its gauge lives forever | The series is deleted when the upstream's context ends |
+| `ObserverConnector.Stop`, `GenericUpstream.Stop` | `Stop` is not called while requests are being served | Unary requests in flight are drained before a gRPC or websocket connection is closed (section 8) |
+| `HttpConnector.Stop` | Nothing to release | Idle keep-alive connections are closed |
 | Chain supervisor, block processors, websocket registry | Gauges per upstream are never deleted | `forgetUpstream` deletes `availability_status`, `blocks`, `heads`, `json_ws_*` for the removed upstream |
 
 Checked and left alone:
@@ -391,12 +411,22 @@ Checked and left alone:
   as a start.
 - **Add, remove, add of one id in quick succession.** Each instance waits for
   the previous one; an instance cancelled while waiting exits without starting.
-- **Requests in flight on a removed upstream.** HTTP-based connectors have no
-  per-upstream connection state to close, so the request finishes on the
-  caller's context. Websocket and gRPC connectors are closed; requests and
-  subscriptions over them end, and the subscription engine reports the terminal
-  error it reports for any lost source. Such a late request can re-create a few
-  request-counter series for the removed upstream.
+- **Requests in flight on a removed upstream.** Over HTTP the request finishes
+  on the caller's context. Over gRPC and websocket a unary request gets up to
+  5 s; one that is still running then fails with gRPC `Canceled` (`grpc: the
+  client connection is closing`) or the websocket equivalent. A late request
+  can re-create a few request-counter series for the removed upstream.
+- **Streams on a removed upstream.** A gRPC server stream or a websocket
+  subscription is ended when the connection is closed, about 0.2 s after the
+  reload in the measurements: the client receives `Canceled` as the terminal
+  frame and can resubscribe to the remaining upstreams.
+- **Replace with slow requests in flight.** The new instance of an id starts
+  only after the old one is stopped, so a gRPC or websocket upstream that is
+  being replaced can stay out for up to the 5 s drain on top of its startup
+  validation.
+- **Probes of a removed upstream.** Its head, bound and label detectors are
+  cancelled; the ones that were in the middle of a request log a `context
+  canceled` error, some of them a few seconds later.
 - **File replaced by rename.** Handled by reading by path on every check. A
   container that bind-mounts the single file keeps the old inode and never sees
   the new content; the directory has to be mounted. Documented.
@@ -434,7 +464,15 @@ Unit, `internal/upstreams`:
   - a rejected list changes nothing;
   - an upstream whose head comes from a websocket subscription is removed: the
     websocket is closed and is not reconnected;
-  - an HTTP request in flight on a removed upstream completes.
+  - an HTTP request in flight on a removed upstream completes;
+  - an upstream with a gRPC connector, in the shape of a Tron node (JSON-RPC
+    head, gRPC next to it), against an in-process gRPC server on a real TCP
+    port that counts its connections: a unary call in flight is answered, an
+    open stream ends with an error frame, the connection is closed, the node is
+    not dialled again, and a replace leaves exactly one connection.
+- `internal/upstreams/connectors`: `ObserverConnector.Stop` waits for requests
+  in flight on gRPC and websocket connectors, gives up at the timeout, and does
+  not wait on HTTP connectors or when nothing is in flight.
 
 Unit, elsewhere:
 
@@ -514,6 +552,42 @@ state changes as separate messages (the reason the periodic resync snapshot has
 no head), so the status change of a re-added chain arrives on its own and is
 applied.
 
+### gRPC-connector upstreams
+
+The connector that matters most for removal is the gRPC one, so the reload was
+also run against real nodes over their gRPC ports, in the connector shapes used
+in production: a Sui node (a single `grpc` connector), a Celestia consensus node
+(`rest` + `grpc` + `tendermint`) and a Tron node (`json-rpc` + `grpc` +
+`grpc-additional`), next to the mock ethereum upstream. Requests went through
+the gRPC ingress with grpcurl.
+
+- **Add.** All three chains were available within 1 s of the reload and served
+  over gRPC: `sui.rpc.v2.LedgerService/GetServiceInfo`,
+  `cosmos.base.tendermint.v1beta1.Service/GetNodeInfo` and
+  `protocol.Wallet/GetNowBlock2` returned the nodes' answers.
+- **Remove, with calls in flight.** A 5 s HTTP request on ethereum finished
+  normally (`200` after 5.0 s). A `SubscribeCheckpoints` stream on Sui ended
+  0.2 s after the reload with `Canceled: grpc: the client connection is
+  closing`. Twelve callers sending unary Sui calls back to back, three runs:
+
+  | | unary calls cancelled under the removal | calls sent after it |
+  |---|---|---|
+  | without the drain | 12, 7, 12 | `Unavailable: no available upstreams` |
+  | with the drain | 0, 0, 0 | `Unavailable: no available upstreams` |
+
+- **Connections.** With the three chains added the process held 1 TCP
+  connection to the Sui node, 4 to the Celestia node and 9 to the Tron node.
+  Two seconds after the removal it held none (before `CloseIdleConnections`, 8
+  idle HTTP connections to the Tron node and 1 to the Celestia node were still
+  open at that point), and none appeared during the following 45 s, although
+  the gRPC reconnect backoff is at most 30 s. No goroutine of the gRPC client
+  was left.
+- **Change.** A label added to the Sui upstream replaced it; one connection to
+  the node before and after.
+- **Leaks.** After one add/remove cycle of all three upstreams and a 45 s
+  settle the process had 44 goroutines; after ten more cycles and another 45 s
+  it had 44, with no stack that grew and no connection to the removed nodes.
+
 ## 13. Key code references
 
 - `internal/reload/config_reloader.go` — `ConfigReloader`: `Run`, `Reload`,
@@ -528,6 +602,9 @@ applied.
   `forgetUpstream`, `processEvents`.
 - `internal/upstreams/chain_supervisor.go` — the existing `RemoveUpstreamEvent`
   handling this change relies on.
+- `internal/upstreams/connectors/observer_connector.go` — the in-flight count
+  and the drain in `Stop`; `http_connector.go` — `Stop`;
+  `internal/upstreams/upstream.go` — `Stop`.
 - `internal/dimensions/tracker.go` — `RemoveUpstream`.
 - `internal/rating/registry.go` — `forgetGoneUpstreams`.
 - `internal/upstreams/flow/request_processor.go`,
@@ -548,9 +625,13 @@ applied.
 - **Seamless replace.** Start the new instance under a temporary identity, wait
   until it is available, then swap. Needs upstream identity that is not the
   config id.
-- **Draining a removed upstream.** Websocket and gRPC connectors are closed as
-  soon as routing has dropped the upstream. A grace period for requests in
-  flight would be the next step if it shows up in practice.
+- **Handing streams over.** A stream or subscription served by a removed
+  upstream is ended and the client has to resubscribe. Moving it to another
+  upstream of the chain without the client noticing is possible only for the
+  aggregated subscriptions, and is not attempted.
+- **Drain timeout.** The 5 s wait for unary requests on a gRPC or websocket
+  connector is a constant; it could become a setting if a chain has legitimate
+  calls that run longer.
 - **Reloading the routing settings** (`chain-defaults` dispatch and balancing,
   global `failsafe-config`, rate limit budgets). The reloader already detects
   these changes; the consumers would have to read them through something
