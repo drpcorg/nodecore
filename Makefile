@@ -34,6 +34,7 @@ E2E_GIT_SHA ?= e2e-git-sha
 build-e2e-images:
 	docker build -t nodecore-e2e:latest --build-arg VERSION=$(E2E_VERSION) --build-arg GIT_SHA=$(E2E_GIT_SHA) .
 	docker build -t nodecore-e2e-hardhat:latest test/e2e/internal/hardhat
+	docker build -t nodecore-e2e-mocknode:latest test/e2e/internal/mocknode
 
 
 .PHONY: test-e2e-grpc

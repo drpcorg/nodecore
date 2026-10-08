@@ -44,6 +44,8 @@ var (
 	nodecoreImageErr  error
 	hardhatImageOnce  sync.Once
 	hardhatImageErr   error
+	mockNodeImageOnce sync.Once
+	mockNodeImageErr  error
 )
 
 type RPCNode struct {
@@ -274,6 +276,52 @@ func hardhatRPCNoFatal(ctx context.Context, hardhatURL, method string, params an
 	return out
 }
 
+// MockNodeSpec describes a mocknode container: an EVM JSON-RPC node without any
+// chain data behind it. It needs no fork provider, so tests that are about
+// nodecore itself and not about a chain can run on it.
+type MockNodeSpec struct {
+	Alias   string
+	ChainId uint64
+	// SlowMethod is answered only after SlowDelay.
+	SlowMethod string
+	SlowDelay  time.Duration
+}
+
+func StartMockNode(t *testing.T, ctx context.Context, networkName string, spec MockNodeSpec) *RPCNode {
+	t.Helper()
+	ensureMockNodeImage(t)
+	env := map[string]string{"MOCKNODE_CHAIN_ID": fmt.Sprintf("%d", spec.ChainId)}
+	if spec.SlowMethod != "" {
+		env["MOCKNODE_SLOW_METHOD"] = spec.SlowMethod
+		env["MOCKNODE_SLOW_DELAY"] = spec.SlowDelay.String()
+	}
+	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
+		ContainerRequest: tc.ContainerRequest{
+			Image:          "nodecore-e2e-mocknode:latest",
+			ExposedPorts:   []string{HardhatPort},
+			Env:            env,
+			Networks:       []string{networkName},
+			NetworkAliases: map[string][]string{networkName: {spec.Alias}},
+			WaitingFor:     wait.ForMappedPort(HardhatPort).WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatalf("start mock node %s: %v", spec.Alias, err)
+	}
+	host, err := c.Host(ctx)
+	if err != nil {
+		_ = c.Terminate(context.Background())
+		t.Fatalf("mock node host: %v", err)
+	}
+	port, err := c.MappedPort(ctx, HardhatPort)
+	if err != nil {
+		_ = c.Terminate(context.Background())
+		t.Fatalf("mock node mapped port: %v", err)
+	}
+	return &RPCNode{Alias: spec.Alias, Container: c, Endpoint: "http://" + dockerHostPort(host, port.Port())}
+}
+
 func (m *RPCNode) InternalURL() string { return fmt.Sprintf("http://%s:8545", m.Alias) }
 
 func (m *RPCNode) Terminate(ctx context.Context) {
@@ -461,6 +509,16 @@ func ensureHardhatImage(t *testing.T) {
 	}
 }
 
+func ensureMockNodeImage(t *testing.T) {
+	t.Helper()
+	mockNodeImageOnce.Do(func() {
+		mockNodeImageErr = dockerBuild(RepoRoot(t), "test/e2e/internal/mocknode", "nodecore-e2e-mocknode:latest")
+	})
+	if mockNodeImageErr != nil {
+		t.Fatalf("build mock node e2e image: %v", mockNodeImageErr)
+	}
+}
+
 func ensureNodecoreImage(t *testing.T) {
 	t.Helper()
 	nodecoreImageOnce.Do(func() {
@@ -585,6 +643,15 @@ func waitNodecoreHealth(t *testing.T, ctx context.Context, nodecore *Nodecore, t
 	t.Fatalf("nodecore health endpoint did not become ready before timeout; status=%d err=%v\nlogs:\n%s", lastStatus, lastErr, nodecore.Logs(context.Background()))
 }
 
+// WriteConfig replaces the config file of a running nodecore. Nothing is
+// restarted: whether the new file takes effect is up to nodecore.
+func (n *Nodecore) WriteConfig(t *testing.T, ctx context.Context, config string) {
+	t.Helper()
+	if err := n.Container.CopyToContainer(ctx, []byte(config), ContainerConfig, 0o644); err != nil {
+		t.Fatalf("write nodecore config: %v\nlogs:\n%s", err, n.Logs(ctx))
+	}
+}
+
 func (n *Nodecore) Terminate(ctx context.Context) {
 	_ = n.Container.Terminate(ctx, tc.StopTimeout(time.Second))
 }
@@ -608,6 +675,22 @@ func (n *Nodecore) Logs(ctx context.Context) string {
 		}
 	}
 	return logs
+}
+
+// LogCount counts the occurrences of substr in everything nodecore has logged so
+// far. Unlike Logs it looks at the whole log, not at its tail.
+func (n *Nodecore) LogCount(t *testing.T, ctx context.Context, substr string) int {
+	t.Helper()
+	reader, err := n.Container.Logs(ctx)
+	if err != nil {
+		t.Fatalf("read nodecore logs: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read nodecore logs: %v", err)
+	}
+	return strings.Count(string(data), substr)
 }
 
 func containerLogs(c tc.Container) string {
