@@ -2,12 +2,19 @@ package upstreams
 
 import (
 	"context"
+	"runtime"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/dimensions"
+	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	"github.com/failsafe-go/failsafe-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -206,4 +213,142 @@ func TestApplyUpstreamsBeforeStart(t *testing.T) {
 	_, err := supervisor.ApplyUpstreams([]*config.Upstream{reloadUpstreamConfig("eth", "ethereum", "http://eth")})
 
 	assert.EqualError(t, err, "upstreams are not started yet")
+}
+
+// startPanickingUpstream starts for real and then panics, which is the worst
+// case for a failed start: everything is already running.
+type startPanickingUpstream struct {
+	Upstream
+	stopped atomic.Bool
+}
+
+func (p *startPanickingUpstream) Start() {
+	p.Upstream.Start()
+	panic("start failed")
+}
+
+func (p *startPanickingUpstream) Stop() {
+	p.stopped.Store(true)
+	p.Upstream.Stop()
+}
+
+// An upstream added by a reload whose start panics must be taken down again,
+// not just forgotten: its connectors and loops are already running.
+func TestApplyUpstreamsStopsUpstreamWhoseStartPanicked(t *testing.T) {
+	supervisor := newReloadTestSupervisor(t)
+	supervisor.statsService = noStatsService{}
+	supervisor.tracker = dimensions.NewGenericDimensionTracker()
+	created := make(chan *startPanickingUpstream, 1)
+	supervisor.createUpstream = func(
+		ctx context.Context,
+		conf *config.Upstream,
+		tracker dimensions.DimensionTracker,
+		statsService UpstreamStatsService,
+		executor failsafe.Executor[protocol.ResponseHolder],
+		upstreamIndex int,
+		rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
+		torProxyUrl string,
+	) (Upstream, error) {
+		up, err := CreateUpstream(ctx, conf, tracker, statsService, executor, upstreamIndex, rateLimitBudgetRegistry, torProxyUrl)
+		if err != nil {
+			return nil, err
+		}
+		panicking := &startPanickingUpstream{Upstream: up}
+		created <- panicking
+		return panicking, nil
+	}
+	supervisor.StartUpstreams()
+
+	appConfig, err := config.ParseAppConfig([]byte(`
+upstream-config:
+  upstreams:
+    - id: eth
+      chain: ethereum
+      options:
+        disable-validation: true
+      connectors:
+        - type: json-rpc
+          url: http://127.0.0.1:1
+`))
+	require.NoError(t, err)
+	_, err = supervisor.ApplyUpstreams(appConfig.UpstreamConfig.Upstreams)
+	require.NoError(t, err)
+
+	var up *startPanickingUpstream
+	select {
+	case up = <-created:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the upstream was not created")
+	}
+	supervisor.applyMu.Lock()
+	done := supervisor.managed["eth"].done
+	supervisor.applyMu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the goroutine of the failed upstream is still there")
+	}
+
+	assert.True(t, up.stopped.Load(), "the upstream whose start panicked was not stopped")
+	assert.False(t, up.Running())
+	assert.Nil(t, supervisor.GetUpstream("eth"))
+}
+
+type noStatsService struct{}
+
+func (noStatsService) AddRequestResults([]protocol.RequestResult) {}
+
+func requestRegistryGoroutines() int {
+	stacks := make([]byte, 4<<20)
+	stacks = stacks[:runtime.Stack(stacks, true)]
+	return strings.Count(string(stacks), "ws.(*GenericRequestRegistry).run")
+}
+
+// A panic in the middle of CreateUpstream must release what was already bound
+// to the upstream's context - here the request registry of its websocket.
+func TestCreateUpstreamPanicReleasesItsContext(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	appConfig, err := config.ParseAppConfig([]byte(`
+rate-limit:
+  - budgets:
+      - name: budget
+        config:
+          rules:
+            - method: eth_call
+              requests: 1
+              period: 1s
+upstream-config:
+  upstreams:
+    - id: eth
+      chain: ethereum
+      rate-limit-budget: budget
+      connectors:
+        - type: json-rpc
+          url: http://127.0.0.1:1
+        - type: websocket
+          url: ws://127.0.0.1:1
+`))
+	require.NoError(t, err)
+	before := requestRegistryGoroutines()
+
+	// the budget is in the config but not in the registry, as after a reload
+	// that brought a new budget: the creation panics on it after the
+	// connectors are built
+	registry, err := ratelimiter.NewRateLimitBudgetRegistry(nil, nil)
+	require.NoError(t, err)
+	assert.Panics(t, func() {
+		_, _ = CreateUpstream(
+			context.Background(),
+			appConfig.UpstreamConfig.Upstreams[0],
+			dimensions.NewGenericDimensionTracker(),
+			noStatsService{},
+			createUpstreamExecutor(appConfig.UpstreamConfig.Upstreams[0].FailsafeConfig),
+			1,
+			registry,
+			"",
+		)
+	})
+
+	assert.Eventually(t, func() bool { return requestRegistryGoroutines() <= before }, 5*time.Second, 10*time.Millisecond,
+		"the request registry of the upstream that was never created is still running")
 }

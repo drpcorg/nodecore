@@ -53,7 +53,21 @@ type GenericUpstreamSupervisor struct {
 	upstreamIndicesCounter int
 
 	subChainSupervisorManager *utils.SubscriptionManager[ChainSupervisorEvent]
+
+	// createUpstream is CreateUpstream; a field so that tests can make it fail
+	createUpstream upstreamFactory
 }
+
+type upstreamFactory func(
+	ctx context.Context,
+	conf *config.Upstream,
+	tracker dimensions.DimensionTracker,
+	statsService UpstreamStatsService,
+	executor failsafe.Executor[protocol.ResponseHolder],
+	upstreamIndex int,
+	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
+	torProxyUrl string,
+) (Upstream, error)
 
 // managedUpstream is one upstream of the managed set and the goroutine that owns it.
 type managedUpstream struct {
@@ -93,6 +107,7 @@ func NewGenericUpstreamSupervisor(
 		retired:                   make(map[string]<-chan struct{}),
 		upstreamIndices:           make(map[string]int),
 		upstreamIndicesCounter:    1,
+		createUpstream:            CreateUpstream,
 		rateLimitBudgetRegistry:   rateLimitBudgetRegistry,
 		torProxyUrl:               torProxyUrl,
 		subChainSupervisorManager: utils.NewSubscriptionManager[ChainSupervisorEvent]("chain_supervisor_events"),
@@ -229,12 +244,17 @@ func (b *GenericUpstreamSupervisor) createAndStartUpstream(
 	if reloaded {
 		// At startup a panic here stops the process before it serves anything.
 		// On a reload the process is already serving, so the upstream is given
-		// up instead.
+		// up instead - completely: whatever Start had brought up by the time it
+		// panicked (connectors, their loops, the rate limiter) is stopped, or
+		// every reload of the same bad upstream would leave one more set behind.
 		defer func() {
 			if r := recover(); r != nil {
 				if upSub != nil {
 					upSub.Unsubscribe()
 					b.upstreams.Delete(upConfig.Id)
+				}
+				if up != nil {
+					stopFailedUpstream(up)
 				}
 				up, upSub, err = nil, nil, fmt.Errorf("panic during the upstream start: %v", r)
 			}
@@ -242,7 +262,7 @@ func (b *GenericUpstreamSupervisor) createAndStartUpstream(
 	}
 
 	upstreamConnectorExecutor := createUpstreamExecutor(upConfig.FailsafeConfig)
-	up, err = CreateUpstream(b.ctx, upConfig, b.tracker, b.statsService, upstreamConnectorExecutor, upstreamIndex, b.rateLimitBudgetRegistry, b.torProxyUrl)
+	up, err = b.createUpstream(b.ctx, upConfig, b.tracker, b.statsService, upstreamConnectorExecutor, upstreamIndex, b.rateLimitBudgetRegistry, b.torProxyUrl)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -257,6 +277,17 @@ func (b *GenericUpstreamSupervisor) createAndStartUpstream(
 	up.Start()
 
 	return up, upSub, nil
+}
+
+// stopFailedUpstream stops an upstream whose start panicked. It is in an
+// unknown state, so a second panic on the way down is not allowed out either.
+func stopFailedUpstream(up Upstream) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().Msgf("panic during the stop of upstream %s that failed to start: %v", up.GetId(), r)
+		}
+	}()
+	up.Stop()
 }
 
 // forwardUpstreamEvent passes an upstream's event on to the chain level. Pausing
