@@ -6,6 +6,8 @@ This `upstream-config` section defines how nodecore discovers, evaluates, and in
 upstream-config:
   mode: default
   balancing-strategy: rating
+  reload:
+    watch-interval: 5s
   integrity:
     enabled: true
   failsafe-config:
@@ -117,6 +119,7 @@ It brings together:
 6. Balancing strategy (`balancing-strategy`) - Selects how a normal request picks an upstream: `rating` (score-ordered, the default) or `base` (round-robin). See [balancing-strategy](#balancing-strategy) below.
 7. Label balancing (`label-balancing`) - Optional priority-group routing layered on top of rating: tag upstreams with `group-labels` and serve requests from the highest-priority group first. See [label-balancing](#label-balancing) below.
 8. Upstreams (`upstreams`) - The actual provider entries.
+9. Reload (`reload`) - Lets a running nodecore pick up changes of the `upstreams` list without a restart and without dropping client connections. See [reload](#reload) below.
 
 Together, these settings let you (1) register providers, (2) tune resiliency and polling, (3) define how nodecore scores and selects the best upstream at runtime, (4) apply rate limiting to control request throughput, and (5) toggle the validators and label detectors that observe each upstream's health.
 
@@ -774,6 +777,83 @@ When [`disable-methods-detection`](#chain-defaults) is off - the default in `str
 Detection only ever **removes** methods. It never adds one the chain's spec does not declare, so every served method keeps its spec-defined cache policy, block-tag parsing and sticky/integrity behaviour. Methods nodecore answers itself, such as `eth_chainId` and `net_version`, are never subject to detection because their availability does not depend on the node.
 
 In `default` mode detection is off and an unsupported method is discovered reactively instead: the first request to fail with a "method not found"-style error bans it for `ban-duration`. Both modes keep that reactive ban - detection just means a `strict`-mode upstream stops advertising the method before any client hits the failure.
+
+## reload
+
+```yaml
+upstream-config:
+  reload:
+    watch-interval: 5s
+```
+
+nodecore can add, remove and replace upstreams while it is running. A reload does not restart anything on the client side: HTTP, WebSocket and gRPC connections stay open, requests in flight on other upstreams are not interrupted, and an open gRPC `SubscribeChainStatus` stream simply reports the new state of the chains that changed.
+
+### What triggers a reload
+
+| Trigger | When it is active | Behaviour |
+|---|---|---|
+| `SIGHUP` | always | The config file is re-read and applied immediately, e.g. `kill -HUP <pid>` or `docker kill --signal=HUP <container>`. |
+| File watch | when `reload.watch-interval` is set | nodecore re-reads the config file every `watch-interval` and reloads when its **content** changes (modification time is ignored). |
+
+`watch-interval` is `0` by default, which disables the watch; the smallest accepted value is `100ms`.
+
+The watch applies a changed file only after it has read the same content on two consecutive checks, so a change takes effect between one and two intervals after the last write. This keeps a file that is still being written from being applied halfway: a truncated YAML file is often still a valid, shorter config. `SIGHUP` skips this check, so send it only when the file is complete.
+
+The file is the one nodecore was started with (`NODECORE_CONFIG_PATH`, or `./nodecore.yml`).
+
+> **Containers**: a bind mount of a single file follows the file's inode, not its name. A tool that replaces the config atomically (write a temporary file, then rename it) leaves the container looking at the old file. Mount the directory that holds the config instead. Kubernetes ConfigMap volumes mounted as a directory (without `subPath`) are updated in place and work with the watch.
+
+### What is reloaded
+
+Only the `upstream-config.upstreams` list. The new list is compared with the running one by upstream `id`:
+
+| In the new file | What nodecore does |
+|---|---|
+| An `id` that is not running | Starts the upstream exactly as at startup. If it is the first upstream of its chain, the chain appears. |
+| A running `id` is missing | Removes the upstream: it stops being selected for requests, then its connectors are closed. If it was the last upstream of its chain, the chain stays known and becomes unavailable. |
+| A running `id` with different settings | Replaces the upstream: the running one is removed and a new one is started with the new settings. |
+| A running `id` with the same settings | Nothing. The upstream is not touched in any way. |
+
+Things to know:
+
+- Settings are compared **after defaults are applied**. A change of `chain-defaults.<chain>.poll-interval`, of `chain-defaults.<chain>.options` or of `mode` therefore replaces every upstream that inherits the changed value.
+- A replaced upstream is briefly out of rotation, until its new instance passes the startup validation. If every upstream of a chain is replaced by the same reload, the chain is unavailable for that moment. Add and remove are the seamless operations; to change an upstream without a gap, add it under a new `id` first and remove the old one in a second reload.
+- Requests in flight on a removed upstream are allowed to finish over `json-rpc`, `rest` and `tendermint` connectors. `websocket` and `grpc` connectors are closed, which ends the requests and subscriptions running over them; subscription clients receive the usual terminal error and can resubscribe.
+- An upstream keeps its internal index for the lifetime of the process, even across a removal or a replacement, so ids handed out by sticky methods (such as `eth_newFilter`) keep pointing at the upstream with the same `id`.
+- The metric series of a removed upstream are dropped, see [Prometheus metrics](08-prometheus-metrics.md#config-reload-metrics).
+
+### What still needs a restart
+
+Everything else in the config file keeps the value it had when nodecore started:
+
+- the whole `server`, `auth`, `cache`, `rate-limit`, `app-storages`, `integration` and `stats` sections;
+- in `upstream-config`: the global `failsafe-config`, `score-policy-config`, `integrity`, `label-balancing`, `balancing-strategy`, `reload` itself, and the per-chain routing settings of `chain-defaults` (`dispatch`, `label-balancing`, `balancing-strategy`, `local-subscriptions`, `validate-lag`).
+
+When a reload finds that one of these differs from the running config, it logs a warning that names the sections and still applies the upstream list.
+
+Rate limit budgets are created at startup, so an upstream added by a reload can only reference a `rate-limit-budget` that already existed when nodecore started. An inline `rate-limit` or `rate-limit-auto-tune` on the upstream has no such restriction.
+
+### Invalid config files
+
+A reload parses and validates the **whole** file the same way startup does. If the file can't be read, isn't valid YAML, or fails validation anywhere - an unknown chain, a duplicate upstream `id`, an empty upstream list, an invalid value in a section that is not even reloaded - the reload is rejected as a whole:
+
+- nothing is changed, the running upstreams keep serving;
+- the reason is logged at `error` level;
+- the process keeps running. A reload never stops nodecore.
+
+The watch reports a rejected file once and looks again when its content changes.
+
+### What is logged
+
+| Level | Message | Meaning |
+|---|---|---|
+| `info` | `the config file <path> is watched every <interval>, its upstream list is reloaded on change` | Startup, the watch is on. |
+| `info` | `the config file <path> is not watched, send SIGHUP to reload its upstream list` | Startup, the watch is off. |
+| `info` | `upstreams have been reloaded: added=[...], removed=[...], changed=[...]` | A reload was applied. |
+| `info` | `upstream <id> of <chain> has been removed` | A removed upstream is completely stopped. |
+| `info` | `config reload found no upstream changes` | A `SIGHUP` reload with nothing to do. |
+| `warn` | `config sections [...] differ from the running config but only the upstream list is reloaded, restart nodecore to apply them` | The file changes something that needs a restart. |
+| `error` | `config reload from <path> is rejected, the running upstreams are left untouched` | The file was refused; the `error` field carries the reason. |
 
 ## Validators and labels
 
