@@ -1,11 +1,13 @@
 package upstreammetrics_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,9 +23,11 @@ func series(vec prometheus.Collector) int {
 }
 
 func TestForgetDropsTheSeriesOfOneUpstream(t *testing.T) {
+	// a name of its own per run: the default registry refuses a second one
+	registeredName := fmt.Sprintf("forget_test_registered_%d", time.Now().UnixNano())
 	withChain := prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "forget_test_with_chain"}, []string{"chain", "method", "upstream"})
 	withoutChain := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "forget_test_without_chain"}, []string{"upstream", "period"})
-	registered := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "forget_test_registered"}, []string{"upstream"})
+	registered := prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: registeredName}, []string{"upstream"})
 	upstreammetrics.Track(withChain, withoutChain)
 	upstreammetrics.MustRegister(registered)
 
@@ -44,7 +48,7 @@ func TestForgetDropsTheSeriesOfOneUpstream(t *testing.T) {
 	require.NoError(t, err)
 	exposed := false
 	for _, family := range families {
-		exposed = exposed || family.GetName() == "forget_test_registered"
+		exposed = exposed || family.GetName() == registeredName
 	}
 	assert.True(t, exposed)
 }
