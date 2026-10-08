@@ -245,7 +245,12 @@ func (b *GenericChainSupervisor) processEvents() {
 func (b *GenericChainSupervisor) updateHead(upstreamId string, headEvent *protocol.HeadUpstreamEvent) {
 	newState := b.state.Load()
 	var headWrapper *ChainSupervisorStateWrapperEvent
-	if headEvent != nil && !headEvent.Head.IsEmptyByHeight() {
+	if headEvent != nil {
+		// An event without a head goes through the fork choice like any other:
+		// it is the fork choice that knows whether another upstream still has
+		// one. The chain head is dropped only when the fork choice is left with
+		// nothing - not because the upstream that spoke last had no head, which
+		// is the usual state of a dead node that is being removed.
 		updated, head := b.fc.Choose(upstreamId, headEvent)
 		if updated {
 			newState.HeadData = NewChainHeadData(head, upstreamId)
@@ -255,8 +260,6 @@ func (b *GenericChainSupervisor) updateHead(upstreamId string, headEvent *protoc
 				}
 			}
 		}
-	} else if headEvent != nil {
-		newState.HeadData = NewChainHeadData(protocol.ZeroBlock{}, upstreamId)
 	}
 
 	b.state.Store(newState)
