@@ -38,6 +38,14 @@ func init() {
 	prometheus.MustRegister(blocksMetric, headsMetric)
 }
 
+// DeleteUpstreamMetrics drops the block and head gauges of an upstream that is
+// gone, so that they don't keep reporting its last heights.
+func DeleteUpstreamMetrics(chain chains.Chain, upstreamId string) {
+	labels := prometheus.Labels{"chain": chain.String(), "upstream": upstreamId}
+	blocksMetric.DeletePartialMatch(labels)
+	headsMetric.DeletePartialMatch(labels)
+}
+
 type BlockUpdateData interface {
 	data()
 }

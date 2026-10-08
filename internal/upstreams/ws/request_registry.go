@@ -29,6 +29,13 @@ func init() {
 	prometheus.MustRegister(jsonRpcWsConnectionsMetric, jsonRpcWsOperations)
 }
 
+// DeleteUpstreamMetrics drops the websocket gauges of an upstream that is gone.
+func DeleteUpstreamMetrics(chain chains.Chain, upstreamId string) {
+	labels := prometheus.Labels{"chain": chain.String(), "upstream": upstreamId}
+	jsonRpcWsConnectionsMetric.DeletePartialMatch(labels)
+	jsonRpcWsOperations.DeletePartialMatch(labels)
+}
+
 type RequestRegistry interface {
 	Start(req RequestOperation)
 	Abort(requestId string)

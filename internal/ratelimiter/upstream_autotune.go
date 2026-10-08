@@ -80,6 +80,8 @@ func (u *UpstreamAutoTune) Allow() bool {
 }
 
 func (u *UpstreamAutoTune) Run(ctx context.Context) {
+	// the context ends with the upstream, and so does its series
+	defer TunedRateLimitMetric.DeletePartialMatch(prometheus.Labels{"upstream": u.upstreamId})
 	for ctx.Err() == nil {
 		select {
 		case <-ctx.Done():

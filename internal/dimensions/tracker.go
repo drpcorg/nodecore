@@ -85,6 +85,9 @@ type DimensionTracker interface {
 	GetAllDimensions(chain chains.Chain, upstreamId, method string) *FullDimensions
 	GetUpstreamDimensions(chain chains.Chain, upstreamId, method string) *UpstreamDimensions
 	GetChainDimensions(chain chains.Chain, upstreamId string) *ChainDimensions
+	// RemoveUpstream forgets everything tracked for the upstream, its metric
+	// series included.
+	RemoveUpstream(chain chains.Chain, upstreamId string)
 }
 
 type GenericDimensionTracker struct {
@@ -130,6 +133,24 @@ func (d *GenericDimensionTracker) GetChainDimensions(chain chains.Chain, upstrea
 		return newChainDimensions(chainKey)
 	})
 	return chainDimensions
+}
+
+func (d *GenericDimensionTracker) RemoveUpstream(chain chains.Chain, upstreamId string) {
+	d.upstreamDimensionsMap.Range(func(key upstreamDimensionKey, _ *UpstreamDimensions) bool {
+		if key.chain == chain && key.upstreamId == upstreamId {
+			d.upstreamDimensionsMap.Delete(key)
+		}
+		return true
+	})
+	d.chainDimensionsMap.Delete(newChainDimensionKey(chain, upstreamId))
+
+	labels := prometheus.Labels{"chain": chain.String(), "upstream": upstreamId}
+	requestTotalMetric.DeletePartialMatch(labels)
+	errorTotalMetric.DeletePartialMatch(labels)
+	requestDurationMetric.DeletePartialMatch(labels)
+	successfulRetriesMetric.DeletePartialMatch(labels)
+	headLagMetric.DeletePartialMatch(labels)
+	finalizationLagMetric.DeletePartialMatch(labels)
 }
 
 var _ DimensionTracker = (*GenericDimensionTracker)(nil)

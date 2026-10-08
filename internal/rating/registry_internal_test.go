@@ -15,6 +15,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 )
@@ -97,4 +98,47 @@ func cMapSize[K comparable, V any](m *utils.CMap[K, V]) int {
 		return true
 	})
 	return size
+}
+
+func TestForgetGoneUpstreams(t *testing.T) {
+	registry := NewRatingRegistry(mocks.NewUpstreamSupervisorMock(), dimensions.NewGenericDimensionTracker(), &config.ScorePolicyConfig{
+		CalculationFunctionName: config.DefaultLatencyPolicyFuncName,
+		CalculationInterval:     1 * time.Minute,
+	})
+	chain := chains.GNOSIS
+	for _, upstreamId := range []string{"gone", "stays"} {
+		rating.WithLabelValues(chain.String(), "eth_test1", upstreamId).Set(1)
+		rating.WithLabelValues(chain.String(), "eth_test2", upstreamId).Set(1)
+	}
+	// the same id on another chain is another upstream
+	rating.WithLabelValues(chains.OPTIMISM.String(), "eth_test1", "gone").Set(1)
+
+	registry.forgetGoneUpstreams(chain, []string{"gone", "stays"})
+	assert.Equal(t, 2, ratingSeries(chain, "gone"))
+
+	registry.forgetGoneUpstreams(chain, []string{"stays"})
+
+	assert.Equal(t, 0, ratingSeries(chain, "gone"))
+	assert.Equal(t, 2, ratingSeries(chain, "stays"))
+	assert.Equal(t, 1, ratingSeries(chains.OPTIMISM, "gone"))
+}
+
+func ratingSeries(chain chains.Chain, upstreamId string) int {
+	collected := make(chan prometheus.Metric, 1000)
+	rating.Collect(collected)
+	close(collected)
+
+	series := 0
+	for metric := range collected {
+		var m dto.Metric
+		_ = metric.Write(&m)
+		labels := make(map[string]string)
+		for _, label := range m.GetLabel() {
+			labels[label.GetName()] = label.GetValue()
+		}
+		if labels["chain"] == chain.String() && labels["upstream"] == upstreamId {
+			series++
+		}
+	}
+	return series
 }
