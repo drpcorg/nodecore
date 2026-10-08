@@ -67,7 +67,7 @@ func TestGrpcUpstreamsReloadEndsSubscriptionsOfRemovedUpstream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial nodecore websocket: %v\nlogs:\n%s", err, nodecore.Logs(ctx))
 	}
-	defer wsClient.Close()
+	defer func() { _ = wsClient.Close() }()
 	if err := wsClient.WriteMessage(websocket.TextMessage, []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}`)); err != nil {
 		t.Fatalf("websocket subscribe: %v", err)
 	}
