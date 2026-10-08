@@ -1,6 +1,7 @@
 // Command mocknode is a minimal EVM JSON-RPC node for e2e tests that are about
 // nodecore itself and need no chain data: it reports a chain id, a head that
-// keeps growing, and can answer one method slowly.
+// keeps growing, and can answer one method slowly. The same port speaks
+// JSON-RPC over HTTP and over a websocket, with eth_subscribe on the latter.
 package main
 
 import (
@@ -88,6 +89,10 @@ func (n *node) reply(request rpcRequest) map[string]any {
 }
 
 func (n *node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if isWebsocketUpgrade(r) {
+		n.serveWebsocket(w, r)
+		return
+	}
 	var raw json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -131,7 +136,7 @@ func envOr(name, fallback string) string {
 func main() {
 	addr := flag.String("addr", envOr("MOCKNODE_ADDR", ":8545"), "listen address")
 	chainId := flag.Uint64("chain-id", 0, "chain id reported by eth_chainId and net_version, MOCKNODE_CHAIN_ID or 1 by default")
-	blockTime := flag.Duration("block-time", time.Second, "how often the head grows")
+	blockTime := flag.Duration("block-time", 0, "how often the head grows, MOCKNODE_BLOCK_TIME or 1s by default")
 	slowMethod := flag.String("slow-method", envOr("MOCKNODE_SLOW_METHOD", ""), "a method that is answered after slow-delay")
 	slowDelay := flag.Duration("slow-delay", 0, "the delay of slow-method, MOCKNODE_SLOW_DELAY or 0 by default")
 	flag.Parse()
@@ -142,6 +147,13 @@ func main() {
 			log.Fatalf("invalid MOCKNODE_CHAIN_ID: %v", err)
 		}
 		*chainId = parsed
+	}
+	if *blockTime == 0 {
+		parsed, err := time.ParseDuration(envOr("MOCKNODE_BLOCK_TIME", "1s"))
+		if err != nil {
+			log.Fatalf("invalid MOCKNODE_BLOCK_TIME: %v", err)
+		}
+		*blockTime = parsed
 	}
 	if *slowDelay == 0 {
 		parsed, err := time.ParseDuration(envOr("MOCKNODE_SLOW_DELAY", "0s"))

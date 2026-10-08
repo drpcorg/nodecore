@@ -285,6 +285,8 @@ type MockNodeSpec struct {
 	// SlowMethod is answered only after SlowDelay.
 	SlowMethod string
 	SlowDelay  time.Duration
+	// BlockTime is how often the head grows; 1s when zero.
+	BlockTime time.Duration
 }
 
 func StartMockNode(t *testing.T, ctx context.Context, networkName string, spec MockNodeSpec) *RPCNode {
@@ -294,6 +296,9 @@ func StartMockNode(t *testing.T, ctx context.Context, networkName string, spec M
 	if spec.SlowMethod != "" {
 		env["MOCKNODE_SLOW_METHOD"] = spec.SlowMethod
 		env["MOCKNODE_SLOW_DELAY"] = spec.SlowDelay.String()
+	}
+	if spec.BlockTime != 0 {
+		env["MOCKNODE_BLOCK_TIME"] = spec.BlockTime.String()
 	}
 	c, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
 		ContainerRequest: tc.ContainerRequest{
@@ -323,6 +328,9 @@ func StartMockNode(t *testing.T, ctx context.Context, networkName string, spec M
 }
 
 func (m *RPCNode) InternalURL() string { return fmt.Sprintf("http://%s:8545", m.Alias) }
+
+// InternalWsURL is the websocket endpoint of a node that serves one on its RPC port.
+func (m *RPCNode) InternalWsURL() string { return fmt.Sprintf("ws://%s:8545", m.Alias) }
 
 func (m *RPCNode) Terminate(ctx context.Context) {
 	_ = m.Container.Terminate(ctx, tc.StopTimeout(time.Second))
