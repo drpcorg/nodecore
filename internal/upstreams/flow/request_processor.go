@@ -131,7 +131,13 @@ func executeUnaryRequest(
 				firstUpstream.Store(upstreamId)
 			}
 
-			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request, parsedParam)
+			upstream := upstreamSupervisor.GetUpstream(upstreamId)
+			if upstream == nil {
+				// the upstream was removed between its selection and this call
+				return nil, handleErrors(exec, protocol.NoAvailableUpstreamsError())
+			}
+
+			responseHolder, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
 			if err != nil {
 				return nil, handleErrors(exec, err)
 			}

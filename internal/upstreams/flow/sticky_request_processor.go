@@ -57,9 +57,12 @@ func (s *StickyRequestProcessor) ProcessRequest(
 				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
 		} else {
-			if !response.Response.HasError() {
+			// the upstream can be removed while the request is in flight; then there
+			// is no index to stick to and the response goes out as it is
+			responseUpstream := s.upstreamSupervisor.GetUpstream(response.UpstreamId)
+			if !response.Response.HasError() && responseUpstream != nil {
 				bodyWithoutLastByte := response.Response.ResponseResult()[:len(response.Response.ResponseResult())-1]
-				upstreamHash := []byte(s.upstreamSupervisor.GetUpstream(response.UpstreamId).GetHashIndex())
+				upstreamHash := []byte(responseUpstream.GetHashIndex())
 				body := append(append(bodyWithoutLastByte, upstreamHash...), []byte(`"`)...)
 				response = &protocol.ResponseHolderWrapper{
 					UpstreamId: response.UpstreamId,
