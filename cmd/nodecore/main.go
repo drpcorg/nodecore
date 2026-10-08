@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	_ "github.com/drpcorg/nodecore/pkg/errors_config"
 	_ "github.com/drpcorg/nodecore/pkg/logger"
+	"github.com/drpcorg/nodecore/pkg/reloadsignal"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	_ "go.uber.org/automaxprocs"
@@ -30,13 +31,6 @@ const (
 
 func main() {
 	flag.Parse()
-
-	// SIGHUP reloads the upstream list. A process that has not taken the signal
-	// over is terminated by it, so it is taken over before anything else and
-	// never given back: a SIGHUP sent while nodecore is starting waits in the
-	// channel, one sent while it is shutting down is ignored.
-	reloadSignals := make(chan os.Signal, 1)
-	signal.Notify(reloadSignals, syscall.SIGHUP)
 
 	if path := os.Getenv(envExtraChainsPath); path != "" {
 		extra, err := os.ReadFile(path)
@@ -74,7 +68,11 @@ func main() {
 		mainCtxCancel()
 	}()
 
-	nodeCoreApp, err := app.NewApp(mainCtx, appConfig, reloadSignals)
+	// SIGHUP reloads the upstream list. reloadsignal owns the signal from before
+	// main to the end of the process, so that it never terminates nodecore: one
+	// sent during the startup waits for the app, one sent during the shutdown
+	// is ignored.
+	nodeCoreApp, err := app.NewApp(mainCtx, appConfig, reloadsignal.Signals())
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the app")
 	}
