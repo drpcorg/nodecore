@@ -171,6 +171,7 @@ func TestReadFullConfig(t *testing.T) {
 			Mode:              config.DefaultMode,
 			BalancingStrategy: config.RatingBalancingStrategy,
 			IntegrityConfig:   &config.IntegrityConfig{},
+			Reload:            &config.ReloadConfig{WatchInterval: 5 * time.Second},
 			ScorePolicyConfig: &config.ScorePolicyConfig{
 				CalculationInterval:     10 * time.Second,
 				CalculationFunctionName: config.DefaultLatencyPolicyFuncName,

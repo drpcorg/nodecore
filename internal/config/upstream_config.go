@@ -30,6 +30,7 @@ type UpstreamConfig struct {
 	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing"`
 	BalancingStrategy BalancingStrategy         `yaml:"balancing-strategy"`
 	Mode              UpstreamMode              `yaml:"mode"`
+	Reload            *ReloadConfig             `yaml:"reload"`
 }
 
 // BalancingStrategy selects how the generic (non-special-cased) request is
@@ -537,6 +538,10 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 
 	if err := u.FailsafeConfig.validate(); err != nil {
 		return fmt.Errorf("error during failsafe validation of upstream-conifg: %s", err.Error())
+	}
+
+	if err := u.Reload.validate(); err != nil {
+		return fmt.Errorf("error during reload config validation, cause: %s", err.Error())
 	}
 
 	if len(u.Upstreams) == 0 {
