@@ -2,6 +2,7 @@ package upstreams
 
 import (
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -49,6 +50,9 @@ type UpstreamSupervisor interface {
 	GetUpstream(string) Upstream
 	GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper]
 	StartUpstreams()
+	// ApplyUpstreams reconciles the running upstreams with the given list: it
+	// starts the new ones, removes the missing ones and replaces the changed ones.
+	ApplyUpstreams(upstreamConfigs []*config.Upstream) (UpstreamsDiff, error)
 
 	SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent]
 }

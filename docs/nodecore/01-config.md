@@ -18,6 +18,8 @@ The configuration file is the entry point for all nodecore settings. It is organ
 
 By default, nodecore looks for a configuration file named `./nodecore.yml` in the current directory. You can override this path by setting the `NODECORE_CONFIG_PATH` environment variable. For example, `NODECORE_CONFIG_PATH=/path/to/your/config make run`.
 
+The config file is read at startup. The one part that can change afterwards is the upstream list: on `SIGHUP`, or when the file changes if `upstream-config.reload.watch-interval` is set, nodecore adds, removes and replaces upstreams without a restart and without dropping client connections. All other settings need a restart, and a file that fails validation is ignored. See [reload](05-upstream-config.md#reload).
+
 Method specs (the per-chain RPC behavior definitions) are embedded into the binary - see [Method specs](11-method-specs.md). Log output format is controlled by the `LOG_FORMAT` environment variable (`json` or `console`, default `console`), and log level by `LOG_LEVEL`.
 
 ## Minimum working configuration
@@ -190,6 +192,8 @@ rate-limit:
 
 upstream-config:
   mode: default
+  reload:
+    watch-interval: 5s
   integrity:
     enabled: true
   failsafe-config:

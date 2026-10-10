@@ -2,6 +2,7 @@ package ws
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
@@ -26,7 +27,7 @@ var jsonRpcWsOperations = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 }, []string{"chain", "upstream"})
 
 func init() {
-	prometheus.MustRegister(jsonRpcWsConnectionsMetric, jsonRpcWsOperations)
+	upstreammetrics.MustRegister(jsonRpcWsConnectionsMetric, jsonRpcWsOperations)
 }
 
 type RequestRegistry interface {
@@ -120,8 +121,15 @@ func (b *GenericRequestRegistry) OnSubscriptionMessage(response *protocol.WsResp
 	b.sendCmd(newSubscriptionCommand(response))
 }
 
+// CancelAll ends every request and subscription of the registry and returns
+// once that is done, so the caller can rely on it before it goes on.
 func (b *GenericRequestRegistry) CancelAll() {
-	b.sendCmd(newCancelAllCommand())
+	done := make(chan struct{})
+	b.sendCmd(newCancelAllCommand(done))
+	select {
+	case <-b.ctx.Done():
+	case <-done:
+	}
 }
 
 func (b *GenericRequestRegistry) run() {

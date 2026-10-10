@@ -38,3 +38,31 @@ func TestTrackerAllDimensions(t *testing.T) {
 	assert.Equal(t, uint64(15), fullDims.ChainDimensions.GetHeadLag())
 	assert.Equal(t, uint64(53), fullDims.ChainDimensions.GetFinalizationLag())
 }
+
+func TestTrackerRemoveUpstream(t *testing.T) {
+	tracker := dimensions.NewGenericDimensionTracker()
+	chain := chains.POLYGON
+
+	for _, upId := range []string{"removed", "kept"} {
+		tracker.GetChainDimensions(chain, upId).TrackLags(uint64(5), uint64(10))
+		for _, method := range []string{"method1", "method2"} {
+			tracker.GetUpstreamDimensions(chain, upId, method).TrackTotalRequests()
+		}
+	}
+	// the same id on another chain is another upstream
+	tracker.GetUpstreamDimensions(chains.ETHEREUM, "removed", "method1").TrackTotalRequests()
+
+	tracker.RemoveUpstream(chain, "removed")
+
+	for _, method := range []string{"method1", "method2"} {
+		removed := tracker.GetAllDimensions(chain, "removed", method)
+		assert.Zero(t, removed.UpstreamDimensions.GetTotalRequests())
+		assert.Zero(t, removed.ChainDimensions.GetHeadLag())
+		assert.Zero(t, removed.ChainDimensions.GetFinalizationLag())
+
+		kept := tracker.GetAllDimensions(chain, "kept", method)
+		assert.Equal(t, uint64(1), kept.UpstreamDimensions.GetTotalRequests())
+		assert.Equal(t, uint64(5), kept.ChainDimensions.GetHeadLag())
+	}
+	assert.Equal(t, uint64(1), tracker.GetUpstreamDimensions(chains.ETHEREUM, "removed", "method1").GetTotalRequests())
+}

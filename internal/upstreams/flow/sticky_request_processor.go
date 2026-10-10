@@ -56,10 +56,22 @@ func (s *StickyRequestProcessor) ProcessRequest(
 				RequestId:  request.Id(),
 				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
-		} else {
-			if !response.Response.HasError() {
+		} else if !response.Response.HasError() {
+			responseUpstream := s.upstreamSupervisor.GetUpstream(response.UpstreamId)
+			if responseUpstream == nil {
+				// The upstream was removed while the request was in flight. The id
+				// it returned lives on a node nodecore no longer talks to, and
+				// without the upstream's index a later sticky request would cut
+				// the id's own tail off as one. An id that can't work is not
+				// handed out: the client gets an error and creates a new one.
+				response = &protocol.ResponseHolderWrapper{
+					UpstreamId: NoUpstream,
+					RequestId:  request.Id(),
+					Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.NoAvailableUpstreamsError(), request.RequestType()),
+				}
+			} else {
 				bodyWithoutLastByte := response.Response.ResponseResult()[:len(response.Response.ResponseResult())-1]
-				upstreamHash := []byte(s.upstreamSupervisor.GetUpstream(response.UpstreamId).GetHashIndex())
+				upstreamHash := []byte(responseUpstream.GetHashIndex())
 				body := append(append(bodyWithoutLastByte, upstreamHash...), []byte(`"`)...)
 				response = &protocol.ResponseHolderWrapper{
 					UpstreamId: response.UpstreamId,

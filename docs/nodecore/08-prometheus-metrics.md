@@ -13,6 +13,7 @@ This document describes all Prometheus metrics exposed by nodecore on the `metri
 - [WebSocket Metrics](#websocket-metrics)
 - [Subscription Utilities Metrics](#subscription-utilities-metrics)
 - [Logs Subscription Metrics](#logs-subscription-metrics)
+- [Config Reload Metrics](#config-reload-metrics)
 
 ---
 
@@ -540,3 +541,53 @@ The skip warning in the log carries the last upstream id and its error message (
 **Source:** `internal/upstreams/flow/subengine/blockupdates.go`
 
 **Use Case:** Detect deep reorgs that exceed the reconciliation window, where some `removed` events are silently dropped.
+
+---
+
+## Config Reload Metrics
+
+These metrics describe the [reload](05-upstream-config.md#reload) of the upstream list.
+
+When a reload removes or replaces an upstream, every series that carries that upstream in its `upstream` label is dropped, from every metric on this page that has the label (`nodecore_upstream_*`, `nodecore_request_hedge_hit`, `nodecore_request_json_ws_*`, `nodecore_ratelimiter_auto_tune_tuned_rate_limit`), so a removed upstream does not keep reporting its last state. Requests that were still in flight on the upstream when it was removed can bring a few `nodecore_upstream_requests_total`-style series back; they stay at their final value.
+
+### `nodecore_config_reloads_total`
+
+**Type:** Counter
+
+**Description:** The total number of config reload attempts by result.
+
+**Labels:**
+
+- `result` - `applied` (the upstream list changed), `unchanged` (the file was valid and asked for nothing new) or `rejected` (the file was refused)
+
+**Source:** `internal/reload/config_reloader.go`
+
+**Use Case:** Track how often the upstream list changes and alert on rejected config files.
+
+---
+
+### `nodecore_config_last_reload_successful`
+
+**Type:** Gauge
+
+**Description:** Whether the last config reload attempt succeeded. Values: 1 = the running upstreams match the upstream list of the config file, 0 = the file was rejected and the running upstreams are older than the file. It is 1 after startup.
+
+**Labels:** None
+
+**Source:** `internal/reload/config_reloader.go`
+
+**Use Case:** Alert when a config file was written but is not in effect.
+
+---
+
+### `nodecore_config_last_reload_success_timestamp_seconds`
+
+**Type:** Gauge
+
+**Description:** Unix timestamp of the last successful config load: the startup, or the last reload that was not rejected.
+
+**Labels:** None
+
+**Source:** `internal/reload/config_reloader.go`
+
+**Use Case:** See when the running upstream list was last confirmed against the config file.

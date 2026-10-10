@@ -63,6 +63,14 @@ func CreateUpstream(
 	torProxyUrl string,
 ) (Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
+	// a panic below must not leave behind what was already bound to the
+	// context (a websocket request registry, a rate limit auto-tuner)
+	defer func() {
+		if r := recover(); r != nil {
+			cancel()
+			panic(r)
+		}
+	}()
 	configuredChain := chains.GetChain(conf.ChainName)
 
 	upstreamConnectorsInfo, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)

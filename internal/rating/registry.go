@@ -2,6 +2,7 @@ package rating
 
 import (
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"reflect"
 	"time"
 
@@ -28,7 +29,7 @@ var rating = prometheus.NewGaugeVec(
 )
 
 func init() {
-	prometheus.MustRegister(rating)
+	upstreammetrics.MustRegister(rating)
 }
 
 // singleUpstreamRating is the rating published for the lone upstream of a

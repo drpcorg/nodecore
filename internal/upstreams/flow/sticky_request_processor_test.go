@@ -182,3 +182,60 @@ func TestCreateStickyModifyResponse(t *testing.T) {
 
 	assert.Equal(t, expected, response.(*flow.UnaryResponse).ResponseWrapper)
 }
+
+// The upstream can be removed by a reload between its selection and the call.
+func TestStickyRequestUpstreamRemovedAfterSelection(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	specMethod := specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
+	strategy := mocks.NewMockStrategy()
+	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
+
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(nil)
+
+	response := processor.ProcessRequest(context.Background(), strategy, request)
+
+	upSupervisor.AssertExpectations(t)
+	strategy.AssertExpectations(t)
+
+	expected := &protocol.ResponseHolderWrapper{
+		UpstreamId: flow.NoUpstream,
+		RequestId:  request.Id(),
+		Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.NoAvailableUpstreamsError(), request.RequestType()),
+	}
+	assert.Equal(t, expected, response.(*flow.UnaryResponse).ResponseWrapper)
+}
+
+// The upstream can also be removed while the request is in flight. Its answer
+// is an id on a node that is gone; without the upstream's index the id would
+// not even survive the next sticky request, so the client gets an error.
+func TestCreateStickyUpstreamRemovedInFlight(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	specMethod := specs.MethodWithSettings("method", []specs.ApiConnectorType{specs.JsonRpcConnector}, &specs.MethodSettings{Sticky: &specs.Sticky{CreateSticky: true}}, nil)
+	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("method", nil, specMethod)
+	strategy := mocks.NewMockStrategy()
+	apiConnector := mocks.NewConnectorMock()
+	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
+	responseHolder := protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"result"`), protocol.JsonRpc)
+	processor := flow.NewStickyRequestProcessor(chains.POLYGON, upSupervisor)
+
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(upstream).Once()
+	upSupervisor.On("GetUpstream", "id").Return(nil)
+	apiConnector.On("SendRequest", mock.Anything, request).Return(responseHolder)
+
+	response := processor.ProcessRequest(context.Background(), strategy, request)
+
+	upSupervisor.AssertExpectations(t)
+	apiConnector.AssertExpectations(t)
+
+	expected := &protocol.ResponseHolderWrapper{
+		UpstreamId: flow.NoUpstream,
+		RequestId:  request.Id(),
+		Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.NoAvailableUpstreamsError(), request.RequestType()),
+	}
+	assert.Equal(t, expected, response.(*flow.UnaryResponse).ResponseWrapper)
+}

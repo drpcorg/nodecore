@@ -106,6 +106,8 @@ cache:
       ttl: 10s
 
 upstream-config:
+  reload:
+    watch-interval: 5s
   failsafe-config:
     retry:
       attempts: 10

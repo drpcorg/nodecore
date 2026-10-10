@@ -1339,3 +1339,64 @@ func TestChainSupervisorSubMethodsRequireSupportedSubscribeMethod(t *testing.T) 
 		return state.Caps.Contains(protocol.NewHeadsCap) && !state.Methods.HasMethod("eth_subscribe") && state.SubMethods.Cardinality() == 0
 	}, eventuallyWait, eventuallyTick)
 }
+
+// Removing a dead upstream - one that never reported a head - must not touch the
+// head the chain got from the upstreams that are alive.
+func TestChainSupervisorRemoveUpstreamWithEmptyHeadKeepsChainHead(t *testing.T) {
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice, nil, false, nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	chosenHead := protocol.NewBlockWithHeight(100)
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("alive", protocol.Available, chosenHead, methods))
+	publishHeadEvent(chainSupervisor, "alive", protocol.Available, chosenHead)
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("dead", protocol.Unavailable, protocol.Block{}, methods))
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetUpstreamState("dead") != nil
+	}, eventuallyWait, eventuallyTick)
+
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateRemoveEvent("dead"))
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetUpstreamState("dead") == nil
+	}, eventuallyWait, eventuallyTick)
+
+	// the removal is processed; the head must still be there
+	assert.Never(t, func() bool {
+		return chainSupervisor.GetChainState().HeadData.IsEmpty()
+	}, 200*time.Millisecond, eventuallyTick)
+	assert.Equal(t, chosenHead, chainSupervisor.GetChainState().HeadData.Head)
+	assert.Equal(t, "alive", chainSupervisor.GetChainState().HeadData.UpstreamId)
+}
+
+// An empty head event of one upstream is not a reason to drop the head either,
+// while another upstream still has one.
+func TestChainSupervisorEmptyHeadEventKeepsChainHead(t *testing.T) {
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice, nil, false, nil)
+	methods := mocks.NewMethodsMock()
+	methods.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("test1"))
+
+	go chainSupervisor.Start()
+
+	chosenHead := protocol.NewBlockWithHeight(100)
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("alive", protocol.Available, chosenHead, methods))
+	publishHeadEvent(chainSupervisor, "alive", protocol.Available, chosenHead)
+	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("other", protocol.Available, protocol.NewBlockWithHeight(90), methods))
+	publishHeadEvent(chainSupervisor, "other", protocol.Available, protocol.NewBlockWithHeight(90))
+	assertEventuallyEqual(t, chosenHead, func() any { return chainSupervisor.GetChainState().HeadData.Head })
+
+	publishHeadEvent(chainSupervisor, "other", protocol.Unavailable, protocol.Block{})
+	assert.Never(t, func() bool {
+		return chainSupervisor.GetChainState().HeadData.IsEmpty()
+	}, 200*time.Millisecond, eventuallyTick)
+	assert.Equal(t, chosenHead, chainSupervisor.GetChainState().HeadData.Head)
+
+	// when the last head goes, the chain has none
+	publishHeadEvent(chainSupervisor, "alive", protocol.Unavailable, protocol.Block{})
+	assert.Eventually(t, func() bool {
+		return chainSupervisor.GetChainState().HeadData.IsEmpty()
+	}, eventuallyWait, eventuallyTick)
+}

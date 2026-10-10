@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	_ "github.com/drpcorg/nodecore/pkg/errors_config"
 	_ "github.com/drpcorg/nodecore/pkg/logger"
+	"github.com/drpcorg/nodecore/pkg/reloadsignal"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/rs/zerolog/log"
 	_ "go.uber.org/automaxprocs"
@@ -67,7 +68,11 @@ func main() {
 		mainCtxCancel()
 	}()
 
-	nodeCoreApp, err := app.NewApp(mainCtx, appConfig)
+	// SIGHUP reloads the upstream list. reloadsignal owns the signal from before
+	// main to the end of the process, so that it never terminates nodecore: one
+	// sent during the startup waits for the app, one sent during the shutdown
+	// is ignored.
+	nodeCoreApp, err := app.NewApp(mainCtx, appConfig, reloadsignal.Signals())
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the app")
 	}

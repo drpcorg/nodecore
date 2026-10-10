@@ -3,6 +3,7 @@ package flow
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -31,7 +32,7 @@ var hedgeMetric = prometheus.NewCounterVec(
 )
 
 func init() {
-	prometheus.MustRegister(hedgeMetric)
+	upstreammetrics.MustRegister(hedgeMetric)
 }
 
 type ProcessedResponse interface {
@@ -131,7 +132,13 @@ func executeUnaryRequest(
 				firstUpstream.Store(upstreamId)
 			}
 
-			responseHolder, err := sendUnaryRequest(ctx, upstreamSupervisor.GetUpstream(upstreamId), request, parsedParam)
+			upstream := upstreamSupervisor.GetUpstream(upstreamId)
+			if upstream == nil {
+				// the upstream was removed between its selection and this call
+				return nil, handleErrors(exec, protocol.NoAvailableUpstreamsError())
+			}
+
+			responseHolder, err := sendUnaryRequest(ctx, upstream, request, parsedParam)
 			if err != nil {
 				return nil, handleErrors(exec, err)
 			}
