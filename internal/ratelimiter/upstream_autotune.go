@@ -2,6 +2,7 @@ package ratelimiter
 
 import (
 	"context"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 	"math"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,12 @@ var TunedRateLimitMetric = prometheus.NewGaugeVec(
 	},
 	[]string{"upstream", "period"},
 )
+
+func init() {
+	// not registered with Prometheus here; listed so that the series of a
+	// removed upstream are dropped wherever the metric is exposed
+	upstreammetrics.Track(TunedRateLimitMetric)
+}
 
 type direction int
 

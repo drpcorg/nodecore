@@ -42,25 +42,7 @@ func (s IntegrationType) validate() error {
 }
 
 func NewAppConfig() (*AppConfig, error) {
-	configPath := os.Getenv(ConfigPathVar)
-	if configPath == "" {
-		configPath = DefaultConfigPath
-	}
-	log.Debug().Msgf("reading the config file %s", configPath)
-
-	file, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	appConfig := AppConfig{}
-	err = yaml.Unmarshal(file, &appConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	appConfig.setDefaults()
-	err = appConfig.validate()
+	appConfig, err := LoadAppConfig(ConfigPath())
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +52,45 @@ func NewAppConfig() (*AppConfig, error) {
 		log.Info().Msgf("the '%s' default score function will be used to calculate rating", scoreConfig.CalculationFunctionName)
 	} else if scoreConfig.CalculationFunctionFilePath != "" {
 		log.Info().Msgf("the score function from the %s file will be used to calculate rating", scoreConfig.CalculationFunctionFilePath)
+	}
+
+	return appConfig, nil
+}
+
+// ConfigPath is the config file nodecore was pointed at: NODECORE_CONFIG_PATH, or
+// the default path when the variable is unset.
+func ConfigPath() string {
+	configPath := os.Getenv(ConfigPathVar)
+	if configPath == "" {
+		configPath = DefaultConfigPath
+	}
+	return configPath
+}
+
+func LoadAppConfig(configPath string) (*AppConfig, error) {
+	log.Debug().Msgf("reading the config file %s", configPath)
+
+	file, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAppConfig(file)
+}
+
+// ParseAppConfig turns the bytes of a config file into a validated config with
+// all the defaults applied. It is what both the startup and a reload go through,
+// so a reload accepts exactly the files a restart would.
+func ParseAppConfig(file []byte) (*AppConfig, error) {
+	appConfig := AppConfig{}
+	err := yaml.Unmarshal(file, &appConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	appConfig.setDefaults()
+	err = appConfig.validate()
+	if err != nil {
+		return nil, err
 	}
 
 	return &appConfig, nil

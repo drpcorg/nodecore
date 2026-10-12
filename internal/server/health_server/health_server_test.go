@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -82,6 +83,10 @@ func (h *healthSupervisorStub) GetExecutor() failsafe.Executor[*protocol.Respons
 	return nil
 }
 func (h *healthSupervisorStub) StartUpstreams() {}
+
+func (h *healthSupervisorStub) ApplyUpstreams([]*config.Upstream) (upstreams.UpstreamsDiff, error) {
+	return upstreams.UpstreamsDiff{}, nil
+}
 func (h *healthSupervisorStub) SubscribeChainSupervisor(name string) *utils.Subscription[upstreams.ChainSupervisorEvent] {
 	return nil
 }
