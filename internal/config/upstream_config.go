@@ -30,6 +30,7 @@ type UpstreamConfig struct {
 	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing"`
 	BalancingStrategy BalancingStrategy         `yaml:"balancing-strategy"`
 	Mode              UpstreamMode              `yaml:"mode"`
+	Reload            *ReloadConfig             `yaml:"reload"`
 }
 
 // BalancingStrategy selects how the generic (non-special-cased) request is
@@ -539,18 +540,15 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 		return fmt.Errorf("error during failsafe validation of upstream-conifg: %s", err.Error())
 	}
 
-	if len(u.Upstreams) == 0 {
-		return errors.New("there must be at least one upstream in the config")
+	if err := u.Reload.validate(); err != nil {
+		return fmt.Errorf("error during reload config validation, cause: %s", err.Error())
 	}
 
-	idSet := mapset.NewThreadUnsafeSet[string]()
-	for i, upstream := range u.Upstreams {
-		if upstream.Id == "" {
-			return fmt.Errorf("error during upstream validation, cause: no upstream id under index %d", i)
-		}
-		if idSet.Contains(upstream.Id) {
-			return fmt.Errorf("error during upstream validation, cause: upstream with id '%s' already exists", upstream.Id)
-		}
+	if err := ValidateUpstreamList(u.Upstreams); err != nil {
+		return err
+	}
+
+	for _, upstream := range u.Upstreams {
 		if err := upstream.validate(torProxyUrl); err != nil {
 			return fmt.Errorf("error during upstream '%s' validation, cause: %s", upstream.Id, err.Error())
 		}
@@ -563,9 +561,34 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 				return fmt.Errorf("error during rate limit auto-tune config validation, cause: %s", err.Error())
 			}
 		}
-		idSet.Add(upstream.Id)
 	}
 
+	return nil
+}
+
+// ValidateUpstreamList checks an upstream list as a whole: it is not empty,
+// every upstream has an id of its own and a chain nodecore knows. The config
+// validation starts with it, and the upstream supervisor runs it again on a
+// list it is asked to apply - the supervisor is a public entry point of its
+// own and must not depend on its caller having validated a config file - so
+// both report the same problem in the same words.
+func ValidateUpstreamList(upstreams []*Upstream) error {
+	if len(upstreams) == 0 {
+		return errors.New("there must be at least one upstream in the config")
+	}
+
+	idSet := mapset.NewThreadUnsafeSet[string]()
+	for i, upstream := range upstreams {
+		if upstream == nil || upstream.Id == "" {
+			return fmt.Errorf("error during upstream validation, cause: no upstream id under index %d", i)
+		}
+		if !idSet.Add(upstream.Id) {
+			return fmt.Errorf("error during upstream validation, cause: upstream with id '%s' already exists", upstream.Id)
+		}
+		if !chains.IsSupported(upstream.ChainName) {
+			return fmt.Errorf("error during upstream '%s' validation, cause: not supported chain '%s'", upstream.Id, upstream.ChainName)
+		}
+	}
 	return nil
 }
 

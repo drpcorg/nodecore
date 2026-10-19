@@ -3,6 +3,7 @@ package ws
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -32,6 +33,11 @@ const rpcTimeout = 1 * time.Minute
 // pin the aggregation engine's per-key build and starve unrelated subscribers.
 const wsWriteTimeout = 30 * time.Second
 
+// wsStopTimeout bounds how long Stop waits for the connection loop to close the
+// socket and end the requests on it. The loop can only be late when it is in
+// the middle of a dial.
+const wsStopTimeout = 5 * time.Second
+
 type GenericWsProcessor struct {
 	lifecycle *utils.GenericLifecycle
 
@@ -47,6 +53,9 @@ type GenericWsProcessor struct {
 
 	executor   failsafe.Executor[bool]
 	subManager *utils.SubscriptionManager[protocol.SubscribeConnectorState]
+
+	// loopDone is closed when the connection loop of the current Start has exited
+	loopDone atomic.Pointer[chan struct{}]
 }
 
 func (b *GenericWsProcessor) GetUrl() string {
@@ -59,10 +68,13 @@ func (b *GenericWsProcessor) Unsubscribe(opId string) {
 
 func (b *GenericWsProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) error {
+		loopDone := make(chan struct{})
+		b.loopDone.Store(&loopDone)
 		go func() {
+			defer close(loopDone)
 			for {
 				if ctx.Err() != nil {
-					b.disconnect("stopping ws loop", ctx.Err())
+					b.stopLoop(ctx)
 					return
 				}
 
@@ -78,7 +90,7 @@ func (b *GenericWsProcessor) Start() {
 
 				select {
 				case <-ctx.Done():
-					b.disconnect("stopping ws loop", ctx.Err())
+					b.stopLoop(ctx)
 					return
 				case event := <-b.writeEventsChan:
 					switch e := event.(type) {
@@ -120,8 +132,31 @@ func (b *GenericWsProcessor) Start() {
 	})
 }
 
+// Stop ends the connection loop and waits until it has closed the socket,
+// ended every request and subscription that was on it and reported the
+// disconnect. A caller that tears the upstream down right after Stop must find
+// nothing still waiting on this connection.
 func (b *GenericWsProcessor) Stop() {
 	b.lifecycle.Stop()
+
+	loopDone := b.loopDone.Load()
+	if loopDone == nil {
+		return
+	}
+	select {
+	case <-*loopDone:
+	case <-time.After(wsStopTimeout):
+		log.Warn().Msgf("ws loop of %s is still running %s after its stop", b.endpoint, wsStopTimeout)
+	}
+}
+
+// stopLoop is the loop's way out when its context ends. Unlike a disconnect
+// seen by the reader nobody else will report this one, so the state is
+// published here: the consumers of a subscription learn that it is over from
+// their closed channel and from this event.
+func (b *GenericWsProcessor) stopLoop(ctx context.Context) {
+	b.disconnect("stopping ws loop", ctx.Err())
+	b.subManager.Publish(protocol.WsDisconnected)
 }
 
 func (b *GenericWsProcessor) Running() bool {
@@ -252,7 +287,8 @@ func (b *GenericWsProcessor) disconnect(reason string, cause error) {
 }
 
 func (b *GenericWsProcessor) connectWithRetry(ctx context.Context) error {
-	_, err := b.executor.GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
+	// with the context the backoff between attempts ends as soon as the loop is stopped
+	_, err := b.executor.WithContext(ctx).GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
 		if ctx.Err() != nil {
 			return true, nil
 		}

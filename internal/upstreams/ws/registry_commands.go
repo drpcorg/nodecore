@@ -157,13 +157,16 @@ func (c *finishCommand) handle(registry *GenericRequestRegistry) {
 }
 
 type cancelAllCommand struct {
+	// done is closed once every operation has been cancelled
+	done chan struct{}
 }
 
-func newCancelAllCommand() *cancelAllCommand {
-	return &cancelAllCommand{}
+func newCancelAllCommand(done chan struct{}) *cancelAllCommand {
+	return &cancelAllCommand{done: done}
 }
 
 func (c *cancelAllCommand) handle(registry *GenericRequestRegistry) {
+	defer close(c.done)
 	state := registry.registryState
 	ops := make([]RequestOperation, 0, len(state.requests)+len(state.subs))
 

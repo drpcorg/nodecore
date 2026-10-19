@@ -249,6 +249,9 @@ func (u *UpstreamConfig) setDefaults(grpcAuth *GrpcAuthConfig) {
 		u.ScorePolicyConfig = &ScorePolicyConfig{}
 	}
 	u.ScorePolicyConfig.setDefaults()
+	if u.Reload == nil {
+		u.Reload = &ReloadConfig{}
+	}
 	u.LabelBalancing.setDefaults()
 	for _, chainDefaults := range u.ChainDefaults {
 		chainDefaults.LabelBalancing.setDefaults()

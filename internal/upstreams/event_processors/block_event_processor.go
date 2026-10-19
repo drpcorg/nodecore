@@ -3,6 +3,7 @@ package event_processors
 import (
 	"context"
 	"fmt"
+	"github.com/drpcorg/nodecore/internal/upstreammetrics"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -35,7 +36,7 @@ var headsMetric = prometheus.NewGaugeVec(
 )
 
 func init() {
-	prometheus.MustRegister(blocksMetric, headsMetric)
+	upstreammetrics.MustRegister(blocksMetric, headsMetric)
 }
 
 type BlockUpdateData interface {

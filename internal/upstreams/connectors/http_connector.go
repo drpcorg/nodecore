@@ -170,7 +170,14 @@ func NewHttpConnector(
 func (h *HttpConnector) Start() {
 }
 
+// Stop releases the keep-alive connections the connector holds to its endpoint.
+// Requests that are in flight are not interrupted: they run on the caller's
+// context and their connections are closed by the idle timeout afterwards.
 func (h *HttpConnector) Stop() {
+	// the default client is shared with the rest of the process
+	if h.httpClient != http.DefaultClient {
+		h.httpClient.CloseIdleConnections()
+	}
 }
 
 func (h *HttpConnector) Running() bool {

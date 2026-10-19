@@ -187,7 +187,7 @@ func TestCancelAllCommandHandleCancelsRequestsAndSubscriptions(t *testing.T) {
 		},
 	}
 
-	newCancelAllCommand().handle(registry)
+	newCancelAllCommand(make(chan struct{})).handle(registry)
 
 	assert.Empty(t, registry.registryState.requests)
 	assert.Empty(t, registry.registryState.subs)
