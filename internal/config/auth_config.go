@@ -71,6 +71,16 @@ type KeySettingsConfig struct {
 	Methods       *AuthMethods   `yaml:"methods"`
 	AuthContracts *AuthContracts `yaml:"contracts"`
 	CorsOrigins   []string       `yaml:"cors-origins"`
+	Upstreams     *KeyUpstreams  `yaml:"upstreams"`
+}
+
+// KeyUpstreams restricts which upstreams may serve a key's requests. It is a
+// filter, not a balancer: the chain's balancing strategy (rating, base or
+// label-balancing) still picks among the upstreams that pass it.
+type KeyUpstreams struct {
+	// GroupLabels admits an upstream that carries at least one of these
+	// config group-labels (the same labels label-balancing groups by).
+	GroupLabels []string `yaml:"group-labels"`
 }
 
 type AuthMethods struct {
@@ -95,7 +105,7 @@ func (d *DrpcKeyConfig) keyCfg() {}
 
 func (l *LocalKeyConfig) keyCfg() {}
 
-func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
+func (a *AuthConfig) validate(integrationCfg *IntegrationConfig, upstreamCfg *UpstreamConfig) error {
 	if !a.Enabled {
 		return nil
 	}
@@ -107,6 +117,7 @@ func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
 	if len(a.KeyConfigs) > 0 {
 		keyIds := mapset.NewThreadUnsafeSet[string]()
 		keys := mapset.NewThreadUnsafeSet[string]()
+		groupLabels := upstreamGroupLabels(upstreamCfg)
 		for i, keyConfig := range a.KeyConfigs {
 			if keyConfig.Id == "" {
 				return fmt.Errorf("error during key config validation, cause: no key id under index %d", i)
@@ -117,7 +128,7 @@ func (a *AuthConfig) validate(integrationCfg *IntegrationConfig) error {
 			if keyConfig.LocalKeyConfig != nil && keys.ContainsOne(keyConfig.LocalKeyConfig.Key) {
 				return fmt.Errorf("error during key config validation, local key '%s' already exists", keyConfig.LocalKeyConfig.Key)
 			}
-			if err := keyConfig.validate(integrationCfg); err != nil {
+			if err := keyConfig.validate(integrationCfg, groupLabels); err != nil {
 				return fmt.Errorf("error during '%s' key config validation, cause: %s", keyConfig.Id, err.Error())
 			}
 			keyIds.Add(keyConfig.Id)
@@ -153,7 +164,7 @@ func (r *RequestStrategyConfig) validate() error {
 	return nil
 }
 
-func (k *KeyConfig) validate(integrationCfg *IntegrationConfig) error {
+func (k *KeyConfig) validate(integrationCfg *IntegrationConfig, groupLabels mapset.Set[string]) error {
 	if err := k.Type.validate(); err != nil {
 		return err
 	}
@@ -162,7 +173,7 @@ func (k *KeyConfig) validate(integrationCfg *IntegrationConfig) error {
 		if k.LocalKeyConfig == nil {
 			return keyNoSettingsError(k.Type)
 		}
-		if err := k.LocalKeyConfig.validate(); err != nil {
+		if err := k.LocalKeyConfig.validate(groupLabels); err != nil {
 			return err
 		}
 	case Drpc:
@@ -196,11 +207,51 @@ func keyNoSettingsError(keyType IntegrationType) error {
 	return fmt.Errorf("specified '%s' key management rule type but there are no its settings", keyType)
 }
 
-func (l *LocalKeyConfig) validate() error {
+func (l *LocalKeyConfig) validate(groupLabels mapset.Set[string]) error {
 	if l.Key == "" {
 		return errors.New("'key' field is empty")
 	}
+	if l.KeySettingsConfig != nil && l.KeySettingsConfig.Upstreams != nil {
+		if err := l.KeySettingsConfig.Upstreams.validate(groupLabels); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// validate also rejects a label no upstream carries (groupLabels): such a key
+// would silently be served by nothing, and a typo is far likelier than an
+// intent to disable the key.
+func (k *KeyUpstreams) validate(groupLabels mapset.Set[string]) error {
+	if len(k.GroupLabels) == 0 {
+		return errors.New("upstreams.group-labels must contain at least one label")
+	}
+	seen := mapset.NewThreadUnsafeSet[string]()
+	for _, label := range k.GroupLabels {
+		if label == "" {
+			return errors.New("upstreams.group-labels must not contain an empty label")
+		}
+		if seen.Contains(label) {
+			return fmt.Errorf("upstreams.group-labels contains a duplicate label '%s'", label)
+		}
+		if !groupLabels.Contains(label) {
+			return fmt.Errorf("upstreams.group-labels has '%s', which no upstream carries", label)
+		}
+		seen.Add(label)
+	}
+	return nil
+}
+
+// upstreamGroupLabels collects the group-labels carried by any configured
+// upstream.
+func upstreamGroupLabels(upstreamCfg *UpstreamConfig) mapset.Set[string] {
+	groupLabels := mapset.NewThreadUnsafeSet[string]()
+	if upstreamCfg != nil {
+		for _, upstream := range upstreamCfg.Upstreams {
+			groupLabels.Append(upstream.GroupLabels...)
+		}
+	}
+	return groupLabels
 }
 
 func (r RequestStrategyType) validate() error {

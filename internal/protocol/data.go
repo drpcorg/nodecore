@@ -296,6 +296,22 @@ type RequestUnsupportedSelector struct {
 
 func (RequestUnsupportedSelector) isRequestSelector() {}
 
+// RequestGroupLabelSelector admits an upstream that carries at least one of
+// Labels among its config group-labels. Clients cannot send it: nodecore adds
+// it on behalf of an API key whose settings restrict its upstreams.
+type RequestGroupLabelSelector struct {
+	Labels []string
+}
+
+func (RequestGroupLabelSelector) isRequestSelector() {}
+
+// SelectorAppender is implemented by request holders that accept selectors
+// after construction. Callers adding a mandatory restriction must treat a
+// holder that does not implement it as an error, never skip the restriction.
+type SelectorAppender interface {
+	AppendSelectors(selectors ...RequestSelector)
+}
+
 // SubResponse is one event of an upstream subscription/stream: a data
 // notification (GetMessage), a terminal error (GetError), or a clean end of
 // the stream (IsEnd - a bounded gRPC stream completing; it may carry trailers).
