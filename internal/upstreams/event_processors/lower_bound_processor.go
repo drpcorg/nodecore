@@ -60,8 +60,7 @@ func (b *GenericLowerBoundEventProcessor) Start() {
 }
 
 func (b *GenericLowerBoundEventProcessor) Stop() {
-	b.lifecycle.Stop()
-	b.lowerBoundProcessor.Stop()
+	b.lifecycle.StopWith(b.lowerBoundProcessor.Stop)
 }
 
 func (b *GenericLowerBoundEventProcessor) Running() bool {

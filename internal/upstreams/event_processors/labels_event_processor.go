@@ -43,8 +43,7 @@ func (l *LabelsEventProcessor) Start() {
 }
 
 func (l *LabelsEventProcessor) Stop() {
-	l.lifecycle.Stop()
-	l.labelsProcessor.Stop()
+	l.lifecycle.StopWith(l.labelsProcessor.Stop)
 }
 
 func (l *LabelsEventProcessor) Running() bool {

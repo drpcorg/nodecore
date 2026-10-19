@@ -56,8 +56,7 @@ func (b *GenericCapEventProcessor) Start() {
 }
 
 func (b *GenericCapEventProcessor) Stop() {
-	b.lifecycle.Stop()
-	b.capProcessor.Stop()
+	b.lifecycle.StopWith(b.capProcessor.Stop)
 }
 
 func (b *GenericCapEventProcessor) Running() bool {

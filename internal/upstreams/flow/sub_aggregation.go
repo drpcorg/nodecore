@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/config"
@@ -335,7 +334,7 @@ func newGenericSourceBuilder(
 		}
 
 		var stateChan chan protocol.SubscribeConnectorState
-		statesSub := wsConn.SubscribeStates(fmt.Sprintf("subengine_%s_%s_%s_%d", upstreamId, request.Method(), uuid.NewString(), time.Now().UnixNano()))
+		statesSub := wsConn.SubscribeStates(fmt.Sprintf("subengine_%s_%s", upstreamId, request.Method()))
 		if statesSub != nil {
 			stateChan = statesSub.Events
 		}

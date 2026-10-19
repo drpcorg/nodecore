@@ -44,8 +44,7 @@ func (m *MethodsEventProcessor) Start() {
 }
 
 func (m *MethodsEventProcessor) Stop() {
-	m.lifecycle.Stop()
-	m.methodsProcessor.Stop()
+	m.lifecycle.StopWith(m.methodsProcessor.Stop)
 }
 
 func (m *MethodsEventProcessor) Running() bool {

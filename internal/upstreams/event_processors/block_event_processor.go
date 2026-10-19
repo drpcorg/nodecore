@@ -9,7 +9,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -96,9 +95,7 @@ func (h *HeadEventProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) error {
 		h.headProcessor.Start()
 
-		// unique per start: the previous run releases its subscription asynchronously, and
-		// a pause followed by an immediate resume must not clash with it
-		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates_%s", h.upstreamId, uuid.NewString()))
+		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
 
 		go func() {
 			defer headSub.Unsubscribe()
@@ -126,8 +123,7 @@ func (h *HeadEventProcessor) Start() {
 }
 
 func (h *HeadEventProcessor) Stop() {
-	h.lifecycle.Stop()
-	h.headProcessor.Stop()
+	h.lifecycle.StopWith(h.headProcessor.Stop)
 }
 
 func (h *HeadEventProcessor) Running() bool {
@@ -203,8 +199,7 @@ func (b *GenericBlockEventProcessor) Start() {
 }
 
 func (b *GenericBlockEventProcessor) Stop() {
-	b.lifecycle.Stop()
-	b.blockProcessor.Stop()
+	b.lifecycle.StopWith(b.blockProcessor.Stop)
 }
 
 func (b *GenericBlockEventProcessor) Running() bool {
