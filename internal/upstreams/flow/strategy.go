@@ -163,7 +163,7 @@ func filterUpstreams(
 	// a JSON-RPC subscription needs a live ws connector on the upstream; a gRPC
 	// stream rides the grpc connector the spec already binds the method to
 	if request.IsSubscribe() && request.RequestType() != protocol.Grpc {
-		matchers = append(matchers, NewWsCapMatcher(request.Method()))
+		matchers = append(matchers, NewCapMatcher(protocol.WsCap, request.Method()))
 	}
 
 	multiMatcher := NewMultiMatcher(matchers...)

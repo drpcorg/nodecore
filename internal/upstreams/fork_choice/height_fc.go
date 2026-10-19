@@ -9,7 +9,7 @@ type HeightForkChoice struct {
 	max   protocol.Block
 }
 
-func NewHeightForkChoice() *HeightForkChoice {
+func NewHeightForkChoice() ForkChoice {
 	return &HeightForkChoice{
 		heads: make(map[string]protocol.Block),
 	}

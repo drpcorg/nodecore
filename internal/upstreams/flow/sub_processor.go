@@ -78,8 +78,13 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// (gRPC streams opt out via a per-request key, see resolveSource).
 		// The shared source emits events only - each client's framing decides
 		// how (and whether) the subscription is announced to the client.
-		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
-		sub, err := s.engine.Subscribe(key, builder)
+		source, err := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
+		if err != nil {
+			send(totalFailureWrapper(request, err))
+			return
+		}
+		filter := source.filter
+		sub, err := s.engine.Subscribe(source.key, source.builder)
 		if err != nil {
 			send(totalFailureWrapper(request, err))
 			return

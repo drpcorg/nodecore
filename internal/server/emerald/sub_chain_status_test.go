@@ -136,6 +136,10 @@ func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*u
 	return s.subManager.Subscribe(name)
 }
 
+func (s *fakeChainSupervisor) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {
+	return nil
+}
+
 func (s *fakeChainSupervisor) SetState(state upstreams.ChainSupervisorState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

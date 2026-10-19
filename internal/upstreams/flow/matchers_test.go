@@ -84,8 +84,8 @@ func TestStatusMatcherNotAvailable(t *testing.T) {
 	assert.Equal(t, AvailabilityType, resp.Type())
 }
 
-func TestWsCapMatcher(t *testing.T) {
-	matcher := NewWsCapMatcher("sub")
+func TestCapMatcher(t *testing.T) {
+	matcher := NewCapMatcher(protocol.WsCap, "sub")
 	state := protocol.UpstreamState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap)}
 
 	resp := matcher.Match("1", &state)
@@ -94,15 +94,36 @@ func TestWsCapMatcher(t *testing.T) {
 	assert.Equal(t, SuccessType, resp.Type())
 }
 
-func TestWsCapMatcherNotAvailable(t *testing.T) {
-	matcher := NewWsCapMatcher("sub")
-	state := protocol.UpstreamState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()}
+func TestCapMatcherNotAvailable(t *testing.T) {
+	matcher := NewCapMatcher(protocol.LogsCap, "logs")
+	state := protocol.UpstreamState{Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap)}
 
 	resp := matcher.Match("1", &state)
 
 	assert.IsType(t, MethodResponse{}, resp)
 	assert.Equal(t, MethodType, resp.Type())
-	assert.Equal(t, "method sub is not supported", resp.Cause())
+	assert.Equal(t, "method logs is not supported", resp.Cause())
+}
+
+func TestCapMatcherNilCaps(t *testing.T) {
+	matcher := NewCapMatcher(protocol.NewHeadsCap, "newHeads")
+
+	resp := matcher.Match("1", &protocol.UpstreamState{})
+
+	assert.Equal(t, MethodType, resp.Type())
+}
+
+func TestMatcherFilter(t *testing.T) {
+	filter := matcherFilter(NewMultiMatcher(NewStatusMatcher(), NewCapMatcher(protocol.NewHeadsCap, "newHeads")))
+
+	ok := protocol.UpstreamState{Status: protocol.Available, Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.NewHeadsCap)}
+	assert.True(t, filter("1", &ok))
+
+	noCap := protocol.UpstreamState{Status: protocol.Available, Caps: mapset.NewThreadUnsafeSet[protocol.Cap]()}
+	assert.False(t, filter("1", &noCap))
+
+	unavailable := protocol.UpstreamState{Status: protocol.Unavailable, Caps: mapset.NewThreadUnsafeSet[protocol.Cap](protocol.NewHeadsCap)}
+	assert.False(t, filter("1", &unavailable))
 }
 
 func TestUpstreamIndexMatcher(t *testing.T) {

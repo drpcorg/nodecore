@@ -3,6 +3,9 @@ package flow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
@@ -11,7 +14,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
+	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
@@ -29,8 +35,20 @@ var logsBlocksSkippedMetric = prometheus.NewCounterVec(
 	[]string{"chain", "reason"},
 )
 
+// logsNotReadyRetriesMetric counts rounds over the upstreams repeated because
+// they reported the block as not ready yet (see blockNotReady).
+var logsNotReadyRetriesMetric = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: config.AppName,
+		Subsystem: "logs_source",
+		Name:      "not_ready_retries_total",
+		Help:      "The total number of times eth_getLogs for a block was asked again because the upstreams reported it as not ready yet",
+	},
+	[]string{"chain"},
+)
+
 func init() {
-	prometheus.MustRegister(logsBlocksSkippedMetric)
+	prometheus.MustRegister(logsBlocksSkippedMetric, logsNotReadyRetriesMetric)
 }
 
 const (
@@ -45,7 +63,46 @@ const (
 	// logsFetchAttempts bounds the per-block walk down the rating list when an
 	// upstream errors on eth_getLogs before the block is skipped.
 	logsFetchAttempts = 3
+	// A block the upstream reports as not ready yet is asked again with a backoff
+	// from logsNotReadyStep up to logsNotReadyMaxStep, until one block time after
+	// its head arrived, clamped to [logsNotReadyWaitMin, logsNotReadyWaitMax].
+	logsNotReadyStep    = 100 * time.Millisecond
+	logsNotReadyMaxStep = time.Second
+	logsNotReadyWaitMin = time.Second
+	logsNotReadyWaitMax = 3 * time.Second
 )
+
+// notReadyErrors are upstream answers for a block the upstream has announced but
+// cannot serve logs of yet: erigon dispatches newHeads before it commits the
+// block, cosmos-evm nodes index the block hash after the header event.
+var notReadyErrors = []string{
+	"block range extends beyond current head block", // erigon: number past the executed head
+	"beyond latest executed block",                  // erigon: hash not executed yet
+	"block not found",                               // erigon, cosmos-evm ("block not found for hash")
+	"unknown block",                                 // geth
+	"header not found",                              // geth, reth
+	"could not find results for height",             // cosmos-evm: tendermint block results
+}
+
+// blockNotReady reports whether err says the block is not available yet.
+func blockNotReady(err *protocol.ResponseError) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Message)
+	for _, s := range notReadyErrors {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// logsNotReadyWait is how long after its head arrived a block the upstream
+// reports as not ready yet is asked again.
+func logsNotReadyWait(chain chains.Chain) time.Duration {
+	return min(max(chains.GetChain(chain.String()).Settings.ExpectedBlockTime, logsNotReadyWaitMin), logsNotReadyWaitMax)
+}
 
 // newLogsSourceBuilder builds the chain's single shared "all logs" source: for
 // each new block it issues one eth_getLogs{blockHash} (no address/topic filter)
@@ -54,14 +111,22 @@ const (
 // available upstream at >= that height), not by the head producer, so a producer
 // that has since gone away does not break log delivery.
 //
+// Blocks are announced from a head feed filtered to the upstreams that can serve
+// them (available, with LogsCap, matching the client's selectors), not from the
+// chain's merged head: that one may come from an upstream without eth_getLogs,
+// and its block would be skipped because no upstream that has the method had
+// reached it yet. Heights that head jumps over, and the new chain after a reorg,
+// are fetched by parent hash.
+//
 // Reorgs are handled via the block-update stream (see subengine.StreamBlockUpdates):
 // a dropped block's cached logs are re-emitted with removed:true. The source
-// terminates (so clients fail over to the generic node-backed path) when the
-// chain loses LogsCap.
+// terminates with a terminal frame (clients resubscribe and are resolved afresh)
+// when the feed goes empty: no upstream passes the filter any more.
 func newLogsSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
 	registry *rating.RatingRegistry,
+	filter upstreams.FilterUpstream,
 ) subengine.SourceBuilder {
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		chainSup := supervisor.GetChainSupervisor(chain)
@@ -69,24 +134,17 @@ func newLogsSourceBuilder(
 			return nil, protocol.NoAvailableUpstreamsError()
 		}
 
-		logsLost := func() bool {
-			caps := chainSup.GetChainState().Caps
-			return caps == nil || !caps.Contains(protocol.LogsCap)
-		}
+		notReadyWait := logsNotReadyWait(chain)
 
 		out := make(chan protocol.SubResponse, logsBufferSize)
 		updates := make(chan subengine.BlockUpdate, 64)
 
-		go subengine.StreamBlockUpdates(srcCtx, chainSup, updates)
+		feed := chainSup.SubscribeHead(fmt.Sprintf("subengine_logs_%s_%s", chain, uuid.NewString()), filter)
+		go subengine.StreamBlockUpdates(srcCtx, chain, feed, updates, blockByHashResolver(supervisor, chain, chainSup, registry))
 
 		go func() {
 			defer close(out)
 			cache := newLogCache(logsCacheSize)
-
-			if logsLost() {
-				out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
-				return
-			}
 
 			for {
 				select {
@@ -94,15 +152,15 @@ func newLogsSourceBuilder(
 					return
 				case update, ok := <-updates:
 					if !ok {
-						return
-					}
-					if logsLost() {
-						out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
+						// the feed went empty: no upstream can serve logs any more
+						if srcCtx.Err() == nil {
+							out <- &protocol.GenericSubResponse{Error: protocol.SubscribeTotalFailureError()}
+						}
 						return
 					}
 					switch update.Kind {
 					case subengine.BlockNew:
-						logs, upstreamId := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, update.Block)
+						logs, upstreamId := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, update.Block, update.Seen.Add(notReadyWait))
 						if logs == nil {
 							continue // fetch failed/skipped (logged); not terminal
 						}
@@ -155,6 +213,8 @@ func newLogsSourceBuilder(
 // an upstream chosen by height, plus the serving upstream id. It returns (nil,"")
 // when the block cannot be served (no upstream at the height, or every attempt
 // errored); the source treats that as a skipped block, not a terminal failure.
+// When the upstreams that were asked only reported the block as not ready yet,
+// they are asked again, with a backoff, until notReadyUntil.
 func fetchBlockLogs(
 	ctx context.Context,
 	supervisor upstreams.UpstreamSupervisor,
@@ -162,6 +222,7 @@ func fetchBlockLogs(
 	chainSup upstreams.ChainSupervisor,
 	registry *rating.RatingRegistry,
 	block protocol.Block,
+	notReadyUntil time.Time,
 ) ([]json.RawMessage, string) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"eth_getLogs",
@@ -175,20 +236,58 @@ func fetchBlockLogs(
 	}
 
 	// Select any available, best-rated upstream whose head is at >= the block's
-	// height. A fresh strategy per block carries the height matcher; repeated
-	// SelectUpstream calls walk down the rating list (selectedUpstreams dedup).
-	strategy := NewRatingStrategy(chain, "eth_getLogs", []Matcher{NewHeightMatcher(int64(block.Height))}, chainSup, registry)
+	// height. A fresh strategy carries the height matcher; repeated SelectUpstream
+	// calls walk down the rating list (selectedUpstreams dedup).
+	// upstreams that answered another error are not asked again in later rounds
+	var failed []string
+	newStrategy := func() *RatingStrategy {
+		strategy := NewRatingStrategy(chain, "eth_getLogs", []Matcher{NewHeightMatcher(int64(block.Height))}, chainSup, registry)
+		for _, id := range failed {
+			strategy.selectedUpstreams.Add(id)
+		}
+		return strategy
+	}
+	strategy := newStrategy()
+	wait := logsNotReadyStep
+	var lastErr *protocol.ResponseError
+	var lastUpstream string
+	notReady := false // an upstream asked in this round reported the block as not ready yet
 
-	for attempt := 0; attempt < logsFetchAttempts; attempt++ {
+	for attempt := 0; attempt < logsFetchAttempts; {
 		resp, err := selectAndSend(ctx, supervisor, request, strategy)
 		if err != nil {
+			if notReady && time.Now().Before(notReadyUntil) {
+				// every upstream at the height was asked and none could serve the
+				// block yet: ask again shortly, from the top of the rating list
+				select {
+				case <-ctx.Done():
+					return nil, ""
+				case <-time.After(min(wait, time.Until(notReadyUntil))):
+				}
+				wait = min(2*wait, logsNotReadyMaxStep)
+				strategy, notReady = newStrategy(), false
+				logsNotReadyRetriesMetric.WithLabelValues(chain.String()).Inc()
+				continue
+			}
+			reason := "no_upstream"
+			if notReady {
+				reason = "not_ready"
+			}
 			// No upstream at this height (or the strategy is exhausted): the block's
 			// logs are skipped, so the client silently misses them. Surface it.
-			log.Warn().Err(err).Msgf("subengine: no upstream to serve eth_getLogs for block %d on %s; skipping block's logs", block.Height, chain)
-			logsBlocksSkippedMetric.WithLabelValues(chain.String(), "no_upstream").Inc()
+			log.Warn().Err(err).Str("upstream", lastUpstream).Str("upstream_error", errorMessage(lastErr)).
+				Msgf("subengine: no upstream to serve eth_getLogs for block %d on %s; skipping block's logs", block.Height, chain)
+			logsBlocksSkippedMetric.WithLabelValues(chain.String(), reason).Inc()
 			return nil, ""
 		}
 		if resp.Response.HasError() {
+			lastErr, lastUpstream = resp.Response.GetError(), resp.UpstreamId
+			if blockNotReady(lastErr) {
+				notReady = true
+			} else {
+				failed = append(failed, resp.UpstreamId)
+				attempt++
+			}
 			continue // try the next-best upstream
 		}
 		var arr []json.RawMessage
@@ -204,9 +303,61 @@ func fetchBlockLogs(
 		return logs, resp.UpstreamId
 	}
 	// Every attempt returned an upstream error: the block's logs are skipped.
-	log.Warn().Msgf("subengine: eth_getLogs errored on all %d attempts for block %d on %s; skipping block's logs", logsFetchAttempts, block.Height, chain)
+	log.Warn().Str("upstream", lastUpstream).Str("upstream_error", errorMessage(lastErr)).
+		Msgf("subengine: eth_getLogs errored on all %d attempts for block %d on %s; skipping block's logs", logsFetchAttempts, block.Height, chain)
 	logsBlocksSkippedMetric.WithLabelValues(chain.String(), "upstream_error").Inc()
 	return nil, ""
+}
+
+func errorMessage(err *protocol.ResponseError) string {
+	if err == nil {
+		return ""
+	}
+	return err.Message
+}
+
+// blockByHashResolver lets the block-update stream fetch the head's ancestors by
+// hash: heights the head jumped over, or the new chain after a reorg.
+func blockByHashResolver(
+	supervisor upstreams.UpstreamSupervisor,
+	chain chains.Chain,
+	chainSup upstreams.ChainSupervisor,
+	registry *rating.RatingRegistry,
+) subengine.BlockResolver {
+	return func(ctx context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
+		request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByHash", []any{hash.ToHexWithPrefix(), false}, chain)
+		if err != nil {
+			return protocol.Block{}, err
+		}
+		strategy := NewRatingStrategy(chain, "eth_getBlockByHash", []Matcher{NewHeightMatcher(int64(height))}, chainSup, registry)
+		for attempt := 0; attempt < logsFetchAttempts; attempt++ {
+			resp, err := selectAndSend(ctx, supervisor, request, strategy)
+			if err != nil {
+				return protocol.Block{}, err
+			}
+			if resp.Response.HasError() {
+				continue
+			}
+			var header struct {
+				Hash   string           `json:"hash"`
+				Parent string           `json:"parentHash"`
+				Number *rpc.BlockNumber `json:"number"`
+			}
+			// null: this upstream does not know the block
+			if err := sonic.Unmarshal(resp.Response.ResponseResult(), &header); err != nil || header.Number == nil {
+				continue
+			}
+			block := protocol.Block{
+				Height:     uint64(header.Number.Int64()),
+				Hash:       blockchain.NewHashIdFromString(header.Hash),
+				ParentHash: blockchain.NewHashIdFromString(header.Parent),
+			}
+			if block.Hash.Equals(hash) {
+				return block, nil
+			}
+		}
+		return protocol.Block{}, fmt.Errorf("no upstream returned block %s", hash.ToHexWithPrefix())
+	}
 }
 
 // setRemovedTrue returns a copy of an eth log object with "removed" set to true,

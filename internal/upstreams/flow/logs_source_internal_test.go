@@ -1,6 +1,7 @@
 package flow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -12,11 +13,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/rating"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -30,12 +33,49 @@ func logsTestUpConfig() *config.Upstream {
 	}
 }
 
+// logsTestUpstream is test_utils.TestEvmUpstream with its own id, as in
+// production, where the response's upstream id is the one the strategy selected.
+func logsTestUpstream(id string, connector connectors.ApiConnector) *upstreams.GenericUpstream {
+	cfg := logsTestUpConfig()
+	cfg.Id = id
+	state := utils.NewAtomic[protocol.UpstreamState]()
+	state.Store(protocol.DefaultUpstreamState(logsMethodsMock(), mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil))
+	return upstreams.NewGenericUpstreamWithParams(id, chains.ETHEREUM, []connectors.ApiConnector{connector}, cfg, "00012", state, nil, nil, nil, false)
+}
+
 func logsMethodsMock() *mocks.MethodsMock {
 	m := mocks.NewMethodsMock()
-	m.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getLogs"))
+	m.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getLogs", "eth_getBlockByHash"))
 	m.On("HasMethod", "eth_getLogs").Return(true)
+	m.On("HasMethod", "eth_getBlockByHash").Return(true)
 	m.On("HasMethod", mock.Anything).Return(false).Maybe()
 	return m
+}
+
+// byMethod matches a SendRequest call by its JSON-RPC method.
+func byMethod(method string) any {
+	return mock.MatchedBy(func(r protocol.RequestHolder) bool { return r.Method() == method })
+}
+
+// byMethodAndParam matches a SendRequest call by method and a substring of its body.
+func byMethodAndParam(method, param string) any {
+	return mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		body, err := r.Body()
+		return r.Method() == method && err == nil && bytes.Contains(body, []byte(param))
+	})
+}
+
+// readWithin reads the next source event, failing after timeout.
+func readWithin(t *testing.T, ch <-chan protocol.SubResponse, timeout time.Duration) protocol.SubResponse {
+	t.Helper()
+	select {
+	case r, ok := <-ch:
+		require.True(t, ok, "source channel closed unexpectedly")
+		return r
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for a source event")
+		return nil
+	}
 }
 
 // publishLogsUpstream registers an Available upstream at the given head height
@@ -82,7 +122,7 @@ func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
 	connHigh.On("SendRequest", mock.Anything, mock.Anything).Return(protocol.NewSimpleHttpUpstreamResponse("1", logsJSON, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block)
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Time{})
 
 	require.Len(t, logs, 1)
 	assert.Equal(t, "id", upstreamId) // GenericUpstream id from TestEvmUpstream
@@ -103,7 +143,7 @@ func TestFetchBlockLogsNoUpstreamAtHeight(t *testing.T) {
 	upSup.On("GetUpstream", "low").Return(up).Maybe()
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block)
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Time{})
 
 	assert.Nil(t, logs)
 	assert.Empty(t, upstreamId)
@@ -128,9 +168,164 @@ func TestFetchBlockLogsErrorSkipsBlock(t *testing.T) {
 		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block)
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Time{})
 
 	assert.Nil(t, logs)
+}
+
+func TestBlockNotReady(t *testing.T) {
+	notReady := []string{
+		"block range extends beyond current head block",
+		"requested block range [100, 100] is beyond latest executed block 99 (node is still syncing)",
+		"block not found: 0xaa",
+		"failed to fetch header by hash 0xaa: block not found for hash 0xaa",
+		"unknown block",
+		"header not found",
+		"failed to fetch block result from Tendermint 100: could not find results for height #100",
+	}
+	for _, msg := range notReady {
+		assert.True(t, blockNotReady(&protocol.ResponseError{Message: msg}), msg)
+	}
+	for _, msg := range []string{"execution reverted", "query returned more than 10000 results", ""} {
+		assert.False(t, blockNotReady(&protocol.ResponseError{Message: msg}), msg)
+	}
+	assert.False(t, blockNotReady(nil))
+}
+
+// erigon-like: the upstream announced the block but answers "not ready" for a
+// moment; the block is asked again and its logs are served.
+func TestFetchBlockLogsRetriesNotReadyBlock(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "high", 100)
+
+	conn := mocks.NewConnectorMock()
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "high").Return(up).Maybe()
+
+	notReady := protocol.NewTotalFailureFromErr("1", protocol.ResponseErrorWithMessage("block range extends beyond current head block"), protocol.JsonRpc)
+	conn.On("SendRequest", mock.Anything, mock.Anything).Return(notReady).Twice()
+	conn.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(2*time.Second))
+
+	require.Len(t, logs, 1)
+	conn.AssertNumberOfCalls(t, "SendRequest", 3)
+}
+
+// A block that stays "not ready" is asked again only until the deadline.
+func TestFetchBlockLogsNotReadyUntilDeadline(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "high", 100)
+
+	conn := mocks.NewConnectorMock()
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "high").Return(up).Maybe()
+	conn.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", protocol.ResponseErrorWithMessage("block not found: 0xaa"), protocol.JsonRpc))
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	start := time.Now()
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(400*time.Millisecond))
+
+	assert.Nil(t, logs)
+	assert.GreaterOrEqual(t, time.Since(start), 400*time.Millisecond)
+	assert.Less(t, time.Since(start), 2*time.Second)
+}
+
+// An upstream that cannot serve the block yet does not delay another upstream
+// that can: it is asked right away, as for any other error.
+func TestFetchBlockLogsNotReadyFallsThroughToNextUpstream(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	for i := 0; i < 10; i++ { // the order of unrated upstreams is shuffled
+		chSup := test_utils.CreateChainSupervisor()
+		publishLogsUpstream(chSup, "erigon", 100)
+		publishLogsUpstream(chSup, "geth", 100)
+
+		connErigon := mocks.NewConnectorMock()
+		connGeth := mocks.NewConnectorMock()
+		upSup := mocks.NewUpstreamSupervisorMock()
+		upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+		upSup.On("GetUpstream", "erigon").Return(test_utils.TestEvmUpstream(connErigon, logsTestUpConfig(), logsMethodsMock(), nil)).Maybe()
+		upSup.On("GetUpstream", "geth").Return(test_utils.TestEvmUpstream(connGeth, logsTestUpConfig(), logsMethodsMock(), nil)).Maybe()
+		connErigon.On("SendRequest", mock.Anything, mock.Anything).
+			Return(protocol.NewTotalFailureFromErr("1", protocol.ResponseErrorWithMessage("block range extends beyond current head block"), protocol.JsonRpc)).Maybe()
+		connGeth.On("SendRequest", mock.Anything, mock.Anything).
+			Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
+
+		block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+		start := time.Now()
+		logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(3*time.Second))
+
+		require.Len(t, logs, 1)
+		assert.Less(t, time.Since(start), logsNotReadyStep/2)
+		connGeth.AssertNumberOfCalls(t, "SendRequest", 1)
+	}
+}
+
+// An upstream that fails with another error at the same height is asked once:
+// it neither uses up the attempts while the other upstream is not ready nor
+// is asked again every round.
+func TestFetchBlockLogsNotReadyWithFailingUpstream(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "erigon", 100)
+	publishLogsUpstream(chSup, "broken", 100)
+
+	connErigon := mocks.NewConnectorMock()
+	connBroken := mocks.NewConnectorMock()
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "erigon").Return(logsTestUpstream("erigon", connErigon)).Maybe()
+	upSup.On("GetUpstream", "broken").Return(logsTestUpstream("broken", connBroken)).Maybe()
+	connErigon.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", protocol.ResponseErrorWithMessage("block range extends beyond current head block"), protocol.JsonRpc)).Times(3)
+	connErigon.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
+	connBroken.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(2*time.Second))
+
+	require.Len(t, logs, 1)
+	assert.Equal(t, "erigon", upstreamId)
+	connErigon.AssertNumberOfCalls(t, "SendRequest", 4)
+	connBroken.AssertNumberOfCalls(t, "SendRequest", 1)
+}
+
+// Other upstream errors are not waited on.
+func TestFetchBlockLogsOtherErrorNotDelayed(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "high", 100)
+
+	conn := mocks.NewConnectorMock()
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "high").Return(up).Maybe()
+	conn.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	start := time.Now()
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(3*time.Second))
+
+	assert.Nil(t, logs)
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
 }
 
 func TestSetRemovedTrue(t *testing.T) {
@@ -152,6 +347,10 @@ func TestSetRemovedTrue(t *testing.T) {
 }
 
 // --- newLogsSourceBuilder (end-to-end source goroutine) ------------------
+
+// logsTestFilter is the filter the production code builds for a selector-less
+// logs request: available upstreams advertising LogsCap.
+var logsTestFilter = matcherFilter(NewMultiMatcher(NewStatusMatcher(), NewCapMatcher(protocol.LogsCap, "logs")))
 
 func logsCaps() mapset.Set[protocol.Cap] {
 	return mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap, protocol.LogsCap)
@@ -236,7 +435,7 @@ func TestLogsSourceEmitsPerLog(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, logsBufferSize, src.Buffer)
 
@@ -248,25 +447,36 @@ func TestLogsSourceEmitsPerLog(t *testing.T) {
 }
 
 // A reorg drops the orphaned block's cached logs with removed:true, then emits
-// the new block's logs with removed:false.
+// the new chain's logs with removed:false - including the reorged-in parent,
+// fetched by hash since it never was a head.
 func TestLogsSourceReorgReemitsRemoved(t *testing.T) {
-	oneLog := protocol.NewSimpleHttpUpstreamResponse("1",
-		[]byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc)
-	chSup, upSup, registry := logsSourceTestSetup(t, oneLog)
+	specs_utils.LoadMethodSpecs()
+	chSup := test_utils.CreateChainSupervisor()
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getBlockByHash")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"hash":"0xde","parentHash":"0x99","number":"0x64"}`), protocol.JsonRpc))
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getLogs")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc))
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", mock.Anything).Return(up).Maybe()
+	registry := newLogsTestRegistry(upSup)
 	registerLogsUpstream(chSup, "up1", logsCaps())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
 	publishHead(chSup, "up1", 100, "a0", "99")
 	assertRemoved(t, readWsResponse(t, src.Events), false) // block 100 logs
 
-	// Height 101 builds on a different 100 (parent "bad") -> reorg: drop 100, new 101.
+	// Height 101 builds on a different 100 ("de") -> reorg: drop a0, new de, new 101.
 	publishHead(chSup, "up1", 101, "a1", "de")
-	assertRemoved(t, readWsResponse(t, src.Events), true)  // block 100 re-emitted as removed
+	assertRemoved(t, readWsResponse(t, src.Events), true)  // a0 re-emitted as removed
+	assertRemoved(t, readWsResponse(t, src.Events), false) // de logs
 	assertRemoved(t, readWsResponse(t, src.Events), false) // block 101 logs
 }
 
@@ -278,7 +488,7 @@ func TestLogsSourceTerminatesWhenLogsCapAbsentAtStart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	r := readWsResponse(t, src.Events)
@@ -294,7 +504,7 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -306,6 +516,35 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 	publishHead(chSup, "up1", 101, "a1", "a0")
 	r := readWsResponse(t, src.Events)
 	require.NotNil(t, r.GetError(), "expected a terminal frame after LogsCap is lost")
+}
+
+// When eth_getLogs goes away on every upstream (LogsCap dropped), the feed goes
+// empty and the source terminates so clients fall back to the node-backed path.
+func TestLogsSourceTerminatesWhenLogsMethodGone(t *testing.T) {
+	oneLog := protocol.NewSimpleHttpUpstreamResponse("1",
+		[]byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc)
+	chSup, upSup, registry := logsSourceTestSetup(t, oneLog)
+	registerLogsUpstream(chSup, "up1", logsCaps())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	publishHead(chSup, "up1", 100, "a0", "99")
+	assertRemoved(t, readWsResponse(t, src.Events), false)
+
+	noLogs := mocks.NewMethodsMock()
+	noLogs.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]())
+	noLogs.On("HasMethod", mock.Anything).Return(false)
+	state := protocol.DefaultUpstreamState(noLogs, mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap), "idx", nil, nil)
+	state.Status = protocol.Available
+	chSup.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "up1", EventType: &protocol.StateUpstreamEvent{State: &state}})
+	publishHead(chSup, "up1", 101, "a1", "a0")
+
+	r := readWithin(t, src.Events, 3*time.Second)
+	require.NotNil(t, r.GetError(), "expected a terminal frame after eth_getLogs is gone")
 }
 
 // An eth_getLogs failure for one block skips it without terminating the source;
@@ -327,7 +566,7 @@ func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", logsCaps())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -336,6 +575,149 @@ func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
 
 	// The only event is block 101's log (block 100 produced none) and the source is alive.
 	assertRemoved(t, readWsResponse(t, src.Events), false)
+}
+
+// The production case end to end: the merged head comes from an upstream with
+// eth_getLogs disabled, the upstream that has it reaches the block a moment
+// later. Nothing is announced on the first head; the block is announced when the
+// upstream that can serve it has it, and its logs come from that upstream.
+func TestLogsSourceFollowsUpstreamWithMethod(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	chSup := test_utils.CreateChainSupervisor()
+
+	noLogs := mocks.NewMethodsMock()
+	noLogs.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_getBlockByHash"))
+	noLogs.On("HasMethod", "eth_getBlockByHash").Return(true)
+	noLogs.On("HasMethod", mock.Anything).Return(false)
+	fastState := protocol.DefaultUpstreamState(noLogs, mapset.NewThreadUnsafeSet[protocol.Cap](protocol.WsCap, protocol.NewHeadsCap), "idx", nil, nil)
+	fastState.Status = protocol.Available
+	chSup.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "fast", EventType: &protocol.StateUpstreamEvent{State: &fastState}})
+	registerLogsUpstream(chSup, "slow", logsCaps())
+
+	connFast := mocks.NewConnectorMock()
+	connSlow := mocks.NewConnectorMock()
+	connSlow.On("SendRequest", mock.Anything, byMethod("eth_getLogs")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc))
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "fast").Return(test_utils.TestEvmUpstream(connFast, logsTestUpConfig(), noLogs, nil)).Maybe()
+	upSup.On("GetUpstream", "slow").Return(test_utils.TestEvmUpstream(connSlow, logsTestUpConfig(), logsMethodsMock(), nil)).Maybe()
+	registry := newLogsTestRegistry(upSup)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	publishHead(chSup, "slow", 99, "99", "98")
+	assertRemoved(t, readWsResponse(t, src.Events), false) // block 99
+
+	publishHead(chSup, "fast", 100, "a0", "99") // only the upstream without eth_getLogs has 100
+	select {
+	case r := <-src.Events:
+		t.Fatalf("block announced before an upstream that can serve it had it: %s", r.GetMessage())
+	case <-time.After(150 * time.Millisecond):
+	}
+	publishHead(chSup, "slow", 100, "a0", "99")
+	assertRemoved(t, readWsResponse(t, src.Events), false) // block 100, served by slow
+
+	connFast.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+// A head whose skipped ancestor cannot be fetched is still announced (with the
+// gap) and the source stays alive.
+func TestLogsSourceAnnouncesHeadWhenBackfillFails(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	chSup := test_utils.CreateChainSupervisor()
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getBlockByHash")).
+		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
+	conn.On("SendRequest", mock.Anything, byMethodAndParam("eth_getLogs", "0xa2")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xb2","topics":["0x1"],"removed":false}]`), protocol.JsonRpc))
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getLogs")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc))
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", mock.Anything).Return(up).Maybe()
+	registry := newLogsTestRegistry(upSup)
+	registerLogsUpstream(chSup, "up1", logsCaps())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	publishHead(chSup, "up1", 100, "a0", "99")
+	assertRemoved(t, readWsResponse(t, src.Events), false) // block 100
+
+	publishHead(chSup, "up1", 102, "a2", "a1") // 101 cannot be fetched
+	r := readWithin(t, src.Events, 3*time.Second)
+	assertRemoved(t, r, false)
+	assert.Contains(t, string(r.GetMessage()), "0xb2", "the next event is block 102's log")
+}
+
+// A head that jumps over a height gets that height backfilled by hash: its logs
+// are delivered before the head's.
+func TestLogsSourceBackfillsSkippedHeight(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	chSup := test_utils.CreateChainSupervisor()
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getBlockByHash")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"hash":"0xa1","parentHash":"0xa0","number":"0x65"}`), protocol.JsonRpc))
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getLogs")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc))
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", mock.Anything).Return(up).Maybe()
+	registry := newLogsTestRegistry(upSup)
+
+	registerLogsUpstream(chSup, "up1", logsCaps())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	publishHead(chSup, "up1", 100, "a0", "99")
+	assertRemoved(t, readWsResponse(t, src.Events), false) // block 100
+
+	publishHead(chSup, "up1", 102, "a2", "a1")             // 101 was never a head
+	assertRemoved(t, readWsResponse(t, src.Events), false) // block 101, backfilled
+	assertRemoved(t, readWsResponse(t, src.Events), false) // block 102
+
+	conn.AssertNumberOfCalls(t, "SendRequest", 4) // 3 x eth_getLogs + 1 x eth_getBlockByHash
+}
+
+// End to end: the only upstream announces a block before it can serve it, as
+// erigon does; the source asks again and still delivers the block's logs.
+func TestLogsSourceRetriesNotReadyBlock(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	chSup := test_utils.CreateChainSupervisor()
+	conn := mocks.NewConnectorMock()
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getLogs")).
+		Return(protocol.NewTotalFailureFromErr("1", protocol.ResponseErrorWithMessage("block range extends beyond current head block"), protocol.JsonRpc)).Once()
+	conn.On("SendRequest", mock.Anything, byMethod("eth_getLogs")).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"],"removed":false}]`), protocol.JsonRpc))
+	up := test_utils.TestEvmUpstream(conn, logsTestUpConfig(), logsMethodsMock(), nil)
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", mock.Anything).Return(up).Maybe()
+	registry := newLogsTestRegistry(upSup)
+	registerLogsUpstream(chSup, "up1", logsCaps())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	require.NoError(t, err)
+
+	time.Sleep(50 * time.Millisecond)
+	publishHead(chSup, "up1", 100, "a0", "99")
+	assertRemoved(t, readWsResponse(t, src.Events), false)
+	conn.AssertNumberOfCalls(t, "SendRequest", 2)
 }
 
 func TestLogCacheFIFO(t *testing.T) {

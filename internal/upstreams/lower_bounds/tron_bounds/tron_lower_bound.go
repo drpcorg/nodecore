@@ -54,19 +54,7 @@ func (t *TronLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoc
 	if err != nil {
 		return nil, err
 	}
-	if len(bounds) == 0 {
-		return bounds, nil
-	}
-	base := bounds[0]
-	expanded := make([]protocol.LowerBoundData, 0, len(tronSupportedBoundTypes))
-	for _, bt := range tronSupportedBoundTypes {
-		expanded = append(expanded, protocol.LowerBoundData{
-			Bound:     base.Bound,
-			Timestamp: base.Timestamp,
-			Type:      bt,
-		})
-	}
-	return expanded, nil
+	return expandTronBounds(bounds), nil
 }
 
 func (t *TronLowerBoundDetector) fetchLatestHeight(ctx context.Context) (int64, error) {
@@ -134,3 +122,22 @@ func parseTronBlockNumber(raw []byte) (int64, error) {
 }
 
 var _ lower_bounds.LowerBoundDetector = (*TronLowerBoundDetector)(nil)
+
+// expandTronBounds copies the single block bound the search found onto every
+// bound type a tron node keeps together: blocks, state, transactions and
+// receipts are all pruned at the same height.
+func expandTronBounds(bounds []protocol.LowerBoundData) []protocol.LowerBoundData {
+	if len(bounds) == 0 {
+		return bounds
+	}
+	base := bounds[0]
+	expanded := make([]protocol.LowerBoundData, 0, len(tronSupportedBoundTypes))
+	for _, bt := range tronSupportedBoundTypes {
+		expanded = append(expanded, protocol.LowerBoundData{
+			Bound:     base.Bound,
+			Timestamp: base.Timestamp,
+			Type:      bt,
+		})
+	}
+	return expanded
+}

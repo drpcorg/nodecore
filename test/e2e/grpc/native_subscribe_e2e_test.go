@@ -37,14 +37,9 @@ func TestGrpcNativeSubscribeLogsAcceptsObjectPayload(t *testing.T) {
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := client.NativeSubscribe(subCtx, &dshackle.NativeSubscribeRequest{
-		Chain:   chain,
-		Method:  "logs",
-		Payload: []byte(fmt.Sprintf(`{"address":%q,"topics":[]}`, filterAddress)),
-		// Force the generic node-backed subscribe path so this test keeps verifying
-		// the dshackle NativeSubscribe(Method="logs", Payload=object) ->
-		// eth_subscribe ["logs", object] mapping. Without an effective selector,
-		// logs subscriptions are served by the local logs source and do not issue an
-		// upstream eth_subscribe("logs", ...).
+		Chain:    chain,
+		Method:   "logs",
+		Payload:  []byte(fmt.Sprintf(`{"address":%q,"topics":[]}`, filterAddress)),
 		Selector: latestBlockSelector(),
 	})
 	if err != nil {
@@ -74,16 +69,6 @@ func TestGrpcNativeSubscribeLogsAcceptsObjectPayload(t *testing.T) {
 	t.Fatalf("hardhat did not receive eth_subscribe logs request\nlogs:\n%s", nodecore.Logs(ctx))
 }
 
-func latestBlockSelector() *dshackle.Selector {
-	return &dshackle.Selector{
-		SelectorType: &dshackle.Selector_HeightSelector{
-			HeightSelector: &dshackle.HeightSelector{
-				HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_LATEST},
-			},
-		},
-	}
-}
-
 func grpcNativeSubscribeNodecoreConfig(upstream *harness.RPCNode) string {
 	wsURL := strings.Replace(upstream.InternalURL(), "http://", "ws://", 1)
 	return fmt.Sprintf(`server:
@@ -102,6 +87,8 @@ upstream-config:
         broadcast: false
         maximum-value: false
         not-null: false
+      local-subscriptions:
+        enable-logs: false
   score-policy-config:
     calculation-interval: 500ms
   upstreams:
@@ -135,6 +122,16 @@ func assertSubscriptionAdvertised(t *testing.T, status *dshackle.SubscribeChainS
 		}
 	}
 	t.Fatalf("subscription %q is not advertised: %+v", want, status)
+}
+
+func latestBlockSelector() *dshackle.Selector {
+	return &dshackle.Selector{
+		SelectorType: &dshackle.Selector_HeightSelector{
+			HeightSelector: &dshackle.HeightSelector{
+				HeightOrNumber: &dshackle.HeightSelector_Tag{Tag: dshackle.BlockTag_LATEST},
+			},
+		},
+	}
 }
 
 func hardhatSawLogsSubscribe(t *testing.T, ctx context.Context, upstream *harness.RPCNode, address string) bool {

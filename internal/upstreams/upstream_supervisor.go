@@ -168,7 +168,7 @@ func (b *GenericUpstreamSupervisor) processEvents() {
 		case event, ok := <-b.eventsChan:
 			if ok {
 				chainSupervisor, exists := b.chainSupervisors.LoadOrStoreLazy(event.Chain, func() ChainSupervisor {
-					return NewGenericChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice(), b.tracker, b.upstreamsConfig.ValidateLagFor(event.Chain.String()), b.GetUpstream)
+					return NewGenericChainSupervisor(b.ctx, event.Chain, choice.NewHeightForkChoice, b.tracker, b.upstreamsConfig.ValidateLagFor(event.Chain.String()), b.GetUpstream)
 				})
 
 				if !exists {
