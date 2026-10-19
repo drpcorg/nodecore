@@ -67,7 +67,7 @@ const blockSubscribeBufferSize = 100
 func localKey(prefix string, request protocol.RequestHolder) string {
 	routing := make([]protocol.RequestSelector, 0, len(request.Selectors()))
 	for _, selector := range request.Selectors() {
-		if matcher, _ := compileSelector(selector, nil); matcher != nil {
+		if matcher, _ := compileSelector(selector, nil, nil); matcher != nil {
 			routing = append(routing, selector)
 		}
 	}

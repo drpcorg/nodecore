@@ -130,7 +130,7 @@ func TestIntegrityRequestProcessorRetryHonorsSelectors(t *testing.T) {
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string](specs.EthBlockNumber))
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice, nil, false, nil)
 	go chainSupervisor.Start()
 	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("stale-archive", protocol.Available, protocol.NewBlockWithHeight(5), methodsMock))
 	publishEventWithHead(chainSupervisor, test_utils.CreateEvent("high-archive", protocol.Available, protocol.NewBlockWithHeight(108), methodsMock))

@@ -547,26 +547,27 @@ func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
 }
 
 // An API key's upstream restriction takes the node-backed path whenever the
-// local source is off: always for logs (selector-bearing logs requests never
-// use the shared source), and for newHeads/newPendingTransactions once their
-// local-subscriptions flags are disabled - the documented workaround until the
-// local sources honor selectors.
+// local source is off, and the strategy then routes on its selectors.
 func TestResolveSourceRoutesRestrictedSubscriptionsNodeBacked(t *testing.T) {
 	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
-	resolve := func(params string, settings config.LocalSubSettings) string {
-		key, _, _ := resolveSource(chains.ETHEREUM, allCapsSupervisor(), subscribeRequestWithSelectors(params, group), nil, nil, nil, settings)
-		return key
+	for _, params := range []string{`["newHeads"]`, `["logs",{}]`, `["newPendingTransactions"]`} {
+		src, err := resolveSource(chains.ETHEREUM, allCapsSupervisor(), subscribeRequestWithSelectors(params, group), nil, nil, nil, config.LocalSubSettings{})
+		require.NoError(t, err)
+		assert.NotContains(t, src.key, "local|")
+		assert.Contains(t, src.key, group.Key())
 	}
+}
 
-	key := resolve(`["logs",{}]`, allLocalSubs)
-	assert.NotEqual(t, localLogsKey, key)
-	assert.Contains(t, key, group.Key())
-
-	logsOnly := config.LocalSubSettings{Logs: true}
-	for _, params := range []string{`["newHeads"]`, `["newPendingTransactions"]`} {
-		key := resolve(params, logsOnly)
-		assert.NotContains(t, key, "local|")
-		assert.Contains(t, key, group.Key())
+// The local newHeads and logs sources follow a head feed filtered by the
+// request's selectors, so keys restricted to different labels never share one.
+func TestLocalKeySeparatesGroupLabelRestrictions(t *testing.T) {
+	request := func(labels ...string) protocol.RequestHolder {
+		return subscribeRequestWithSelectors(`["newHeads"]`, protocol.RequestGroupLabelSelector{Labels: labels})
+	}
+	for _, prefix := range []string{localNewHeadsPrefix, localLogsPrefix} {
+		assert.NotEqual(t, localKey(prefix, request("archive")), localKey(prefix, request("full")))
+		assert.NotEqual(t, localKey(prefix, request("archive")), localKey(prefix, subscribeRequest(`["newHeads"]`)))
+		assert.Equal(t, localKey(prefix, request("archive", "fast")), localKey(prefix, request("fast", "archive")))
 	}
 }
 
