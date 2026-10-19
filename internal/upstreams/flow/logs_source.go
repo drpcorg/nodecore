@@ -116,7 +116,9 @@ func logsNotReadyWait(chain chains.Chain) time.Duration {
 // chain's merged head: that one may come from an upstream without eth_getLogs,
 // and its block would be skipped because no upstream that has the method had
 // reached it yet. Heights that head jumps over, and the new chain after a reorg,
-// are fetched by parent hash.
+// are fetched by parent hash. Those fetches and eth_getLogs carry
+// selectorMatchers, the client's selectors, so the data comes from the same
+// upstreams the feed follows and never from one the client did not select.
 //
 // Reorgs are handled via the block-update stream (see subengine.StreamBlockUpdates):
 // a dropped block's cached logs are re-emitted with removed:true. The source
@@ -127,6 +129,7 @@ func newLogsSourceBuilder(
 	chain chains.Chain,
 	registry *rating.RatingRegistry,
 	filter upstreams.FilterUpstream,
+	selectorMatchers []Matcher,
 ) subengine.SourceBuilder {
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		chainSup := supervisor.GetChainSupervisor(chain)
@@ -140,7 +143,7 @@ func newLogsSourceBuilder(
 		updates := make(chan subengine.BlockUpdate, 64)
 
 		feed := chainSup.SubscribeHead(fmt.Sprintf("subengine_logs_%s_%s", chain, uuid.NewString()), filter)
-		go subengine.StreamBlockUpdates(srcCtx, chain, feed, updates, blockByHashResolver(supervisor, chain, chainSup, registry))
+		go subengine.StreamBlockUpdates(srcCtx, chain, feed, updates, blockByHashResolver(supervisor, chain, chainSup, registry, selectorMatchers))
 
 		go func() {
 			defer close(out)
@@ -160,7 +163,7 @@ func newLogsSourceBuilder(
 					}
 					switch update.Kind {
 					case subengine.BlockNew:
-						logs, upstreamId := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, update.Block, update.Seen.Add(notReadyWait))
+						logs, upstreamId := fetchBlockLogs(srcCtx, supervisor, chain, chainSup, registry, selectorMatchers, update.Block, update.Seen.Add(notReadyWait))
 						if logs == nil {
 							continue // fetch failed/skipped (logged); not terminal
 						}
@@ -210,9 +213,10 @@ func newLogsSourceBuilder(
 }
 
 // fetchBlockLogs returns the raw log objects of block, fetched via eth_getLogs on
-// an upstream chosen by height, plus the serving upstream id. It returns (nil,"")
-// when the block cannot be served (no upstream at the height, or every attempt
-// errored); the source treats that as a skipped block, not a terminal failure.
+// an upstream chosen by height among those matching selectorMatchers, plus the
+// serving upstream id. It returns (nil,"") when the block cannot be served (no
+// upstream at the height, or every attempt errored); the source treats that as a
+// skipped block, not a terminal failure.
 // When the upstreams that were asked only reported the block as not ready yet,
 // they are asked again, with a backoff, until notReadyUntil.
 func fetchBlockLogs(
@@ -221,6 +225,7 @@ func fetchBlockLogs(
 	chain chains.Chain,
 	chainSup upstreams.ChainSupervisor,
 	registry *rating.RatingRegistry,
+	selectorMatchers []Matcher,
 	block protocol.Block,
 	notReadyUntil time.Time,
 ) ([]json.RawMessage, string) {
@@ -241,7 +246,7 @@ func fetchBlockLogs(
 	// upstreams that answered another error are not asked again in later rounds
 	var failed []string
 	newStrategy := func() *RatingStrategy {
-		strategy := NewRatingStrategy(chain, "eth_getLogs", []Matcher{NewHeightMatcher(int64(block.Height))}, chainSup, registry)
+		strategy := NewRatingStrategy(chain, "eth_getLogs", append([]Matcher{NewHeightMatcher(int64(block.Height))}, selectorMatchers...), chainSup, registry)
 		for _, id := range failed {
 			strategy.selectedUpstreams.Add(id)
 		}
@@ -317,19 +322,21 @@ func errorMessage(err *protocol.ResponseError) string {
 }
 
 // blockByHashResolver lets the block-update stream fetch the head's ancestors by
-// hash: heights the head jumped over, or the new chain after a reorg.
+// hash: heights the head jumped over, or the new chain after a reorg. Only
+// upstreams matching selectorMatchers are asked.
 func blockByHashResolver(
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
 	chainSup upstreams.ChainSupervisor,
 	registry *rating.RatingRegistry,
+	selectorMatchers []Matcher,
 ) subengine.BlockResolver {
 	return func(ctx context.Context, hash blockchain.HashId, height uint64) (protocol.Block, error) {
 		request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByHash", []any{hash.ToHexWithPrefix(), false}, chain)
 		if err != nil {
 			return protocol.Block{}, err
 		}
-		strategy := NewRatingStrategy(chain, "eth_getBlockByHash", []Matcher{NewHeightMatcher(int64(height))}, chainSup, registry)
+		strategy := NewRatingStrategy(chain, "eth_getBlockByHash", append([]Matcher{NewHeightMatcher(int64(height))}, selectorMatchers...), chainSup, registry)
 		for attempt := 0; attempt < logsFetchAttempts; attempt++ {
 			resp, err := selectAndSend(ctx, supervisor, request, strategy)
 			if err != nil {
