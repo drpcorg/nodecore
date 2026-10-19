@@ -67,7 +67,7 @@ const blockSubscribeBufferSize = 100
 func localKey(prefix string, request protocol.RequestHolder) string {
 	routing := make([]protocol.RequestSelector, 0, len(request.Selectors()))
 	for _, selector := range request.Selectors() {
-		if matcher, _ := compileSelector(selector, nil); matcher != nil {
+		if matcher, _ := compileSelector(selector, nil, nil); matcher != nil {
 			routing = append(routing, selector)
 		}
 	}
@@ -77,15 +77,8 @@ func localKey(prefix string, request protocol.RequestHolder) string {
 // localSourceFilter admits the upstreams a local source may follow: available,
 // advertising cap, and matching the client's selectors. topic names the
 // subscription in match traces.
-func localSourceFilter(
-	cap protocol.Cap,
-	topic string,
-	request protocol.RequestHolder,
-	supervisor upstreams.UpstreamSupervisor,
-	chainSup upstreams.ChainSupervisor,
-) upstreams.FilterUpstream {
+func localSourceFilter(cap protocol.Cap, topic string, selectorMatchers []Matcher) upstreams.FilterUpstream {
 	matchers := []Matcher{NewStatusMatcher(), NewCapMatcher(cap, topic)}
-	selectorMatchers, _ := buildSelectorRouting(request.Selectors(), supervisor, chainSup)
 	matchers = append(matchers, selectorMatchers...)
 	return matcherFilter(NewMultiMatcher(matchers...))
 }
@@ -108,22 +101,27 @@ func hasUpstream(chainSup upstreams.ChainSupervisor, filter upstreams.FilterUpst
 // locally or not at all, never silently rerouted to a node it did not select
 // or whose head is polled. A chain that cannot serve a topic locally must have
 // the topic's flag turned off.
+//
+// It also returns the matchers of the client's selectors, for a source that
+// sends requests of its own: those must stay on the upstreams the client
+// selected too.
 func localFeedFilter(
 	cap protocol.Cap,
 	topic string,
 	chain chains.Chain,
 	request protocol.RequestHolder,
 	supervisor upstreams.UpstreamSupervisor,
-) (upstreams.FilterUpstream, error) {
+) (upstreams.FilterUpstream, []Matcher, error) {
 	chainSup := supervisor.GetChainSupervisor(chain)
 	if chainSup == nil {
-		return nil, protocol.NoAvailableUpstreamsError()
+		return nil, nil, protocol.NoAvailableUpstreamsError()
 	}
-	filter := localSourceFilter(cap, topic, request, supervisor, chainSup)
+	selectorMatchers, _ := buildSelectorRouting(request.Selectors(), supervisor, chainSup)
+	filter := localSourceFilter(cap, topic, selectorMatchers)
 	if !hasUpstream(chainSup, filter) {
-		return nil, protocol.NoAvailableUpstreamsError()
+		return nil, nil, protocol.NoAvailableUpstreamsError()
 	}
-	return filter, nil
+	return filter, selectorMatchers, nil
 }
 
 // resolvedSource is how the shared source for a subscription is produced: its
@@ -158,7 +156,7 @@ func resolveSource(
 	settings config.LocalSubSettings,
 ) (resolvedSource, error) {
 	if settings.NewHeads && isNewHeadsRequest(request) {
-		filter, err := localFeedFilter(protocol.NewHeadsCap, "newHeads", chain, request, supervisor)
+		filter, _, err := localFeedFilter(protocol.NewHeadsCap, "newHeads", chain, request, supervisor)
 		if err != nil {
 			return resolvedSource{}, err
 		}
@@ -171,11 +169,11 @@ func resolveSource(
 		if err != nil {
 			return resolvedSource{}, protocol.InvalidParamsError(err.Error())
 		}
-		filter, err := localFeedFilter(protocol.LogsCap, "logs", chain, request, supervisor)
+		filter, selectorMatchers, err := localFeedFilter(protocol.LogsCap, "logs", chain, request, supervisor)
 		if err != nil {
 			return resolvedSource{}, err
 		}
-		return resolvedSource{key: localKey(localLogsPrefix, request), builder: newLogsSourceBuilder(supervisor, chain, registry, filter), filter: logFilter}, nil
+		return resolvedSource{key: localKey(localLogsPrefix, request), builder: newLogsSourceBuilder(supervisor, chain, registry, filter, selectorMatchers), filter: logFilter}, nil
 	}
 	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return resolvedSource{key: localPendingTxKey, builder: newPendingTxSourceBuilder(supervisor, chain)}, nil
