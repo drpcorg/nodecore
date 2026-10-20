@@ -17,8 +17,8 @@ func TestLifecycleStartOnlyOneTime(t *testing.T) {
 	l := utils.NewGenericLifecycle("name", context.Background())
 	tMock := testInterfaceMock{}
 	tMock.On("Test").Return(nil)
-	f := func(ctx context.Context) error {
-		return tMock.Test()
+	f := func(ctx context.Context) (func(), error) {
+		return nil, tMock.Test()
 	}
 
 	l.Start(f)
@@ -32,8 +32,8 @@ func TestLifecycleStartAndStop(t *testing.T) {
 	l := utils.NewGenericLifecycle("name", context.Background())
 	tMock := testInterfaceMock{}
 	tMock.On("Test").Return(nil)
-	f := func(ctx context.Context) error {
-		return tMock.Test()
+	f := func(ctx context.Context) (func(), error) {
+		return nil, tMock.Test()
 	}
 
 	l.Start(f)
@@ -50,8 +50,8 @@ func TestLifecycleCantStart(t *testing.T) {
 	l := utils.NewGenericLifecycle("name", context.Background())
 	tMock := testInterfaceMock{}
 	tMock.On("Test").Return(errors.New("err"))
-	f := func(ctx context.Context) error {
-		return tMock.Test()
+	f := func(ctx context.Context) (func(), error) {
+		return nil, tMock.Test()
 	}
 
 	l.Start(f)
@@ -76,9 +76,9 @@ func TestLifecycleFailedStartCancelsItsContext(t *testing.T) {
 	lifecycle := utils.NewGenericLifecycle("test", context.Background())
 	var startCtx context.Context
 
-	lifecycle.Start(func(ctx context.Context) error {
+	lifecycle.Start(func(ctx context.Context) (func(), error) {
 		startCtx = ctx
-		return errors.New("start failed")
+		return nil, errors.New("start failed")
 	})
 
 	assert.False(t, lifecycle.Running())
@@ -93,9 +93,9 @@ func TestLifecycleStartOnCancelledParentDoesNotRun(t *testing.T) {
 	lifecycle := utils.NewGenericLifecycle("test", ctx)
 	called := false
 
-	lifecycle.Start(func(ctx context.Context) error {
+	lifecycle.Start(func(ctx context.Context) (func(), error) {
 		called = true
-		return nil
+		return nil, nil
 	})
 
 	assert.False(t, called)
@@ -113,10 +113,10 @@ func TestLifecycleFailedStartDoesNotClobberNewerRun(t *testing.T) {
 	firstDone := make(chan struct{})
 	go func() {
 		defer close(firstDone)
-		lifecycle.Start(func(ctx context.Context) error {
+		lifecycle.Start(func(ctx context.Context) (func(), error) {
 			close(entered)
 			<-release
-			return errors.New("start failed")
+			return nil, errors.New("start failed")
 		})
 	}()
 	<-entered
@@ -127,9 +127,9 @@ func TestLifecycleFailedStartDoesNotClobberNewerRun(t *testing.T) {
 		defer close(done)
 		close(stopping)
 		lifecycle.Stop()
-		lifecycle.Start(func(ctx context.Context) error {
+		lifecycle.Start(func(ctx context.Context) (func(), error) {
 			secondCtx = ctx
-			return nil
+			return nil, nil
 		})
 	}()
 	// the goroutine is running and about to call Stop; give it a moment to reach the mutex
@@ -147,38 +147,63 @@ func TestLifecycleFailedStartDoesNotClobberNewerRun(t *testing.T) {
 	assert.NoError(t, secondCtx.Err(), "the newer run was clobbered by the failed first start")
 }
 
-// StopWith runs its teardown only when the lifecycle actually transitions to stopped, the
-// same way Start runs its function only on the transition to running - so a nested
-// processor driven from the teardown is never stopped under a running owner, nor stopped
-// twice.
-func TestLifecycleStopWithRunsTeardownOnlyOnTransition(t *testing.T) {
+// The teardown a start returns is run by Stop exactly once, on the running→stopped
+// transition, after the run's context is cancelled - so a nested processor released in the
+// teardown is never stopped under a running owner, nor stopped twice.
+func TestLifecycleStopRunsStartsTeardownOnce(t *testing.T) {
 	lifecycle := utils.NewGenericLifecycle("test", context.Background())
 	teardowns := 0
-	teardown := func() { teardowns++ }
+	var runCtx context.Context
 
-	lifecycle.StopWith(teardown)
-	assert.Equal(t, 0, teardowns)
-
-	lifecycle.Start(func(ctx context.Context) error { return nil })
-	lifecycle.StopWith(teardown)
-	lifecycle.StopWith(teardown)
+	lifecycle.Start(func(ctx context.Context) (func(), error) {
+		runCtx = ctx
+		return func() {
+			assert.ErrorIs(t, ctx.Err(), context.Canceled, "teardown ran before the run was cancelled")
+			teardowns++
+		}, nil
+	})
+	lifecycle.Stop()
+	lifecycle.Stop()
 
 	assert.Equal(t, 1, teardowns)
+	assert.ErrorIs(t, runCtx.Err(), context.Canceled)
 	assert.False(t, lifecycle.Running())
 }
 
+// A start that fails after building something returns the undo for it, and the lifecycle
+// runs that undo at once: a failed start leaves nothing behind for a Stop that will never
+// come, because the lifecycle never became running.
+func TestLifecycleFailedStartRunsItsTeardown(t *testing.T) {
+	lifecycle := utils.NewGenericLifecycle("test", context.Background())
+	teardowns := 0
+
+	lifecycle.Start(func(ctx context.Context) (func(), error) {
+		return func() {
+			assert.ErrorIs(t, ctx.Err(), context.Canceled, "teardown ran before the run was cancelled")
+			teardowns++
+		}, errors.New("start failed")
+	})
+
+	assert.Equal(t, 1, teardowns)
+	assert.False(t, lifecycle.Running())
+	lifecycle.Stop()
+	assert.Equal(t, 1, teardowns, "Stop re-ran the teardown of a start that never became running")
+}
+
 // The teardown is part of the stop transition: a concurrent Start waits for it, so an
-// owner and the processor it stops in the teardown can never be observed half-switched.
+// owner and the processor it releases in the teardown can never be observed half-switched.
 func TestLifecycleStartWaitsForTeardownInProgress(t *testing.T) {
 	lifecycle := utils.NewGenericLifecycle("test", context.Background())
-	lifecycle.Start(func(ctx context.Context) error { return nil })
-
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	go lifecycle.StopWith(func() {
-		close(entered)
-		<-release
+	lifecycle.Start(func(ctx context.Context) (func(), error) {
+		return func() {
+			close(entered)
+			<-release
+		}, nil
 	})
+
+	go lifecycle.Stop()
 	<-entered
 
 	var started atomic.Bool
@@ -187,9 +212,9 @@ func TestLifecycleStartWaitsForTeardownInProgress(t *testing.T) {
 	go func() {
 		defer close(startDone)
 		close(starting)
-		lifecycle.Start(func(ctx context.Context) error {
+		lifecycle.Start(func(ctx context.Context) (func(), error) {
 			started.Store(true)
-			return nil
+			return nil, nil
 		})
 	}()
 	// the goroutine is running and about to call Start; a running goroutine reaches the

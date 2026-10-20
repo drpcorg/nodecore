@@ -30,8 +30,8 @@ type Emitter func(event protocol.AbstractUpstreamStateEvent)
 
 // UpstreamProcessorAggregator is driven from two goroutines - the supervisor (Resume,
 // PartialStop) and the upstream state loop (head pause while syncing) - and needs no lock
-// of its own: each processor makes its start and stop, including the nested processor it
-// owns, one transition of its lifecycle (GenericLifecycle.Start / StopWith).
+// of its own: each processor's start returns the undo of the nested processor it owns, so
+// its lifecycle switches both as one transition (see utils.StartFunc).
 type UpstreamProcessorAggregator struct {
 	eventProcessors map[EventProcessorType]UpstreamStateEventProcessor
 }

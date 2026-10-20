@@ -215,9 +215,22 @@ func (u *GenericUpstream) GetGroupLabels() mapset.Set[string] {
 	return u.groupLabels
 }
 
+// Start activates the connectors, validates the settings and, if they allow it, the state
+// processors. The teardown it returns releases all of that, whether the start succeeded or
+// failed on fatal settings; the upstream context goes first, so no nested lifecycle can be
+// started again once the upstream is stopped.
 func (u *GenericUpstream) Start() {
-	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
+	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) (func(), error) {
 		u.startConnectors(ctx)
+		release := func() {
+			u.upstreamCtx.cancelFunc()
+			u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
+			u.PartialStop()
+
+			for _, connector := range u.apiConnectors {
+				connector.Stop()
+			}
+		}
 
 		result, ok := u.processorAggregator.ValidateSettings()
 		initialValid := true
@@ -228,7 +241,7 @@ func (u *GenericUpstream) Start() {
 			switch result {
 			case validations.FatalSettingError:
 				log.Error().Msgf("failed to start upstream '%s' due to invalid upstream settings", u.id)
-				return errors.New("invalid upstream settings")
+				return release, errors.New("invalid upstream settings")
 			case validations.SettingsError:
 				initialValid = false
 				log.Warn().Msgf("non fatal settings error of upstream '%s', keep validating...", u.id)
@@ -242,24 +255,12 @@ func (u *GenericUpstream) Start() {
 		}
 		u.emitter(&protocol.InitUpstreamStateEvent{})
 		go u.processStateEvents(ctx, initialValid)
-		return nil
+		return release, nil
 	})
 }
 
-// Stop tears down everything Start built - the upstream context, the settings validator,
-// the state processors and the connectors - as one transition with the lifecycle stop, so a
-// concurrent Start can never interleave with it and a second Stop finds nothing to do.
-// Cancelling the upstream context first means no nested lifecycle can be started again.
 func (u *GenericUpstream) Stop() {
-	u.upstreamCtx.mainLifecycle.StopWith(func() {
-		u.upstreamCtx.cancelFunc()
-		u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
-		u.PartialStop()
-
-		for _, connector := range u.apiConnectors {
-			connector.Stop()
-		}
-	})
+	u.upstreamCtx.mainLifecycle.Stop()
 }
 
 func (u *GenericUpstream) Running() bool {

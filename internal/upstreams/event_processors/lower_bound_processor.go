@@ -34,7 +34,7 @@ func (b *GenericLowerBoundEventProcessor) SetEmitter(emitter Emitter) {
 }
 
 func (b *GenericLowerBoundEventProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		// subscribe first: the processor publishes configured bounds synchronously in Start
 		boundSub := b.lowerBoundProcessor.Subscribe(fmt.Sprintf("%s_lower_bounds", b.upstreamId))
 
@@ -55,12 +55,12 @@ func (b *GenericLowerBoundEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return b.lowerBoundProcessor.Stop, nil
 	})
 }
 
 func (b *GenericLowerBoundEventProcessor) Stop() {
-	b.lifecycle.StopWith(b.lowerBoundProcessor.Stop)
+	b.lifecycle.Stop()
 }
 
 func (b *GenericLowerBoundEventProcessor) Running() bool {

@@ -18,7 +18,7 @@ type LabelsEventProcessor struct {
 }
 
 func (l *LabelsEventProcessor) Start() {
-	l.lifecycle.Start(func(ctx context.Context) error {
+	l.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		l.labelsProcessor.Start()
 
 		labelsSub := l.labelsProcessor.Subscribe(fmt.Sprintf("%s_labels", l.upstreamId))
@@ -38,12 +38,12 @@ func (l *LabelsEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return l.labelsProcessor.Stop, nil
 	})
 }
 
 func (l *LabelsEventProcessor) Stop() {
-	l.lifecycle.StopWith(l.labelsProcessor.Stop)
+	l.lifecycle.Stop()
 }
 
 func (l *LabelsEventProcessor) Running() bool {
