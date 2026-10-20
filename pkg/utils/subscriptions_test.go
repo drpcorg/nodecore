@@ -148,6 +148,25 @@ func TestUnreadMessagesIsMaxPerName(t *testing.T) {
 	_ = slowStuck
 }
 
+// A name's unread series must not outlive its subscribers: a consumer that left with a backlog
+// would otherwise look slow for the rest of the process. While a same-named twin remains the
+// series stays, since it still describes a live consumer.
+func TestUnreadMessagesSeriesIsRemovedWithLastSubscriberOfName(t *testing.T) {
+	sm := utils.NewSubscriptionManager[int]("unread_removed_manager")
+	first := sm.SubscribeWithSize("leaver", 1)
+	second := sm.SubscribeWithSize("leaver", 1)
+
+	sm.Publish(1)
+	sm.Publish(2) // both now hold a backlog of 1 when sampled
+	require.Equal(t, 1.0, gaugeValue(t, "chanutil_unread_messages_num", "leaver"))
+
+	first.Unsubscribe()
+	assert.True(t, hasGauge(t, "chanutil_unread_messages_num", "leaver"), "series removed while a subscriber remains")
+
+	second.Unsubscribe()
+	assert.False(t, hasGauge(t, "chanutil_unread_messages_num", "leaver"), "series survived its last subscriber")
+}
+
 // TestSubscribeWithReplayAtomicVsPublish exercises the TOCTOU window the manager
 // lock closes: a subscriber that snapshots the last state and then registers must
 // never miss a transition that happens in between. We publish an initial state,
@@ -187,6 +206,19 @@ func TestSubscribeWithReplayAtomicVsPublish(t *testing.T) {
 // registry; the manager's collectors are package-private, so this is the public view.
 func gaugeValue(t *testing.T, metric, source string) float64 {
 	t.Helper()
+	value, ok := findGauge(t, metric, source)
+	require.Truef(t, ok, "no gauge %s{source=%q}", metric, source)
+	return value
+}
+
+func hasGauge(t *testing.T, metric, source string) bool {
+	t.Helper()
+	_, ok := findGauge(t, metric, source)
+	return ok
+}
+
+func findGauge(t *testing.T, metric, source string) (float64, bool) {
+	t.Helper()
 	families, err := prometheus.DefaultGatherer.Gather()
 	require.NoError(t, err)
 	for _, family := range families {
@@ -196,13 +228,12 @@ func gaugeValue(t *testing.T, metric, source string) float64 {
 		for _, m := range family.GetMetric() {
 			for _, label := range m.GetLabel() {
 				if label.GetName() == "source" && label.GetValue() == source {
-					return m.GetGauge().GetValue()
+					return m.GetGauge().GetValue(), true
 				}
 			}
 		}
 	}
-	t.Fatalf("no gauge %s{source=%q}", metric, source)
-	return 0
+	return 0, false
 }
 
 // drain returns all currently-buffered events without blocking.

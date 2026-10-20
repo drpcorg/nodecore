@@ -246,15 +246,20 @@ func (u *GenericUpstream) Start() {
 	})
 }
 
+// Stop tears down everything Start built - the upstream context, the settings validator,
+// the state processors and the connectors - as one transition with the lifecycle stop, so a
+// concurrent Start can never interleave with it and a second Stop finds nothing to do.
+// Cancelling the upstream context first means no nested lifecycle can be started again.
 func (u *GenericUpstream) Stop() {
-	u.upstreamCtx.mainLifecycle.Stop()
-	u.upstreamCtx.cancelFunc()
-	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
-	u.PartialStop()
+	u.upstreamCtx.mainLifecycle.StopWith(func() {
+		u.upstreamCtx.cancelFunc()
+		u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
+		u.PartialStop()
 
-	for _, connector := range u.apiConnectors {
-		connector.Stop()
-	}
+		for _, connector := range u.apiConnectors {
+			connector.Stop()
+		}
+	})
 }
 
 func (u *GenericUpstream) Running() bool {

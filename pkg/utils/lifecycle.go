@@ -37,11 +37,12 @@ func NewGenericLifecycle(name string, parentCtx context.Context) *GenericLifecyc
 }
 
 // Start opens a run by calling f with the run's context. f runs under the lifecycle's
-// mutex, so it must return promptly - spawn goroutines, do not block - and must not call
-// back into this lifecycle. A failed f leaves the lifecycle stopped with the run's context
-// cancelled, so whatever the failed start bound to it is released. Nothing is started on
-// a cancelled parent: such a run could never do anything, and reporting it as running
-// would be a lie.
+// mutex: Stop and Running wait for it, so its work must be bounded. Prefer to spawn
+// goroutines and return; a bounded blocking start (a probe with a timeout) is tolerated,
+// an unbounded one is a bug. f must not call back into this lifecycle. A failed f leaves
+// the lifecycle stopped with the run's context cancelled, so whatever the failed start
+// bound to it is released. Nothing is started on a cancelled parent: such a run could
+// never do anything, and reporting it as running would be a lie.
 func (l *GenericLifecycle) Start(f func(ctx context.Context) error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLifecycleStartOnlyOneTime(t *testing.T) {
@@ -120,25 +121,30 @@ func TestLifecycleFailedStartDoesNotClobberNewerRun(t *testing.T) {
 	}()
 	<-entered
 
+	stopping := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
+		close(stopping)
 		lifecycle.Stop()
 		lifecycle.Start(func(ctx context.Context) error {
 			secondCtx = ctx
 			return nil
 		})
 	}()
+	// the goroutine is running and about to call Stop; give it a moment to reach the mutex
+	// so that releasing the first start is what lets it proceed
+	<-stopping
 	time.Sleep(50 * time.Millisecond)
 	close(release)
 	<-done
 	<-firstDone
 
-	if secondCtx != nil {
-		assert.Equal(t, lifecycle.Running(), secondCtx.Err() == nil, "Running() disagrees with the live run")
-	} else {
-		assert.False(t, lifecycle.Running())
-	}
+	// whichever order the runtime picked, the second Start is the last transition: it must
+	// have run, be reported as running, and hold a live context
+	require.NotNil(t, secondCtx, "second Start did not run")
+	assert.True(t, lifecycle.Running())
+	assert.NoError(t, secondCtx.Err(), "the newer run was clobbered by the failed first start")
 }
 
 // StopWith runs its teardown only when the lifecycle actually transitions to stopped, the
@@ -176,14 +182,20 @@ func TestLifecycleStartWaitsForTeardownInProgress(t *testing.T) {
 	<-entered
 
 	var started atomic.Bool
+	starting := make(chan struct{})
 	startDone := make(chan struct{})
 	go func() {
 		defer close(startDone)
+		close(starting)
 		lifecycle.Start(func(ctx context.Context) error {
 			started.Store(true)
 			return nil
 		})
 	}()
+	// the goroutine is running and about to call Start; a running goroutine reaches the
+	// mutex in nanoseconds, so after the pause the only way for Start to be pending is
+	// that it waits on the teardown
+	<-starting
 	time.Sleep(50 * time.Millisecond)
 	assert.False(t, started.Load(), "Start ran while a teardown was in progress")
 

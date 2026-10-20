@@ -64,6 +64,22 @@ func TestGenericUpstreamStop_StopsRunningLifecycle(t *testing.T) {
 	assert.False(t, upstream.Running())
 }
 
+// Stop's teardown - cancelling the upstream context, stopping processors and connectors -
+// belongs to the running→stopped transition: a second Stop finds nothing to do and must not
+// run it again.
+func TestGenericUpstreamStop_TeardownRunsOnce(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("Start").Return()
+	connector.On("Stop").Return()
+	upstream, _, _ := newTestGenericUpstream(t, nil, []*mocks.ConnectorMock{connector}, nil)
+
+	upstream.Start()
+	upstream.Stop()
+	upstream.Stop()
+
+	connector.AssertNumberOfCalls(t, "Stop", 1)
+}
+
 func TestGenericUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 

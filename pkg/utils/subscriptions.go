@@ -20,8 +20,10 @@ var numSubscriptions = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 }, []string{"source"})
 
 // unreadMessages is labelled by subscriber name and holds the largest backlog among the
-// subscribers sharing that name, sampled on every Publish. Its cardinality is bounded only
-// as long as names are static - see SubscriptionManager.Subscribe.
+// subscribers sharing that name, sampled on every Publish. The series is removed when the
+// last subscriber of that name leaves, so a consumer that left with a backlog does not look
+// slow forever. Its cardinality is bounded only as long as names are static - see
+// SubscriptionManager.Subscribe.
 var unreadMessages = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: "chanutil",
 	Subsystem: "unread_messages",
@@ -40,25 +42,11 @@ type Subscription[T any] struct {
 	Events  chan T
 	name    string
 	manager *SubscriptionManager[T]
-	// mu serializes Unsubscribe's close of Events against Publish's send, so a
-	// send can never race with (or land after) the close. closed is guarded by mu.
-	mu     sync.Mutex
-	closed bool
 }
 
 // Unsubscribe removes the subscription from its manager and closes Events. Idempotent.
 func (s *Subscription[T]) Unsubscribe() {
-	s.manager.mu.Lock()
-	delete(s.manager.subscriptions, s)
-	s.manager.mu.Unlock()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.closed {
-		s.closed = true
-		close(s.Events)
-		numSubscriptions.WithLabelValues(s.manager.name).Dec()
-	}
+	s.manager.unsubscribe(s)
 }
 
 // SubscriptionManager fans events out to its subscribers. A subscription is identified by
@@ -67,21 +55,27 @@ func (s *Subscription[T]) Unsubscribe() {
 // still being released.
 type SubscriptionManager[T any] struct {
 	name string
-	// mu guards subscriptions, lastEvent and hasLast. Holding it across the whole of
-	// Publish makes registration atomic with respect to delivery: a subscriber joins
-	// entirely before or entirely after a publish, never in the middle of one. For
-	// SubscribeWithReplay that is what keeps the seed correct - without it a replay
-	// subscriber could snapshot the last state, have a Publish run (and miss it, being
-	// unregistered), then register - ending up permanently stale.
+	// mu guards every field below. Holding it across the whole of Publish makes registration
+	// and removal atomic with respect to delivery: a subscriber joins or leaves entirely
+	// before or entirely after a publish, never in the middle of one. That is what lets
+	// unsubscribe close Events without a per-subscription lock - no send can be in flight -
+	// and what keeps a replay seed correct: without it a replay subscriber could snapshot the
+	// last state, have a Publish run (and miss it, being unregistered), then register -
+	// ending up permanently stale.
 	mu            sync.Mutex
 	subscriptions map[*Subscription[T]]struct{}
-	lastEvent     T
-	hasLast       bool
+	// subscribersByName counts live subscribers per name; a name's unread series is
+	// removed together with its last subscriber.
+	subscribersByName map[string]int
+	// unreadByName is Publish's scratch space, reused across publishes.
+	unreadByName map[string]int
+	lastEvent    T
+	hasLast      bool
 }
 
 // Subscribe registers a subscriber under name. The name must be static - built from
 // configuration or code, never from a request, a client or a uuid: it becomes a metric
-// label, and every distinct name is a series that lives for the rest of the process.
+// label, and a series lives as long as any subscriber of that name does.
 func (sm *SubscriptionManager[T]) Subscribe(name string) *Subscription[T] {
 	return sm.SubscribeWithSize(name, 100)
 }
@@ -89,9 +83,8 @@ func (sm *SubscriptionManager[T]) Subscribe(name string) *Subscription[T] {
 func (sm *SubscriptionManager[T]) SubscribeWithSize(name string, size int) *Subscription[T] {
 	sub := sm.newSubscription(name, size)
 	sm.mu.Lock()
-	sm.subscriptions[sub] = struct{}{}
+	sm.register(sub)
 	sm.mu.Unlock()
-	numSubscriptions.WithLabelValues(sm.name).Inc()
 	return sub
 }
 
@@ -109,15 +102,12 @@ func (sm *SubscriptionManager[T]) SubscribeWithReplay(name string) *Subscription
 
 func (sm *SubscriptionManager[T]) SubscribeWithReplaySize(name string, size int) *Subscription[T] {
 	sub := sm.newSubscription(name, size)
-
 	sm.mu.Lock()
 	if sm.hasLast {
 		sub.Events <- sm.lastEvent
 	}
-	sm.subscriptions[sub] = struct{}{}
+	sm.register(sub)
 	sm.mu.Unlock()
-
-	numSubscriptions.WithLabelValues(sm.name).Inc()
 	return sub
 }
 
@@ -125,41 +115,23 @@ func (sm *SubscriptionManager[T]) Publish(event T) {
 	sm.mu.Lock()
 	sm.lastEvent = event
 	sm.hasLast = true
-	unreadByName := make(map[string]int)
+	clear(sm.unreadByName)
 	for sub := range sm.subscriptions {
-		sm.deliver(sub, event, unreadByName)
+		sm.deliver(sub, event)
 	}
-	sm.mu.Unlock()
-	for name, unread := range unreadByName {
+	for name, unread := range sm.unreadByName {
 		unreadMessages.WithLabelValues(name).Set(float64(unread))
 	}
+	sm.mu.Unlock()
 	publishRate.WithLabelValues(sm.name).Inc()
 }
 
 func NewSubscriptionManager[T any](name string) *SubscriptionManager[T] {
 	return &SubscriptionManager[T]{
-		subscriptions: make(map[*Subscription[T]]struct{}),
-		name:          name,
-	}
-}
-
-// deliver hands event to one subscriber without blocking and records its backlog under its
-// name. Called with sm.mu held.
-func (sm *SubscriptionManager[T]) deliver(sub *Subscription[T], event T, unreadByName map[string]int) {
-	sub.mu.Lock()
-	defer sub.mu.Unlock()
-	if sub.closed {
-		return
-	}
-	unread := len(sub.Events)
-	if worst, seen := unreadByName[sub.name]; !seen || unread > worst {
-		unreadByName[sub.name] = unread
-	}
-	select {
-	case sub.Events <- event:
-		// success
-	default:
-		log.Error().Msgf("Publish event %v from %v to %v subs failed", event, sm.name, sub.name)
+		subscriptions:     make(map[*Subscription[T]]struct{}),
+		subscribersByName: make(map[string]int),
+		unreadByName:      make(map[string]int),
+		name:              name,
 	}
 }
 
@@ -168,5 +140,46 @@ func (sm *SubscriptionManager[T]) newSubscription(name string, size int) *Subscr
 		name:    name,
 		Events:  make(chan T, size),
 		manager: sm,
+	}
+}
+
+// register adds sub to the live set. Called with sm.mu held.
+func (sm *SubscriptionManager[T]) register(sub *Subscription[T]) {
+	sm.subscriptions[sub] = struct{}{}
+	sm.subscribersByName[sub.name]++
+	numSubscriptions.WithLabelValues(sm.name).Inc()
+}
+
+// unsubscribe removes sub and closes its channel. Idempotent: a subscription that is no
+// longer in the live set has already been released.
+func (sm *SubscriptionManager[T]) unsubscribe(sub *Subscription[T]) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if _, live := sm.subscriptions[sub]; !live {
+		return
+	}
+	delete(sm.subscriptions, sub)
+	close(sub.Events)
+	numSubscriptions.WithLabelValues(sm.name).Dec()
+
+	sm.subscribersByName[sub.name]--
+	if sm.subscribersByName[sub.name] == 0 {
+		delete(sm.subscribersByName, sub.name)
+		unreadMessages.DeleteLabelValues(sub.name)
+	}
+}
+
+// deliver hands event to one subscriber without blocking and records its backlog under its
+// name. Called with sm.mu held.
+func (sm *SubscriptionManager[T]) deliver(sub *Subscription[T], event T) {
+	unread := len(sub.Events)
+	if worst, seen := sm.unreadByName[sub.name]; !seen || unread > worst {
+		sm.unreadByName[sub.name] = unread
+	}
+	select {
+	case sub.Events <- event:
+		// success
+	default:
+		log.Error().Msgf("Publish event %v from %v to %v subs failed", event, sm.name, sub.name)
 	}
 }
