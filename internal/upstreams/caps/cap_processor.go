@@ -47,13 +47,13 @@ func NewGenericCapProcessor(ctx context.Context, upstreamId string, detectors []
 }
 
 func (b *GenericCapProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		updates := make(chan capUpdate, 100)
 		for i, detector := range b.detectors {
 			go b.consume(ctx, i, detector, updates)
 		}
 		go b.aggregate(ctx, updates)
-		return nil
+		return nil, nil
 	})
 }
 

@@ -13,7 +13,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/google/uuid"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/rs/zerolog/log"
 )
@@ -121,7 +120,7 @@ func newPendingTxSourceBuilder(
 		// (the last ws upstream left). It then emits a terminal frame and clients
 		// fail over to the generic node-backed path - same contract as the local
 		// newHeads/logs sources.
-		stateSub := chainSup.SubscribeState(fmt.Sprintf("subengine_pendingtx_%s_%s", chain, uuid.NewString()))
+		stateSub := chainSup.SubscribeState(fmt.Sprintf("subengine_pendingtx_%s", chain))
 		go func() {
 			defer close(out)
 			defer stateSub.Unsubscribe()

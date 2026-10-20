@@ -59,10 +59,6 @@ type GenericHeadProcessor struct {
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
 	manualHeadChan       chan protocol.Block
-	// drainDone holds the channel closed when the current run's drain goroutine exits. Stop
-	// waits on it so that HeadStateEvent{Running: false} is published after the last block of
-	// the run. Atomic because Start and Stop may be driven from different goroutines.
-	drainDone *utils.Atomic[chan struct{}]
 }
 
 func NewGenericHeadProcessor(
@@ -95,7 +91,6 @@ func NewGenericHeadProcessor(
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent](name),
-		drainDone:            utils.NewAtomic[chan struct{}](),
 	}
 }
 
@@ -115,14 +110,20 @@ func (h *GenericHeadProcessor) Running() bool {
 	return h.lifecycle.Running()
 }
 
+// Start runs the head and drains its blocks into the subscribers. The teardown it returns
+// waits for the drain goroutine before publishing the stop, so nothing of this run is
+// published after HeadStateEvent{Running: false}: a late subscriber's replay then reports a
+// paused head exactly when the head is paused.
+//
+// The wait is short: the drain goroutine never blocks in network I/O, since a silence nudge
+// (Head.OnNoHeadUpdates) is a non-blocking signal to the head.
 func (h *GenericHeadProcessor) Start() {
-	h.lifecycle.Start(func(ctx context.Context) error {
+	h.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		h.head.Start()
 		h.lastUpdate.Store(time.Now())
 		h.subManager.Publish(HeadStateEvent{Running: true})
 
 		drainDone := make(chan struct{})
-		h.drainDone.Store(drainDone)
 		go func() {
 			defer close(drainDone)
 			timeout := time.NewTimer(h.headNoUpdatesTimeout)
@@ -151,23 +152,16 @@ func (h *GenericHeadProcessor) Start() {
 				timeout.Reset(h.headNoUpdatesTimeout)
 			}
 		}()
-		return nil
+		return func() {
+			<-drainDone
+			h.head.Stop()
+			h.subManager.Publish(HeadStateEvent{Running: false})
+		}, nil
 	})
 }
 
-// Stop cancels the drain goroutine and waits for it before publishing the stop, so nothing
-// of this run is published after HeadStateEvent{Running: false}: a late subscriber's replay
-// then reports a paused head exactly when the head is paused.
-//
-// The wait is short: the drain goroutine never blocks in network I/O, since a silence nudge
-// (Head.OnNoHeadUpdates) is a non-blocking signal to the head.
 func (h *GenericHeadProcessor) Stop() {
 	h.lifecycle.Stop()
-	if drainDone := h.drainDone.Load(); drainDone != nil {
-		<-drainDone
-	}
-	h.head.Stop()
-	h.subManager.Publish(HeadStateEvent{Running: false})
 }
 
 func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {

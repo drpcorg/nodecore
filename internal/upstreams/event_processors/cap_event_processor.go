@@ -30,7 +30,7 @@ func (b *GenericCapEventProcessor) SetEmitter(emitter Emitter) {
 }
 
 func (b *GenericCapEventProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		// Subscribe before starting the processor so the initial merged cap set,
 		// published as soon as the first detector reports, is never missed.
 		capSub := b.capProcessor.Subscribe(fmt.Sprintf("%s_caps", b.upstreamId))
@@ -51,13 +51,12 @@ func (b *GenericCapEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return b.capProcessor.Stop, nil
 	})
 }
 
 func (b *GenericCapEventProcessor) Stop() {
 	b.lifecycle.Stop()
-	b.capProcessor.Stop()
 }
 
 func (b *GenericCapEventProcessor) Running() bool {
