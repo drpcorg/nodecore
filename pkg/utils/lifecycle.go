@@ -63,7 +63,7 @@ func (l *GenericLifecycle) Start(f StartFunc) {
 		return
 	}
 	if err := l.parentCtx.Err(); err != nil {
-		log.Error().Err(err).Msgf("parent context of '%s' is closed, not starting", l.name)
+		log.Debug().Err(err).Msgf("parent context of '%s' is closed, not starting", l.name)
 		return
 	}
 
