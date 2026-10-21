@@ -26,8 +26,11 @@ const (
 	// removalGracePeriod separates deregistering an upstream from stopping it, so the unary
 	// requests already on it can finish; by then it is no longer selected.
 	removalGracePeriod = 5 * time.Second
-	// removalDoneTimeout bounds the wait for the forwarder of a removed upstream to exit.
-	removalDoneTimeout = 30 * time.Second
+	// removalDoneTimeout bounds the wait for the forwarder of a removed upstream to exit. The
+	// forwarder only reaches its loop once the instance's Start returned, so the bound must
+	// outlast a slow settings validation; past it the removal goes on so a wedged event
+	// pipeline can never hang a reload.
+	removalDoneTimeout = 60 * time.Second
 )
 
 type upstreamFactory func(ctx context.Context, conf *config.Upstream, executor failsafe.Executor[protocol.ResponseHolder], index int) (Upstream, error)
@@ -213,8 +216,9 @@ func createUpstreamExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Exec
 
 // addUpstreams creates the instances in parallel and waits for that, then stores each one
 // and starts its forwarder. Creation is local work (no dial, no probe) and must have finished
-// before the entry exists: a failed creation is not stored, so the next apply retries it.
-// Called with applyMu held.
+// before the entry exists. A creation failure is a config error (connector settings, chain
+// specifics) and is only logged: nothing is stored for the id, so it is built again when a
+// changed config is applied, never retried on its own. Called with applyMu held.
 func (b *GenericUpstreamSupervisor) addUpstreams(confs []*config.Upstream) {
 	created := make([]Upstream, len(confs))
 	var creations sync.WaitGroup
