@@ -1,6 +1,6 @@
 module github.com/drpcorg/nodecore
 
-go 1.27.0
+go 1.27.3
 
 require (
 	cosmossdk.io/api v1.0.0
