@@ -22,9 +22,6 @@ import (
 )
 
 func (producer *upstreamStatusProducer) subscribe(upstreamSupervisor upstreams.UpstreamSupervisor, parent context.Context) error {
-	if upstreamSupervisor == nil {
-		return errNilUpstreamSupervisor
-	}
 	if producer.interval <= 0 {
 		producer.interval = config.DefaultGrpcUpstreamStatusInterval
 	}
@@ -161,6 +158,9 @@ func (p *upstreamStatusProducer) send(ctx context.Context, chainSupervisor upstr
 // SubscribeUpstreamStatusWithResync uses the chain-status response format, once
 // per upstream. It shares the legacy full/delta/resync semantics.
 func SubscribeUpstreamStatusWithResync(supervisor upstreams.UpstreamSupervisor, stream dshackle.Blockchain_SubscribeUpstreamStatusServer, interval, resync time.Duration) error {
+	if supervisor == nil {
+		return errNilUpstreamSupervisor
+	}
 	producer := &upstreamStatusProducer{stream: stream, interval: interval, resyncInterval: resync}
 	return producer.subscribe(supervisor, stream.Context())
 }

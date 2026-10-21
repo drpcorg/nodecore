@@ -2,6 +2,7 @@ package emerald_test
 
 import (
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/server/emerald"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/require"
@@ -81,4 +82,8 @@ func TestUpstreamStreamResyncRepairsRemovedUpstream(t *testing.T) {
 		}
 		return removals >= 2
 	}, time.Second, time.Millisecond)
+}
+
+func TestUpstreamStreamRejectsNilSupervisor(t *testing.T) {
+	require.Error(t, emerald.SubscribeUpstreamStatusWithResync(nil, nil, time.Millisecond, time.Minute))
 }
