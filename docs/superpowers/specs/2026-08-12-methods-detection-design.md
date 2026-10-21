@@ -176,7 +176,7 @@ The map has a single writer despite the concurrency: the probe goroutines write 
 The probe list starts as dshackle's (`BasicEthUpstreamRpcMethodsDetector.kt:36-46`), intersected with the chain's base set so a probe naming a method absent from the spec is skipped automatically:
 
 ```
-eth_getBlockReceipts, trace_callMany, trace_rawTransaction, eth_simulateV1,
+eth_getBlockReceipts, trace_callMany, trace_rawTransaction, eth_simulateV1, eth_callMany,
 eth_getStorageValues, debug_storageRangeAt, eth_getTdByNumber, eth_callBundle
 ```
 
