@@ -53,9 +53,9 @@ func TestPendingFeedNeverOpensOutsidePin(t *testing.T) {
 	sup.AssertNotCalled(t, "GetUpstream", "outside")
 }
 
-func TestPendingEnrichmentCannotBorrowAnotherGroupsTransaction(t *testing.T) {
+func TestPendingEnrichmentCannotBorrowAnotherUpstreamsTransaction(t *testing.T) {
 	chSup, sup := enrichTestSetup(t, protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"hash":"0xaaa"}`), protocol.JsonRpc))
-	tx, _ := enrichPendingTx(context.Background(), sup, chains.ARBITRUM, chSup, []byte(`"0xaaa"`), protocol.RequestLabelSelector{Name: protocol.UpstreamIdLabel, Values: []string{"other-group"}})
+	tx, _ := enrichPendingTx(context.Background(), sup, chains.ARBITRUM, chSup, []byte(`"0xaaa"`), protocol.RequestLabelSelector{Name: protocol.UpstreamIdLabel, Values: []string{"other-upstream"}})
 	assert.Nil(t, tx)
 	sup.AssertNotCalled(t, "GetUpstream", "up1")
 }

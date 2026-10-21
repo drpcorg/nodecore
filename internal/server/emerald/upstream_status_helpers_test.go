@@ -3,7 +3,6 @@ package emerald_test
 import (
 	"slices"
 	"sync"
-	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -20,7 +19,6 @@ type upstreamsChainSupervisor struct {
 	mu      sync.RWMutex
 	states  map[string]*protocol.UpstreamState
 	changed utils.Signal
-	reads   atomic.Int64
 }
 
 func newUpstreamsChainSupervisor(chain chains.Chain) *upstreamsChainSupervisor {
@@ -35,7 +33,6 @@ func (s *upstreamsChainSupervisor) UpstreamsChanged() <-chan struct{} {
 }
 
 func (s *upstreamsChainSupervisor) GetUpstreamIds() []string {
-	s.reads.Add(1)
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids := make([]string, 0, len(s.states))
@@ -78,7 +75,6 @@ func (s *upstreamsChainSupervisor) update(id string, change func(*protocol.Upstr
 
 type chainsUpstreamSupervisor struct {
 	*mocks.UpstreamSupervisorMock
-	mu     sync.Mutex
 	chains []upstreams.ChainSupervisor
 	events *utils.SubscriptionManager[upstreams.ChainSupervisorEvent]
 }
@@ -96,8 +92,6 @@ func (s *chainsUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.
 }
 
 func (s *chainsUpstreamSupervisor) GetChainSupervisors() []upstreams.ChainSupervisor {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return slices.Clone(s.chains)
 }
 

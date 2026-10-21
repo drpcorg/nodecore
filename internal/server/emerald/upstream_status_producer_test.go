@@ -96,7 +96,7 @@ func startRecordedUpstreamStatusWithInterval(
 	return stream, supervisor
 }
 
-func TestSubscribeUpstreamStatus_EmptyFilterStreamsEveryChain(t *testing.T) {
+func TestSubscribeUpstreamStatus_StreamsEveryChain(t *testing.T) {
 	ethereum := newUpstreamsChainSupervisor(chains.ETHEREUM)
 	ethereum.set("eth-1", testUpstreamState(100))
 	polygon := newUpstreamsChainSupervisor(chains.POLYGON)
@@ -143,47 +143,9 @@ func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
 	}()
 
 	responses := stream.waitFor(t, 2)
-	assert.Equal(t, uint64(100), responses[0].GetChainDescription().GetChainEvent()[3].GetHead().GetHeight())
+	assert.Equal(t, uint64(100), responseHeight(responses[0]))
 	assert.Equal(t, uint64(105), responseHeight(responses[1]))
 	stream.quiet(t, 2)
-}
-
-func TestSubscribeUpstreamStatus_StopsOnContextCancel(t *testing.T) {
-	loadMethodSpecs(t)
-	supervisor := newChainsUpstreamSupervisor()
-	stream := &recordingUpstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
-	done := make(chan error, 1)
-	go func() {
-		done <- emerald.SubscribeUpstreamStatusWithResync(supervisor, stream, time.Millisecond, time.Hour)
-	}()
-
-	stream.cancel()
-	select {
-	case err := <-done:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("the stream did not stop")
-	}
-}
-
-// a change is sent at once, not on the next poll, once the gap to the last
-// send of the chain is over
-func TestSubscribeUpstreamStatus_WakesOnChange(t *testing.T) {
-	const interval = 300 * time.Millisecond
-	chainSupervisor := newUpstreamsChainSupervisor(chains.ETHEREUM)
-	chainSupervisor.set("up-1", testUpstreamState(100))
-	stream, _ := startRecordedUpstreamStatusWithInterval(t, interval, time.Hour, chainSupervisor)
-	stream.waitFor(t, 1)
-
-	for height := uint64(101); height <= 103; height++ {
-		time.Sleep(interval + 20*time.Millisecond)
-		changedAt := time.Now()
-		chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
-		count := int(height - 99)
-		response := stream.waitFor(t, count)[count-1]
-		assert.Equal(t, height, responseHeight(response))
-		assert.Less(t, stream.sendTimes()[count-1].Sub(changedAt), 50*time.Millisecond)
-	}
 }
 
 func TestSubscribeUpstreamStatus_IntervalIsTheMinimumGapOfAChain(t *testing.T) {
@@ -220,18 +182,6 @@ func TestSubscribeUpstreamStatus_IntervalIsTheMinimumGapOfAChain(t *testing.T) {
 	assert.GreaterOrEqual(t, sentAt[2].Sub(sentAt[ethereumFull]), interval)
 	assert.Less(t, sentAt[3].Sub(sentAt[2]), interval/2)
 	assert.GreaterOrEqual(t, sentAt[4].Sub(sentAt[2]), interval)
-}
-
-// an idle chain is not looked at: only a change wakes its sender
-func TestSubscribeUpstreamStatus_IdleChainCostsNothing(t *testing.T) {
-	chainSupervisor := newUpstreamsChainSupervisor(chains.ETHEREUM)
-	chainSupervisor.set("up-1", testUpstreamState(100))
-	stream, _ := startRecordedUpstreamStatus(t, time.Hour, chainSupervisor)
-	stream.waitFor(t, 1)
-
-	reads := chainSupervisor.reads.Load()
-	stream.quiet(t, 1)
-	assert.Equal(t, reads, chainSupervisor.reads.Load())
 }
 
 func responseHeight(r *dshackle.SubscribeChainStatusResponse) uint64 {

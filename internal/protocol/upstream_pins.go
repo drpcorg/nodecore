@@ -7,11 +7,8 @@ import "slices"
 // is an ordinary label, which no upstream has.
 const UpstreamIdLabel = "upstream_id"
 
-// UpstreamPin restricts execution to explicit upstream IDs.
-type UpstreamPin struct {
-	Values []string
-}
-type UpstreamPins []UpstreamPin
+// UpstreamPins intersects the allowed ID sets extracted from request selectors.
+type UpstreamPins [][]string
 
 // SplitUpstreamPins extracts upstream_id constraints at the top level or under
 // AND; ordinary selectors keep their existing semantics.
@@ -25,7 +22,7 @@ func SplitUpstreamPins(selectors []RequestSelector) (UpstreamPins, []RequestSele
 		switch s := selector.(type) {
 		case RequestLabelSelector:
 			if isUpstreamPin(s) {
-				pins = append(pins, UpstreamPin{Values: s.Values})
+				pins = append(pins, s.Values)
 				continue
 			}
 		case RequestAndSelector:
@@ -67,7 +64,7 @@ func (p UpstreamPins) Matches(id string, state *UpstreamState) bool {
 		return false
 	}
 	for _, pin := range p {
-		if !slices.Contains(pin.Values, id) {
+		if !slices.Contains(pin, id) {
 			return false
 		}
 	}
@@ -78,7 +75,7 @@ func (p UpstreamPins) Matches(id string, state *UpstreamState) bool {
 func (p UpstreamPins) Ids() []string {
 	var ids []string
 	for _, list := range p {
-		for _, id := range list.Values {
+		for _, id := range list {
 			if !slices.Contains(ids, id) {
 				ids = append(ids, id)
 			}

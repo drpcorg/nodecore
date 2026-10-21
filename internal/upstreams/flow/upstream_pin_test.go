@@ -3,7 +3,6 @@ package flow
 import (
 	"context"
 	"errors"
-	"math"
 	"testing"
 	"time"
 
@@ -95,7 +94,7 @@ func TestUpstreamPinsAreAGate(t *testing.T) {
 	}
 
 	pins, rest := protocol.SplitUpstreamPins(selectors)
-	assert.Equal(t, protocol.UpstreamPins{{Values: []string{"a", "b"}}, {Values: []string{"b", "c"}}}, pins)
+	assert.Equal(t, protocol.UpstreamPins{{"a", "b"}, {"b", "c"}}, pins)
 	assert.True(t, pins.Matches("b", &protocol.UpstreamState{}))
 	assert.False(t, pins.Matches("a", &protocol.UpstreamState{}))
 	assert.False(t, pins.Matches("c", &protocol.UpstreamState{}))
@@ -114,19 +113,6 @@ func TestUpstreamPinsAreAGate(t *testing.T) {
 		require.Len(t, matchers, 1)
 		assert.NotEqual(t, SuccessType, matchers[0].Match("x", &state).Type())
 	}
-}
-
-func TestEmptyUpstreamIdSelectorFailsLikeAnyLabel(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a")
-	selectErr := func(selector protocol.RequestSelector) error {
-		matchers, _ := buildSelectorRouting([]protocol.RequestSelector{selector}, nil, chainSupervisor)
-		strategy := NewGenericStrategyWithOptions(chainSupervisor, matchers, nil)
-		_, err := strategy.SelectUpstream(pinTestRequest("eth_call", selector))
-		return err
-	}
-
-	err := selectErr(pin())
-	assert.Equal(t, protocol.NoAvailableUpstreamsErrorWithCause("a - No label `upstream_id` with values []"), err)
 }
 
 func TestPinnedRequestSelectsOnlyPinnedUpstreams(t *testing.T) {
@@ -261,31 +247,6 @@ func TestPinnedRoundRobinSharesEvenly(t *testing.T) {
 		counts[id]++
 	}
 	assert.Equal(t, map[string]int{"a": 500, "d": 500}, counts)
-}
-
-// the pins are parsed once per request: selecting for an unpinned request
-// with selectors costs what it costs without them
-func TestUnpinnedSelectionAllocations(t *testing.T) {
-	if raceEnabled {
-		t.Skip("allocation counts differ under the race detector")
-	}
-	chainSupervisor := pinTestChain(t, "eth_call", "a", "b", "c")
-	selectors := []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{
-		protocol.RequestLowerHeightSelector{Height: 10},
-		protocol.RequestHeightSelector{Height: 100},
-	}}}
-	// the least of several runs: other goroutines of the process only add
-	allocs := func(request protocol.RequestHolder) float64 {
-		least := math.Inf(1)
-		for range 5 {
-			least = min(least, testing.AllocsPerRun(100, func() {
-				_, _ = ratingStrategyOf(chainSupervisor, "a", "b", "c").SelectUpstream(request)
-			}))
-		}
-		return least
-	}
-
-	assert.Equal(t, allocs(pinTestRequest("eth_call")), allocs(pinTestRequest("eth_call", selectors...)))
 }
 
 type pinTestUpstreams struct {

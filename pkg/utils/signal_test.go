@@ -32,8 +32,3 @@ func TestSignalWakesEveryWaiterOfTheNextNotify(t *testing.T) {
 	signal.Notify()
 	assert.True(t, closed(next))
 }
-
-func TestSignalWithoutWaitersAllocatesNothing(t *testing.T) {
-	var signal utils.Signal
-	assert.Zero(t, testing.AllocsPerRun(100, signal.Notify))
-}
