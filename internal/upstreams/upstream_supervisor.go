@@ -143,15 +143,16 @@ func (b *GenericUpstreamSupervisor) StartUpstreams() {
 }
 
 // ApplyUpstreams holds applyMu for its whole duration, so the initial start and any reload
-// run one after another. Removals run in parallel and are waited for; additions then run in
-// parallel and are not: an addition is complete when the instance is created and stored,
-// its Start and health are asynchronous as they always were.
+// run one after another. The instances to add are created first, before anything is removed:
+// creation is local work, and a replacement that cannot be built leaves the old instance
+// running. Removals then run in parallel and are waited for; the created instances are stored
+// and started last (their start and health stay asynchronous as they always were).
 func (b *GenericUpstreamSupervisor) ApplyUpstreams(confs []*config.Upstream) UpstreamsDiff {
 	b.applyMu.Lock()
 	defer b.applyMu.Unlock()
 
 	var diff UpstreamsDiff
-	toRemove := make([]*runningUpstream, 0)
+	toRemove := make(map[string]*runningUpstream)
 	toAdd := make([]*config.Upstream, 0)
 
 	wanted := make(map[string]*config.Upstream, len(confs))
@@ -163,10 +164,10 @@ func (b *GenericUpstreamSupervisor) ApplyUpstreams(confs []*config.Upstream) Ups
 		switch {
 		case !ok:
 			diff.Removed = append(diff.Removed, id)
-			toRemove = append(toRemove, running)
+			toRemove[id] = running
 		case !reflect.DeepEqual(running.conf, want):
 			diff.Changed = append(diff.Changed, id)
-			toRemove = append(toRemove, running)
+			toRemove[id] = running
 			toAdd = append(toAdd, want)
 		}
 		return true
@@ -177,9 +178,22 @@ func (b *GenericUpstreamSupervisor) ApplyUpstreams(confs []*config.Upstream) Ups
 			toAdd = append(toAdd, conf)
 		}
 	}
-	slices.Sort(diff.Added)
-	slices.Sort(diff.Removed)
-	slices.Sort(diff.Changed)
+
+	created := b.createUpstreams(toAdd)
+	for i, conf := range toAdd {
+		if created[i] != nil {
+			continue
+		}
+		diff.Failed = append(diff.Failed, conf.Id)
+		diff.Added = slices.DeleteFunc(diff.Added, func(id string) bool { return id == conf.Id })
+		diff.Changed = slices.DeleteFunc(diff.Changed, func(id string) bool { return id == conf.Id })
+		// a replacement that could not be built: the old instance stays as it is
+		delete(toRemove, conf.Id)
+	}
+	diff.Added = sortedOrNil(diff.Added)
+	diff.Removed = sortedOrNil(diff.Removed)
+	diff.Changed = sortedOrNil(diff.Changed)
+	diff.Failed = sortedOrNil(diff.Failed)
 
 	var removals sync.WaitGroup
 	for _, running := range toRemove {
@@ -187,8 +201,22 @@ func (b *GenericUpstreamSupervisor) ApplyUpstreams(confs []*config.Upstream) Ups
 	}
 	removals.Wait()
 
-	b.addUpstreams(toAdd)
+	for i, up := range created {
+		if up != nil {
+			b.startUpstream(toAdd[i], up)
+		}
+	}
 	return diff
+}
+
+// sortedOrNil sorts ids in place and returns nil for an empty list, so a list emptied by a
+// failed creation reads the same as one that never had an entry.
+func sortedOrNil(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 func createFlowExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Executor[*protocol.ResponseHolderWrapper] {
@@ -214,12 +242,12 @@ func createUpstreamExecutor(failsafeConfig *config.FailsafeConfig) failsafe.Exec
 	return resilience.CreateUpstreamExecutor(policies...)
 }
 
-// addUpstreams creates the instances in parallel and waits for that, then stores each one
-// and starts its forwarder. Creation is local work (no dial, no probe) and must have finished
-// before the entry exists. A creation failure is a config error (connector settings, chain
-// specifics) and is only logged: nothing is stored for the id, so it is built again when a
-// changed config is applied, never retried on its own. Called with applyMu held.
-func (b *GenericUpstreamSupervisor) addUpstreams(confs []*config.Upstream) {
+// createUpstreams builds the instances in parallel and waits for that. Creation is local
+// work (no dial, no probe, nothing started), so it is safe while an older instance of the same
+// id is still running. A creation failure is a config or environment error (connector
+// settings, a CA file, chain specifics) and is only logged: the slot stays nil and the caller
+// reports the id as failed. Called with applyMu held.
+func (b *GenericUpstreamSupervisor) createUpstreams(confs []*config.Upstream) []Upstream {
 	created := make([]Upstream, len(confs))
 	var creations sync.WaitGroup
 	for i, conf := range confs {
@@ -240,22 +268,22 @@ func (b *GenericUpstreamSupervisor) addUpstreams(confs []*config.Upstream) {
 		})
 	}
 	creations.Wait()
+	return created
+}
 
-	for i, up := range created {
-		if up == nil {
-			continue
-		}
-		running := &runningUpstream{
-			conf:     confs[i],
-			upstream: up,
-			stop:     make(chan struct{}),
-			done:     make(chan struct{}),
-		}
-		// Stored before Start so an event emitted during Start never reaches processEvents
-		// before GetUpstream can resolve it.
-		b.upstreams.Store(up.GetId(), running)
-		go b.runUpstream(running)
+// startUpstream stores a created instance and starts its forwarder. Called with applyMu held,
+// after every removal of the same apply has finished.
+func (b *GenericUpstreamSupervisor) startUpstream(conf *config.Upstream, up Upstream) {
+	running := &runningUpstream{
+		conf:     conf,
+		upstream: up,
+		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
 	}
+	// Stored before Start so an event emitted during Start never reaches processEvents
+	// before GetUpstream can resolve it.
+	b.upstreams.Store(up.GetId(), running)
+	go b.runUpstream(running)
 }
 
 // runUpstream subscribes, starts the upstream and forwards its events into eventsChan.

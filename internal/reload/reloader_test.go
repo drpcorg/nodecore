@@ -1,9 +1,11 @@
 package reload_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +14,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/reload"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -72,9 +76,10 @@ upstream-config:
 `
 
 type applierStub struct {
-	mu    sync.Mutex
-	calls [][]string
-	block chan struct{} // when non-nil, ApplyUpstreams waits for it to close
+	mu     sync.Mutex
+	calls  [][]string
+	block  chan struct{} // when non-nil, ApplyUpstreams waits for it to close
+	failed []string      // ids reported as failed creations
 }
 
 func (a *applierStub) ApplyUpstreams(confs []*config.Upstream) upstreams.UpstreamsDiff {
@@ -85,11 +90,12 @@ func (a *applierStub) ApplyUpstreams(confs []*config.Upstream) upstreams.Upstrea
 	a.mu.Lock()
 	a.calls = append(a.calls, ids)
 	block := a.block
+	failed := a.failed
 	a.mu.Unlock()
 	if block != nil {
 		<-block
 	}
-	return upstreams.UpstreamsDiff{Added: ids}
+	return upstreams.UpstreamsDiff{Added: ids, Failed: failed}
 }
 
 func (a *applierStub) callCount() int {
@@ -143,7 +149,7 @@ func (f *fixture) write(t *testing.T, content string) {
 func TestReloadUnchangedFileDoesNotApply(t *testing.T) {
 	f := newFixture(t, "")
 
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 
 	assert.Equal(t, 0, f.applier.callCount())
 }
@@ -152,7 +158,7 @@ func TestReloadChangedFileAppliesItsUpstreams(t *testing.T) {
 	f := newFixture(t, "")
 	f.write(t, changedYaml)
 
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 
 	assert.Equal(t, 1, f.applier.callCount())
 	assert.Equal(t, []string{"eth-1", "eth-2"}, f.applier.lastCall())
@@ -162,8 +168,8 @@ func TestReloadSameContentTwiceAppliesOnce(t *testing.T) {
 	f := newFixture(t, "")
 	f.write(t, changedYaml)
 
-	f.reloader.Reload("test")
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	f.reloader.Reload(reload.SignalTrigger("test"))
 
 	assert.Equal(t, 1, f.applier.callCount())
 }
@@ -172,14 +178,14 @@ func TestReloadRejectedFileIsNotAppliedAndNotRetried(t *testing.T) {
 	f := newFixture(t, "")
 	f.write(t, brokenYaml)
 
-	f.reloader.Reload("test")
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	f.reloader.Reload(reload.SignalTrigger("test"))
 
 	assert.Equal(t, 0, f.applier.callCount())
 
 	// a fixed file is applied again
 	f.write(t, changedYaml)
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 	assert.Equal(t, 1, f.applier.callCount())
 }
 
@@ -187,11 +193,11 @@ func TestReloadMissingFileLeavesHandledHashUntouched(t *testing.T) {
 	f := newFixture(t, "")
 	require.NoError(t, os.Remove(f.path))
 
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 	assert.Equal(t, 0, f.applier.callCount())
 
 	f.write(t, changedYaml)
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 	assert.Equal(t, 1, f.applier.callCount())
 }
 
@@ -202,14 +208,14 @@ func TestReloadInProgressDropsTheSecondTrigger(t *testing.T) {
 
 	finished := make(chan struct{})
 	go func() {
-		f.reloader.Reload("first")
+		f.reloader.Reload(reload.SignalTrigger("first"))
 		close(finished)
 	}()
 	require.Eventually(t, func() bool { return f.applier.callCount() == 1 }, time.Second, 10*time.Millisecond)
 
 	returned := make(chan struct{})
 	go func() {
-		f.reloader.Reload("second")
+		f.reloader.Reload(reload.SignalTrigger("second"))
 		close(returned)
 	}()
 	select {
@@ -268,12 +274,115 @@ upstream-config:
           url: https://eth-1.test
 `)
 
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 	assert.Equal(t, 0, f.applier.callCount())
 
 	// the content counts as handled: the same trigger again is a no-op, a fixed file applies
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 	f.write(t, changedYaml)
-	f.reloader.Reload("test")
+	f.reloader.Reload(reload.SignalTrigger("test"))
 	assert.Equal(t, 1, f.applier.callCount())
+}
+
+// A creation failure can be environmental (a CA file not mounted yet), and the old instance
+// of a changed id is kept, so retrying is free: the content is not recorded as handled and
+// the next trigger applies it again.
+func TestReloadRetriesContentWhoseUpstreamsFailedToCreate(t *testing.T) {
+	f := newFixture(t, "")
+	f.applier.failed = []string{"eth-2"}
+	f.write(t, changedYaml)
+
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	assert.Equal(t, 2, f.applier.callCount())
+
+	// once the creation succeeds the content counts as handled
+	f.applier.mu.Lock()
+	f.applier.failed = nil
+	f.applier.mu.Unlock()
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	assert.Equal(t, 3, f.applier.callCount())
+}
+
+// captureLogs routes the global logger into a buffer for the test, at Debug level so every
+// line is visible together with its level.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := log.Logger
+	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	t.Cleanup(func() { log.Logger = previous })
+	return &buf
+}
+
+func logLines(buf *bytes.Buffer, text string) []string {
+	lines := make([]string, 0)
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, text) {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// A watch tick asks the reloader a question it asks itself every interval, so an unchanged
+// file is a Debug line; a signal is an operator asking, and gets the answer at Info.
+func TestReloadUnchangedFileLogsAtDebugOnWatchAndInfoOnSignal(t *testing.T) {
+	f := newFixture(t, "")
+	logs := captureLogs(t)
+
+	f.reloader.Reload(reload.WatchTrigger)
+	watchLines := logLines(logs, "config is unchanged")
+	require.Len(t, watchLines, 1)
+	assert.Contains(t, watchLines[0], `"level":"debug"`)
+
+	logs.Reset()
+	f.reloader.Reload(reload.SignalTrigger("hangup"))
+	signalLines := logLines(logs, "config is unchanged")
+	require.Len(t, signalLines, 1)
+	assert.Contains(t, signalLines[0], `"level":"info"`)
+}
+
+// The same for a file that was rejected: the error is repeated at Warn only when asked.
+func TestReloadRejectedFileLogsAtDebugOnWatchAndWarnOnSignal(t *testing.T) {
+	f := newFixture(t, "")
+	f.write(t, brokenYaml)
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	logs := captureLogs(t)
+
+	f.reloader.Reload(reload.WatchTrigger)
+	watchLines := logLines(logs, "unchanged since its last reload was rejected")
+	require.Len(t, watchLines, 1)
+	assert.Contains(t, watchLines[0], `"level":"debug"`)
+
+	logs.Reset()
+	f.reloader.Reload(reload.SignalTrigger("hangup"))
+	signalLines := logLines(logs, "unchanged since its last reload was rejected")
+	require.Len(t, signalLines, 1)
+	assert.Contains(t, signalLines[0], `"level":"warn"`)
+}
+
+func TestReloadInProgressLogsAtDebugOnWatchAndWarnOnSignal(t *testing.T) {
+	f := newFixture(t, "")
+	f.applier.block = make(chan struct{})
+	f.write(t, changedYaml)
+	finished := make(chan struct{})
+	go func() {
+		f.reloader.Reload(reload.SignalTrigger("first"))
+		close(finished)
+	}()
+	require.Eventually(t, func() bool { return f.applier.callCount() == 1 }, time.Second, 10*time.Millisecond)
+	logs := captureLogs(t)
+
+	f.reloader.Reload(reload.WatchTrigger)
+	f.reloader.Reload(reload.SignalTrigger("hangup"))
+
+	lines := logLines(logs, "config reload is in progress")
+	require.Len(t, lines, 2)
+	assert.Contains(t, lines[0], `"level":"debug"`)
+	assert.Contains(t, lines[1], `"level":"warn"`)
+
+	close(f.applier.block)
+	<-finished
 }

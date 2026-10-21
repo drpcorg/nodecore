@@ -3,6 +3,7 @@ package reload
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"sync/atomic"
@@ -10,12 +11,29 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 // UpstreamsApplier is the part of the upstream supervisor a reload needs.
 type UpstreamsApplier interface {
 	ApplyUpstreams(confs []*config.Upstream) upstreams.UpstreamsDiff
+}
+
+// Trigger is what asked for a reload. An explicit one is an operator asking (a signal), and
+// gets its answer at the usual levels; the watch tick asks the same question every interval,
+// so an unchanged or still-rejected file is a Debug line for it.
+type Trigger struct {
+	name     string
+	explicit bool
+}
+
+// WatchTrigger is the periodic file check.
+var WatchTrigger = Trigger{name: "watch"}
+
+// SignalTrigger is a reload asked for by signal.
+func SignalTrigger(signal string) Trigger {
+	return Trigger{name: "signal " + signal, explicit: true}
 }
 
 // Reloader re-reads the config file while nodecore runs and applies its upstream list.
@@ -60,19 +78,19 @@ func (r *Reloader) Run(ctx context.Context, hups <-chan os.Signal) {
 		case <-ctx.Done():
 			return
 		case sig := <-hups:
-			go r.Reload("signal " + sig.String())
+			go r.Reload(SignalTrigger(sig.String()))
 		case <-ticks:
-			go r.Reload("watch")
+			go r.Reload(WatchTrigger)
 		}
 	}
 }
 
 // Reload reads the file and, if its content differs from the last handled one, builds the
 // config to apply, reports the restart-only differences, validates and applies the upstream
-// list. trigger names what asked for the reload, for the logs.
-func (r *Reloader) Reload(trigger string) {
+// list. The trigger decides how loud a non-event is, see Trigger.
+func (r *Reloader) Reload(trigger Trigger) {
 	if !r.inProgress.CompareAndSwap(false, true) {
-		log.Warn().Msgf("config reload is in progress, the %s trigger is ignored", trigger)
+		trigger.quietLevel(zerolog.WarnLevel).Msgf("config reload is in progress, the %s trigger is ignored", trigger.name)
 		return
 	}
 	defer r.inProgress.Store(false)
@@ -86,15 +104,22 @@ func (r *Reloader) Reload(trigger string) {
 	sum := sha256.Sum256(file)
 	if sum == r.last.sum {
 		if r.last.err != nil {
-			log.Warn().Err(r.last.err).Msg("config is unchanged since its last reload was rejected, change it to reload again")
+			trigger.quietLevel(zerolog.WarnLevel).Err(r.last.err).Msg("config is unchanged since its last reload was rejected, change it to reload again")
 		} else {
-			log.Info().Msg("config is unchanged, nothing to reload")
+			trigger.quietLevel(zerolog.InfoLevel).Msg("config is unchanged, nothing to reload")
 		}
 		return
 	}
 
-	log.Info().Msgf("reloading the config file %s (%s)", r.path, trigger)
+	log.Info().Msgf("reloading the config file %s (%s)", r.path, trigger.name)
 	err = r.load(file)
+	if errors.Is(err, errUpstreamsNotCreated) {
+		// not recorded as handled: a creation failure can be environmental (a CA file that
+		// is not mounted yet) and the running instances were left as they were, so the next
+		// trigger simply tries the same content again
+		log.Error().Err(err).Msg("config reload is incomplete, it is retried on the next trigger")
+		return
+	}
 	r.last = handled{sum: sum, err: err}
 	if err != nil {
 		log.Error().Err(err).Msg("config reload is rejected, the running upstreams are left untouched")
@@ -129,8 +154,24 @@ func (r *Reloader) load(file []byte) (err error) {
 	} else {
 		log.Info().Msgf("upstreams reloaded: %s", diff)
 	}
+	if len(diff.Failed) > 0 {
+		return fmt.Errorf("%w: %v", errUpstreamsNotCreated, diff.Failed)
+	}
 	return nil
 }
+
+// quietLevel starts a log event for a non-event (nothing to reload, a trigger dropped): at
+// the given level for an explicit trigger, at Debug for the watch.
+func (t Trigger) quietLevel(explicit zerolog.Level) *zerolog.Event {
+	if t.explicit {
+		return log.WithLevel(explicit)
+	}
+	return log.Debug()
+}
+
+// errUpstreamsNotCreated reports upstreams the supervisor could not build from a config that
+// passed validation. Unlike a validation error it does not mark the content as handled.
+var errUpstreamsNotCreated = errors.New("some upstreams couldn't be created")
 
 // handled is the last file content a reload dealt with, applied or rejected, so that the
 // same bytes are not processed twice. An operator who wants another attempt changes the file.

@@ -224,7 +224,7 @@ func TestApplyUpstreamsRetriesFailedCreationOnNextApply(t *testing.T) {
 	confs := []*config.Upstream{upstreamConf("a", "ethereum", time.Minute)}
 
 	first := f.supervisor.ApplyUpstreams(confs)
-	assert.Equal(t, UpstreamsDiff{Added: []string{"a"}}, first)
+	assert.Equal(t, UpstreamsDiff{Failed: []string{"a"}}, first)
 	assert.Nil(t, f.supervisor.GetUpstream("a"))
 
 	f.failing.Remove("a")
@@ -327,4 +327,34 @@ func TestApplyUpstreamsRemovalWaitsForTheRemoveEventToBeHandled(t *testing.T) {
 	assert.False(t, old.Running())
 	assert.Nil(t, f.supervisor.GetUpstream("a"))
 	assert.Eventually(t, func() bool { return len(f.chainIds(chains.ETHEREUM)()) == 0 }, applyWait, applyTick)
+}
+
+// A replacement is built before the old instance is touched: when it cannot be built, the
+// old instance keeps running on its old settings and the id is reported as failed, not changed.
+func TestApplyUpstreamsKeepsOldInstanceWhenReplacementFails(t *testing.T) {
+	f := newApplyFixture(t)
+	f.supervisor.ApplyUpstreams([]*config.Upstream{upstreamConf("a", "ethereum", time.Minute)})
+	require.Eventually(t, func() bool { return len(f.chainIds(chains.ETHEREUM)()) == 1 }, applyWait, applyTick)
+	old := f.supervisor.GetUpstream("a")
+
+	f.failing.Add("a")
+	diff := f.supervisor.ApplyUpstreams([]*config.Upstream{upstreamConf("a", "ethereum", 2*time.Minute)})
+
+	assert.Equal(t, UpstreamsDiff{Failed: []string{"a"}}, diff)
+	assert.Same(t, old, f.supervisor.GetUpstream("a"))
+	assert.True(t, old.Running())
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, []string{"a"}, f.chainIds(chains.ETHEREUM)())
+
+	// the old instance still runs on its old config, so the next apply tries the change again
+	f.failing.Remove("a")
+	diff = f.supervisor.ApplyUpstreams([]*config.Upstream{upstreamConf("a", "ethereum", 2*time.Minute)})
+	assert.Equal(t, UpstreamsDiff{Changed: []string{"a"}}, diff)
+	assert.False(t, old.Running())
+	assert.NotSame(t, old, f.supervisor.GetUpstream("a"))
+}
+
+func TestApplyUpstreamsDiffIsNotEmptyWithFailures(t *testing.T) {
+	assert.False(t, UpstreamsDiff{Failed: []string{"a"}}.IsEmpty())
+	assert.Equal(t, "added [], removed [], changed [], failed [a]", UpstreamsDiff{Failed: []string{"a"}}.String())
 }

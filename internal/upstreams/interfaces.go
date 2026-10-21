@@ -47,19 +47,22 @@ type ChainSupervisor interface {
 }
 
 // UpstreamsDiff is what one ApplyUpstreams did, by upstream id. A changed upstream is one
-// whose effective config differs from the running one: it is stopped and started anew.
+// whose effective config differs from the running one: it is stopped and started anew. A
+// failed one could not be created from its config; it is not running, and if it was running
+// before, the old instance was left as it was.
 type UpstreamsDiff struct {
 	Added   []string
 	Removed []string
 	Changed []string
+	Failed  []string
 }
 
 func (d UpstreamsDiff) IsEmpty() bool {
-	return len(d.Added) == 0 && len(d.Removed) == 0 && len(d.Changed) == 0
+	return len(d.Added) == 0 && len(d.Removed) == 0 && len(d.Changed) == 0 && len(d.Failed) == 0
 }
 
 func (d UpstreamsDiff) String() string {
-	return fmt.Sprintf("added %v, removed %v, changed %v", d.Added, d.Removed, d.Changed)
+	return fmt.Sprintf("added %v, removed %v, changed %v, failed %v", d.Added, d.Removed, d.Changed, d.Failed)
 }
 
 type UpstreamSupervisor interface {

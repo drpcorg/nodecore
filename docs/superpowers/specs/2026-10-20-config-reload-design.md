@@ -98,7 +98,9 @@ Each trigger calls `reload(trigger)` in its own goroutine so the loop stays resp
    one, log `config is unchanged, nothing to reload` when the last outcome was a success, or
    `config is unchanged since its last reload was rejected: <error>` when it was a rejection,
    and return. The hash is compared on signal reloads too; an operator who wants another
-   attempt changes the file.
+   attempt changes the file. These two lines, and the in-progress drop, are logged at
+   Info/Warn for a signal (an operator asking) and at Debug for a watch tick (the reloader
+   asking itself every interval), so an untouched file does not fill the log.
 3. **Restart-only warnings.** `config.RestartOnlyChanges(startup.Source(), file)` (§3) and one
    warning per returned name: `'<section>' has changed in the config file but is only applied on
    restart`. These go out even when the reload is rejected later: they are facts about the file.
@@ -106,8 +108,12 @@ Each trigger calls `reload(trigger)` in its own goroutine so the loop stays resp
    reload is rejected as a whole: log the error, record the hash with the error, return. The
    running upstreams are untouched.
 5. **Apply.** `applier.ApplyUpstreams(merged.UpstreamConfig.Upstreams)`. Log the returned diff:
-   `upstreams reloaded: added [..], removed [..], changed [..]`, or `no upstream changes`.
-6. Record the hash as handled with a nil error.
+   `upstreams reloaded: added [..], removed [..], changed [..], failed [..]`, or `no upstream
+   changes`. A non-empty `Failed` (an upstream the supervisor could not build from a config
+   that passed validation, e.g. a CA file not mounted yet) makes the reload *incomplete*: it
+   is logged as an error and the hash is **not** recorded, so the next trigger applies the
+   same content again. Retrying is free because the old instance of a changed id was kept.
+6. Otherwise record the hash as handled with a nil error.
 
 Content hashing rather than mtime: Kubernetes config maps update through symlink swaps and
 editors write temp files; only the bytes are trustworthy. A reload reads the file in one
@@ -211,14 +217,18 @@ running → added. `DeepEqual` on effective `*config.Upstream` is sound: every f
 (strings, durations, `*bool`, maps, slices), both sides come out of the same defaults pipeline so
 nil-vs-empty pointers normalize identically. Slice order matters: reordering connectors or
 method lists counts as a change. A chain change under the same id is a change like any other.
-An id whose `CreateUpstream` failed is not stored, so the next reload retries it. An id whose
-settings validation was fatal stays stored and not running, as today, until its config changes.
+An id whose `CreateUpstream` failed is reported in `UpstreamsDiff.Failed` and not stored; the
+reloader treats that as an incomplete reload (see §2). An id whose settings validation was
+fatal stays stored and not running, as today, until its config changes.
 
-**Two phases, removals then additions.** All removals run in parallel (one goroutine per id),
-`ApplyUpstreams` waits for all of them, then all additions start in parallel, exactly today's
-goroutine per upstream, and `ApplyUpstreams` returns without waiting for them to become healthy.
-Additions start only after every removal has finished so the new instance of a changed id can
-never race the old one's events through the chain supervisor.
+**Create, then remove, then start.** The instances to add are created first, in parallel
+and waited for: creation is local work (connectors, processors, method set; nothing dialled or
+started), so it is safe while the old instance of a changed id is still running. A replacement
+that cannot be built leaves the old instance running on its old settings; the id goes to
+`Failed` instead of `Changed`. Then all removals run in parallel and are waited for, and only
+then are the created instances stored and started (their start and health stay asynchronous),
+so the new instance of a changed id can never race the old one's events through the chain
+supervisor.
 
 **One removal:**
 
@@ -316,7 +326,8 @@ and what is restart-only with the warning text, the id rule (changed = stop and 
   chain supervisor after it; a changed id yields Remove(old) before any event of new; two
   removals in one apply overlap (total time ≈ one grace, with the grace constant made small for
   tests); an unchanged id is not touched (same instance pointer); `GetUpstream` resolves the id
-  during the grace and not after; a failed `CreateUpstream` is retried on the next apply.
+  during the grace and not after; a failed `CreateUpstream` is reported as failed and tried
+  again on the next apply; a replacement that fails to build leaves the old instance running.
   Flow call sites: a nil `GetUpstream` yields "no available upstreams" instead of a panic
   (sticky processor included).
 - **ws:** registry context end cancels every operation including one whose register command
