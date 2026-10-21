@@ -73,6 +73,9 @@ server:
     external-public-key-path: /path/to/external.pub
     session-ttl: 24h
 
+config-reload:
+  watch-interval: 30s
+
 app-storages:
   - name: redis-storage
     redis:
@@ -263,3 +266,27 @@ integration:
     url: https://drpc-integration-endpoint
     request-timeout: 10s
 ```
+
+## Config reload
+
+nodecore can apply changes to its upstream list without a restart. A reload re-reads the config file and reconciles the running upstreams with it by `id`:
+
+- an upstream in the file that is not running is added and started;
+- a running upstream that is no longer in the file is removed;
+- an upstream whose settings changed is replaced: the old instance is stopped and a new one started. There is no in-place update of any setting.
+
+A removed or replaced upstream is first taken out of routing, then given 5 seconds for the requests already on it to finish, then stopped. Client subscriptions served by it end with an error and clients resubscribe; filter ids it created stop working.
+
+Two triggers, both optional to use:
+
+```yaml
+config-reload:
+  watch-interval: 30s   # check the file for changes this often; absent or 0 = reload on SIGHUP only
+```
+
+- `SIGHUP`: `kill -HUP <pid>` reloads the file at once.
+- `watch-interval`: the file is checked at this interval and reloaded when its content changed.
+
+What a reload applies is `upstream-config.upstreams` and the `chain-defaults` fields that are baked into upstreams (`poll-interval`, `options`). A change to those chain defaults replaces every upstream of that chain. Every other setting keeps its startup value; a section that differs in the file is logged as `'<section>' has changed in the config file but is only applied on restart`. That covers all top-level sections other than `upstream-config`, and inside it `mode`, `failsafe-config`, `score-policy-config`, `integrity`, `label-balancing`, `balancing-strategy`, and the `label-balancing`, `balancing-strategy`, `dispatch`, `local-subscriptions` and `validate-lag` fields of `chain-defaults`.
+
+The new upstream list is validated exactly as at startup, against the running budgets, tor settings and auth keys. A file that fails validation, or that would leave no upstream at all, is rejected as a whole and logged once; the running upstreams are untouched. The same content is never processed twice: after a rejection, change the file to trigger another attempt. A reload that arrives while one is running is ignored with a warning.

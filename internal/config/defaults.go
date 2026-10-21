@@ -47,6 +47,9 @@ func (a *AppConfig) setDefaults() {
 			a.IntegrationConfig.Drpc.setDefaults()
 		}
 	}
+	if a.ConfigReload == nil {
+		a.ConfigReload = &ConfigReloadConfig{}
+	}
 	a.UpstreamConfig.setDefaults(a.ServerConfig.GrpcAuthConfig)
 }
 

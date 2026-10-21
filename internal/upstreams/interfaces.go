@@ -1,7 +1,10 @@
 package upstreams
 
 import (
+	"fmt"
+
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -43,12 +46,32 @@ type ChainSupervisor interface {
 	SubscribeHead(name string, filter FilterUpstream) *HeadFeedSubscription
 }
 
+// UpstreamsDiff is what one ApplyUpstreams did, by upstream id. A changed upstream is one
+// whose effective config differs from the running one: it is stopped and started anew.
+type UpstreamsDiff struct {
+	Added   []string
+	Removed []string
+	Changed []string
+}
+
+func (d UpstreamsDiff) IsEmpty() bool {
+	return len(d.Added) == 0 && len(d.Removed) == 0 && len(d.Changed) == 0
+}
+
+func (d UpstreamsDiff) String() string {
+	return fmt.Sprintf("added %v, removed %v, changed %v", d.Added, d.Removed, d.Changed)
+}
+
 type UpstreamSupervisor interface {
 	GetChainSupervisor(chain chains.Chain) ChainSupervisor
 	GetChainSupervisors() []ChainSupervisor
 	GetUpstream(string) Upstream
 	GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper]
 	StartUpstreams()
+	// ApplyUpstreams reconciles the running upstreams with confs, which are effective
+	// (post-defaults, validated) upstream configs: it starts the new ones, removes the
+	// missing ones and replaces the changed ones. Removals finish before additions start.
+	ApplyUpstreams(confs []*config.Upstream) UpstreamsDiff
 
 	SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent]
 }
