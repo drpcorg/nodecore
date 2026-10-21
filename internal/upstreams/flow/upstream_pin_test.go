@@ -103,7 +103,8 @@ func TestUpstreamPinsAreAGate(t *testing.T) {
 	assert.Equal(t, pins, pinTestRequest("eth_call", selectors...).UpstreamPins())
 
 	matchers, order := buildSelectorRouting([]protocol.RequestSelector{pin("a")}, nil, nil)
-	assert.Empty(t, matchers)
+	require.Len(t, matchers, 1)
+	assert.Equal(t, SuccessType, matchers[0].Match("a", &protocol.UpstreamState{}).Type())
 	assert.Nil(t, order)
 
 	// elsewhere upstream_id is a label no upstream has
@@ -388,21 +389,4 @@ func TestPinnedIntegrityRerouteStaysInsideThePin(t *testing.T) {
 
 	assert.Equal(t, []byte(`"0x6c"`), response.Response.ResponseResult())
 	ups.assertNotSent(t, "high")
-}
-
-func TestNodeGroupGateAllStrategiesAndUnratedMembers(t *testing.T) {
-	chain := pinTestChain(t, "eth_call", "a", "b", "c")
-	// Give the third member another label partition.
-	state := *chain.GetUpstreamState("c")
-	state.Labels = protocol.NewLabels()
-	state.Labels.AddLabel("client_type", "erigon")
-	chain.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "c", EventType: &protocol.StateUpstreamEvent{State: &state}})
-	require.Eventually(t, func() bool { return chain.GetUpstreamState("c").Labels == state.Labels }, time.Second, time.Millisecond)
-	id := protocol.NodeGroupID("a", chain.GetUpstreamState("a"), false)
-	request := pinTestRequest("eth_call", protocol.RequestLabelSelector{Name: protocol.NodeGroupLabel, Values: []string{id}})
-	for _, strategy := range []UpstreamStrategy{NewGenericStrategy(chain), ratingStrategyOf(chain, "c"), NewSpecificOrderUpstreamStrategy([]string{"c", "a", "b"}, chain)} {
-		assert.ElementsMatch(t, []string{"a", "b"}, selectAll(t, strategy, request))
-	}
-	singleton := pinTestRequest("eth_call", protocol.RequestLabelSelector{Name: protocol.NodeGroupLabel, Values: []string{protocol.NodeGroupID("a", chain.GetUpstreamState("a"), true)}})
-	assert.Equal(t, []string{"a"}, selectAll(t, ratingStrategyOf(chain, "b"), singleton))
 }

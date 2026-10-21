@@ -35,7 +35,7 @@ type ServerConfig struct {
 	// as a client IP.
 	TrustedProxies []string `yaml:"trusted-proxies"`
 	// GrpcUpstreamStatusInterval is the minimum gap between two
-	// SubscribeNodeGroupStatus responses of a chain.
+	// SubscribeUpstreamStatus responses of a chain.
 	GrpcUpstreamStatusInterval time.Duration `yaml:"grpc-upstream-status-interval"`
 
 	// trustedProxyPrefixes is TrustedProxies parsed once during validation.

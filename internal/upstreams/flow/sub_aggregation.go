@@ -79,11 +79,7 @@ func localKey(prefix string, request protocol.RequestHolder) string {
 func localSourceFilter(cap protocol.Cap, topic string, selectorMatchers []Matcher) upstreams.FilterUpstream {
 	matchers := []Matcher{NewStatusMatcher(), NewCapMatcher(cap, topic)}
 	matchers = append(matchers, selectorMatchers...)
-	match := matcherFilter(NewMultiMatcher(matchers...))
-	pins := request.UpstreamPins()
-	return func(id string, state *protocol.UpstreamState) bool {
-		return pins.Matches(id, state) && match(id, state)
-	}
+	return matcherFilter(NewMultiMatcher(matchers...))
 }
 
 // hasUpstream reports whether some upstream of the chain passes filter right
@@ -165,9 +161,7 @@ func resolveSource(
 		}
 		return resolvedSource{key: localKey(localNewHeadsPrefix, request), builder: subengine.NewHeadsSourceBuilder(supervisor, chain, filter)}, nil
 	}
-	// Local logs fetch block data through a chain-wide strategy. Pinned requests
-	// must stay on the node-backed path until those internal fetches are scoped too.
-	if !request.UpstreamPins().Pinned() && settings.Logs && isLogsRequest(request) {
+	if settings.Logs && isLogsRequest(request) {
 		// the request is checked before the upstreams: a malformed filter object
 		// is the client's mistake whatever the chain looks like
 		logFilter, err := parseLogFilter(request)

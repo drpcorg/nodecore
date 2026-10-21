@@ -223,7 +223,7 @@ func (b *GenericChainSupervisor) processEvents() {
 					b.updateFeeds(event.Id)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
-					b.upstreamStates.Store(event.Id, eventType.State.WithNodeGroupCache())
+					b.upstreamStates.Store(event.Id, eventType.State)
 					b.updateState()
 					b.updateFeeds(event.Id)
 				case *protocol.ValidUpstreamEvent:
@@ -234,7 +234,7 @@ func (b *GenericChainSupervisor) processEvents() {
 					// those events are suppressed unless some sub-state differs.
 					if eventType.State != nil {
 						availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
-						b.upstreamStates.Store(event.Id, eventType.State.WithNodeGroupCache())
+						b.upstreamStates.Store(event.Id, eventType.State)
 						b.updateState()
 						if !eventType.State.HeadData.IsEmptyByHeight() {
 							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})

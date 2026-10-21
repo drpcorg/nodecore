@@ -263,8 +263,11 @@ func (u *UpstreamJsonRpcRequest) Selectors() []RequestSelector {
 // hash already computed does not see selectors added later.
 func (u *UpstreamJsonRpcRequest) AppendSelectors(selectors ...RequestSelector) {
 	u.selectors = append(u.Selectors(), selectors...)
+	u.pins, _ = SplitUpstreamPins(u.selectors)
 }
 
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)
 var _ SelectorAppender = (*UpstreamJsonRpcRequest)(nil)
 var _ RealIdHolder = (*UpstreamJsonRpcRequest)(nil)
+
+func (u *UpstreamJsonRpcRequest) UpstreamPins() UpstreamPins { return u.pins }

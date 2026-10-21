@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
@@ -24,7 +23,7 @@ func TestPinnedSubscriptionsDoNotUseChainWideSources(t *testing.T) {
 				stub.states[id] = stub.states["up1"]
 				src, err := resolveSource(chains.ETHEREUM, sup, req, nil, nil, nil, allLocalSubs)
 				require.NoError(t, err)
-				if topic == "logs" || topic == "newPendingTransactions" {
+				if topic == "newPendingTransactions" {
 					require.Equal(t, subscriptionKey(req), src.key, "pinned requests must not use chain-wide internal fetches")
 				}
 				return src.key
@@ -59,25 +58,4 @@ func TestPendingEnrichmentCannotBorrowAnotherGroupsTransaction(t *testing.T) {
 	tx, _ := enrichPendingTx(context.Background(), sup, chains.ARBITRUM, chSup, []byte(`"0xaaa"`), protocol.RequestLabelSelector{Name: protocol.UpstreamIdLabel, Values: []string{"other-group"}})
 	assert.Nil(t, tx)
 	sup.AssertNotCalled(t, "GetUpstream", "up1")
-}
-
-func TestLocalGroupFeedUsesCurrentMembership(t *testing.T) {
-	for _, cap := range []protocol.Cap{protocol.NewHeadsCap} {
-		sup := allCapsSupervisor()
-		stub := sup.GetChainSupervisor(chains.ETHEREUM).(*stubChainSupervisor)
-		state := stub.states["up1"]
-		state.UpstreamMethods = methods.NewChainMethods(nil)
-		group := protocol.NodeGroupID("up1", state, false)
-		req := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}, true, "eth", protocol.RequestLabelSelector{Name: protocol.NodeGroupLabel, Values: []string{group}})
-		filter, err := localFeedFilter(cap, "test", chains.ETHEREUM, req, sup)
-		require.NoError(t, err)
-		require.True(t, filter("up1", state))
-		moved := *state
-		moved.Labels = protocol.NewLabels()
-		moved.Labels.AddLabel("client_type", "changed")
-		require.False(t, filter("up1", &moved), "a live feed must not follow a member after it leaves the selected group")
-		stub.states["up1"] = &moved
-		_, err = localFeedFilter(cap, "test", chains.ETHEREUM, req, sup)
-		require.Error(t, err, "an empty group must fail instead of selecting another group")
-	}
 }

@@ -44,9 +44,9 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
-- **`SubscribeNodeGroupStatus(SubscribeNodeGroupStatusRequest) → stream SubscribeNodeGroupStatusResponse`**
+- **`SubscribeUpstreamStatus(SubscribeChainStatusRequest) → stream SubscribeChainStatusResponse`**
 
-  Streams nodecore-owned groups and the authoritative network view. See [Node group discovery](#node-group-status-and-execution) below for snapshots, deltas and execution selectors.
+  Streams each upstream independently using the existing chain-status format. Responses additionally identify the upstream and its runtime sticky index.
 
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
@@ -146,39 +146,16 @@ For a TLS or authenticated setup, swap `insecure.NewCredentials()` for proper cr
 The gRPC API does not have a dedicated set of Prometheus metrics today; calls made through `NativeCall` and `NativeSubscribe` flow through the same request pipeline as HTTP calls, so they show up under the existing `nodecore_request_*` and `nodecore_upstream_*` metrics (see [Prometheus metrics](08-prometheus-metrics.md)).
 
 
-### Node group status and execution
+### Upstream status and execution
 
-`SubscribeNodeGroupStatus` is the group discovery API. The optional `chains`
-filter limits networks; `full_separation` requests one upstream per group.
-Otherwise groups share all labels and the sorted supported call-method set.
-Subscription methods do not affect membership. IDs are opaque and can change
-when methods are banned or labels are redetected.
+`SubscribeUpstreamStatus` emits the same `SubscribeChainStatusResponse` as the
+legacy stream, with `upstream_id` and `upstream_index` attached. Every upstream
+receives its own full response, head deltas, metadata updates and periodic
+metadata resync. Labels, methods, subscriptions and bounds are preserved per
+upstream. Network lag validation remains authoritative. Removal publishes an
+unavailable status, repeated during resync; reconnect begins fresh snapshots.
 
-A response describes one chain. The initial response and periodic resync replace
-its complete group catalog. Deltas contain complete descriptions of changed
-groups and explicit `removed_node_group_ids`. With `compact_updates: true`,
-head-only deltas omit unchanged descriptions and member indices; clients retain
-the previous metadata. Initial snapshots and resync are always complete. Every response includes nodecore's
-authoritative complete network description. Member runtime indices support sticky
-filter ownership; clients do not reconstruct IDs or resolve execution membership.
-
-Group snapshots reuse the existing merge functions and height fork choice over
-current members. Immutable metadata is cached across head-only updates and
-invalidated by state/membership changes. They are rebuilt on coalesced status notifications using the
-configured throttle (25ms by default) and periodic resync (60s, with a randomized first offset). Network lag validation
-remains authoritative; a lagging group cannot promote its members by comparing
-only against its own head. Empty groups disappear from the catalog.
-
-To execute within a group, send a `node_group_id` label selector with exactly one
-value, at the top level or under AND. It combines with normal selectors. Nodecore
-checks current membership during candidate selection, including unrated members.
-An unknown, removed or empty group never falls back to the network. Multiple IDs
-and group selectors under OR/NOT fail closed. Both normal and singleton group IDs
-are supported. State snapshots cache the group key; state publication invalidates
-the cache, while head updates retain it.
-
-Calls and subscriptions use the existing pinned execution paths. A downstream
-retry may select another group, while each individual attempt stays within its
-selected group. The legacy chain and diagnostic upstream streams remain available.
-
-Measured costs and reproduction commands: [group status performance](node-group-performance.md).
+There is no grouping, method hash or grouping mode. Use an `upstream_id` selector
+to pin execution to the advertised upstream. The pin also constrains local
+subscriptions and their internal requests. A missing or unavailable upstream
+cannot fall back to the rest of the network. `SubscribeChainStatus` is unchanged.

@@ -101,15 +101,6 @@ func (s *chainsUpstreamSupervisor) GetChainSupervisors() []upstreams.ChainSuperv
 	return slices.Clone(s.chains)
 }
 
-// add registers a chain supervisor the way the upstream supervisor does:
-// stored first, then announced
-func (s *chainsUpstreamSupervisor) add(chainSupervisor upstreams.ChainSupervisor) {
-	s.mu.Lock()
-	s.chains = append(s.chains, chainSupervisor)
-	s.mu.Unlock()
-	s.events.Publish(&upstreams.AddChainSupervisorEvent{ChainSupervisor: chainSupervisor})
-}
-
 func testUpstreamState(height uint64, methods ...string) *protocol.UpstreamState {
 	methodsMock := newMethodsMockWithSupported(methods...)
 	methodsMock.On("GetMethod", mock.Anything).Return(nil)

@@ -121,7 +121,10 @@ func (u *UpstreamGrpcRequest) Selectors() []RequestSelector {
 // hash already computed does not see selectors added later.
 func (u *UpstreamGrpcRequest) AppendSelectors(selectors ...RequestSelector) {
 	u.selectors = append(u.Selectors(), selectors...)
+	u.pins, _ = SplitUpstreamPins(u.selectors)
 }
 
 var _ RequestHolder = (*UpstreamGrpcRequest)(nil)
 var _ SelectorAppender = (*UpstreamGrpcRequest)(nil)
+
+func (u *UpstreamGrpcRequest) UpstreamPins() UpstreamPins { return u.pins }

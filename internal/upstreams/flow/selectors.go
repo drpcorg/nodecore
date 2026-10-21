@@ -47,9 +47,13 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.GetGroupLabels()
 	}
 
-	// the pins are no matchers: filterUpstreams enforces them as a gate
-	_, selectors = protocol.SplitUpstreamPins(selectors)
-	matchers := make([]Matcher, 0, len(selectors))
+	// Compile pins as matchers too: local sources and their internal fetches
+	// use the same filter as ordinary request selection.
+	pins, selectors := protocol.SplitUpstreamPins(selectors)
+	matchers := make([]Matcher, 0, len(selectors)+1)
+	if pins.Pinned() {
+		matchers = append(matchers, upstreamPinMatcher{pins: pins})
+	}
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
 		matcher, sort := compileSelector(selector, predict, groupLabels)
@@ -238,4 +242,14 @@ func predictedLowerBoundOf(supervisor upstreams.UpstreamSupervisor, id string, b
 		return 1 << 62
 	}
 	return value
+}
+
+// Upstream pins also constrain local subscriptions and their internal fetches.
+type upstreamPinMatcher struct{ pins protocol.UpstreamPins }
+
+func (m upstreamPinMatcher) Match(id string, state *protocol.UpstreamState) MatchResponse {
+	if m.pins.Matches(id, state) {
+		return SuccessResponse{}
+	}
+	return PinResponse{ids: m.pins.Ids()}
 }
