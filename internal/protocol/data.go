@@ -100,6 +100,17 @@ func IsRetryable(response ResponseHolder) bool {
 	return shouldRetry
 }
 
+// IsNodeLevelError tells an error the serving upstream (or the pin) caused
+// rather than the request, so another upstream may answer the same request:
+// one nodecore retries on another upstream, or a pinned request's selection
+// error.
+func IsNodeLevelError(response ResponseHolder) bool {
+	if response == nil || !response.HasError() || response.GetError() == nil {
+		return false
+	}
+	return response.GetError().NodeLevel || IsRetryable(response)
+}
+
 func IsStream(method string) bool {
 	// TODO: implement logic to determine if a method is streaming or not
 	return method == "eth_getLogs" || method == "getProgramAccounts"
@@ -171,6 +182,8 @@ type RequestHolder interface {
 	SpecMethod() *specs.Method
 	RequestObserver() *RequestObserver
 	Selectors() []RequestSelector
+	// UpstreamPins are the upstream_id pins of Selectors, parsed once.
+	UpstreamPins() UpstreamPins
 
 	ModifyParams(ctx context.Context, newValue any)
 

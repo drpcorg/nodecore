@@ -147,6 +147,13 @@ func (r *GenericRequestOp) DoOnClose() {
 }
 
 func (r *GenericRequestOp) Write(message protocol.SubResponse, messageType MessageType) {
+	// A canceled context alone does not exclude the send case of a select.
+	// Serialize sends with channel closure and reject writes after cancellation.
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.completed.Load() {
+		return
+	}
 	switch messageType {
 	case MessageInternal:
 		select {
@@ -202,10 +209,9 @@ func (r *GenericRequestOp) Cancel() {
 	if r.completed.CompareAndSwap(false, true) {
 		r.cancel()
 
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			close(r.responseChan)
-		}()
+		r.mu.Lock()
+		close(r.responseChan)
+		r.mu.Unlock()
 	}
 }
 

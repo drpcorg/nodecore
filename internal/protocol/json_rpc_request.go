@@ -22,6 +22,7 @@ type UpstreamJsonRpcRequest struct {
 	specMethod      *specs.Method
 	requestObserver *RequestObserver
 	selectors       []RequestSelector
+	pins            UpstreamPins
 
 	parsed   bool
 	isStream bool
@@ -87,6 +88,7 @@ func marshalJsonRPCParams(params any) ([]byte, error) {
 
 func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isSub bool, specName string, selectors ...RequestSelector) *UpstreamJsonRpcRequest {
 	specMethod := specs.GetSpecMethodWithFallback(specName, jsonRpcRequest.Method)
+	pins, _ := SplitUpstreamPins(selectors)
 	return &UpstreamJsonRpcRequest{
 		id:              id,
 		method:          jsonRpcRequest.Method,
@@ -96,6 +98,7 @@ func NewUpstreamJsonRpcRequest(id string, jsonRpcRequest JsonRpcRequestBody, isS
 		specMethod:      specMethod,
 		requestObserver: NewRequestObserver(isSub).WithMethod(jsonRpcRequest.Method),
 		selectors:       selectors,
+		pins:            pins,
 	}
 }
 
@@ -260,8 +263,11 @@ func (u *UpstreamJsonRpcRequest) Selectors() []RequestSelector {
 // hash already computed does not see selectors added later.
 func (u *UpstreamJsonRpcRequest) AppendSelectors(selectors ...RequestSelector) {
 	u.selectors = append(u.Selectors(), selectors...)
+	u.pins, _ = SplitUpstreamPins(u.selectors)
 }
 
 var _ RequestHolder = (*UpstreamJsonRpcRequest)(nil)
 var _ SelectorAppender = (*UpstreamJsonRpcRequest)(nil)
 var _ RealIdHolder = (*UpstreamJsonRpcRequest)(nil)
+
+func (u *UpstreamJsonRpcRequest) UpstreamPins() UpstreamPins { return u.pins }

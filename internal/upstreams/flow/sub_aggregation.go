@@ -174,13 +174,13 @@ func resolveSource(
 		}
 		return resolvedSource{key: localKey(localLogsPrefix, request), builder: newLogsSourceBuilder(supervisor, chain, registry, filter, selectorMatchers), filter: logFilter}, nil
 	}
-	if settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if !request.UpstreamPins().Pinned() && settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return resolvedSource{key: localPendingTxKey, builder: newPendingTxSourceBuilder(supervisor, chain)}, nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays
 	// local regardless of settings; it builds its own pending-tx source internally.
 	if isDrpcPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
-		return resolvedSource{key: localDrpcPendingTxKey, builder: newDrpcPendingTxSourceBuilder(supervisor, chain, engine)}, nil
+		return resolvedSource{key: scopedPendingKey(localDrpcPendingTxKey, request.Selectors()), builder: newDrpcPendingTxSourceBuilder(supervisor, chain, engine, request.Selectors()...)}, nil
 	}
 	if isGrpcStream(request) {
 		// TEMPORARY: gRPC streams are pure pass-through for now. The uuid suffix

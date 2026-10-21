@@ -9,7 +9,7 @@ require (
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
 	github.com/dop251/goja_nodejs v0.0.0-20250409162600-f7acab6894b0
-	github.com/drpcorg/public v1.4.9
+	github.com/drpcorg/public v1.4.10-0.20261021100850-8324fa2fbf20
 	github.com/ethereum/go-ethereum v1.17.8
 	github.com/evanw/esbuild v0.28.2
 	github.com/failsafe-go/failsafe-go v0.9.8

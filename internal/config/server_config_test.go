@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"net/netip"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,12 +18,13 @@ func TestServerConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	expected := config.ServerConfig{
-		Port:            9095,
-		MetricsPort:     9093,
-		PprofPort:       6061,
-		HealthPort:      9096,
-		PyroscopeConfig: &config.PyroscopeConfig{},
-		TlsConfig:       &config.TlsConfig{},
+		Port:                       9095,
+		MetricsPort:                9093,
+		PprofPort:                  6061,
+		HealthPort:                 9096,
+		GrpcUpstreamStatusInterval: 250 * time.Millisecond,
+		PyroscopeConfig:            &config.PyroscopeConfig{},
+		TlsConfig:                  &config.TlsConfig{},
 		GrpcAuthConfig: &config.GrpcAuthConfig{
 			PublicKeyOwner: "drpc",
 			SessionTTL:     24 * time.Hour,
@@ -81,6 +84,28 @@ func TestServerConfigWrongServerPortThenError(t *testing.T) {
 	_, err := config.NewAppConfig()
 
 	assert.ErrorContains(t, err, "incorrect server port - -9095")
+}
+
+func TestServerConfigUpstreamStatusInterval(t *testing.T) {
+	read := func(t *testing.T, interval string) (*config.AppConfig, error) {
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		content := "server:\n  grpc-upstream-status-interval: " + interval + "\n" +
+			"upstream-config:\n  upstreams:\n    - id: eth\n      chain: ethereum\n      connectors:\n        - type: json-rpc\n          url: https://test.com\n"
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+		t.Setenv(config.ConfigPathVar, path)
+		return config.NewAppConfig()
+	}
+
+	for interval, expected := range map[string]time.Duration{"0s": config.DefaultGrpcUpstreamStatusInterval, "5ms": 5 * time.Millisecond, "1s": time.Second} {
+		appConfig, err := read(t, interval)
+		require.NoError(t, err, interval)
+		assert.Equal(t, expected, appConfig.ServerConfig.GrpcUpstreamStatusInterval, interval)
+	}
+	for _, interval := range []string{"-1s", "1ns", "4ms", "1001ms"} {
+		_, err := read(t, interval)
+		assert.ErrorContains(t, err, "incorrect grpc upstream status interval - ", interval)
+		assert.ErrorContains(t, err, "must be within [5ms, 1s]", interval)
+	}
 }
 
 func TestServerConfigWrongMetricsPortThenError(t *testing.T) {

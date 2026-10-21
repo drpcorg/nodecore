@@ -111,6 +111,10 @@ func (h *healthChainSupervisorStub) SubscribeState(name string) *utils.Subscript
 	return nil
 }
 
+func (h *healthChainSupervisorStub) UpstreamsChanged() <-chan struct{} {
+	return nil
+}
+
 func (h *healthChainSupervisorStub) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {
 	return nil
 }

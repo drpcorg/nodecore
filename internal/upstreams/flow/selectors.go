@@ -47,7 +47,13 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.GetGroupLabels()
 	}
 
-	matchers := make([]Matcher, 0, len(selectors))
+	// Compile pins as matchers too: local sources and their internal fetches
+	// use the same filter as ordinary request selection.
+	pins, selectors := protocol.SplitUpstreamPins(selectors)
+	matchers := make([]Matcher, 0, len(selectors)+1)
+	if pins.Pinned() {
+		matchers = append(matchers, upstreamPinMatcher{pins: pins})
+	}
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
 		matcher, sort := compileSelector(selector, predict, groupLabels)
@@ -146,6 +152,21 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	}
 }
 
+// pinMiss is the reason of a pinned request none of whose pinned upstreams
+// is among the candidates; present tells whether any of them is here at all.
+func pinMiss(pins protocol.UpstreamPins, chainSupervisor upstreams.ChainSupervisor) PinResponse {
+	present := false
+	if chainSupervisor != nil {
+		for _, id := range chainSupervisor.GetUpstreamIds() {
+			if pins.Matches(id, chainSupervisor.GetUpstreamState(id)) {
+				present = true
+				break
+			}
+		}
+	}
+	return PinResponse{ids: pins.Ids(), present: present}
+}
+
 type UpstreamOrder func([]string) []string
 
 func buildSelectorOrder(spec *sortSpec, supervisor upstreams.UpstreamSupervisor, chainSupervisor upstreams.ChainSupervisor) UpstreamOrder {
@@ -221,4 +242,14 @@ func predictedLowerBoundOf(supervisor upstreams.UpstreamSupervisor, id string, b
 		return 1 << 62
 	}
 	return value
+}
+
+// Upstream pins also constrain local subscriptions and their internal fetches.
+type upstreamPinMatcher struct{ pins protocol.UpstreamPins }
+
+func (m upstreamPinMatcher) Match(id string, state *protocol.UpstreamState) MatchResponse {
+	if m.pins.Matches(id, state) {
+		return SuccessResponse{}
+	}
+	return PinResponse{ids: m.pins.Ids()}
 }

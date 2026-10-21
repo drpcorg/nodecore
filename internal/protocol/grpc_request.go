@@ -24,6 +24,7 @@ type UpstreamGrpcRequest struct {
 	specMethod    *specs.Method
 	observer      *RequestObserver
 	selectors     []RequestSelector
+	pins          UpstreamPins
 
 	requestKeyOnce sync.Once
 }
@@ -43,6 +44,7 @@ func NewInternalUpstreamGrpcRequest(method string, body []byte, chain chains.Cha
 }
 
 func NewUpstreamGrpcRequest(id, method string, requestParams *RequestParams, body []byte, specName string, selectors ...RequestSelector) *UpstreamGrpcRequest {
+	pins, _ := SplitUpstreamPins(selectors)
 	return &UpstreamGrpcRequest{
 		id:            id,
 		method:        method,
@@ -51,6 +53,7 @@ func NewUpstreamGrpcRequest(id, method string, requestParams *RequestParams, bod
 		observer:      NewRequestObserver(false).WithRequestKind(Unary).WithMethod(method),
 		specMethod:    specs.GetSpecMethodWithFallback(specName, method),
 		selectors:     selectors,
+		pins:          pins,
 	}
 }
 
@@ -118,7 +121,10 @@ func (u *UpstreamGrpcRequest) Selectors() []RequestSelector {
 // hash already computed does not see selectors added later.
 func (u *UpstreamGrpcRequest) AppendSelectors(selectors ...RequestSelector) {
 	u.selectors = append(u.Selectors(), selectors...)
+	u.pins, _ = SplitUpstreamPins(u.selectors)
 }
 
 var _ RequestHolder = (*UpstreamGrpcRequest)(nil)
 var _ SelectorAppender = (*UpstreamGrpcRequest)(nil)
+
+func (u *UpstreamGrpcRequest) UpstreamPins() UpstreamPins { return u.pins }

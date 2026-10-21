@@ -467,6 +467,33 @@ func TestNativeCallSendReplyReturnsErrorItemWithResponseUpstreamId(t *testing.T)
 	assert.NotEmpty(t, stream.sent[0].GetErrorMessage())
 }
 
+func TestNativeCallSendReplyMarksNodeLevelErrors(t *testing.T) {
+	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}, false, "eth")
+	pinned := protocol.PinnedUpstreamsNotPresentError([]string{"a"})
+	pinned.NodeLevel = true
+	responses := map[string]struct {
+		response  protocol.ResponseHolder
+		nodeLevel bool
+	}{
+		"upstream failure": {protocol.NewPartialFailure(request, protocol.ServerErrorWithCause(fmt.Errorf("cannot decode the response from upstream a"))), true},
+		"pin":              {protocol.NewTotalFailure(request, pinned), true},
+		"request error":    {protocol.NewHttpUpstreamResponse("1", []byte(`{"id":1,"jsonrpc":"2.0","error":{"message":"execution reverted","code":3}}`), 200, protocol.JsonRpc), false},
+		"success":          {protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc), false},
+	}
+	adapters := map[string]nativeCallAdapter{"json-rpc": jsonRpcNativeCallAdapter{}, "rest": restNativeCallAdapter{}, "grpc": grpcNativeCallAdapter{}}
+
+	for adapterName, adapter := range adapters {
+		for name, tt := range responses {
+			stream := &testNativeCallStream{ctx: context.Background()}
+			wrapper := &protocol.ResponseHolderWrapper{UpstreamId: "a", RequestId: "1", Response: tt.response}
+
+			require.NoError(t, adapter.SendReply(stream, wrapper, 0, signature.NewDisabledSigner()))
+			require.Len(t, stream.sent, 1)
+			assert.Equal(t, tt.nodeLevel, stream.sent[0].GetNodeLevelError(), adapterName+": "+name)
+		}
+	}
+}
+
 // REST GET responses carry meaningful headers (Content-Type, CORS,
 // quorum signatures, ...). Streaming + error replies already forwarded
 // them; this test pins the unary-success path so a future refactor

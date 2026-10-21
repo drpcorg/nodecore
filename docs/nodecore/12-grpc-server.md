@@ -44,9 +44,17 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeUpstreamStatus(SubscribeChainStatusRequest) → stream SubscribeChainStatusResponse`**
+
+  Streams each upstream independently using the existing chain-status format. Responses additionally identify the upstream and its runtime sticky index.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
+
+  A label selector named `upstream_id`, at the top level or under an AND of the request (or item) selector, pins the call to the upstreams whose runtime upstream ID is among its values: retries, hedges, the integrity re-route, label-group balancing and broadcast / maximum-value / not-null dispatch all stay inside the pin, a pinned upstream the rating has not listed yet is a candidate too, and `balancing: base` rotates over the pinned upstreams, so they share the calls evenly. When none of the pinned upstreams is here the item fails with the no-available-upstreams code (`1` on a JSON-RPC item) and the message `pinned upstreams not present: <ids>`; pinned upstreams that are here but cannot serve the call, or are not among the candidates (outside every label group, not a DRPC upstream for a quorum read), fail as an unpinned call would. Pins participate in the response-cache key, so different upstream selectors do not share cached entries. Under OR or NOT, or without values, `upstream_id` is an ordinary label, which no upstream has.
+
+  `node_level_error` is set on an error reply that another upstream may answer: an upstream failure nodecore retries on another upstream (a transport, read or decode failure, or an upstream error it treats as retryable), or any selection error of a pinned call (pinned upstreams not present, none of them available, the method not supported or rate limited on them). It is not set for errors of the request itself (execution reverted, invalid params, a method the chain does not have).
 
 - **`NativeSubscribe(NativeSubscribeRequest) → stream NativeSubscribeReplyItem`**
 
@@ -136,3 +144,18 @@ For a TLS or authenticated setup, swap `insecure.NewCredentials()` for proper cr
 ## Observability
 
 The gRPC API does not have a dedicated set of Prometheus metrics today; calls made through `NativeCall` and `NativeSubscribe` flow through the same request pipeline as HTTP calls, so they show up under the existing `nodecore_request_*` and `nodecore_upstream_*` metrics (see [Prometheus metrics](08-prometheus-metrics.md)).
+
+
+### Upstream status and execution
+
+`SubscribeUpstreamStatus` emits the same `SubscribeChainStatusResponse` as the
+legacy stream, with `upstream_id` and `upstream_index` attached. Every upstream
+receives its own full response, head deltas, metadata updates and periodic
+metadata resync. Labels, methods, subscriptions and bounds are preserved per
+upstream. Network lag validation remains authoritative. Removal publishes an
+unavailable status, repeated during resync; reconnect begins fresh snapshots.
+
+There is no grouping, method hash or grouping mode. Use an `upstream_id` selector
+to pin execution to the advertised upstream. The pin also constrains local
+subscriptions and their internal requests. A missing or unavailable upstream
+cannot fall back to the rest of the network. `SubscribeChainStatus` is unchanged.
