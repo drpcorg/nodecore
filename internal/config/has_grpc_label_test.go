@@ -11,6 +11,16 @@ import (
 func TestSetHasGrpcLabel(t *testing.T) {
 	grpcConnector := &ApiConnectorConfig{Type: "grpc", Url: "grpc://test.com:9090"}
 	jsonRpcConnector := &ApiConnectorConfig{Type: "json-rpc", Url: "https://test.com"}
+	grpcAdditionalConnector := &ApiConnectorConfig{Type: "grpc-additional", Url: "grpc://test.com:50061"}
+	restConnector := &ApiConnectorConfig{Type: "rest", Url: "https://test.com"}
+
+	t.Run("a grpc-additional connector alone is enough - it serves gRPC methods", func(te *testing.T) {
+		upstream := &Upstream{Connectors: []*ApiConnectorConfig{restConnector, grpcAdditionalConnector}}
+
+		upstream.setHasGrpcLabel()
+
+		assert.Equal(te, UpstreamLabels{hasGrpcLabel: "true"}, upstream.Labels)
+	})
 
 	t.Run("allocates the map when a grpc upstream has no labels", func(te *testing.T) {
 		upstream := &Upstream{Connectors: []*ApiConnectorConfig{grpcConnector}}

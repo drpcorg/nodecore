@@ -164,7 +164,6 @@ func TestGenericHeadProcessorPublishesStateAroundBlocks(t *testing.T) {
 		headNoUpdatesTimeout: time.Minute,
 		lastUpdate:           utils.NewAtomic[time.Time](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
-		drainDone:            utils.NewAtomic[chan struct{}](),
 	}
 	sub := processor.Subscribe("test")
 	defer sub.Unsubscribe()
@@ -202,7 +201,6 @@ func TestGenericHeadProcessorStopPublishesStateAfterTheLastBlock(t *testing.T) {
 		headNoUpdatesTimeout: time.Minute,
 		lastUpdate:           utils.NewAtomic[time.Time](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent]("up_head_processor"),
-		drainDone:            utils.NewAtomic[chan struct{}](),
 	}
 
 	for i := range 200 {

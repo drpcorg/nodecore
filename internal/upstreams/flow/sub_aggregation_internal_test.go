@@ -549,3 +549,43 @@ func TestGenericSourceBufferSize_BlockSubscribeIsSmall(t *testing.T) {
 	assert.Equal(t, genericSubscriptionBufferSize, genericSourceBufferSize(newHeads))
 	assert.Less(t, blockSubscribeBufferSize, genericSubscriptionBufferSize)
 }
+
+// An API key's upstream restriction takes the node-backed path whenever the
+// local source is off, and the strategy then routes on its selectors.
+func TestResolveSourceRoutesRestrictedSubscriptionsNodeBacked(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	for _, params := range []string{`["newHeads"]`, `["logs",{}]`, `["newPendingTransactions"]`} {
+		src, err := resolveSource(chains.ETHEREUM, allCapsSupervisor(), subscribeRequestWithSelectors(params, group), nil, nil, nil, config.LocalSubSettings{})
+		require.NoError(t, err)
+		assert.NotContains(t, src.key, "local|")
+		assert.Contains(t, src.key, group.Key())
+	}
+}
+
+// The local newHeads and logs sources follow a head feed filtered by the
+// request's selectors, so keys restricted to different labels never share one.
+func TestLocalKeySeparatesGroupLabelRestrictions(t *testing.T) {
+	request := func(labels ...string) protocol.RequestHolder {
+		return subscribeRequestWithSelectors(`["newHeads"]`, protocol.RequestGroupLabelSelector{Labels: labels})
+	}
+	for _, prefix := range []string{localNewHeadsPrefix, localLogsPrefix} {
+		assert.NotEqual(t, localKey(prefix, request("archive")), localKey(prefix, request("full")))
+		assert.NotEqual(t, localKey(prefix, request("archive")), localKey(prefix, subscribeRequest(`["newHeads"]`)))
+		assert.Equal(t, localKey(prefix, request("archive", "fast")), localKey(prefix, request("fast", "archive")))
+	}
+}
+
+// Subscriptions restricted to different upstreams must never share a source,
+// while equally restricted ones still do.
+func TestSubscriptionKeySeparatesGroupLabelRestrictions(t *testing.T) {
+	request := func(labels ...string) protocol.RequestHolder {
+		return subscribeRequestWithSelectors(`["newHeads"]`, protocol.RequestGroupLabelSelector{Labels: labels})
+	}
+	assert.NotEqual(t, subscriptionKey(request("archive")), subscriptionKey(request("full")))
+	assert.NotEqual(t, subscriptionKey(request("archive")), subscriptionKey(subscribeRequest(`["newHeads"]`)))
+	assert.Equal(t, subscriptionKey(request("archive", "fast")), subscriptionKey(request("fast", "archive")))
+}
+
+func subscribeRequestWithSelectors(params string, selectors ...protocol.RequestSelector) protocol.RequestHolder {
+	return protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_subscribe", Params: []byte(params)}, true, "eth", selectors...)
+}

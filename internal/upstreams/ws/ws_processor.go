@@ -58,7 +58,7 @@ func (b *GenericWsProcessor) Unsubscribe(opId string) {
 }
 
 func (b *GenericWsProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go func() {
 			for {
 				if ctx.Err() != nil {
@@ -116,7 +116,7 @@ func (b *GenericWsProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return nil, nil
 	})
 }
 

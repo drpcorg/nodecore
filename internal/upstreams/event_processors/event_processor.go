@@ -1,8 +1,6 @@
 package event_processors
 
 import (
-	"sync"
-
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -30,13 +28,12 @@ type UpstreamStateEventProcessor interface {
 
 type Emitter func(event protocol.AbstractUpstreamStateEvent)
 
+// UpstreamProcessorAggregator is driven from two goroutines - the supervisor (Resume,
+// PartialStop) and the upstream state loop (head pause while syncing) - and needs no lock
+// of its own: each processor's start returns the undo of the nested processor it owns, so
+// its lifecycle switches both as one transition (see utils.StartFunc).
 type UpstreamProcessorAggregator struct {
 	eventProcessors map[EventProcessorType]UpstreamStateEventProcessor
-	// mu serializes StartProcessor and StopProcessor. Two goroutines drive them: the
-	// supervisor (Resume, PartialStop) and the upstream state loop (head pause while
-	// syncing). A processor's start or stop is a compound operation (its own lifecycle
-	// plus the nested processor it owns), so the whole call must be one critical section.
-	mu sync.Mutex
 }
 
 func (u *UpstreamProcessorAggregator) SetEmitter(emitter Emitter) {
@@ -85,16 +82,12 @@ func (u *UpstreamProcessorAggregator) ValidateSettings() (validations.Validation
 }
 
 func (u *UpstreamProcessorAggregator) StartProcessor(processorType EventProcessorType) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
 	if processor, ok := u.eventProcessors[processorType]; ok {
 		processor.Start()
 	}
 }
 
 func (u *UpstreamProcessorAggregator) StopProcessor(processorType EventProcessorType) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
 	if processor, ok := u.eventProcessors[processorType]; ok {
 		processor.Stop()
 	}
@@ -103,8 +96,6 @@ func (u *UpstreamProcessorAggregator) StopProcessor(processorType EventProcessor
 // IsProcessorRunning reports whether the processor of the given type is currently running;
 // false when there is no such processor.
 func (u *UpstreamProcessorAggregator) IsProcessorRunning(processorType EventProcessorType) bool {
-	u.mu.Lock()
-	defer u.mu.Unlock()
 	processor, ok := u.eventProcessors[processorType]
 	return ok && processor.Running()
 }

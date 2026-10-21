@@ -14,4 +14,5 @@ package grpc_ingress
 import (
 	_ "github.com/drpcorg/public/pkg/cosmos"
 	_ "github.com/drpcorg/public/pkg/sui"
+	_ "github.com/drpcorg/public/pkg/tron/api"
 )

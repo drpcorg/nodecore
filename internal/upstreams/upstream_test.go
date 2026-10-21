@@ -64,6 +64,22 @@ func TestGenericUpstreamStop_StopsRunningLifecycle(t *testing.T) {
 	assert.False(t, upstream.Running())
 }
 
+// Stop's teardown - cancelling the upstream context, stopping processors and connectors -
+// belongs to the running→stopped transition: a second Stop finds nothing to do and must not
+// run it again.
+func TestGenericUpstreamStop_TeardownRunsOnce(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.On("Start").Return()
+	connector.On("Stop").Return()
+	upstream, _, _ := newTestGenericUpstream(t, nil, []*mocks.ConnectorMock{connector}, nil)
+
+	upstream.Start()
+	upstream.Stop()
+	upstream.Stop()
+
+	connector.AssertNumberOfCalls(t, "Stop", 1)
+}
+
 func TestGenericUpstreamProcessStateEvents_UpdatesHeadState(t *testing.T) {
 	upstream, emit, sub := newTestGenericUpstream(t, nil, nil, nil)
 
@@ -613,6 +629,36 @@ func TestGenericUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
 	upstream.UpdateBlock(blockData, protocol.FinalizedBlock)
 
 	blockProcessor.AssertExpectations(t)
+}
+
+// A start that fails on fatal settings has already started the connectors; it must release
+// them itself, since Stop will never run for a lifecycle that never became running. The
+// upstream context goes with them, so a second Start cannot bring the connectors back.
+func TestGenericUpstreamStart_WithFatalSettingsValidation_ReleasesConnectors(t *testing.T) {
+	validator := mocks.NewSettingsValidatorMock()
+	validator.On("Validate").Return(validations.FatalSettingError)
+	connector := mocks.NewConnectorMock()
+	connector.On("Start").Return()
+	connector.On("Stop").Return()
+
+	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
+	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
+		context.Background(),
+		"id",
+		testUpstreamOptions(),
+		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
+	)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
+	upstream, _, _ := newTestGenericUpstream(t, upConfig, []*mocks.ConnectorMock{connector}, aggregator)
+
+	upstream.Start()
+	connector.AssertNumberOfCalls(t, "Stop", 1)
+	assert.False(t, upstream.Running())
+
+	upstream.Start()
+	connector.AssertNumberOfCalls(t, "Start", 1)
+	upstream.Stop()
+	connector.AssertNumberOfCalls(t, "Stop", 1)
 }
 
 func TestGenericUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {

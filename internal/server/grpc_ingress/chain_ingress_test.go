@@ -3,6 +3,7 @@ package grpc_ingress
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -719,4 +720,37 @@ func TestGrpcRequestHandlerRejectsNonGrpcMethod(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, protocol.NoSupportedMethod, respErr.Code)
 	assert.Contains(t, respErr.Message, "eth_chainId")
+}
+
+// oneFrameStream hands RequestDecode a single request message without a
+// real transport.
+type oneFrameStream struct {
+	grpc.ServerStream
+	body []byte
+}
+
+func (s *oneFrameStream) RecvMsg(m any) error {
+	frame, ok := m.(*rawFrame)
+	if !ok {
+		return fmt.Errorf("unexpected message type %T", m)
+	}
+	frame.data = s.body
+	return nil
+}
+
+// A method declared only on grpc-additional (tron's solidity port) is a gRPC
+// method of the chain and must pass the gate.
+func TestGrpcRequestHandlerAcceptsGrpcAdditionalMethod(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	handler := &grpcRequestHandler{
+		stream: &oneFrameStream{body: []byte{0x0a, 0x00}},
+		md:     metadata.New(map[string]string{strings.ToLower(xNodecoreChain): "tron"}),
+		method: "/protocol.WalletSolidity/GetAccount",
+	}
+
+	request, err := handler.RequestDecode(context.Background())
+	require.NoError(t, err)
+	require.Len(t, request.UpstreamRequests, 1)
+	assert.Equal(t, "/protocol.WalletSolidity/GetAccount", request.UpstreamRequests[0].Method())
+	assert.Equal(t, protocol.Grpc, request.UpstreamRequests[0].RequestType())
 }

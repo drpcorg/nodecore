@@ -194,3 +194,32 @@ func TestSelectorCompositionAndCause(t *testing.T) {
 	notMatchers, _ := buildSelectorRouting([]protocol.RequestSelector{protocol.RequestNotSelector{Child: protocol.RequestExistsSelector{Name: "archive"}}}, nil, nil)
 	assert.Equal(t, SuccessType, notMatchers[0].Match("up", &state).Type())
 }
+
+func TestGroupLabelMatcher(t *testing.T) {
+	groupLabels := map[string]mapset.Set[string]{
+		"archive-up": mapset.NewThreadUnsafeSet("archive", "fast"),
+		"full-up":    mapset.NewThreadUnsafeSet("full"),
+		"plain-up":   mapset.NewThreadUnsafeSet[string](),
+	}
+	lookup := func(id string) mapset.Set[string] { return groupLabels[id] }
+	matcher := NewGroupLabelMatcher([]string{"archive", "full"}, lookup)
+
+	assert.Equal(t, SuccessType, matcher.Match("archive-up", nil).Type())
+	assert.Equal(t, SuccessType, matcher.Match("full-up", nil).Type())
+
+	response := matcher.Match("plain-up", nil)
+	assert.Equal(t, SelectorType, response.Type())
+	assert.Contains(t, response.Cause(), "none of group-labels [archive full]")
+	// An upstream the supervisor does not know is never admitted.
+	assert.Equal(t, SelectorType, matcher.Match("unknown-up", nil).Type())
+	assert.Equal(t, SelectorType, NewGroupLabelMatcher([]string{"archive"}, nil).Match("archive-up", nil).Type())
+}
+
+// Without a supervisor there are no group-labels to resolve, so the compiled
+// restriction admits nothing rather than everything.
+func TestGroupLabelSelectorFailsClosedWithoutSupervisor(t *testing.T) {
+	matchers, order := buildSelectorRouting([]protocol.RequestSelector{protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}}, nil, nil)
+	assert.Nil(t, order)
+	assert.Len(t, matchers, 1)
+	assert.Equal(t, SelectorType, matchers[0].Match("up", nil).Type())
+}

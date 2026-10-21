@@ -34,10 +34,10 @@ func (a grpcNativeCallAdapter) BuildRequest(
 	// Unknown methods answer precisely here instead of "no available upstreams",
 	// and server streams belong to NativeSubscribe (the flow would route them
 	// as subscriptions).
-	// A method without the grpc connector is not a gRPC method on this chain:
+	// A method without a gRPC-family connector is not a gRPC method on this chain:
 	// letting it through would route proto bytes to an HTTP connector.
 	specMethod := specs.GetSpecMethod(chain.MethodSpec, item.GetMethod())
-	if specMethod == nil || !slices.Contains(specMethod.GetApiConnectorTypes(), specs.GrpcConnector) {
+	if specMethod == nil || !slices.ContainsFunc(specMethod.GetApiConnectorTypes(), specs.IsGrpcApiConnectorType) {
 		return nil, withNoUpstreamId(a.ErrorItem(item.GetId(), protocol.NotSupportedMethodError(item.GetMethod()), nil))
 	}
 	if specMethod.GrpcCallType().IsServerStream() {

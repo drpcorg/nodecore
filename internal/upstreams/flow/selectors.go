@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 )
@@ -35,13 +36,23 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		}
 		return up.PredictLowerBound(boundType, timeOffset)
 	}
+	groupLabels := func(upstreamId string) mapset.Set[string] {
+		if supervisor == nil {
+			return nil
+		}
+		up := supervisor.GetUpstream(upstreamId)
+		if up == nil {
+			return nil
+		}
+		return up.GetGroupLabels()
+	}
 
 	// the pins are no matchers: filterUpstreams enforces them as a gate
 	_, selectors = protocol.SplitUpstreamPins(selectors)
 	matchers := make([]Matcher, 0, len(selectors))
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
-		matcher, sort := compileSelector(selector, predict)
+		matcher, sort := compileSelector(selector, predict, groupLabels)
 		if matcher != nil {
 			matchers = append(matchers, matcher)
 		}
@@ -55,7 +66,7 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 	return matchers, buildSelectorOrder(orderSpec, supervisor, chainSupervisor)
 }
 
-func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredictor) (Matcher, *sortSpec) {
+func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredictor, groupLabels GroupLabelsLookup) (Matcher, *sortSpec) {
 	sortOnly := func(spec sortSpec) (Matcher, *sortSpec) {
 		return nil, &spec
 	}
@@ -74,7 +85,7 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 		children := make([]Matcher, 0, len(s.Children))
 		var combinedSort *sortSpec
 		for _, child := range s.Children {
-			matcher, sort := compileSelector(child, predict)
+			matcher, sort := compileSelector(child, predict, groupLabels)
 			if matcher != nil {
 				children = append(children, matcher)
 			}
@@ -90,7 +101,7 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	case protocol.RequestOrSelector:
 		children := make([]Matcher, 0, len(s.Children))
 		for _, child := range s.Children {
-			matcher, sort := compileSelector(child, predict)
+			matcher, sort := compileSelector(child, predict, groupLabels)
 			if sort != nil {
 				return unsupported("sort-bearing selectors inside OR are not supported")
 			}
@@ -100,7 +111,7 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 		}
 		return &SelectorOrMatcher{matchers: children}, nil
 	case protocol.RequestNotSelector:
-		matcher, sort := compileSelector(s.Child, predict)
+		matcher, sort := compileSelector(s.Child, predict, groupLabels)
 		if sort != nil {
 			return unsupported("sort-bearing selectors inside NOT are not supported")
 		}
@@ -130,6 +141,8 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 		return NewLowerHeightMatcher(s.Height, s.LowerBoundType, s.TimeOffset, s.HeightDelta, predict), nil
 	case protocol.RequestUnsupportedSelector:
 		return unsupported(s.Reason)
+	case protocol.RequestGroupLabelSelector:
+		return NewGroupLabelMatcher(s.Labels, groupLabels), nil
 	default:
 		return unsupported(fmt.Sprintf("unsupported selector %T", selector))
 	}

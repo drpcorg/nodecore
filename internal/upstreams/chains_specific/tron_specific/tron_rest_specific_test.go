@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific/tron_specific"
@@ -385,4 +386,11 @@ func TestNewTronSpecificNilConnector(t *testing.T) {
 	)
 	assert.Nil(t, cs)
 	assert.ErrorContains(t, err, "no connector")
+}
+
+// Tron has no websocket connector, so there is no capability to detect.
+func TestTronRestCapDetectorsAreNil(t *testing.T) {
+	cs := freshTron(t, mocks.NewConnectorMockWithType(specs.RestConnector), nil)
+
+	assert.Nil(t, cs.CapDetectors(caps.DetectorInput{}))
 }
