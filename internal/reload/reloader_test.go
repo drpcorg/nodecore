@@ -386,3 +386,24 @@ func TestReloadInProgressLogsAtDebugOnWatchAndWarnOnSignal(t *testing.T) {
 	close(f.applier.block)
 	<-finished
 }
+
+// An incomplete reload still applied its successful parts, so the running set matches neither
+// the previous content nor the new one. Reverting the file must therefore be applied, not
+// skipped as "unchanged".
+func TestReloadAppliesRevertAfterIncompleteReload(t *testing.T) {
+	f := newFixture(t, "")
+	f.applier.failed = []string{"eth-2"}
+	f.write(t, changedYaml)
+	f.reloader.Reload(reload.SignalTrigger("test"))
+	require.Equal(t, 1, f.applier.callCount())
+
+	f.applier.mu.Lock()
+	f.applier.failed = nil
+	f.applier.mu.Unlock()
+	f.write(t, startupYaml) // the content the process started from
+
+	f.reloader.Reload(reload.SignalTrigger("test"))
+
+	assert.Equal(t, 2, f.applier.callCount())
+	assert.Equal(t, []string{"eth-1"}, f.applier.lastCall())
+}

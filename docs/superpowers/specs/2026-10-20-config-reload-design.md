@@ -111,8 +111,10 @@ Each trigger calls `reload(trigger)` in its own goroutine so the loop stays resp
    `upstreams reloaded: added [..], removed [..], changed [..], failed [..]`, or `no upstream
    changes`. A non-empty `Failed` (an upstream the supervisor could not build from a config
    that passed validation, e.g. a CA file not mounted yet) makes the reload *incomplete*: it
-   is logged as an error and the hash is **not** recorded, so the next trigger applies the
-   same content again. Retrying is free because the old instance of a changed id was kept.
+   is logged as an error and the handled hash is **cleared** (the successful part was applied,
+   so the running set matches no content), so the next trigger processes whatever is on disk:
+   the same content again, or a revert. Retrying is free because the old instance of a changed
+   id was kept.
 6. Otherwise record the hash as handled with a nil error.
 
 Content hashing rather than mtime: Kubernetes config maps update through symlink swaps and

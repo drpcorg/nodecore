@@ -114,9 +114,12 @@ func (r *Reloader) Reload(trigger Trigger) {
 	log.Info().Msgf("reloading the config file %s (%s)", r.path, trigger.name)
 	err = r.load(file)
 	if errors.Is(err, errUpstreamsNotCreated) {
-		// not recorded as handled: a creation failure can be environmental (a CA file that
-		// is not mounted yet) and the running instances were left as they were, so the next
-		// trigger simply tries the same content again
+		// The successful part of this content was applied and the failed part was not, so
+		// the running set matches no content any more: forget the handled hash, and the next
+		// trigger processes whatever is on disk - the same content again (a creation failure
+		// can be environmental, a CA file that is not mounted yet) or a revert, which must
+		// not be mistaken for "unchanged".
+		r.last = handled{}
 		log.Error().Err(err).Msg("config reload is incomplete, it is retried on the next trigger")
 		return
 	}
