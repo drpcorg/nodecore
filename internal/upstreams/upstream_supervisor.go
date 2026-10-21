@@ -88,7 +88,7 @@ func NewGenericUpstreamSupervisor(
 		ctx:                       ctx,
 		upstreams:                 utils.NewCMap[string, *runningUpstream](),
 		chainSupervisors:          utils.NewCMap[chains.Chain, ChainSupervisor](),
-		eventsChan:                make(chan supervisorEvent, 100),
+		eventsChan:                make(chan supervisorEvent, 1000),
 		upstreamsConfig:           upstreamsConfig,
 		tracker:                   tracker,
 		executor:                  createFlowExecutor(upstreamsConfig.FailsafeConfig),
