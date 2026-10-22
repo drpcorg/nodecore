@@ -171,7 +171,7 @@ Calls each of its methods with empty params and classifies the response (see [Er
 
 Unlike `RpcModulesDetector` this detector **is** stateful, because its subject is divisible: it keeps the last conclusive answer **per probe**. A round where three probes answer and five time out must not report only the three - that would silently restore whatever the five had established. Only conclusive results are merged into that map, so an inconclusive probe leaves the previous answer in place, and the detector returns nil only while no probe has ever answered.
 
-The not-available patterns include the formats public gateways answer in (`method error; invalid method: X`, Lotus's `method 'X' not found`), and a `-32602` reply is taken as a params complaint whatever its wording, since the method had to exist for its arguments to be judged. Any other error stays inconclusive, so a slow or rate-limited node never loses a method it serves because of a blip. (The gateway formats were added 2026-10-22 when `eth_callMany` joined the list and the public-multiregion pool advertised it on ~120 chains at once.)
+The not-available patterns include the formats public gateways answer in (`method error; invalid method: X`, Lotus's `method 'X' not found`), and a `-32602` reply that no not-available check has claimed is taken as a params complaint whatever its wording, since the method had to exist for its arguments to be judged. Any other error stays inconclusive, so a slow or rate-limited node never loses a method it serves because of a blip. The full order is in [Error classification](#error-classification). (The gateway formats were added 2026-10-22, when `eth_callMany` joined the list and public gateways were seen answering it in these words.)
 
 The map has a single writer despite the concurrency: the probe goroutines write to an indexed slice, and the merge into the map happens after their `wg.Wait()`. Rounds themselves never overlap, since the processor's `wg.Wait()` for round N happens-before it spawns round N+1.
 
@@ -316,13 +316,22 @@ const (
 func ClassifyMethodAvailability(err *ResponseError) MethodAvailability
 ```
 
-- `MethodNotAvailable`: the existing patterns from `method_hook.go`, plus code `-32601` (`NoSupportedMethod`, already in `errors.go:19`).
-- `MethodAvailable`: dshackle's `availableRegexps` — `missing value for required argument ([0-9]+)`, `Invalid params`. A wrong-params reply proves the method exists.
-- `MethodAvailabilityUnknown`: everything else.
+- `MethodNotAvailable`: the existing patterns from `method_hook.go`, plus code `-32601` (`NoSupportedMethod`, already in `errors.go:19`), plus the public-gateway formats `method error; invalid method: X` and `method 'X' not found`.
+- `MethodAvailable`: code `-32602` (`InvalidParams`) whatever its wording, and dshackle's `availableRegexps` — `missing value for required argument ([0-9]+)`, `Invalid params`. A wrong-params reply proves the method exists.
+- `MethodAvailabilityUnknown`: everything else, including any error whose message contains `execution reverted`.
 
-Not-available is checked **first**, deviating from dshackle's ordering at `UpstreamRpcMethodsDetector.kt:54`.
+The checks run in this order, first match wins:
 
-`MethodBanHook` bans on `MethodNotAvailable`, behaviour identical to today. `MethodProbeDetector` uses all three.
+1. gRPC status: `UNIMPLEMENTED` ⇒ not available, `INVALID_ARGUMENT` ⇒ available, any other status ⇒ unknown;
+2. code `-32601` ⇒ not available;
+3. `execution reverted` in the message ⇒ unknown. A revert reason is arbitrary contract text: a contract reverting with "Method not found" must not get `eth_call` banned on the upstream;
+4. not-available patterns ⇒ not available;
+5. code `-32602` ⇒ available;
+6. available patterns ⇒ available.
+
+Not-available is checked **before** available, deviating from dshackle's ordering at `UpstreamRpcMethodsDetector.kt:54`, so a `-32602` whose message names the method as missing still counts as not available.
+
+`MethodBanHook` bans on `MethodNotAvailable`. The classifier is shared, so the gateway formats ban on live traffic too, and a revert never bans. `MethodProbeDetector` uses all three outcomes.
 
 ## Caps: live methods accessor
 
