@@ -317,14 +317,14 @@ func ClassifyMethodAvailability(err *ResponseError) MethodAvailability
 ```
 
 - `MethodNotAvailable`: the existing patterns from `method_hook.go`, plus code `-32601` (`NoSupportedMethod`, already in `errors.go:19`), plus the public-gateway formats `method error; invalid method: X` and `method 'X' not found`.
-- `MethodAvailable`: code `-32602` (`InvalidParams`) whatever its wording, and dshackle's `availableRegexps` — `missing value for required argument ([0-9]+)`, `Invalid params`. A wrong-params reply proves the method exists.
-- `MethodAvailabilityUnknown`: everything else, including any error whose message contains `execution reverted`.
+- `MethodAvailable`: any error whose message contains `execution reverted` (the node executed the method), code `-32602` (`InvalidParams`) whatever its wording, and dshackle's `availableRegexps` — `missing value for required argument ([0-9]+)`, `Invalid params`. A wrong-params reply proves the method exists.
+- `MethodAvailabilityUnknown`: everything else.
 
 The checks run in this order, first match wins:
 
 1. gRPC status: `UNIMPLEMENTED` ⇒ not available, `INVALID_ARGUMENT` ⇒ available, any other status ⇒ unknown;
 2. code `-32601` ⇒ not available;
-3. `execution reverted` in the message ⇒ unknown. A revert reason is arbitrary contract text: a contract reverting with "Method not found" must not get `eth_call` banned on the upstream;
+3. `execution reverted` in the message ⇒ available: the node executed the method. It runs before the patterns because a revert reason is arbitrary contract text, and a contract reverting with "Method not found" must not get `eth_call` banned on the upstream;
 4. not-available patterns ⇒ not available;
 5. code `-32602` ⇒ available;
 6. available patterns ⇒ available.

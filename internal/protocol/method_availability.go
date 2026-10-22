@@ -70,9 +70,11 @@ func ClassifyMethodAvailability(respError *ResponseError) MethodAvailability {
 	if respError.Code == NoSupportedMethod {
 		return MethodNotAvailable
 	}
-	// A revert reason is arbitrary contract text and may embed any marker below.
+	// A revert means the node found the method and executed it. Checked before the
+	// patterns because a revert reason is arbitrary contract text and may embed any
+	// marker below.
 	if strings.Contains(strings.ToLower(respError.Message), "execution reverted") {
-		return MethodAvailabilityUnknown
+		return MethodAvailable
 	}
 	for _, pattern := range methodNotAvailablePatterns {
 		if pattern.MatchString(respError.Message) {
