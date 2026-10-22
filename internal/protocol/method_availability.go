@@ -23,8 +23,7 @@ const (
 )
 
 // methodNotAvailablePatterns are the client error messages that mean the method is
-// absent. Kept identical to the set MethodBanHook used before this moved here, so ban
-// behaviour is unchanged.
+// absent.
 var methodNotAvailablePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`method ([A-Za-z0-9_]+) does not exist/is not available`),
 	regexp.MustCompile(`([A-Za-z0-9_]+) found but the containing module is disabled`),

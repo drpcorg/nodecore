@@ -237,7 +237,7 @@ func TestMethodProbeDetectorKeepsMethodOnUnrecognisedError(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
-		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithData(-32000, "gateway: unsupported call", nil), protocol.JsonRpc, protocol.TotalFailure)).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithData(-32000, "header not found", nil), protocol.JsonRpc, protocol.TotalFailure)).
 		Once()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("debug_storageRangeAt"))).
@@ -307,7 +307,7 @@ func TestMethodProbeDetectorKeepsMethodOnTransportFailure(t *testing.T) {
 }
 
 // Once a later round proves the method exists, a stripped method is announced again.
-func TestMethodProbeDetectorAnnouncesWithheldMethodOnceProven(t *testing.T) {
+func TestMethodProbeDetectorReannouncesMethodOnceProven(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
