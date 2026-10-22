@@ -183,3 +183,49 @@ func TestMethodProbeDetectorIgnoresMethodsOutsideTheSpec(t *testing.T) {
 	assert.Nil(t, detector.DetectUnsupported(context.Background()))
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
+
+// eth_callMany is served by reth and Erigon but not by geth-family or Nethermind nodes,
+// and the eth_ module is present on all of them, so the probe is the only thing telling
+// them apart. The messages are what base-reth v1.5.0 and geth v1.17 answer to empty params.
+func TestMethodProbeDetectorEthCallManyPerClient(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      *protocol.ResponseError
+		stripped bool
+	}{
+		{
+			name:     "reth rejects the params, so the method exists",
+			err:      protocol.ResponseErrorWithData(protocol.InvalidParams, "Invalid params", "No more params"),
+			stripped: false,
+		},
+		{
+			name:     "geth does not have the method",
+			err:      protocol.ResponseErrorWithData(protocol.NoSupportedMethod, "the method eth_callMany does not exist/is not available", nil),
+			stripped: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			connector := mocks.NewConnectorMock()
+			connector.
+				On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+				Return(protocol.NewReplyError("1", c.err, protocol.JsonRpc, protocol.TotalFailure)).
+				Once()
+
+			detector := evm_methods.NewMethodProbeDetector(
+				"upstream-1", chains.ETHEREUM, connector, time.Second,
+				mapset.NewThreadUnsafeSet[string]("eth_callMany"),
+			)
+
+			unsupported := detector.DetectUnsupported(context.Background())
+
+			if c.stripped {
+				assert.True(t, mapset.NewThreadUnsafeSet[string]("eth_callMany").Equal(unsupported))
+			} else {
+				require.NotNil(t, unsupported)
+				assert.True(t, unsupported.IsEmpty())
+			}
+		})
+	}
+}
