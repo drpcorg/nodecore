@@ -1,0 +1,31 @@
+server:
+  port: 9095
+
+rate-limit:
+  - budgets:
+      - name: standard-budget
+        config:
+          rules:
+            - method: eth_getBlockByNumber
+              requests: 100
+              period: 1s
+
+upstream-config:
+  mode: default
+  chain-defaults:
+    ethereum:
+      poll-interval: 2m
+      dispatch:
+        broadcast: true
+  upstreams:
+    - id: eth-1
+      chain: ethereum
+      rate-limit-budget: standard-budget
+      connectors:
+        - type: json-rpc
+          url: https://eth-1.test
+    - id: eth-2
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://eth-2.test
