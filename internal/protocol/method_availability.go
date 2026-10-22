@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"regexp"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 )
@@ -68,6 +69,10 @@ func ClassifyMethodAvailability(respError *ResponseError) MethodAvailability {
 	}
 	if respError.Code == NoSupportedMethod {
 		return MethodNotAvailable
+	}
+	// A revert reason is arbitrary contract text and may embed any marker below.
+	if strings.Contains(strings.ToLower(respError.Message), "execution reverted") {
+		return MethodAvailabilityUnknown
 	}
 	for _, pattern := range methodNotAvailablePatterns {
 		if pattern.MatchString(respError.Message) {

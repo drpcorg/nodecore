@@ -84,6 +84,16 @@ func TestClassifyMethodAvailability(t *testing.T) {
 			expected: protocol.MethodAvailable,
 		},
 		{
+			name:     "a revert reason quoting a not-found marker is contract text",
+			err:      protocol.ResponseErrorWithData(3, "execution reverted: Method not found", "0x08c379a0"),
+			expected: protocol.MethodAvailabilityUnknown,
+		},
+		{
+			name:     "a revert without code 3 is contract text too",
+			err:      protocol.ResponseErrorWithData(-32000, "execution reverted: method error; invalid method: x", nil),
+			expected: protocol.MethodAvailabilityUnknown,
+		},
+		{
 			name:     "unrelated error tells us nothing",
 			err:      protocol.ResponseErrorWithMessage("execution reverted"),
 			expected: protocol.MethodAvailabilityUnknown,
