@@ -171,6 +171,8 @@ Calls each of its methods with empty params and classifies the response (see [Er
 
 Unlike `RpcModulesDetector` this detector **is** stateful, because its subject is divisible: it keeps the last conclusive answer **per probe**. A round where three probes answer and five time out must not report only the three - that would silently restore whatever the five had established. Only conclusive results are merged into that map, so an inconclusive probe leaves the previous answer in place, and the detector returns nil only while no probe has ever answered.
 
+The not-available patterns include the formats public gateways answer in (`method error; invalid method: X`, Lotus's `method 'X' not found`), and a `-32602` reply is taken as a params complaint whatever its wording, since the method had to exist for its arguments to be judged. Any other error stays inconclusive, so a slow or rate-limited node never loses a method it serves because of a blip. (The gateway formats were added 2026-10-22 when `eth_callMany` joined the list and the public-multiregion pool advertised it on ~120 chains at once.)
+
 The map has a single writer despite the concurrency: the probe goroutines write to an indexed slice, and the merge into the map happens after their `wg.Wait()`. Rounds themselves never overlap, since the processor's `wg.Wait()` for round N happens-before it spawns round N+1.
 
 The probe list starts as dshackle's (`BasicEthUpstreamRpcMethodsDetector.kt:36-46`), intersected with the chain's base set so a probe naming a method absent from the spec is skipped automatically:

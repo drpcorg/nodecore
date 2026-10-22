@@ -31,6 +31,12 @@ var methodNotAvailablePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`[Mm]ethod not found`),
 	regexp.MustCompile(`[Mm]ethod is not available`),
 	regexp.MustCompile(`The method ([A-Za-z0-9_]+) is not available`),
+	// Public gateways in front of the dRPC public pool, seen answering eth_callMany:
+	// "method error; invalid method: eth_callMany" and, from Lotus, "method 'eth_callMany' not found".
+	// The first is anchored on its prefix so that a proxy complaining about an HTTP verb
+	// ("invalid method: GET") does not match.
+	regexp.MustCompile(`method error; invalid method: ([A-Za-z0-9_]+)`),
+	regexp.MustCompile(`[Mm]ethod '([A-Za-z0-9_]+)' not found`),
 }
 
 // methodAvailablePatterns are complaints about the call rather than about the method:
@@ -68,6 +74,12 @@ func ClassifyMethodAvailability(respError *ResponseError) MethodAvailability {
 		if pattern.MatchString(respError.Message) {
 			return MethodNotAvailable
 		}
+	}
+	// -32602 is "invalid params" by definition, whatever words the client puts on it
+	// (Lotus, Hedera and custom clients each phrase it differently): the method had to
+	// exist for its arguments to be judged.
+	if respError.Code == InvalidParams {
+		return MethodAvailable
 	}
 	for _, pattern := range methodAvailablePatterns {
 		if pattern.MatchString(respError.Message) {

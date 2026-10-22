@@ -64,6 +64,26 @@ func TestClassifyMethodAvailability(t *testing.T) {
 			expected: protocol.MethodAvailable,
 		},
 		{
+			name:     "a public gateway rejecting the method by name",
+			err:      protocol.ResponseErrorWithMessage("method error; invalid method: eth_callMany"),
+			expected: protocol.MethodNotAvailable,
+		},
+		{
+			name:     "lotus quotes the method name",
+			err:      protocol.ResponseErrorWithMessage("method 'eth_callMany' not found"),
+			expected: protocol.MethodNotAvailable,
+		},
+		{
+			name:     "a proxy complaining about the http verb is not about the method",
+			err:      protocol.ResponseErrorWithMessage("invalid method: GET"),
+			expected: protocol.MethodAvailabilityUnknown,
+		},
+		{
+			name:     "-32602 means the method exists whatever the wording",
+			err:      protocol.ResponseErrorWithData(protocol.InvalidParams, "wrong param count", nil),
+			expected: protocol.MethodAvailable,
+		},
+		{
 			name:     "unrelated error tells us nothing",
 			err:      protocol.ResponseErrorWithMessage("execution reverted"),
 			expected: protocol.MethodAvailabilityUnknown,
