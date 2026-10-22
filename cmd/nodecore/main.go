@@ -67,7 +67,12 @@ func main() {
 		mainCtxCancel()
 	}()
 
-	nodeCoreApp, err := app.NewApp(mainCtx, appConfig)
+	// SIGHUP reloads the upstream list; subscribed before the app exists so an early
+	// signal waits in the channel instead of terminating the process.
+	hups := make(chan os.Signal, 1)
+	signal.Notify(hups, syscall.SIGHUP)
+
+	nodeCoreApp, err := app.NewApp(mainCtx, appConfig, hups)
 	if err != nil {
 		log.Panic().Err(err).Msg("unable to create the app")
 	}

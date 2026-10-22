@@ -489,3 +489,25 @@ func newStartedProcessor(t *testing.T) *processorFixture {
 
 	return fixture
 }
+
+// A stopped processor must tell its subscribers the connection is gone: the aggregation
+// engine's sources only terminate their client subscriptions on this event.
+func TestGenericWsProcessorStopPublishesDisconnected(t *testing.T) {
+	fixture := newProcessorForNoStart(t)
+	fixture.wsSession.On("IsClosed").Return(false)
+	fixture.wsSession.On("CloseCurrent").Return(nil).Maybe()
+	fixture.wsSession.On("Generation").Return(uint64(1)).Maybe()
+	fixture.requestRegistry.On("CancelAll").Maybe()
+
+	subscription := fixture.processor.SubscribeWsStates("test")
+	fixture.processor.Start()
+
+	fixture.processor.Stop()
+
+	select {
+	case state := <-subscription.Events:
+		assert.Equal(t, protocol.WsDisconnected, state)
+	case <-time.After(time.Second):
+		t.Fatal("expected disconnected state after stop")
+	}
+}

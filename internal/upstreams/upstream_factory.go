@@ -86,7 +86,14 @@ func CreateUpstream(
 		autoTune:               autoTune,
 	}
 
-	return NewGenericUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
+	up, err := NewGenericUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
+	if err != nil {
+		// releases what is already bound to the context: the ws request registry loop and the
+		// rate-limit auto-tuner
+		cancel()
+		return nil, err
+	}
+	return up, nil
 }
 
 func createRateLimiter(

@@ -62,7 +62,7 @@ func (b *GenericWsProcessor) Start() {
 		go func() {
 			for {
 				if ctx.Err() != nil {
-					b.disconnect("stopping ws loop", ctx.Err())
+					b.stopLoop(ctx)
 					return
 				}
 
@@ -78,7 +78,7 @@ func (b *GenericWsProcessor) Start() {
 
 				select {
 				case <-ctx.Done():
-					b.disconnect("stopping ws loop", ctx.Err())
+					b.stopLoop(ctx)
 					return
 				case event := <-b.writeEventsChan:
 					switch e := event.(type) {
@@ -238,6 +238,14 @@ func (b *GenericWsProcessor) onSubscriptionMessage(response *protocol.WsResponse
 	b.requestRegistry.OnSubscriptionMessage(response)
 }
 
+// stopLoop is the loop's exit when its context ends. Unlike a disconnect noticed by the
+// reader, nobody else reports this one, so the state is published here: the consumers of
+// a subscription on this connection learn from it that the subscription is over.
+func (b *GenericWsProcessor) stopLoop(ctx context.Context) {
+	b.disconnect("stopping ws loop", ctx.Err())
+	b.subManager.Publish(protocol.WsDisconnected)
+}
+
 func (b *GenericWsProcessor) disconnect(reason string, cause error) {
 	if cause != nil {
 		log.Error().Err(cause).Msgf("%s from %s", reason, b.endpoint)
@@ -252,7 +260,8 @@ func (b *GenericWsProcessor) disconnect(reason string, cause error) {
 }
 
 func (b *GenericWsProcessor) connectWithRetry(ctx context.Context) error {
-	_, err := b.executor.GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
+	// under the loop's context the backoff between attempts ends as soon as the loop is stopped
+	_, err := b.executor.WithContext(ctx).GetWithExecution(func(exec failsafe.Execution[bool]) (bool, error) {
 		if ctx.Err() != nil {
 			return true, nil
 		}
