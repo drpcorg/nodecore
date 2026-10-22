@@ -4,6 +4,7 @@ import (
 	"context"
 
 	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
@@ -81,8 +82,15 @@ func (u *UpstreamSupervisorMock) GetChainSupervisor(chain chains.Chain) upstream
 
 func (u *UpstreamSupervisorMock) GetUpstream(id string) upstreams.Upstream {
 	args := u.Called(id)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).(upstreams.Upstream)
+}
 
-	return args.Get(0).(*upstreams.GenericUpstream)
+func (u *UpstreamSupervisorMock) ApplyUpstreams(confs []*config.Upstream) upstreams.UpstreamsDiff {
+	args := u.Called(confs)
+	return args.Get(0).(upstreams.UpstreamsDiff)
 }
 
 func (u *UpstreamSupervisorMock) GetExecutor() failsafe.Executor[*protocol.ResponseHolderWrapper] {

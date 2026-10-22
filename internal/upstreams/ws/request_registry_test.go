@@ -2,6 +2,7 @@ package ws_test
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -433,5 +434,52 @@ func assertClosedChannel(t *testing.T, ch <-chan protocol.SubResponse) {
 		assert.False(t, ok)
 	case <-time.After(time.Second):
 		t.Fatal("expected channel to close")
+	}
+}
+
+// When the upstream is stopped its context ends before the ws loop gets to send cancelAll,
+// so the registry has to release its operations on its own.
+func TestRequestRegistryCancelsEveryOperationWhenContextEnds(t *testing.T) {
+	loadMethodSpecs(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	registry := wsupstream.NewGenericRequestRegistry(ctx, chains.ETHEREUM, "upstream-1", "eth")
+
+	unaryRequest, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
+	require.NoError(t, err)
+	subRequest, err := protocol.NewInternalSubUpstreamJsonRpcRequest("eth_subscribe", []any{"newHeads"}, chains.ETHEREUM)
+	require.NoError(t, err)
+
+	unary := registry.Register(context.Background(), unaryRequest, "request-1", "", func(wsupstream.RequestOperation) {
+		t.Error("doOnClose must not run on a context end")
+	})
+	sub := registry.Register(context.Background(), subRequest, "request-2", "newHeads", func(wsupstream.RequestOperation) {
+		t.Error("doOnClose must not run on a context end")
+	})
+	registry.OnRpcMessage(&protocol.WsResponse{Id: "request-2", Type: protocol.JsonRpc, Message: []byte(`"0xsub"`)})
+	awaitSubID(t, sub, "0xsub")
+
+	cancel()
+
+	require.Eventually(t, unary.IsCompleted, time.Second, 10*time.Millisecond)
+	require.Eventually(t, sub.IsCompleted, time.Second, 10*time.Millisecond)
+	assert.False(t, unary.ShouldDoOnClose())
+	assert.False(t, sub.ShouldDoOnClose())
+	assertClosedChannel(t, unary.GetChannel(wsupstream.MessageResponse))
+	assertClosedChannel(t, sub.GetChannel(wsupstream.MessageResponse))
+}
+
+// Register may win the race against the context end and store an operation the sweep has
+// already passed; it has to notice and cancel the operation itself.
+func TestRequestRegistryRegisterAfterContextEndCancelsOperation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	registry := wsupstream.NewGenericRequestRegistry(ctx, chains.ETHEREUM, "upstream-1", "eth")
+	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, chains.ETHEREUM)
+	require.NoError(t, err)
+
+	cancel()
+
+	for i := range 50 {
+		req := registry.Register(context.Background(), request, fmt.Sprintf("request-%d", i), "", func(wsupstream.RequestOperation) {})
+		require.Eventually(t, req.IsCompleted, time.Second, 10*time.Millisecond)
 	}
 }
