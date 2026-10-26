@@ -65,6 +65,7 @@ func TestReadFullConfig(t *testing.T) {
 			Type:          config.Drpc,
 			FlushInterval: 5 * time.Minute,
 		},
+		ConfigReload: &config.ConfigReloadConfig{},
 		ServerConfig: &config.ServerConfig{
 			Port:                       9095,
 			HealthPort:                 9096,
@@ -325,5 +326,7 @@ func TestReadFullConfig(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, expected, appConfig)
+	// exported values only: the parsed-from bytes the config keeps for reloads are not part
+	// of what this test pins down
+	assert.EqualExportedValues(t, expected, appConfig)
 }

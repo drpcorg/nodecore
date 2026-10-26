@@ -43,6 +43,9 @@ func (a *AppConfig) validate() error {
 	if err := a.ServerConfig.validate(); err != nil {
 		return err
 	}
+	if err := a.ConfigReload.validate(); err != nil {
+		return fmt.Errorf("error during config-reload validation, cause: %s", err.Error())
+	}
 
 	rateLimitBudgetNames := mapset.NewThreadUnsafeSet[string]()
 	if len(a.RateLimit) > 0 {

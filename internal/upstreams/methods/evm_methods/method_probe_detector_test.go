@@ -183,3 +183,154 @@ func TestMethodProbeDetectorIgnoresMethodsOutsideTheSpec(t *testing.T) {
 	assert.Nil(t, detector.DetectUnsupported(context.Background()))
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
+
+// eth_callMany is served by reth and Erigon but not by geth-family or Nethermind nodes,
+// and the eth_ module is present on all of them, so the probe is the only thing telling
+// them apart. The messages are what base-reth v1.5.0 and geth v1.17 answer to empty params.
+func TestMethodProbeDetectorEthCallManyPerClient(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      *protocol.ResponseError
+		stripped bool
+	}{
+		{
+			name:     "reth rejects the params, so the method exists",
+			err:      protocol.ResponseErrorWithData(protocol.InvalidParams, "Invalid params", "No more params"),
+			stripped: false,
+		},
+		{
+			name:     "geth does not have the method",
+			err:      protocol.ResponseErrorWithData(protocol.NoSupportedMethod, "the method eth_callMany does not exist/is not available", nil),
+			stripped: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			connector := mocks.NewConnectorMock()
+			connector.
+				On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+				Return(protocol.NewReplyError("1", c.err, protocol.JsonRpc, protocol.TotalFailure)).
+				Once()
+
+			detector := evm_methods.NewMethodProbeDetector(
+				"upstream-1", chains.ETHEREUM, connector, time.Second,
+				mapset.NewThreadUnsafeSet[string]("eth_callMany"),
+			)
+
+			unsupported := detector.DetectUnsupported(context.Background())
+
+			if c.stripped {
+				assert.True(t, mapset.NewThreadUnsafeSet[string]("eth_callMany").Equal(unsupported))
+			} else {
+				require.NotNil(t, unsupported)
+				assert.True(t, unsupported.IsEmpty())
+			}
+		})
+	}
+}
+
+// An error neither pattern list knows says nothing about the method, even when the node
+// answered the other probes in the same round: detection stays lenient and never strips a
+// method because of a blip.
+func TestMethodProbeDetectorKeepsMethodOnUnrecognisedError(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithData(-32000, "header not found", nil), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("debug_storageRangeAt"))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{}`), protocol.JsonRpc)).
+		Once()
+
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("eth_callMany", "debug_storageRangeAt"),
+	)
+
+	unsupported := detector.DetectUnsupported(context.Background())
+
+	require.NotNil(t, unsupported)
+	assert.True(t, unsupported.IsEmpty(), "an unrecognised error must not strip the method; got %v", unsupported.ToSlice())
+}
+
+// A method proven in one round survives an unrecognised error in the next: the merge
+// skips inconclusive answers, so a single blip cannot overwrite what is known.
+func TestMethodProbeDetectorKeepsProvenMethodThroughUnrecognisedError(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithData(-32603, "Internal error", nil), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("eth_callMany"),
+	)
+
+	first := detector.DetectUnsupported(context.Background())
+	require.NotNil(t, first)
+	require.True(t, first.IsEmpty(), "got %v", first.ToSlice())
+
+	second := detector.DetectUnsupported(context.Background())
+	require.NotNil(t, second)
+	assert.True(t, second.IsEmpty(), "a proven method must survive a transient error; got %v", second.ToSlice())
+}
+
+// An error nodecore made itself - a timeout, a transport failure - says nothing about the
+// method, even when the node answered the other probes in the same round.
+func TestMethodProbeDetectorKeepsMethodOnTransportFailure(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.CtxError(context.DeadlineExceeded), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("debug_storageRangeAt"))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{}`), protocol.JsonRpc)).
+		Once()
+
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("eth_callMany", "debug_storageRangeAt"),
+	)
+
+	unsupported := detector.DetectUnsupported(context.Background())
+
+	require.NotNil(t, unsupported)
+	assert.True(t, unsupported.IsEmpty(), "a transport failure must not strip the method; got %v", unsupported.ToSlice())
+}
+
+// Once a later round proves the method exists, a stripped method is announced again.
+func TestMethodProbeDetectorReannouncesMethodOnceProven(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithMessage("method error; invalid method: eth_callMany"), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("eth_callMany"))).
+		Return(protocol.NewReplyError("1", protocol.ResponseErrorWithData(protocol.InvalidParams, "Invalid params", "No more params"), protocol.JsonRpc, protocol.TotalFailure)).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(requestFor("debug_storageRangeAt"))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{}`), protocol.JsonRpc)).
+		Twice()
+
+	detector := evm_methods.NewMethodProbeDetector(
+		"upstream-1", chains.ETHEREUM, connector, time.Second,
+		mapset.NewThreadUnsafeSet[string]("eth_callMany", "debug_storageRangeAt"),
+	)
+
+	first := detector.DetectUnsupported(context.Background())
+	require.True(t, mapset.NewThreadUnsafeSet[string]("eth_callMany").Equal(first), "got %v", first.ToSlice())
+
+	second := detector.DetectUnsupported(context.Background())
+	require.NotNil(t, second)
+	assert.True(t, second.IsEmpty(), "a params complaint is proof the method exists; got %v", second.ToSlice())
+}
