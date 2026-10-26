@@ -255,6 +255,7 @@ func TestAppendSelectorsUpdatesUpstreamPins(t *testing.T) {
 	}{
 		protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_call"}, false, "eth"),
 		protocol.NewUpstreamGrpcRequest("1", "/test.Method", nil, nil, "eth"),
+		protocol.NewUpstreamRestRequest("1", "GET#/test", nil, nil, "eth"),
 	}
 	for _, request := range requests {
 		request.AppendSelectors(pin)

@@ -173,6 +173,7 @@ func calculateRestHash(method string, params *RequestParams, body []byte, select
 // hash already computed does not see selectors added later.
 func (u *UpstreamRestRequest) AppendSelectors(selectors ...RequestSelector) {
 	u.selectors = append(u.Selectors(), selectors...)
+	u.pins, _ = SplitUpstreamPins(u.selectors)
 }
 
 var _ RequestHolder = (*UpstreamRestRequest)(nil)
