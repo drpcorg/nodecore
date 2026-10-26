@@ -47,13 +47,10 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.GetGroupLabels()
 	}
 
-	// Compile pins as matchers too: local sources and their internal fetches
-	// use the same filter as ordinary request selection.
-	pins, selectors := protocol.SplitUpstreamPins(selectors)
-	matchers := make([]Matcher, 0, len(selectors)+1)
-	if pins.Pinned() {
-		matchers = append(matchers, upstreamPinMatcher{pins: pins})
+	if _, err := protocol.UpstreamID(selectors); err != nil {
+		return []Matcher{&UnsupportedSelectorMatcher{reason: err.Error()}}, nil
 	}
+	matchers := make([]Matcher, 0, len(selectors))
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
 		matcher, sort := compileSelector(selector, predict, groupLabels)
@@ -82,6 +79,9 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	case nil, protocol.RequestAnySelector:
 		return nil, nil
 	case protocol.RequestLabelSelector:
+		if s.Name == protocol.UpstreamIdLabel {
+			return upstreamIDMatcher{id: s.Values[0]}, nil
+		}
 		return NewLabelMatcher(s.Name, s.Values), nil
 	case protocol.RequestExistsSelector:
 		return NewLabelExistsMatcher(s.Name), nil
@@ -150,21 +150,6 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	default:
 		return unsupported(fmt.Sprintf("unsupported selector %T", selector))
 	}
-}
-
-// pinMiss is the reason of a pinned request none of whose pinned upstreams
-// is among the candidates; present tells whether any of them is here at all.
-func pinMiss(pins protocol.UpstreamPins, chainSupervisor upstreams.ChainSupervisor) PinResponse {
-	present := false
-	if chainSupervisor != nil {
-		for _, id := range chainSupervisor.GetUpstreamIds() {
-			if pins.Matches(id, chainSupervisor.GetUpstreamState(id)) {
-				present = true
-				break
-			}
-		}
-	}
-	return PinResponse{ids: pins.Ids(), present: present}
 }
 
 type UpstreamOrder func([]string) []string
@@ -244,12 +229,12 @@ func predictedLowerBoundOf(supervisor upstreams.UpstreamSupervisor, id string, b
 	return value
 }
 
-// Upstream pins also constrain local subscriptions and their internal fetches.
-type upstreamPinMatcher struct{ pins protocol.UpstreamPins }
+// Used by local subscriptions and internal fetches as well as request selection.
+type upstreamIDMatcher struct{ id string }
 
-func (m upstreamPinMatcher) Match(id string, state *protocol.UpstreamState) MatchResponse {
-	if m.pins.Matches(id, state) {
+func (m upstreamIDMatcher) Match(id string, _ *protocol.UpstreamState) MatchResponse {
+	if id == m.id {
 		return SuccessResponse{}
 	}
-	return PinResponse{ids: m.pins.Ids()}
+	return LabelResponse{name: protocol.UpstreamIdLabel, values: []string{m.id}}
 }

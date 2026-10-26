@@ -246,20 +246,3 @@ func TestLagExceeds(t *testing.T) {
 	assert.False(t, protocol.LagExceeds(1000, 0))
 	assert.False(t, protocol.LagExceeds(1000, -1))
 }
-
-func TestAppendSelectorsUpdatesUpstreamPins(t *testing.T) {
-	pin := protocol.RequestLabelSelector{Name: protocol.UpstreamIdLabel, Values: []string{"node-a"}}
-	requests := []interface {
-		AppendSelectors(...protocol.RequestSelector)
-		UpstreamPins() protocol.UpstreamPins
-	}{
-		protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_call"}, false, "eth"),
-		protocol.NewUpstreamGrpcRequest("1", "/test.Method", nil, nil, "eth"),
-		protocol.NewUpstreamRestRequest("1", "GET#/test", nil, nil, "eth"),
-	}
-	for _, request := range requests {
-		request.AppendSelectors(pin)
-		assert.True(t, request.UpstreamPins().Matches("node-a", &protocol.UpstreamState{}))
-		assert.False(t, request.UpstreamPins().Matches("node-b", &protocol.UpstreamState{}))
-	}
-}

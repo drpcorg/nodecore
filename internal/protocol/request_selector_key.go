@@ -86,7 +86,7 @@ func selectorGroupKey(children []RequestSelector) string {
 // over node class and shares the default cache entry, leaving keys for
 // label-free traffic byte-identical to before.
 //
-// Upstream pins are part of the identity: cached data cannot cross group boundaries.
+// Upstream pins are part of the identity: cached data cannot cross upstream boundaries.
 func LabelCacheKey(selectors []RequestSelector) string {
 	// Top-level selectors are applied conjunctively, like an implicit AND.
 	return labelClassKey(RequestAndSelector{Children: selectors})

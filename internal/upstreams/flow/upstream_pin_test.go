@@ -3,12 +3,14 @@ package flow
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/resilience"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
@@ -17,7 +19,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -57,198 +58,6 @@ func pinTestChain(t *testing.T, method string, ids ...string) upstreams.ChainSup
 	return chainSupervisor
 }
 
-func ratingStrategyOf(chainSupervisor upstreams.ChainSupervisor, rated ...string) *RatingStrategy {
-	return &RatingStrategy{chainSupervisor: chainSupervisor, ups: rated, selectedUpstreams: mapset.NewThreadUnsafeSet[string]()}
-}
-
-// nodeLevel is err as a pinned request gets it
-func nodeLevel(err *protocol.ResponseError) *protocol.ResponseError {
-	err.NodeLevel = true
-	return err
-}
-
-func selectAll(t *testing.T, strategy UpstreamStrategy, request protocol.RequestHolder) []string {
-	t.Helper()
-	selected := make([]string, 0)
-	for {
-		id, err := strategy.SelectUpstream(request)
-		if err != nil {
-			expected := protocol.NoAvailableUpstreamsError()
-			expected.NodeLevel = request.UpstreamPins().Pinned()
-			assert.Equal(t, expected, err)
-			return selected
-		}
-		selected = append(selected, id)
-	}
-}
-
-func TestUpstreamPinsAreAGate(t *testing.T) {
-	geth := protocol.RequestLabelSelector{Name: "client_type", Values: []string{"geth"}}
-	or := protocol.RequestOrSelector{Children: []protocol.RequestSelector{pin("x")}}
-	selectors := []protocol.RequestSelector{
-		pin("a", "b"),
-		protocol.RequestAndSelector{Children: []protocol.RequestSelector{pin("b", "c"), geth}},
-		or,
-		// no pin: an ordinary label
-		pin(),
-	}
-
-	pins, rest := protocol.SplitUpstreamPins(selectors)
-	assert.Equal(t, protocol.UpstreamPins{{"a", "b"}, {"b", "c"}}, pins)
-	assert.True(t, pins.Matches("b", &protocol.UpstreamState{}))
-	assert.False(t, pins.Matches("a", &protocol.UpstreamState{}))
-	assert.False(t, pins.Matches("c", &protocol.UpstreamState{}))
-	assert.Equal(t, []protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{geth}}, or, pin()}, rest)
-	assert.Equal(t, pins, pinTestRequest("eth_call", selectors...).UpstreamPins())
-
-	matchers, order := buildSelectorRouting([]protocol.RequestSelector{pin("a")}, nil, nil)
-	require.Len(t, matchers, 1)
-	assert.Equal(t, SuccessType, matchers[0].Match("a", &protocol.UpstreamState{}).Type())
-	assert.Nil(t, order)
-
-	// elsewhere upstream_id is a label no upstream has
-	state := protocol.DefaultUpstreamState(nil, nil, "", nil, nil)
-	for _, selector := range []protocol.RequestSelector{or, pin()} {
-		matchers, _ = buildSelectorRouting([]protocol.RequestSelector{selector}, nil, nil)
-		require.Len(t, matchers, 1)
-		assert.NotEqual(t, SuccessType, matchers[0].Match("x", &state).Type())
-	}
-}
-
-func TestPinnedRequestSelectsOnlyPinnedUpstreams(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a", "b", "c")
-	request := pinTestRequest("eth_call", protocol.RequestAndSelector{Children: []protocol.RequestSelector{pin("b", "c")}})
-
-	strategies := map[string]func() UpstreamStrategy{
-		"generic": func() UpstreamStrategy { return NewGenericStrategy(chainSupervisor) },
-		"rating":  func() UpstreamStrategy { return ratingStrategyOf(chainSupervisor, "a", "b", "c") },
-		"specific order": func() UpstreamStrategy {
-			return NewSpecificOrderUpstreamStrategy([]string{"a", "b", "c"}, chainSupervisor)
-		},
-		"label groups": func() UpstreamStrategy {
-			return NewLabelGroupStrategyWithGroups([][]string{{"a"}, {"c"}, {"b"}}, false, chainSupervisor)
-		},
-	}
-	for name, strategy := range strategies {
-		t.Run(name, func(t *testing.T) {
-			assert.ElementsMatch(t, []string{"b", "c"}, selectAll(t, strategy(), request))
-			// unpinned: every upstream, as before
-			assert.ElementsMatch(t, []string{"a", "b", "c"}, selectAll(t, strategy(), pinTestRequest("eth_call")))
-		})
-	}
-}
-
-func TestPinnedRequestReachesAnUpstreamTheRatingHasNotListedYet(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
-	// b joined after the last rating calculation
-	rated := []string{"a"}
-
-	assert.Equal(t, []string{"b"}, selectAll(t, ratingStrategyOf(chainSupervisor, rated...), pinTestRequest("eth_call", pin("b"))))
-	assert.Equal(t, []string{"b"}, selectAll(t, ratingStrategyOf(chainSupervisor), pinTestRequest("eth_call", pin("b"))))
-	assert.Equal(t, []string{"a", "b"}, withUnrated(pinTestRequest("eth_call", pin("b", "a", "gone")), rated, chainSupervisor))
-	assert.Equal(t, []string{"a"}, rated)
-
-	// unpinned requests keep the rating list
-	assert.Equal(t, []string{"a"}, selectAll(t, ratingStrategyOf(chainSupervisor, rated...), pinTestRequest("eth_call")))
-}
-
-func TestPinnedUpstreamsNotPresent(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a")
-	// each id once in the message
-	request := pinTestRequest("eth_call", pin("x", "y"), protocol.RequestAndSelector{Children: []protocol.RequestSelector{pin("y", "x")}})
-	expected := nodeLevel(protocol.PinnedUpstreamsNotPresentError([]string{"x", "y"}))
-	assert.Equal(t, "pinned upstreams not present: x, y", expected.Message)
-	assert.Equal(t, protocol.NoAvailableUpstreams, expected.Code)
-
-	strategies := map[string]UpstreamStrategy{
-		"generic":        NewGenericStrategy(chainSupervisor),
-		"rating":         ratingStrategyOf(chainSupervisor, "a"),
-		"empty rating":   ratingStrategyOf(chainSupervisor),
-		"specific order": NewSpecificOrderUpstreamStrategy([]string{"a"}, chainSupervisor),
-		"label groups":   NewLabelGroupStrategyWithGroups([][]string{{"a"}, {}}, false, chainSupervisor),
-		"no groups":      NewLabelGroupStrategyWithGroups(nil, false, chainSupervisor),
-		"empty chain":    NewGenericStrategy(pinTestChain(t, "eth_call")),
-	}
-	for name, strategy := range strategies {
-		t.Run(name, func(t *testing.T) {
-			_, err := strategy.SelectUpstream(request)
-			assert.Equal(t, expected, err)
-		})
-	}
-}
-
-func TestPinnedUpstreamPresentButUnusable(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a")
-	publishPinTestUpstream(chainSupervisor, "down", protocol.Unavailable, 100, "eth_call")
-	require.Eventually(t, func() bool { return chainSupervisor.GetUpstreamState("down") != nil }, time.Second, time.Millisecond)
-
-	_, err := NewGenericStrategy(chainSupervisor).SelectUpstream(pinTestRequest("eth_call", pin("down")))
-	assert.Equal(t, nodeLevel(protocol.NoAvailableUpstreamsError()), err)
-
-	_, err = NewGenericStrategy(chainSupervisor).SelectUpstream(pinTestRequest("eth_getLogs", pin("a")))
-	assert.Equal(t, nodeLevel(protocol.NotSupportedMethodError("eth_getLogs")), err)
-
-	// the cause of a group with the pinned upstream beats the absence in the others
-	strategy := NewLabelGroupStrategyWithGroups([][]string{{"down"}, {"a"}}, false, chainSupervisor)
-	_, err = strategy.SelectUpstream(pinTestRequest("eth_call", pin("down")))
-	assert.Equal(t, nodeLevel(protocol.NoAvailableUpstreamsError()), err)
-
-	// unpinned, the same failures are the request's
-	_, err = NewGenericStrategy(chainSupervisor).SelectUpstream(pinTestRequest("eth_getLogs"))
-	assert.Equal(t, protocol.NotSupportedMethodError("eth_getLogs"), err)
-	_, err = NewSpecificOrderUpstreamStrategy([]string{"down"}, chainSupervisor).SelectUpstream(pinTestRequest("eth_call"))
-	assert.Equal(t, protocol.NoAvailableUpstreamsError(), err)
-}
-
-// pinned upstreams that are here but no candidates of the strategy (outside
-// every label group, filtered out) fail like the unpinned request would
-func TestPinnedUpstreamPresentButNoCandidate(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
-	request := pinTestRequest("eth_call", pin("b"))
-
-	strategies := map[string]UpstreamStrategy{
-		"label groups without default": NewLabelGroupStrategyWithGroups([][]string{{"a"}}, false, chainSupervisor),
-		"no groups":                    NewLabelGroupStrategyWithGroups(nil, false, chainSupervisor),
-		"specific order":               NewSpecificOrderUpstreamStrategy([]string{"a"}, chainSupervisor),
-		"empty specific order":         NewSpecificOrderUpstreamStrategy(nil, chainSupervisor),
-	}
-	for name, strategy := range strategies {
-		t.Run(name, func(t *testing.T) {
-			_, err := strategy.SelectUpstream(request)
-			assert.Equal(t, nodeLevel(protocol.NoAvailableUpstreamsError()), err)
-		})
-	}
-}
-
-func TestPinnedQuorumWithoutAPinnedSigner(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a", "drpc-1")
-	drpcIds := []string{"drpc-1"}
-
-	assert.Nil(t, quorumPinError(pinTestRequest("eth_call", pin("drpc-1", "a")), drpcIds, chainSupervisor))
-	assert.Equal(t,
-		nodeLevel(protocol.QuorumNotSupportedError("no pinned DRPC upstream with an HTTP connector")),
-		quorumPinError(pinTestRequest("eth_call", pin("a")), drpcIds, chainSupervisor),
-	)
-	assert.Equal(t,
-		nodeLevel(protocol.PinnedUpstreamsNotPresentError([]string{"x"})),
-		quorumPinError(pinTestRequest("eth_call", pin("x")), drpcIds, chainSupervisor),
-	)
-	assert.Nil(t, quorumPinError(pinTestRequest("eth_call"), drpcIds, chainSupervisor))
-}
-
-func TestPinnedRoundRobinSharesEvenly(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_call", "a", "b", "c", "d")
-	request := pinTestRequest("eth_call", pin("a", "d"))
-
-	counts := make(map[string]int)
-	for range 1000 {
-		id, err := NewGenericStrategy(chainSupervisor).SelectUpstream(request)
-		require.NoError(t, err)
-		counts[id]++
-	}
-	assert.Equal(t, map[string]int{"a": 500, "d": 500}, counts)
-}
-
 type pinTestUpstreams struct {
 	supervisor *mocks.UpstreamSupervisorMock
 	connectors map[string]*mocks.ConnectorMock
@@ -278,76 +87,151 @@ func (u *pinTestUpstreams) assertNotSent(t *testing.T, ids ...string) {
 	}
 }
 
+func (u *pinTestUpstreams) flow(cfg *config.UpstreamConfig) *GenericExecutionFlow {
+	return &GenericExecutionFlow{chain: chains.ETHEREUM, upstreamSupervisor: u.supervisor, appConfig: &config.AppConfig{UpstreamConfig: cfg}}
+}
+
+func TestPinnedAttemptHasOneCandidateWithoutRating(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
+	ups := newPinTestUpstreams(chainSupervisor, "a", "b")
+	for _, balancing := range []config.BalancingStrategy{config.BaseBalancingStrategy, config.RatingBalancingStrategy} {
+		exec := ups.flow(&config.UpstreamConfig{BalancingStrategy: balancing})
+		request := pinTestRequest("eth_call", pin("b"))
+		strategy := exec.createStrategy(t.Context(), request)
+		id, err := strategy.SelectUpstream(request)
+		require.NoError(t, err)
+		require.Equal(t, "b", id)
+		_, err = strategy.SelectUpstream(request)
+		require.Error(t, err, "retry or hedge cannot select a second node")
+		require.True(t, err.(*protocol.ResponseError).NodeLevel)
+	}
+}
+
+func TestPinnedHedgesSelectTheNodeOnce(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
+	request := pinTestRequest("eth_call", pin("a"))
+	matchers := make([]Matcher, 1, 8)
+	matchers[0] = upstreamIDMatcher{id: "a"}
+	strategy := newPinnedStrategy("a", chainSupervisor, matchers)
+	var wg sync.WaitGroup
+	results := make(chan string, 2)
+	for range 2 {
+		wg.Go(func() {
+			id, _ := strategy.SelectUpstream(request)
+			results <- id
+		})
+	}
+	wg.Wait()
+	close(results)
+	selected := 0
+	for id := range results {
+		if id != "" {
+			require.Equal(t, "a", id)
+			selected++
+		}
+	}
+	require.Equal(t, 1, selected)
+}
+
+func TestPinnedSelectionFailures(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a")
+	publishPinTestUpstream(chainSupervisor, "down", protocol.Unavailable, 100, "eth_call")
+	require.Eventually(t, func() bool { return chainSupervisor.GetUpstreamState("down") != nil }, time.Second, time.Millisecond)
+	exec := newPinTestUpstreams(chainSupervisor, "a", "down").flow(&config.UpstreamConfig{})
+	for _, tc := range []struct {
+		id, method string
+		code       int
+	}{
+		{"missing", "eth_call", protocol.NoAvailableUpstreams},
+		{"down", "eth_call", protocol.NoAvailableUpstreams},
+		{"a", "eth_getLogs", protocol.NoSupportedMethod},
+	} {
+		request := pinTestRequest(tc.method, pin(tc.id))
+		_, err := exec.createStrategy(t.Context(), request).SelectUpstream(request)
+		require.Error(t, err)
+		require.Equal(t, tc.code, err.(*protocol.ResponseError).Code)
+		require.True(t, err.(*protocol.ResponseError).NodeLevel)
+	}
+	request := pinTestRequest("eth_call", pin("a", "down"))
+	_, err := exec.createStrategy(t.Context(), request).SelectUpstream(request)
+	require.Equal(t, protocol.InvalidParamsError("upstream_id must select exactly one nonempty ID at the top level or under AND"), err)
+}
+
+func TestPinnedAttemptKeepsAuthorizationAndLabelExclusions(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
+	ups := newPinTestUpstreams(chainSupervisor, "a", "b")
+	request := pinTestRequest("eth_call", pin("a"), protocol.RequestGroupLabelSelector{Labels: []string{"private"}})
+	exec := ups.flow(&config.UpstreamConfig{})
+	_, err := exec.createStrategy(t.Context(), request).SelectUpstream(request)
+	require.Error(t, err, "an upstream pin must not bypass authorization")
+	cfg := &config.UpstreamConfig{LabelBalancing: &config.LabelBalancingConfig{Order: []string{"private"}, IncludeDefault: new(false)}}
+	request = pinTestRequest("eth_call", pin("a"))
+	_, err = ups.flow(cfg).createStrategy(t.Context(), request).SelectUpstream(request)
+	require.Error(t, err, "an excluded upstream must stay excluded")
+	cfg.LabelBalancing.IncludeDefault = new(true)
+	id, err := ups.flow(cfg).createStrategy(t.Context(), request).SelectUpstream(request)
+	require.NoError(t, err)
+	require.Equal(t, "a", id)
+}
+
+func TestPinnedQuorumRequiresSelectedSigner(t *testing.T) {
+	chainSupervisor := pinTestChain(t, "eth_call", "a")
+	exec := newPinTestUpstreams(chainSupervisor, "a").flow(&config.UpstreamConfig{})
+	ctx := quorum.WithParams(t.Context(), quorum.Params{Quorum: 1, QuorumOf: 1})
+	request := pinTestRequest("eth_call", pin("a"))
+	_, err := exec.createStrategy(ctx, request).SelectUpstream(request)
+	require.Error(t, err)
+	require.True(t, err.(*protocol.ResponseError).NodeLevel)
+	require.Equal(t, protocol.QuorumNotSupportedError("selected upstream cannot serve a quorum request").Code, err.(*protocol.ResponseError).Code)
+	request = pinTestRequest("eth_call", pin("missing"))
+	_, err = exec.createStrategy(ctx, request).SelectUpstream(request)
+	require.Equal(t, protocol.UpstreamNotPresentError("missing"), err)
+}
+
 func TestPinnedFailuresReachTheReplyAsNodeLevel(t *testing.T) {
 	chainSupervisor := pinTestChain(t, "eth_call", "a", "b")
 	ups := newPinTestUpstreams(chainSupervisor, "a", "b")
+	exec := ups.flow(&config.UpstreamConfig{})
 	processor := NewUnaryRequestProcessor(chains.ETHEREUM, ups.supervisor)
 	process := func(request protocol.RequestHolder) protocol.ResponseHolder {
-		return processor.ProcessRequest(context.Background(), NewGenericStrategy(chainSupervisor), request).(*UnaryResponse).ResponseWrapper.Response
+		return processor.ProcessRequest(context.Background(), exec.createStrategy(t.Context(), request), request).(*UnaryResponse).ResponseWrapper.Response
 	}
-
-	response := process(pinTestRequest("eth_call", pin("x")))
-	assert.Equal(t, nodeLevel(protocol.PinnedUpstreamsNotPresentError([]string{"x"})), response.GetError())
-	assert.True(t, protocol.IsNodeLevelError(response))
-
-	// the pinned upstream fails and no other one may retry it
+	response := process(pinTestRequest("eth_call", pin("missing")))
+	require.Equal(t, protocol.UpstreamNotPresentError("missing"), response.GetError())
+	require.True(t, protocol.IsNodeLevelError(response))
 	request := pinTestRequest("eth_call", pin("a"))
 	ups.connectors["a"].On("SendRequest", mock.Anything, request).
 		Return(protocol.NewPartialFailure(request, protocol.ServerErrorWithCause(errors.New("upstream a request failed"))))
 	response = process(request)
-	assert.Equal(t, "internal server error: upstream a request failed", response.GetError().Message)
-	assert.True(t, protocol.IsNodeLevelError(response))
+	require.True(t, protocol.IsNodeLevelError(response))
 	ups.assertNotSent(t, "b")
 }
 
-func TestPinnedBroadcastStaysInsideThePin(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_sendRawTransaction", "a", "b", "c")
-	ups := newPinTestUpstreams(chainSupervisor, "a", "b", "c")
-	request := pinTestRequest("eth_sendRawTransaction", pin("a", "c"))
-	ups.answer("a", request, `"0xtx"`)
-	ups.answer("c", request, `"0xtx"`)
-
-	processor := NewFanoutRequestProcessor(ups.supervisor, specs.DispatchBroadcast)
-	response := processor.ProcessRequest(context.Background(), NewGenericStrategy(chainSupervisor), request).(*UnaryResponse).ResponseWrapper
-
-	assert.False(t, response.Response.HasError())
-	ups.connectors["a"].AssertNumberOfCalls(t, "SendRequest", 1)
-	ups.connectors["c"].AssertNumberOfCalls(t, "SendRequest", 1)
-	ups.assertNotSent(t, "b")
-}
-
-func TestPinnedNotNullStaysInsideThePin(t *testing.T) {
-	chainSupervisor := pinTestChain(t, "eth_getTransactionByHash", "a", "b", "c")
-	ups := newPinTestUpstreams(chainSupervisor, "a", "b", "c")
-	request := pinTestRequest("eth_getTransactionByHash", pin("b"))
-	ups.answer("b", request, `null`)
-
-	processor := NewNotNullRequestProcessor(ups.supervisor)
-	response := processor.ProcessRequest(context.Background(), NewGenericStrategy(chainSupervisor), request).(*UnaryResponse).ResponseWrapper
-
-	assert.Equal(t, []byte(`null`), response.Response.ResponseResult())
-	ups.assertNotSent(t, "a", "c")
-}
-
-func TestPinnedIntegrityRerouteStaysInsideThePin(t *testing.T) {
-	specs_utils.LoadMethodSpecs()
-	chainSupervisor := upstreams.NewGenericChainSupervisor(t.Context(), chains.ETHEREUM, fork_choice.NewHeightForkChoice, nil, false, nil)
-	go chainSupervisor.Start()
-	publishPinTestUpstream(chainSupervisor, "low", protocol.Available, 5, specs.EthBlockNumber)
-	publishPinTestUpstream(chainSupervisor, "mid", protocol.Available, 108, specs.EthBlockNumber)
-	publishPinTestUpstream(chainSupervisor, "high", protocol.Available, 150, specs.EthBlockNumber)
-	require.Eventually(t, func() bool { return chainSupervisor.GetChainState().HeadData.Head.Height == 150 }, time.Second, time.Millisecond)
-
-	ups := newPinTestUpstreams(chainSupervisor, "low", "mid", "high")
-	request := pinTestRequest(specs.EthBlockNumber, pin("low", "mid"))
-	ups.answer("low", request, `"0x5"`)
-	ups.answer("mid", request, `"0x6c"`)
-
-	// high has the best head, but it is outside the pin
-	processor := NewIntegrityRequestProcessor(chains.ETHEREUM, ups.supervisor, nil)
-	strategy := NewSpecificOrderUpstreamStrategy([]string{"low", "mid", "high"}, chainSupervisor)
-	response := processor.ProcessRequest(context.Background(), strategy, request).(*UnaryResponse).ResponseWrapper
-
-	assert.Equal(t, []byte(`"0x6c"`), response.Response.ResponseResult())
-	ups.assertNotSent(t, "high")
+func TestPinnedDispatchAndIntegrityCannotUseAnotherNode(t *testing.T) {
+	for _, method := range []string{"eth_sendRawTransaction", "eth_getTransactionByHash", specs.EthBlockNumber} {
+		t.Run(method, func(t *testing.T) {
+			chainSupervisor := pinTestChain(t, method, "a", "b")
+			ups := newPinTestUpstreams(chainSupervisor, "a", "b")
+			request := pinTestRequest(method, pin("a"))
+			result := `"0x1"`
+			if method == "eth_getTransactionByHash" {
+				result = `null`
+			}
+			ups.answer("a", request, result)
+			exec := ups.flow(&config.UpstreamConfig{})
+			var processor RequestProcessor
+			switch method {
+			case "eth_sendRawTransaction":
+				processor = NewFanoutRequestProcessor(ups.supervisor, specs.DispatchBroadcast)
+			case "eth_getTransactionByHash":
+				processor = NewNotNullRequestProcessor(ups.supervisor)
+			default:
+				processor = NewIntegrityRequestProcessor(chains.ETHEREUM, ups.supervisor, nil)
+			}
+			response := processor.ProcessRequest(t.Context(), exec.createStrategy(t.Context(), request), request).(*UnaryResponse).ResponseWrapper
+			require.False(t, response.Response.HasError())
+			ups.connectors["a"].AssertNumberOfCalls(t, "SendRequest", 1)
+			ups.assertNotSent(t, "b")
+		})
+	}
 }

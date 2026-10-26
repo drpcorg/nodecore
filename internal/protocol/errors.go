@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"fmt"
-	"strings"
 )
 
 const (
@@ -129,12 +128,12 @@ func NoAvailableUpstreamsErrorWithCause(cause string) *ResponseError {
 	}
 }
 
-// PinnedUpstreamsNotPresentError answers a request pinned to upstreams none of
-// which is here. Clients classify it by the message prefix.
-func PinnedUpstreamsNotPresentError(ids []string) *ResponseError {
+// UpstreamNotPresentError reports that the selected upstream has disappeared.
+func UpstreamNotPresentError(id string) *ResponseError {
 	return &ResponseError{
-		Message: "pinned upstreams not present: " + strings.Join(ids, ", "),
-		Code:    NoAvailableUpstreams,
+		Message:   "pinned upstream not present: " + id,
+		Code:      NoAvailableUpstreams,
+		NodeLevel: true,
 	}
 }
 

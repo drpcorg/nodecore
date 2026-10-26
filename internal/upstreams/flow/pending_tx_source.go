@@ -88,11 +88,10 @@ func newPendingTxSourceBuilder(
 		subs := make([]upstreamSub, 0)
 
 		matchers, _ := buildSelectorRouting(selectors, supervisor, chainSup)
-		pins, _ := protocol.SplitUpstreamPins(selectors)
 		matcher := NewMultiMatcher(matchers...)
 		for _, id := range chainSup.GetUpstreamIds() {
 			state := chainSup.GetUpstreamState(id)
-			if state == nil || state.Status != protocol.Available || !pins.Matches(id, state) || matcher.Match(id, state).Type() != SuccessType {
+			if state == nil || state.Status != protocol.Available || matcher.Match(id, state).Type() != SuccessType {
 				continue
 			}
 			if state.Caps == nil || !state.Caps.Contains(protocol.PendingTxCap) {
@@ -345,11 +344,10 @@ func enrichPendingTx(
 
 	sent := 0
 	matchers, _ := buildSelectorRouting(selectors, supervisor, chainSup)
-	pins, _ := protocol.SplitUpstreamPins(selectors)
 	matcher := NewMultiMatcher(append(matchers, NewMethodMatcher("eth_getTransactionByHash"))...)
 	for _, id := range ids {
 		state := chainSup.GetUpstreamState(id)
-		if state == nil || state.Status != protocol.Available || !pins.Matches(id, state) || matcher.Match(id, state).Type() != SuccessType {
+		if state == nil || state.Status != protocol.Available || matcher.Match(id, state).Type() != SuccessType {
 			continue
 		}
 		upstream := supervisor.GetUpstream(id)

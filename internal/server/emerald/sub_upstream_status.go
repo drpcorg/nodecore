@@ -45,9 +45,8 @@ func (producer *upstreamStatusProducer) subscribe(upstreamSupervisor upstreams.U
 				continue
 			}
 			started[chainSupervisor.GetChain()] = true
-			if chain := producer.newChain(chainSupervisor.GetChain()); chain != nil {
-				wg.Go(func() { producer.run(ctx, chainSupervisor, chain) })
-			}
+			chain := producer.newChain(chainSupervisor.GetChain())
+			wg.Go(func() { producer.run(ctx, chainSupervisor, chain) })
 		}
 	}
 	startChains()

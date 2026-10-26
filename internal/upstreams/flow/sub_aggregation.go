@@ -154,6 +154,10 @@ func resolveSource(
 	engine subengine.Engine,
 	settings config.LocalSubSettings,
 ) (resolvedSource, error) {
+	id, err := protocol.UpstreamID(request.Selectors())
+	if err != nil {
+		return resolvedSource{}, protocol.InvalidParamsError(err.Error())
+	}
 	if settings.NewHeads && isNewHeadsRequest(request) {
 		filter, _, err := localFeedFilter(protocol.NewHeadsCap, "newHeads", chain, request, supervisor)
 		if err != nil {
@@ -174,7 +178,7 @@ func resolveSource(
 		}
 		return resolvedSource{key: localKey(localLogsPrefix, request), builder: newLogsSourceBuilder(supervisor, chain, registry, filter, selectorMatchers), filter: logFilter}, nil
 	}
-	if !request.UpstreamPins().Pinned() && settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
+	if id == "" && settings.PendingTx && isPendingTxRequest(request) && localPendingTxAvailable(chain, supervisor) {
 		return resolvedSource{key: localPendingTxKey, builder: newPendingTxSourceBuilder(supervisor, chain)}, nil
 	}
 	// drpc_pendingTransactions is synthetic (no node-backed equivalent) and stays

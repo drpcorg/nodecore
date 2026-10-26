@@ -182,8 +182,6 @@ type RequestHolder interface {
 	SpecMethod() *specs.Method
 	RequestObserver() *RequestObserver
 	Selectors() []RequestSelector
-	// UpstreamPins are the upstream_id pins of Selectors, parsed once.
-	UpstreamPins() UpstreamPins
 
 	ModifyParams(ctx context.Context, newValue any)
 

@@ -63,6 +63,9 @@ func mapNativeCallSelectors(requestSelector *dshackle.Selector, itemSelectors []
 		selectors = append(selectors, mapDshackleSelector(requestSelector))
 	}
 	selectors = append(selectors, mapDshackleSelectors(itemSelectors)...)
+	if _, err := protocol.UpstreamID(selectors); err != nil {
+		return nil, err
+	}
 	return rejectConflictingSortSelectors(selectors)
 }
 

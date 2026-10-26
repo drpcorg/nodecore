@@ -108,7 +108,10 @@ func (i *IntegrityRequestProcessor) handleResponse(
 	if integrityBlock != nil {
 		i.updateBlocks(response.UpstreamId, integrityBlock)
 	}
-	if !shouldSendRequest || len(sortedUpstreams) == 0 {
+	id, _ := protocol.UpstreamID(request.Selectors())
+	// A pinned attempt cannot compare with a different node; querying the same
+	// node again adds no independent information. Keep the head update above.
+	if id != "" || !shouldSendRequest || len(sortedUpstreams) == 0 {
 		return response
 	}
 

@@ -469,7 +469,7 @@ func TestNativeCallSendReplyReturnsErrorItemWithResponseUpstreamId(t *testing.T)
 
 func TestNativeCallSendReplyMarksNodeLevelErrors(t *testing.T) {
 	request := protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}, false, "eth")
-	pinned := protocol.PinnedUpstreamsNotPresentError([]string{"a"})
+	pinned := protocol.UpstreamNotPresentError("a")
 	pinned.NodeLevel = true
 	responses := map[string]struct {
 		response  protocol.ResponseHolder
