@@ -117,6 +117,92 @@ func (c *LowerBoundSearchCalculator) DetectLowerBound(
 	return c.lowerBoundResults(bound), nil
 }
 
+// ContiguousProbeResult is a probe verdict for DetectContiguousLowerBound. ProbeEmpty means the
+// block has nothing to check (e.g. no transactions), which says nothing about the data.
+type ContiguousProbeResult int
+
+const (
+	ProbeMiss ContiguousProbeResult = iota
+	ProbeHit
+	ProbeEmpty
+)
+
+type ContiguousLowerBoundProbe func(ctx context.Context, height int64) (ContiguousProbeResult, error)
+
+// contiguousInitialStep is the first gallop step below the head, doubled after every hit.
+const contiguousInitialStep = 1024
+
+// DetectContiguousLowerBound returns the start of the contiguous data range that ends at the head:
+// the lowest block b such that every probe in [b, latest] found data. It gallops down from the
+// head until a probe misses, then bisects between the miss and the last hit.
+//
+// Unlike the searches from genesis it never trusts a single old block. A node that keeps early
+// history plus a recent window (reth with pruned receipts) has a gap in between: re-checking the
+// cached bound or bisecting from 0 lands in the early part and reports 1, while the gap stops the
+// gallop here. A ProbeEmpty block moves the probe up to maxOffset blocks left; a run of only empty
+// blocks counts as a hit. A probe that keeps failing after retries counts as a miss.
+func (c *LowerBoundSearchCalculator) DetectContiguousLowerBound(
+	ctx context.Context,
+	fetchLatestHeight LowerBoundLatestHeightFetcher,
+	probe ContiguousLowerBoundProbe,
+) ([]protocol.LowerBoundData, error) {
+	latest, err := c.withRetryLatestHeight(ctx, fetchLatestHeight)
+	if err != nil {
+		return nil, fmt.Errorf("cannot fetch latest height for upstream '%s': %w", c.UpstreamId, err)
+	}
+	if latest <= 0 {
+		return nil, fmt.Errorf("upstream '%s' returned non-positive latest height %d", c.UpstreamId, latest)
+	}
+
+	// hitNear is the block at or just left of height where data was found
+	hitNear := func(height int64) (int64, bool) {
+		for block, left := height, c.maxOffset; block >= 1; block, left = block-1, left-1 {
+			result, err := c.withRetryContiguousProbe(ctx, block, probe)
+			if err != nil || result == ProbeMiss {
+				return 0, false
+			}
+			if result == ProbeHit {
+				return block, true
+			}
+			if left == 0 {
+				return height, true
+			}
+		}
+		return height, true
+	}
+
+	good := latest
+	missing := int64(0)
+	for step := int64(contiguousInitialStep); good > 1; step *= 2 {
+		next := max(1, good-step)
+		hit, ok := hitNear(next)
+		if !ok {
+			missing = next
+			break
+		}
+		good = hit
+	}
+	// invariant: no data at missing, data at good
+	for missing > 0 && good-missing > 1 {
+		middle := missing + (good-missing)/2
+		if hit, ok := hitNear(middle); ok && hit > missing {
+			good = hit
+		} else {
+			missing = middle
+		}
+	}
+
+	return c.lowerBoundResults(good), nil
+}
+
+func (c *LowerBoundSearchCalculator) withRetryContiguousProbe(ctx context.Context, height int64, probe ContiguousLowerBoundProbe) (ContiguousProbeResult, error) {
+	message := fmt.Sprintf("unable to get data on block %d to calculate lower bounds for upstream '%s'", height, c.UpstreamId)
+	retryPolicy := createLowerBoundSearchRetryPolicy[ContiguousProbeResult](c.retryAttempts, c.retryBaseDelay, c.retryMaxDelay, message, c.allSupportedTypes)
+	return failsafe.With(retryPolicy).WithContext(ctx).Get(func() (ContiguousProbeResult, error) {
+		return probe(ctx, height)
+	})
+}
+
 func (c *LowerBoundSearchCalculator) SupportedTypes() []protocol.LowerBoundType {
 	return c.allSupportedTypes
 }
