@@ -75,6 +75,9 @@ func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 	if results, ok := e.detectFromGoldBound(ctx); ok {
 		return results, nil
 	}
+	if e.MainBoundType == protocol.ReceiptsBound {
+		return e.DetectContiguousLowerBound(ctx, e.fetchLatestHeight, e.probeReceipts)
+	}
 	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
 }
 
