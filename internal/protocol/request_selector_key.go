@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 )
@@ -17,15 +16,12 @@ func (RequestAnySelector) Key() string {
 
 func (s RequestLabelSelector) Key() string {
 	values := append([]string(nil), s.Values...)
-	for i, value := range values {
-		values[i] = selectorAtom(value)
-	}
 	sort.Strings(values)
-	return fmt.Sprintf("label(%s=%s)", selectorAtom(s.Name), strings.Join(values, "|"))
+	return fmt.Sprintf("label(%s=%s)", s.Name, strings.Join(values, "|"))
 }
 
 func (s RequestExistsSelector) Key() string {
-	return fmt.Sprintf("exists(%s)", selectorAtom(s.Name))
+	return fmt.Sprintf("exists(%s)", s.Name)
 }
 
 func (s RequestAndSelector) Key() string {
@@ -57,14 +53,11 @@ func (s RequestLowerHeightSelector) Key() string {
 }
 
 func (s RequestUnsupportedSelector) Key() string {
-	return fmt.Sprintf("unsupported(%s)", selectorAtom(s.Reason))
+	return fmt.Sprintf("unsupported(%s)", s.Reason)
 }
 
 func (s RequestGroupLabelSelector) Key() string {
 	labels := append([]string(nil), s.Labels...)
-	for i, label := range labels {
-		labels[i] = selectorAtom(label)
-	}
 	sort.Strings(labels)
 	return fmt.Sprintf("group(%s)", strings.Join(labels, "|"))
 }
@@ -161,13 +154,4 @@ func labelClassParts(children []RequestSelector) []string {
 	}
 	sort.Strings(parts)
 	return parts
-}
-
-// Escape every opaque atom before joining selector syntax. The reserved "%"
-// represents an empty atom, distinguishing an empty list from one empty value.
-func selectorAtom(value string) string {
-	if value == "" {
-		return "%"
-	}
-	return url.QueryEscape(value)
 }
