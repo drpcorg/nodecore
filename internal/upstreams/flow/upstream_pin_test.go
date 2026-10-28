@@ -235,3 +235,32 @@ func TestPinnedDispatchAndIntegrityCannotUseAnotherNode(t *testing.T) {
 		})
 	}
 }
+
+func TestPinnedRESTAndNativeGRPCNeverWidenSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name, method string
+		request      func(string) protocol.RequestHolder
+	}{
+		{"rest", "GET#/eth/v1/beacon/genesis", func(id string) protocol.RequestHolder {
+			return protocol.NewUpstreamRestRequest("1", "GET#/eth/v1/beacon/genesis", &protocol.RequestParams{}, nil, "beacon-chain", pin(id))
+		}},
+		{"native-grpc", "/sui.rpc.v2.LedgerService/GetObject", func(id string) protocol.RequestHolder {
+			return protocol.NewUpstreamGrpcRequest("1", "/sui.rpc.v2.LedgerService/GetObject", &protocol.RequestParams{}, nil, "sui", pin(id))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chain := pinTestChain(t, tc.method, "a", "b")
+			exec := newPinTestUpstreams(chain, "a", "b").flow(&config.UpstreamConfig{})
+			request := tc.request("b")
+			strategy := exec.createStrategy(t.Context(), request)
+			id, err := strategy.SelectUpstream(request)
+			require.NoError(t, err)
+			require.Equal(t, "b", id)
+			_, err = strategy.SelectUpstream(request)
+			require.Error(t, err)
+			missing := tc.request("missing")
+			_, err = exec.createStrategy(t.Context(), missing).SelectUpstream(missing)
+			require.Equal(t, protocol.UpstreamNotPresentError("missing"), err)
+		})
+	}
+}
