@@ -2,6 +2,7 @@ server:
   port: 9095
   pprof-port: 6061
   metrics-port: 9093
+  grpc-upstream-status-interval: 250ms
 
 upstream-config:
   upstreams:

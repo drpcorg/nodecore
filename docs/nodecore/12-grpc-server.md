@@ -44,9 +44,17 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeUpstreamStatus(SubscribeChainStatusRequest) → stream SubscribeChainStatusResponse`**
+
+  Streams each upstream independently using the existing chain-status format. Responses additionally identify the upstream and its runtime sticky index.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
+
+  A label selector named `upstream_id` pins an attempt to exactly one upstream ID, independently of nodecore's rating. It may appear at the top level or under AND, alongside existing selectors and authorization restrictions. Empty IDs, multiple values, contradictory pins and pins under OR/NOT are rejected. Status, methods, rate limits, sticky ownership and quorum connector requirements still apply. Internal retry, hedge, dispatch and integrity paths cannot widen the pin; dproxy may choose another upstream on its next attempt. Pins remain part of the response-cache key.
+
+  `node_level_error` marks a failure that another upstream may answer, including selection failures of the chosen node. If the node has disappeared, the item uses the no-available-upstreams code and `pinned upstream not present: <id>`. Invalid pins and application errors do not acquire this flag merely because the request is pinned.
 
 - **`NativeSubscribe(NativeSubscribeRequest) → stream NativeSubscribeReplyItem`**
 
@@ -136,3 +144,18 @@ For a TLS or authenticated setup, swap `insecure.NewCredentials()` for proper cr
 ## Observability
 
 The gRPC API does not have a dedicated set of Prometheus metrics today; calls made through `NativeCall` and `NativeSubscribe` flow through the same request pipeline as HTTP calls, so they show up under the existing `nodecore_request_*` and `nodecore_upstream_*` metrics (see [Prometheus metrics](08-prometheus-metrics.md)).
+
+
+### Upstream status and execution
+
+`SubscribeUpstreamStatus` emits the same `SubscribeChainStatusResponse` as the
+legacy stream, with `upstream_id` and `upstream_index` attached. Every upstream
+receives its own full response, head deltas, metadata updates and periodic
+metadata resync. Labels, methods, subscriptions and bounds are preserved per
+upstream. Network lag validation remains authoritative. Removal publishes an
+unavailable status, repeated during resync; reconnect begins fresh snapshots.
+
+There is no grouping, method hash or grouping mode. Use an `upstream_id` selector
+to pin execution to the advertised upstream. The pin also constrains local
+subscriptions and their internal requests. A missing or unavailable upstream
+cannot fall back to the rest of the network. `SubscribeChainStatus` is unchanged.

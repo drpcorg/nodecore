@@ -47,6 +47,9 @@ func buildSelectorRouting(selectors []protocol.RequestSelector, supervisor upstr
 		return up.GetGroupLabels()
 	}
 
+	if _, err := protocol.UpstreamID(selectors); err != nil {
+		return []Matcher{&UnsupportedSelectorMatcher{reason: err.Error()}}, nil
+	}
 	matchers := make([]Matcher, 0, len(selectors))
 	var orderSpec *sortSpec
 	for _, selector := range selectors {
@@ -76,6 +79,9 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 	case nil, protocol.RequestAnySelector:
 		return nil, nil
 	case protocol.RequestLabelSelector:
+		if s.Name == protocol.UpstreamIdLabel {
+			return upstreamIDMatcher{id: s.Values[0]}, nil
+		}
 		return NewLabelMatcher(s.Name, s.Values), nil
 	case protocol.RequestExistsSelector:
 		return NewLabelExistsMatcher(s.Name), nil
@@ -221,4 +227,14 @@ func predictedLowerBoundOf(supervisor upstreams.UpstreamSupervisor, id string, b
 		return 1 << 62
 	}
 	return value
+}
+
+// Used by local subscriptions and internal fetches as well as request selection.
+type upstreamIDMatcher struct{ id string }
+
+func (m upstreamIDMatcher) Match(id string, _ *protocol.UpstreamState) MatchResponse {
+	if id == m.id {
+		return SuccessResponse{}
+	}
+	return LabelResponse{name: protocol.UpstreamIdLabel, values: []string{m.id}}
 }
