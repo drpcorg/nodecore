@@ -30,7 +30,13 @@ func mapDshackleSelector(selector *dshackle.Selector) protocol.RequestSelector {
 		if label == nil || strings.TrimSpace(label.GetName()) == "" {
 			return protocol.RequestAnySelector{}
 		}
-		return protocol.RequestLabelSelector{Name: label.GetName(), Values: compactStrings(label.GetValue())}
+		values := label.GetValue()
+		// Upstream IDs are opaque: preserve their exact value and cardinality
+		// so pin validation can reject malformed selectors before routing.
+		if label.GetName() != protocol.UpstreamIdLabel {
+			values = compactStrings(values)
+		}
+		return protocol.RequestLabelSelector{Name: label.GetName(), Values: values}
 	case *dshackle.Selector_ExistsSelector:
 		return protocol.RequestExistsSelector{Name: s.ExistsSelector.GetName()}
 	case *dshackle.Selector_AndSelector:
