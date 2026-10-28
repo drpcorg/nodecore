@@ -11,7 +11,7 @@ import (
 )
 
 // firstTxHash fetches a block and returns its first transaction hash, used by the
-// tx and receipts probes. It handles both eth_getBlockByNumber transaction shapes
+// tx probe. It handles both eth_getBlockByNumber transaction shapes
 // (array of hash strings, or array of tx objects).
 func (e *EvmLowerBoundDetector) firstTxHash(ctx context.Context, height int64) (string, bool, error) {
 	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
@@ -29,6 +29,24 @@ func (e *EvmLowerBoundDetector) firstTxHash(ctx context.Context, height int64) (
 	return tx, true, nil
 }
 
+// lastTxHash fetches a block and returns its last transaction hash, used by the receipts
+// probe. empty reports a block that exists but has no transactions to probe.
+func (e *EvmLowerBoundDetector) lastTxHash(ctx context.Context, height int64) (hash string, available, empty bool, err error) {
+	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
+	if err != nil || !available || isEvmNullResult(raw) {
+		return "", false, false, err
+	}
+	block := evmBlockEnvelope{}
+	if err := sonic.Unmarshal(raw, &block); err != nil {
+		return "", false, false, fmt.Errorf("EVM upstream '%s' block %d unparseable: %w", e.UpstreamId, height, err)
+	}
+	if len(block.Transactions) == 0 {
+		return "", false, true, nil
+	}
+	tx, ok := txRefHash(block.Transactions[len(block.Transactions)-1])
+	return tx, ok, false, nil
+}
+
 type evmBlockEnvelope struct {
 	Number       string            `json:"number"`
 	Hash         string            `json:"hash"`
@@ -43,19 +61,23 @@ func (b evmBlockEnvelope) firstTxHash() (string, bool) {
 	if len(b.Transactions) == 0 {
 		return "", false
 	}
-	first := strings.TrimSpace(string(b.Transactions[0]))
-	if first == "" || first == "null" {
+	return txRefHash(b.Transactions[0])
+}
+
+func txRefHash(raw json.RawMessage) (string, bool) {
+	ref := strings.TrimSpace(string(raw))
+	if ref == "" || ref == "null" {
 		return "", false
 	}
-	if strings.HasPrefix(first, `"`) {
+	if strings.HasPrefix(ref, `"`) {
 		var hash string
-		if err := sonic.Unmarshal(b.Transactions[0], &hash); err == nil && hash != "" {
+		if err := sonic.Unmarshal(raw, &hash); err == nil && hash != "" {
 			return hash, true
 		}
 		return "", false
 	}
 	tx := evmTxRef{}
-	if err := sonic.Unmarshal(b.Transactions[0], &tx); err != nil || tx.Hash == "" {
+	if err := sonic.Unmarshal(raw, &tx); err != nil || tx.Hash == "" {
 		return "", false
 	}
 	return tx.Hash, true
