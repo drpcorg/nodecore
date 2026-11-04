@@ -227,7 +227,7 @@ func TestUpstreamStatesCancellationReleasesBlockedOutputAndRegistration(t *testi
 	// A supervisor that never started cannot consume registration commands.
 	ctx, stop := context.WithCancel(context.Background())
 	stopped := NewGenericChainSupervisor(ctx, chains.ETHEREUM, choice.NewHeightForkChoice, nil, false, nil)
-	cancel, done = runUpstreamStateSubscription(t, stopped, 0, time.Hour, make(chan *UpstreamStateEvent))
+	_, done = runUpstreamStateSubscription(t, stopped, 0, time.Hour, make(chan *UpstreamStateEvent))
 	stop()
 	select {
 	case <-done:
