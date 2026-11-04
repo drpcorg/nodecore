@@ -1,90 +1,74 @@
 package emerald_test
 
 import (
-	"slices"
-	"sync"
+	"context"
+	"testing"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/drpcorg/public/pkg/dshackle"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 type upstreamsChainSupervisor struct {
-	*fakeChainSupervisor
-	mu      sync.RWMutex
-	states  map[string]*protocol.UpstreamState
-	changed utils.Signal
+	*upstreams.GenericChainSupervisor
+	t *testing.T
 }
 
-func newUpstreamsChainSupervisor(chain chains.Chain) *upstreamsChainSupervisor {
-	return &upstreamsChainSupervisor{
-		fakeChainSupervisor: newFakeChainSupervisor(chain, newChainState(chain, protocol.NewBlockWithHeight(100), nil)),
-		states:              make(map[string]*protocol.UpstreamState),
-	}
-}
-
-func (s *upstreamsChainSupervisor) UpstreamsChanged() <-chan struct{} {
-	return s.changed.C()
-}
-
-func (s *upstreamsChainSupervisor) GetUpstreamIds() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	ids := make([]string, 0, len(s.states))
-	for id := range s.states {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
-}
-
-func (s *upstreamsChainSupervisor) GetUpstreamState(id string) *protocol.UpstreamState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.states[id]
+func newUpstreamsChainSupervisor(t *testing.T, chain chains.Chain) *upstreamsChainSupervisor {
+	t.Helper()
+	loadMethodSpecs(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	supervisor := upstreams.NewGenericChainSupervisor(ctx, chain, func() choice.ForkChoice { return choice.NewHeightForkChoice() }, nil, false, nil)
+	supervisor.Start()
+	return &upstreamsChainSupervisor{GenericChainSupervisor: supervisor, t: t}
 }
 
 func (s *upstreamsChainSupervisor) set(id string, state *protocol.UpstreamState) {
-	s.mu.Lock()
-	s.states[id] = state
-	s.mu.Unlock()
-	s.changed.Notify()
+	s.PublishUpstreamEvent(protocol.UpstreamEvent{Id: id, EventType: &protocol.ValidUpstreamEvent{State: state}})
+	s.waitState(id, state)
 }
 
 func (s *upstreamsChainSupervisor) remove(id string) {
-	s.mu.Lock()
-	delete(s.states, id)
-	s.mu.Unlock()
-	s.changed.Notify()
+	s.PublishUpstreamEvent(protocol.UpstreamEvent{Id: id, EventType: &protocol.RemoveUpstreamEvent{}})
+	require.Eventually(s.t, func() bool { return s.GetUpstreamState(id) == nil }, time.Second, time.Millisecond)
 }
 
-// update stores a copy of the upstream's snapshot, the way the supervisor does
 func (s *upstreamsChainSupervisor) update(id string, change func(*protocol.UpstreamState)) {
-	s.mu.Lock()
-	next := *s.states[id]
+	next := *s.GetUpstreamState(id)
 	change(&next)
-	s.states[id] = &next
-	s.mu.Unlock()
-	s.changed.Notify()
+	s.PublishUpstreamEvent(protocol.UpstreamEvent{Id: id, EventType: &protocol.StateUpstreamEvent{State: &next}})
+	s.waitState(id, &next)
+}
+
+func (s *upstreamsChainSupervisor) waitState(id string, state *protocol.UpstreamState) {
+	require.Eventually(s.t, func() bool { return s.GetUpstreamState(id) == state }, time.Second, time.Millisecond)
 }
 
 type chainsUpstreamSupervisor struct {
 	*mocks.UpstreamSupervisorMock
-	chains []upstreams.ChainSupervisor
+	chains *utils.CMap[chains.Chain, upstreams.ChainSupervisor]
 	events *utils.SubscriptionManager[upstreams.ChainSupervisorEvent]
 }
 
 func newChainsUpstreamSupervisor(chainSupervisors ...upstreams.ChainSupervisor) *chainsUpstreamSupervisor {
-	return &chainsUpstreamSupervisor{
+	supervisor := &chainsUpstreamSupervisor{
 		UpstreamSupervisorMock: mocks.NewUpstreamSupervisorMock(),
-		chains:                 chainSupervisors,
+		chains:                 utils.NewCMap[chains.Chain, upstreams.ChainSupervisor](),
 		events:                 utils.NewSubscriptionManager[upstreams.ChainSupervisorEvent]("test-chain-supervisors"),
 	}
+	for _, chain := range chainSupervisors {
+		supervisor.chains.Store(chain.GetChain(), chain)
+	}
+	return supervisor
 }
 
 func (s *chainsUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.Subscription[upstreams.ChainSupervisorEvent] {
@@ -92,7 +76,12 @@ func (s *chainsUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.
 }
 
 func (s *chainsUpstreamSupervisor) GetChainSupervisors() []upstreams.ChainSupervisor {
-	return slices.Clone(s.chains)
+	var result []upstreams.ChainSupervisor
+	s.chains.Range(func(_ chains.Chain, chain upstreams.ChainSupervisor) bool {
+		result = append(result, chain)
+		return true
+	})
+	return result
 }
 
 func testUpstreamState(height uint64, methods ...string) *protocol.UpstreamState {

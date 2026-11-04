@@ -67,9 +67,8 @@ func TestReadFullConfig(t *testing.T) {
 		},
 		ConfigReload: &config.ConfigReloadConfig{},
 		ServerConfig: &config.ServerConfig{
-			Port:                       9095,
-			HealthPort:                 9096,
-			GrpcUpstreamStatusInterval: config.DefaultGrpcUpstreamStatusInterval,
+			Port:       9095,
+			HealthPort: 9096,
 			PyroscopeConfig: &config.PyroscopeConfig{
 				Enabled:  true,
 				Url:      "url",

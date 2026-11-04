@@ -12,7 +12,7 @@ import (
 
 func TestUpstreamStreamPreservesDescriptionsAndStableIDs(t *testing.T) {
 	loadMethodSpecs(t)
-	chain := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	chain := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
 	a, b := testUpstreamState(100, "eth_call"), testUpstreamState(200, "eth_getBalance")
 	a.UpstreamIndex, b.UpstreamIndex = "00001", "00002"
 	a.Labels.AddLabel("client_type", "erigon")
@@ -66,7 +66,7 @@ func TestUpstreamStreamPreservesDescriptionsAndStableIDs(t *testing.T) {
 
 func TestUpstreamStreamResyncRepairsRemovedUpstream(t *testing.T) {
 	loadMethodSpecs(t)
-	chain := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	chain := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
 	chain.set("a", testUpstreamState(100, "eth_call"))
 	stream, _ := startRecordedUpstreamStatus(t, 30*time.Millisecond, chain)
 	stream.waitFor(t, 1)

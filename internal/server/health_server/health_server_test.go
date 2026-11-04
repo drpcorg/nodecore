@@ -1,10 +1,12 @@
 package health_server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -115,8 +117,7 @@ func (h *healthChainSupervisorStub) SubscribeState(name string) *utils.Subscript
 	return nil
 }
 
-func (h *healthChainSupervisorStub) UpstreamsChanged() <-chan struct{} {
-	return nil
+func (h *healthChainSupervisorStub) SubscribeUpstreamStates(ctx context.Context, name string, interval, resync time.Duration, output chan<- *upstreams.UpstreamStateEvent) {
 }
 
 func (h *healthChainSupervisorStub) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {

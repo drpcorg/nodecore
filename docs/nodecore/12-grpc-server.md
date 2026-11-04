@@ -155,6 +155,13 @@ metadata resync. Labels, methods, subscriptions and bounds are preserved per
 upstream. Network lag validation remains authoritative. Removal publishes an
 unavailable status, repeated during resync; reconnect begins fresh snapshots.
 
+The request's optional `min_interval_ms` controls coalescing independently for
+that stream. Zero (including omission) sends changes immediately. Positive values
+coalesce each chain's changes into batches containing the latest state. The
+interval controls batch generation; one batch can contain separate metadata and
+head responses, and queued batches can arrive together after a transport stall.
+The initial full description is immediate. `SubscribeChainStatus` ignores this field.
+
 There is no grouping, method hash or grouping mode. Use an `upstream_id` selector
 to pin execution to the advertised upstream. The pin also constrains local
 subscriptions and their internal requests. A missing or unavailable upstream

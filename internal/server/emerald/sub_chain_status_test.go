@@ -136,8 +136,7 @@ func (s *fakeChainSupervisor) SubscribeState(name string) *utils.Subscription[*u
 	return s.subManager.Subscribe(name)
 }
 
-func (s *fakeChainSupervisor) UpstreamsChanged() <-chan struct{} {
-	return nil
+func (s *fakeChainSupervisor) SubscribeUpstreamStates(ctx context.Context, name string, interval, resync time.Duration, output chan<- *upstreams.UpstreamStateEvent) {
 }
 
 func (s *fakeChainSupervisor) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {

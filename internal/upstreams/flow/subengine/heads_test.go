@@ -71,8 +71,7 @@ func (s *fakeChainSupervisor) SubscribeState(string) *utils.Subscription[*upstre
 	return nil
 }
 
-func (s *fakeChainSupervisor) UpstreamsChanged() <-chan struct{} {
-	return nil
+func (s *fakeChainSupervisor) SubscribeUpstreamStates(ctx context.Context, name string, interval, resync time.Duration, output chan<- *upstreams.UpstreamStateEvent) {
 }
 
 var _ upstreams.ChainSupervisor = (*fakeChainSupervisor)(nil)

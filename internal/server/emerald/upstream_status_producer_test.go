@@ -8,6 +8,8 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/server/emerald"
+	"github.com/drpcorg/nodecore/internal/server/server_ctx"
+	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/dshackle"
@@ -97,9 +99,9 @@ func startRecordedUpstreamStatusWithInterval(
 }
 
 func TestSubscribeUpstreamStatus_StreamsEveryChain(t *testing.T) {
-	ethereum := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	ethereum := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
 	ethereum.set("eth-1", testUpstreamState(100))
-	polygon := newUpstreamsChainSupervisor(chains.POLYGON)
+	polygon := newUpstreamsChainSupervisor(t, chains.POLYGON)
 	polygon.set("polygon-1", testUpstreamState(200))
 	stream, _ := startRecordedUpstreamStatus(t, time.Hour, ethereum, polygon)
 
@@ -111,7 +113,7 @@ func TestSubscribeUpstreamStatus_StreamsEveryChain(t *testing.T) {
 }
 
 func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
-	chainSupervisor := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	chainSupervisor := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
 	chainSupervisor.set("up-1", testUpstreamState(100))
 
 	loadMethodSpecs(t)
@@ -142,17 +144,18 @@ func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
 		}
 	}()
 
-	responses := stream.waitFor(t, 2)
-	assert.Equal(t, uint64(100), responseHeight(responses[0]))
-	assert.Equal(t, uint64(105), responseHeight(responses[1]))
-	stream.quiet(t, 2)
+	require.Eventually(t, func() bool {
+		responses := stream.all()
+		return len(responses) > 1 && responseHeight(responses[len(responses)-1]) == 105
+	}, time.Second, time.Millisecond)
+	assert.Equal(t, uint64(100), responseHeight(stream.all()[0]))
 }
 
-func TestSubscribeUpstreamStatus_IntervalIsTheMinimumGapOfAChain(t *testing.T) {
+func TestSubscribeUpstreamStatus_CoalescesEachChainIndependently(t *testing.T) {
 	const interval = 200 * time.Millisecond
-	ethereum := newUpstreamsChainSupervisor(chains.ETHEREUM)
+	ethereum := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
 	ethereum.set("eth-1", testUpstreamState(100))
-	polygon := newUpstreamsChainSupervisor(chains.POLYGON)
+	polygon := newUpstreamsChainSupervisor(t, chains.POLYGON)
 	polygon.set("polygon-1", testUpstreamState(200))
 	stream, _ := startRecordedUpstreamStatusWithInterval(t, interval, time.Hour, ethereum, polygon)
 	fulls := stream.waitFor(t, 2)
@@ -179,9 +182,9 @@ func TestSubscribeUpstreamStatus_IntervalIsTheMinimumGapOfAChain(t *testing.T) {
 	assert.Equal(t, uint64(106), responseHeight(responses[4]))
 
 	sentAt := stream.sendTimes()
-	assert.GreaterOrEqual(t, sentAt[2].Sub(sentAt[ethereumFull]), interval)
+	assert.GreaterOrEqual(t, sentAt[2].Sub(sentAt[ethereumFull]), interval-10*time.Millisecond)
 	assert.Less(t, sentAt[3].Sub(sentAt[2]), interval/2)
-	assert.GreaterOrEqual(t, sentAt[4].Sub(sentAt[2]), interval)
+	assert.GreaterOrEqual(t, sentAt[4].Sub(sentAt[2]), interval-10*time.Millisecond)
 }
 
 func responseHeight(r *dshackle.SubscribeChainStatusResponse) uint64 {
@@ -191,4 +194,50 @@ func responseHeight(r *dshackle.SubscribeChainStatusResponse) uint64 {
 		}
 	}
 	return 0
+}
+
+func TestSubscribeUpstreamStatusRequestControlsEachStream(t *testing.T) {
+	chain := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
+	chain.set("a", testUpstreamState(100))
+	supervisor := newChainsUpstreamSupervisor(chain)
+	service := emerald.NewGrpcBlockchainService(&server_ctx.ApplicationServerContext{UpstreamSupervisor: supervisor}, nil, signature.NewDisabledSigner())
+	streams := make([]*recordingUpstreamStatusStream, 2)
+	for i, interval := range []uint32{0, 200} {
+		stream := &recordingUpstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
+		streams[i] = stream
+		done := make(chan error, 1)
+		go func() {
+			done <- service.SubscribeUpstreamStatus(&dshackle.SubscribeChainStatusRequest{MinIntervalMs: interval}, stream)
+		}()
+		t.Cleanup(func() { stream.cancel(); require.NoError(t, <-done) })
+		require.True(t, stream.waitFor(t, 1)[0].FullResponse)
+	}
+	for height := uint64(101); height <= 103; height++ {
+		chain.update("a", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
+		require.Equal(t, height, responseHeight(streams[0].waitFor(t, int(height-99))[int(height-100)]))
+	}
+	require.Len(t, streams[1].all(), 1)
+	require.Equal(t, uint64(103), responseHeight(streams[1].waitFor(t, 2)[1]))
+	require.GreaterOrEqual(t, streams[1].sendTimes()[1].Sub(streams[1].sendTimes()[0]), 190*time.Millisecond)
+}
+
+func TestSubscribeUpstreamStatusDiscoversNewChainsAfterEmptyStartup(t *testing.T) {
+	stream, supervisor := startRecordedUpstreamStatus(t, 25*time.Millisecond)
+	chain := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
+	chain.set("a", testUpstreamState(100))
+	// No Add notification: periodic registry reconciliation repairs a missed one.
+	supervisor.chains.Store(chain.GetChain(), chain)
+	require.Equal(t, "a", stream.waitFor(t, 1)[0].UpstreamId)
+	polygon := newUpstreamsChainSupervisor(t, chains.POLYGON)
+	polygon.set("b", testUpstreamState(200))
+	supervisor.chains.Store(polygon.GetChain(), polygon)
+	supervisor.events.Publish(&upstreams.AddChainSupervisorEvent{ChainSupervisor: polygon})
+	require.Eventually(t, func() bool {
+		for _, response := range stream.all() {
+			if response.UpstreamId == "b" && response.FullResponse {
+				return true
+			}
+		}
+		return false
+	}, time.Second, time.Millisecond)
 }

@@ -1,7 +1,9 @@
 package upstreams
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
@@ -41,8 +43,9 @@ type ChainSupervisor interface {
 
 	PublishUpstreamEvent(event protocol.UpstreamEvent)
 	SubscribeState(name string) *utils.Subscription[*ChainSupervisorStateWrapperEvent]
-	// UpstreamsChanged is closed by the next change of an upstream state
-	UpstreamsChanged() <-chan struct{}
+	// SubscribeUpstreamStates forwards validated per-upstream full/state/head events.
+	// The caller owns output; forwarding stops on either context cancellation.
+	SubscribeUpstreamStates(ctx context.Context, name string, interval, resync time.Duration, output chan<- *UpstreamStateEvent)
 	// SubscribeHead is a head feed over the upstreams that are Available and pass
 	// filter, re-evaluated on every upstream event. See HeadFeedEvent.
 	SubscribeHead(name string, filter FilterUpstream) *HeadFeedSubscription
