@@ -290,6 +290,16 @@ type RequestLowerHeightSelector struct {
 
 func (RequestLowerHeightSelector) isRequestSelector() {}
 
+// RequestVersionSelector admits an upstream whose client_version label is a
+// semver within [Min, Max]; an empty bound is open. The dshackle client sends
+// min and max as separate selectors, so a value normally carries only one.
+type RequestVersionSelector struct {
+	Min string
+	Max string
+}
+
+func (RequestVersionSelector) isRequestSelector() {}
+
 type RequestUnsupportedSelector struct {
 	Reason string
 }

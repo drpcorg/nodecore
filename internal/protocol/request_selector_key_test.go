@@ -402,3 +402,24 @@ func TestAppendSelectorsKeepsExistingSelectors(t *testing.T) {
 		assert.Equal(t, []protocol.RequestSelector{label("region", "us"), group}, request.Selectors())
 	}
 }
+
+func TestVersionSelectorKey(t *testing.T) {
+	assert.Equal(t, "version(1.2.0,)", protocol.RequestVersionSelector{Min: "1.2.0"}.Key())
+	assert.Equal(t, "version(,2.0.0)", protocol.RequestVersionSelector{Max: "2.0.0"}.Key())
+	assert.NotEqual(t, protocol.RequestVersionSelector{Min: "1.2.0"}.Key(), protocol.RequestVersionSelector{Max: "1.2.0"}.Key())
+}
+
+func TestLabelCacheKeyIncludesVersionSelector(t *testing.T) {
+	// A version range constrains the client_version node class, so it must
+	// partition the cache like a label selector does.
+	minKey := protocol.LabelCacheKey(sel(protocol.RequestVersionSelector{Min: "1.2.0"}))
+	maxKey := protocol.LabelCacheKey(sel(protocol.RequestVersionSelector{Max: "1.2.0"}))
+
+	assert.NotEmpty(t, minKey)
+	assert.NotEqual(t, minKey, maxKey)
+	assert.Equal(t, "", protocol.LabelCacheKey(sel(not(protocol.RequestHeightSelector{Height: 1}))))
+	assert.Equal(t,
+		protocol.LabelCacheKey(sel(and(label("type", "a"), protocol.RequestVersionSelector{Min: "1.2.0"}))),
+		protocol.LabelCacheKey(sel(and(protocol.RequestVersionSelector{Min: "1.2.0"}, label("type", "a")))),
+	)
+}

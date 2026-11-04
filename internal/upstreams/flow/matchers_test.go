@@ -223,3 +223,42 @@ func TestGroupLabelSelectorFailsClosedWithoutSupervisor(t *testing.T) {
 	assert.Len(t, matchers, 1)
 	assert.Equal(t, SelectorType, matchers[0].Match("up", nil).Type())
 }
+
+func TestVersionRangeMatcher(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	state.Labels.AddLabel("client_version", "v1.13.5-stable-916d6a44")
+
+	assert.Equal(t, SuccessType, NewVersionRangeMatcher("1.13.0", "").Match("up", &state).Type())
+	assert.Equal(t, SuccessType, NewVersionRangeMatcher("", "v1.13.5").Match("up", &state).Type())
+	assert.Equal(t, SuccessType, NewVersionRangeMatcher("1.13.5-stable-916d6a44", "1.14.0").Match("up", &state).Type())
+
+	tooOld := NewVersionRangeMatcher("1.14.0", "").Match("up", &state)
+	assert.Equal(t, SelectorType, tooOld.Type())
+	assert.Equal(t, "version range from '1.14.0' to ''", tooOld.Cause())
+
+	tooNew := NewVersionRangeMatcher("", "1.13.4").Match("up", &state)
+	assert.Equal(t, SelectorType, tooNew.Type())
+	assert.Equal(t, "version range from '' to '1.13.4'", tooNew.Cause())
+}
+
+func TestVersionRangeMatcherRejectsUnknownAndMissingVersions(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	missing := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.0.0", "").Match("up", &missing).Type())
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.0.0", "").Match("up", nil).Type())
+
+	unknown := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	unknown.Labels.AddLabel("client_version", "unknown")
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("", "9.0.0").Match("up", &unknown).Type())
+}
+
+func TestVersionRangeMatcherRejectsMalformedBounds(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	state.Labels.AddLabel("client_version", "1.13.5")
+
+	// The emerald mapper rejects malformed bounds up front; the matcher still
+	// fails closed if one reaches it another way.
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.13", "").Match("up", &state).Type())
+}
