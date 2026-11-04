@@ -1,7 +1,6 @@
 package emerald_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -25,9 +24,7 @@ type upstreamsChainSupervisor struct {
 func newUpstreamsChainSupervisor(t *testing.T, chain chains.Chain) *upstreamsChainSupervisor {
 	t.Helper()
 	loadMethodSpecs(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	supervisor := upstreams.NewGenericChainSupervisor(ctx, chain, func() choice.ForkChoice { return choice.NewHeightForkChoice() }, nil, false, nil)
+	supervisor := upstreams.NewGenericChainSupervisor(t.Context(), chain, func() choice.ForkChoice { return choice.NewHeightForkChoice() }, nil, false, nil)
 	supervisor.Start()
 	return &upstreamsChainSupervisor{GenericChainSupervisor: supervisor, t: t}
 }

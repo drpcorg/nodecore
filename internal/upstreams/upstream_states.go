@@ -12,7 +12,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
-	"github.com/samber/lo"
 )
 
 // UpstreamStateEvent describes one upstream after network lag validation. Metadata
@@ -110,7 +109,7 @@ func (b *GenericChainSupervisor) forwardUpstreamStates(ctx context.Context, name
 			}
 		} else {
 			if periodic || upstreamDescriptionChanged(previous, state) {
-				if !emit(&UpstreamStateEvent{Wrappers: upstreamSnapshotWrappers(upstreamChainState(b.chain, id, state))}) {
+				if !emit(&UpstreamStateEvent{Wrappers: upstreamChainState(b.chain, id, state).SnapshotWrappers()}) {
 					return false
 				}
 			}
@@ -204,17 +203,6 @@ func (b *GenericChainSupervisor) forwardUpstreamStates(ctx context.Context, name
 			gap.Stop()
 			due = nil
 		}
-	}
-}
-
-func upstreamSnapshotWrappers(state ChainSupervisorState) []ChainSupervisorStateWrapper {
-	return []ChainSupervisorStateWrapper{
-		NewStatusWrapper(state.Status),
-		NewMethodsWrapper(state.Methods.GetSupportedMethods().ToSlice()),
-		NewLowerBoundsWrapper(lo.Values(state.LowerBounds)),
-		NewBlocksWrapper(state.Blocks),
-		NewSubMethodsWrapper(state.SubMethods.ToSlice()),
-		NewLabelsWrapper(state.ChainLabels),
 	}
 }
 

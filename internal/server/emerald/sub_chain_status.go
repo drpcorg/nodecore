@@ -125,7 +125,7 @@ func subscribeChainSupervisorStates(
 					continue
 				}
 				state = chainSupervisor.GetChainState()
-				if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, snapshotStateWrappers(state))) {
+				if !sendResponse(ctx, responses, stateWrappersToResponse(grpcId, state.SnapshotWrappers())) {
 					return
 				}
 			case event, ok := <-chainSupervisorStatesSub.Events:
@@ -164,22 +164,6 @@ func sendResponse(
 		return false
 	case responses <- resp:
 		return true
-	}
-}
-
-// snapshotStateWrappers rebuilds the full current state as a wrapper list,
-// deliberately WITHOUT the head. Head freshness is already guaranteed by the
-// per-block head events; more importantly, consumers reduce any response that
-// carries a head to a head-only update for an existing upstream, so a
-// snapshot with a head would lose exactly the state it is meant to repair.
-func snapshotStateWrappers(state upstreams.ChainSupervisorState) []upstreams.ChainSupervisorStateWrapper {
-	return []upstreams.ChainSupervisorStateWrapper{
-		upstreams.NewStatusWrapper(state.Status),
-		upstreams.NewMethodsWrapper(state.Methods.GetSupportedMethods().ToSlice()),
-		upstreams.NewLowerBoundsWrapper(lo.Values(state.LowerBounds)),
-		upstreams.NewBlocksWrapper(state.Blocks),
-		upstreams.NewSubMethodsWrapper(state.SubMethods.ToSlice()),
-		upstreams.NewLabelsWrapper(state.ChainLabels),
 	}
 }
 

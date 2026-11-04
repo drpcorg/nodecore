@@ -70,6 +70,20 @@ type ChainSupervisorState struct {
 	Caps mapset.Set[protocol.Cap]
 }
 
+// SnapshotWrappers rebuilds the current metadata without the head, which is
+// delivered separately. Consumers treat responses carrying a head as head-only
+// updates for existing upstreams, so including one would discard this metadata.
+func (c ChainSupervisorState) SnapshotWrappers() []ChainSupervisorStateWrapper {
+	return []ChainSupervisorStateWrapper{
+		NewStatusWrapper(c.Status),
+		NewMethodsWrapper(c.Methods.GetSupportedMethods().ToSlice()),
+		NewLowerBoundsWrapper(lo.Values(c.LowerBounds)),
+		NewBlocksWrapper(c.Blocks),
+		NewSubMethodsWrapper(c.SubMethods.ToSlice()),
+		NewLabelsWrapper(c.ChainLabels),
+	}
+}
+
 func (c ChainSupervisorState) Compare(new ChainSupervisorState) []ChainSupervisorStateWrapper {
 	wrappers := make([]ChainSupervisorStateWrapper, 0)
 

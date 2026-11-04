@@ -18,9 +18,7 @@ import (
 func newUpstreamStateSupervisor(t *testing.T) *GenericChainSupervisor {
 	t.Helper()
 	specs_utils.LoadMethodSpecs()
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	supervisor := NewGenericChainSupervisor(ctx, chains.ETHEREUM, choice.NewHeightForkChoice, nil, false, nil)
+	supervisor := NewGenericChainSupervisor(t.Context(), chains.ETHEREUM, choice.NewHeightForkChoice, nil, false, nil)
 	supervisor.Start()
 	return supervisor
 }
@@ -62,7 +60,7 @@ func upstreamEventHeight(event *UpstreamStateEvent) uint64 {
 
 func runUpstreamStateSubscription(t *testing.T, supervisor *GenericChainSupervisor, interval, resync time.Duration, output chan<- *UpstreamStateEvent) (context.CancelFunc, <-chan struct{}) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -96,6 +94,11 @@ func TestUpstreamStatesCoalescesPerSubscriberAndSeparatesMetadataAndHead(t *test
 		require.Equal(t, height, upstreamEventHeight(nextUpstreamStateEvent(t, immediate)))
 	}
 	changed := *supervisor.GetUpstreamState("a")
+	changed.UpstreamIndex = "00002"
+	callMethods, err := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(chains.ETHEREUM), nil, nil)
+	require.NoError(t, err)
+	changed.UpstreamMethods = callMethods
+	changed.HeadData = protocol.NewBlockWithHeight(104)
 	changed.Labels = protocol.NewLabels()
 	changed.Labels.AddLabel("client_type", "reth")
 	changed.Status = protocol.Syncing
@@ -104,20 +107,28 @@ func TestUpstreamStatesCoalescesPerSubscriberAndSeparatesMetadataAndHead(t *test
 	changed.LowerBoundsInfo = protocol.NewLowerBoundInfo()
 	changed.LowerBoundsInfo.AddLowerBound(protocol.LowerBoundData{Type: protocol.StateBound, Bound: 70})
 	storeUpstreamState(t, supervisor, "a", &changed)
-	metadata := nextUpstreamStateEvent(t, immediate)
-	require.Zero(t, upstreamEventHeight(metadata))
-	require.Len(t, delayed, 0)
-	metadata = nextUpstreamStateEvent(t, delayed)
-	require.GreaterOrEqual(t, time.Since(firstAt), interval-10*time.Millisecond)
-	require.False(t, metadata.Full)
-	require.Zero(t, upstreamEventHeight(metadata))
-	require.Len(t, metadata.Wrappers, 6)
-	require.Equal(t, protocol.Syncing, metadata.Wrappers[0].(*StatusWrapper).Status)
-	require.Equal(t, int64(70), metadata.Wrappers[2].(*LowerBoundsWrapper).LowerBounds[0].Bound)
-	require.Equal(t, uint64(90), metadata.Wrappers[3].(*BlocksWrapper).Blocks[protocol.FinalizedBlock].Height)
-	require.Equal(t, "reth", metadata.Wrappers[5].(*LabelsWrapper).Labels[0].Labels["client_type"])
-	require.Equal(t, uint64(103), upstreamEventHeight(nextUpstreamStateEvent(t, delayed)))
-	require.Empty(t, delayed)
+	for _, output := range []chan *UpstreamStateEvent{immediate, delayed} {
+		metadata := nextUpstreamStateEvent(t, output)
+		if output == immediate {
+			require.Empty(t, delayed)
+		} else {
+			require.GreaterOrEqual(t, time.Since(firstAt), interval-10*time.Millisecond)
+		}
+		require.False(t, metadata.Full)
+		require.Equal(t, "00002", metadata.Index)
+		require.Zero(t, upstreamEventHeight(metadata))
+		require.Len(t, metadata.Wrappers, 6)
+		require.Equal(t, protocol.Syncing, metadata.Wrappers[0].(*StatusWrapper).Status)
+		require.Contains(t, metadata.Wrappers[1].(*MethodsWrapper).Methods, "eth_call")
+		require.Equal(t, int64(70), metadata.Wrappers[2].(*LowerBoundsWrapper).LowerBounds[0].Bound)
+		require.Equal(t, uint64(90), metadata.Wrappers[3].(*BlocksWrapper).Blocks[protocol.FinalizedBlock].Height)
+		require.Equal(t, "reth", metadata.Wrappers[5].(*LabelsWrapper).Labels[0].Labels["client_type"])
+		head := nextUpstreamStateEvent(t, output)
+		require.False(t, head.Full)
+		require.Equal(t, "00002", head.Index)
+		require.Equal(t, uint64(104), upstreamEventHeight(head))
+		require.Empty(t, output)
+	}
 }
 
 func TestUpstreamStatesStartupDuringUpdatesNeverRegresses(t *testing.T) {
@@ -127,7 +138,7 @@ func TestUpstreamStatesStartupDuringUpdatesNeverRegresses(t *testing.T) {
 	start := make(chan struct{})
 	for range 12 {
 		workers.Go(func() {
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			output := make(chan *UpstreamStateEvent, 8)
 			<-start
@@ -178,7 +189,7 @@ func TestUpstreamStatesSlowSubscriberResyncRepairsDroppedRemovalAndRecovers(t *t
 	supervisor.PublishUpstreamEvent(protocol.UpstreamEvent{Id: "b", EventType: &protocol.RemoveUpstreamEvent{}})
 	require.Eventually(t, func() bool { return supervisor.GetUpstreamState("b") == nil }, time.Second, time.Millisecond)
 	// Routing and authoritative snapshots remain responsive despite blocked output.
-	snapshot, ok := supervisor.requestUpstreamStates(context.Background(), "", false)
+	snapshot, ok := supervisor.requestUpstreamStates(t.Context(), "", false)
 	require.True(t, ok)
 	require.Equal(t, uint64(250), snapshot.states["a"].HeadData.Height)
 
@@ -215,7 +226,7 @@ func TestUpstreamStatesCancellationReleasesBlockedOutputAndRegistration(t *testi
 	cancel, done := runUpstreamStateSubscription(t, supervisor, time.Hour, time.Hour, make(chan *UpstreamStateEvent))
 	// Ensure the registration command has run and the worker can block on output.
 	require.Eventually(t, func() bool {
-		snapshot, _ := supervisor.requestUpstreamStates(context.Background(), "", false)
+		snapshot, _ := supervisor.requestUpstreamStates(t.Context(), "", false)
 		return len(snapshot.states) == 1
 	}, time.Second, time.Millisecond)
 	cancel()
@@ -225,7 +236,7 @@ func TestUpstreamStatesCancellationReleasesBlockedOutputAndRegistration(t *testi
 		t.Fatal("blocked forwarding ignored cancellation")
 	}
 	// A supervisor that never started cannot consume registration commands.
-	ctx, stop := context.WithCancel(context.Background())
+	ctx, stop := context.WithCancel(t.Context())
 	stopped := NewGenericChainSupervisor(ctx, chains.ETHEREUM, choice.NewHeightForkChoice, nil, false, nil)
 	_, done = runUpstreamStateSubscription(t, stopped, 0, time.Hour, make(chan *UpstreamStateEvent))
 	stop()
@@ -248,29 +259,4 @@ func TestUpstreamStatesResyncMetadataDoesNotRefreshUnchangedHead(t *testing.T) {
 		require.Zero(t, upstreamEventHeight(event))
 		require.Len(t, event.Wrappers, 6)
 	}
-}
-
-func TestUpstreamStatesRuntimeIndexReplacementSeparatesMetadataAndHead(t *testing.T) {
-	supervisor := newUpstreamStateSupervisor(t)
-	storeUpstreamState(t, supervisor, "a", upstreamState(100))
-	output := make(chan *UpstreamStateEvent, 10)
-	runUpstreamStateSubscription(t, supervisor, 25*time.Millisecond, time.Hour, output)
-	require.True(t, nextUpstreamStateEvent(t, output).Full)
-	replacement := upstreamState(101)
-	replacement.UpstreamIndex = "00002"
-	callMethods, err := methods.NewUpstreamMethods(chains.GetMethodSpecNameByChain(chains.ETHEREUM), nil, nil)
-	require.NoError(t, err)
-	replacement.UpstreamMethods = callMethods
-	replacement.Labels.AddLabel("client_type", "reth")
-	storeUpstreamState(t, supervisor, "a", replacement)
-	metadata := nextUpstreamStateEvent(t, output)
-	require.False(t, metadata.Full)
-	require.Equal(t, "00002", metadata.Index)
-	require.Zero(t, upstreamEventHeight(metadata))
-	require.Equal(t, "reth", metadata.Wrappers[5].(*LabelsWrapper).Labels[0].Labels["client_type"])
-	require.Contains(t, metadata.Wrappers[1].(*MethodsWrapper).Methods, "eth_call")
-	head := nextUpstreamStateEvent(t, output)
-	require.False(t, head.Full)
-	require.Equal(t, "00002", head.Index)
-	require.Equal(t, uint64(101), upstreamEventHeight(head))
 }

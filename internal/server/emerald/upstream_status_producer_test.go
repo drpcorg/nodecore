@@ -23,7 +23,7 @@ type recordingUpstreamStatusStream struct {
 	mu        sync.Mutex
 	responses []*dshackle.SubscribeChainStatusResponse
 	sentAt    []time.Time
-	// when set, every Send waits for a value
+	// when set, Send waits until the gate opens
 	gate chan struct{}
 }
 
@@ -73,43 +73,19 @@ func startRecordedUpstreamStatus(
 	chainSupervisors ...upstreams.ChainSupervisor,
 ) (*recordingUpstreamStatusStream, *chainsUpstreamSupervisor) {
 	t.Helper()
-	return startRecordedUpstreamStatusWithInterval(t, time.Millisecond, resyncInterval, chainSupervisors...)
-}
-
-func startRecordedUpstreamStatusWithInterval(
-	t *testing.T,
-	interval time.Duration,
-	resyncInterval time.Duration,
-	chainSupervisors ...upstreams.ChainSupervisor,
-) (*recordingUpstreamStatusStream, *chainsUpstreamSupervisor) {
-	t.Helper()
 	loadMethodSpecs(t)
 
 	supervisor := newChainsUpstreamSupervisor(chainSupervisors...)
 	stream := &recordingUpstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
 	done := make(chan error, 1)
 	go func() {
-		done <- emerald.SubscribeUpstreamStatusWithResync(supervisor, stream, interval, resyncInterval)
+		done <- emerald.SubscribeUpstreamStatusWithResync(supervisor, stream, time.Millisecond, resyncInterval)
 	}()
 	t.Cleanup(func() {
 		stream.cancel()
 		require.NoError(t, <-done)
 	})
 	return stream, supervisor
-}
-
-func TestSubscribeUpstreamStatus_StreamsEveryChain(t *testing.T) {
-	ethereum := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
-	ethereum.set("eth-1", testUpstreamState(100))
-	polygon := newUpstreamsChainSupervisor(t, chains.POLYGON)
-	polygon.set("polygon-1", testUpstreamState(200))
-	stream, _ := startRecordedUpstreamStatus(t, time.Hour, ethereum, polygon)
-
-	responses := stream.waitFor(t, 2)
-	assert.ElementsMatch(t,
-		[]dshackle.ChainRef{chainRef(chains.ETHEREUM), chainRef(chains.POLYGON)},
-		[]dshackle.ChainRef{responses[0].GetChainDescription().GetChain(), responses[1].GetChainDescription().GetChain()},
-	)
 }
 
 func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
@@ -134,15 +110,7 @@ func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
 		chainSupervisor.update("up-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
 		time.Sleep(5 * time.Millisecond)
 	}
-	go func() {
-		for {
-			select {
-			case stream.gate <- struct{}{}:
-			case <-stream.ctx.Done():
-				return
-			}
-		}
-	}()
+	close(stream.gate)
 
 	require.Eventually(t, func() bool {
 		responses := stream.all()
@@ -151,37 +119,62 @@ func TestSubscribeUpstreamStatus_SlowConsumerGetsTheLatestState(t *testing.T) {
 	assert.Equal(t, uint64(100), responseHeight(stream.all()[0]))
 }
 
-func TestSubscribeUpstreamStatus_CoalescesEachChainIndependently(t *testing.T) {
+func TestSubscribeUpstreamStatusRequestCoalescesEachChainAndStreamIndependently(t *testing.T) {
 	const interval = 200 * time.Millisecond
 	ethereum := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
 	ethereum.set("eth-1", testUpstreamState(100))
 	polygon := newUpstreamsChainSupervisor(t, chains.POLYGON)
 	polygon.set("polygon-1", testUpstreamState(200))
-	stream, _ := startRecordedUpstreamStatusWithInterval(t, interval, time.Hour, ethereum, polygon)
-	fulls := stream.waitFor(t, 2)
-	ethereumFull := slices.IndexFunc(fulls, func(r *dshackle.SubscribeChainStatusResponse) bool {
+	supervisor := newChainsUpstreamSupervisor(ethereum, polygon)
+	service := emerald.NewGrpcBlockchainService(&server_ctx.ApplicationServerContext{UpstreamSupervisor: supervisor}, nil, signature.NewDisabledSigner())
+	streams := make([]*recordingUpstreamStatusStream, 2)
+	for i, minInterval := range []uint32{0, uint32(interval / time.Millisecond)} {
+		stream := &recordingUpstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
+		streams[i] = stream
+		done := make(chan error, 1)
+		go func() {
+			done <- service.SubscribeUpstreamStatus(&dshackle.SubscribeChainStatusRequest{MinIntervalMs: minInterval}, stream)
+		}()
+		t.Cleanup(func() {
+			stream.cancel()
+			require.NoError(t, <-done)
+		})
+		fulls := stream.waitFor(t, 2)
+		assert.ElementsMatch(t,
+			[]dshackle.ChainRef{chainRef(chains.ETHEREUM), chainRef(chains.POLYGON)},
+			[]dshackle.ChainRef{fulls[0].GetChainDescription().GetChain(), fulls[1].GetChainDescription().GetChain()},
+		)
+		for _, full := range fulls {
+			require.True(t, full.FullResponse)
+		}
+	}
+	immediate, delayed := streams[0], streams[1]
+	ethereumFull := slices.IndexFunc(delayed.all(), func(r *dshackle.SubscribeChainStatusResponse) bool {
 		return r.GetChainDescription().GetChain() == chainRef(chains.ETHEREUM)
 	})
 
-	// a burst within the gap is one response, with the latest state
+	// The same burst is immediate on one stream and coalesced on the other.
 	for height := uint64(101); height <= 105; height++ {
 		ethereum.update("eth-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
+		response := immediate.waitFor(t, int(height-98))[int(height-99)]
+		require.Equal(t, height, responseHeight(response))
 	}
-	response := stream.waitFor(t, 3)[2]
+	require.Len(t, delayed.all(), 2)
+	response := delayed.waitFor(t, 3)[2]
 	assert.Equal(t, chainRef(chains.ETHEREUM), response.GetChainDescription().GetChain())
 	assert.Equal(t, uint64(105), responseHeight(response))
 
-	// the gap is per chain: polygon goes out while ethereum waits
+	// Polygon goes out while ethereum waits for its next gap.
 	ethereum.update("eth-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(106) })
 	polygon.update("polygon-1", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(201) })
-	responses := stream.waitFor(t, 5)
-	stream.quiet(t, 5)
+	responses := delayed.waitFor(t, 5)
+	delayed.quiet(t, 5)
 	assert.Equal(t, chainRef(chains.POLYGON), responses[3].GetChainDescription().GetChain())
 	assert.Equal(t, uint64(201), responseHeight(responses[3]))
 	assert.Equal(t, chainRef(chains.ETHEREUM), responses[4].GetChainDescription().GetChain())
 	assert.Equal(t, uint64(106), responseHeight(responses[4]))
 
-	sentAt := stream.sendTimes()
+	sentAt := delayed.sendTimes()
 	assert.GreaterOrEqual(t, sentAt[2].Sub(sentAt[ethereumFull]), interval-10*time.Millisecond)
 	assert.Less(t, sentAt[3].Sub(sentAt[2]), interval/2)
 	assert.GreaterOrEqual(t, sentAt[4].Sub(sentAt[2]), interval-10*time.Millisecond)
@@ -194,31 +187,6 @@ func responseHeight(r *dshackle.SubscribeChainStatusResponse) uint64 {
 		}
 	}
 	return 0
-}
-
-func TestSubscribeUpstreamStatusRequestControlsEachStream(t *testing.T) {
-	chain := newUpstreamsChainSupervisor(t, chains.ETHEREUM)
-	chain.set("a", testUpstreamState(100))
-	supervisor := newChainsUpstreamSupervisor(chain)
-	service := emerald.NewGrpcBlockchainService(&server_ctx.ApplicationServerContext{UpstreamSupervisor: supervisor}, nil, signature.NewDisabledSigner())
-	streams := make([]*recordingUpstreamStatusStream, 2)
-	for i, interval := range []uint32{0, 200} {
-		stream := &recordingUpstreamStatusStream{subscribeChainStatusStream: newSubscribeChainStatusStream()}
-		streams[i] = stream
-		done := make(chan error, 1)
-		go func() {
-			done <- service.SubscribeUpstreamStatus(&dshackle.SubscribeChainStatusRequest{MinIntervalMs: interval}, stream)
-		}()
-		t.Cleanup(func() { stream.cancel(); require.NoError(t, <-done) })
-		require.True(t, stream.waitFor(t, 1)[0].FullResponse)
-	}
-	for height := uint64(101); height <= 103; height++ {
-		chain.update("a", func(state *protocol.UpstreamState) { state.HeadData = protocol.NewBlockWithHeight(height) })
-		require.Equal(t, height, responseHeight(streams[0].waitFor(t, int(height-99))[int(height-100)]))
-	}
-	require.Len(t, streams[1].all(), 1)
-	require.Equal(t, uint64(103), responseHeight(streams[1].waitFor(t, 2)[1]))
-	require.GreaterOrEqual(t, streams[1].sendTimes()[1].Sub(streams[1].sendTimes()[0]), 190*time.Millisecond)
 }
 
 func TestSubscribeUpstreamStatusDiscoversNewChainsAfterEmptyStartup(t *testing.T) {
