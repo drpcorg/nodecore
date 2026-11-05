@@ -67,6 +67,7 @@ type upstreamSub struct {
 func newPendingTxSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
+	selectors ...protocol.RequestSelector,
 ) subengine.SourceBuilder {
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		chainSup := supervisor.GetChainSupervisor(chain)
@@ -86,9 +87,11 @@ func newPendingTxSourceBuilder(
 		feedDone := make(chan struct{})
 		subs := make([]upstreamSub, 0)
 
+		matchers, _ := buildSelectorRouting(selectors, supervisor, chainSup)
+		matcher := NewMultiMatcher(matchers...)
 		for _, id := range chainSup.GetUpstreamIds() {
 			state := chainSup.GetUpstreamState(id)
-			if state == nil || state.Status != protocol.Available {
+			if state == nil || state.Status != protocol.Available || matcher.Match(id, state).Type() != SuccessType {
 				continue
 			}
 			if state.Caps == nil || !state.Caps.Contains(protocol.PendingTxCap) {
@@ -226,6 +229,7 @@ func newDrpcPendingTxSourceBuilder(
 	supervisor upstreams.UpstreamSupervisor,
 	chain chains.Chain,
 	engine subengine.Engine,
+	selectors ...protocol.RequestSelector,
 ) subengine.SourceBuilder {
 	return func(srcCtx context.Context) (*subengine.Source, error) {
 		chainSup := supervisor.GetChainSupervisor(chain)
@@ -236,7 +240,7 @@ func newDrpcPendingTxSourceBuilder(
 		// Attach to the shared hash source. This drives a DIFFERENT actor than the
 		// drpc key, so the engine building this source while we subscribe to the
 		// pending key cannot deadlock.
-		inner, err := engine.Subscribe(localPendingTxKey, newPendingTxSourceBuilder(supervisor, chain))
+		inner, err := engine.Subscribe(scopedPendingKey(localPendingTxKey, selectors), newPendingTxSourceBuilder(supervisor, chain, selectors...))
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +287,7 @@ func newDrpcPendingTxSourceBuilder(
 					go func(hashMessage []byte) {
 						defer wg.Done()
 						defer func() { <-sem }()
-						tx, upstreamId := enrichPendingTx(srcCtx, supervisor, chain, chainSup, hashMessage)
+						tx, upstreamId := enrichPendingTx(srcCtx, supervisor, chain, chainSup, hashMessage, selectors...)
 						if tx == nil {
 							return // not found / errored - normal for a dropped pending tx
 						}
@@ -314,6 +318,7 @@ func enrichPendingTx(
 	chain chains.Chain,
 	chainSup upstreams.ChainSupervisor,
 	hashMessage []byte,
+	selectors ...protocol.RequestSelector,
 ) ([]byte, string) {
 	var hash string
 	if err := sonic.Unmarshal(hashMessage, &hash); err != nil {
@@ -338,9 +343,11 @@ func enrichPendingTx(
 	parsedParam := request.ParseParams(bcastCtx)
 
 	sent := 0
+	matchers, _ := buildSelectorRouting(selectors, supervisor, chainSup)
+	matcher := NewMultiMatcher(append(matchers, NewMethodMatcher("eth_getTransactionByHash"))...)
 	for _, id := range ids {
 		state := chainSup.GetUpstreamState(id)
-		if state == nil || state.Status != protocol.Available {
+		if state == nil || state.Status != protocol.Available || matcher.Match(id, state).Type() != SuccessType {
 			continue
 		}
 		upstream := supervisor.GetUpstream(id)
@@ -381,4 +388,12 @@ func enrichPendingTx(
 // unknown/dropped tx hash yields {"result": null}).
 func isNullResult(result []byte) bool {
 	return len(result) == 0 || bytes.Equal(bytes.TrimSpace(result), []byte("null"))
+}
+
+// scopedPendingKey keeps synthetic pending feeds isolated by the complete selector set.
+func scopedPendingKey(base string, selectors []protocol.RequestSelector) string {
+	if len(selectors) == 0 {
+		return base
+	}
+	return base + "|" + selectorKey(selectors)
 }

@@ -1,9 +1,11 @@
 package flow
 
 import (
+	"context"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/config"
@@ -52,6 +54,9 @@ func (s *stubChainSupervisor) SubscribeState(string) *utils.Subscription[*upstre
 }
 func (s *stubChainSupervisor) SubscribeHead(string, upstreams.FilterUpstream) *upstreams.HeadFeedSubscription {
 	return nil
+}
+
+func (s *stubChainSupervisor) SubscribeUpstreamStates(ctx context.Context, name string, interval, resync time.Duration, output chan<- *upstreams.UpstreamStateEvent) {
 }
 
 var _ upstreams.ChainSupervisor = (*stubChainSupervisor)(nil)

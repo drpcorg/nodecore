@@ -55,7 +55,10 @@ type GenericChainSupervisor struct {
 
 	roundRobinIndex atomic.Uint64
 
-	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+	subStateManager         *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+	subUpstreamStateManager *utils.SubscriptionManager[upstreamStateChange]
+	upstreamStateRequests   chan upstreamStateRequest
+	upstreamStateRevision   uint64
 
 	// feeds are the live filtered head feeds (SubscribeHead). feedsMu guards the
 	// map, feedsClosed and every send/close on a feed's channel.
@@ -87,21 +90,23 @@ func NewGenericChainSupervisor(
 	)
 
 	return &GenericChainSupervisor{
-		ctx:             ctx,
-		tracker:         tracker,
-		chain:           chain,
-		fc:              newFc(),
-		newFc:           newFc,
-		feeds:           make(map[*headFeed]struct{}),
-		eventsChan:      make(chan protocol.UpstreamEvent, 100),
-		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
-		state:           state,
-		subChainMethods: specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
-		validateLag:     validateLag,
-		syncingLag:      chains.GetChain(chain.String()).Settings.Lags.Syncing,
-		getUpstream:     getUpstream,
-		lastOver:        make(map[string]bool),
-		subStateManager: utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
+		ctx:                     ctx,
+		tracker:                 tracker,
+		chain:                   chain,
+		fc:                      newFc(),
+		newFc:                   newFc,
+		feeds:                   make(map[*headFeed]struct{}),
+		eventsChan:              make(chan protocol.UpstreamEvent, 100),
+		upstreamStates:          utils.NewCMap[string, *protocol.UpstreamState](),
+		state:                   state,
+		subChainMethods:         specs.GetSubMethods(chains.GetMethodSpecNameByChain(chain)),
+		validateLag:             validateLag,
+		syncingLag:              chains.GetChain(chain.String()).Settings.Lags.Syncing,
+		getUpstream:             getUpstream,
+		lastOver:                make(map[string]bool),
+		subStateManager:         utils.NewSubscriptionManager[*ChainSupervisorStateWrapperEvent]("chain_supervisor_events"),
+		subUpstreamStateManager: utils.NewSubscriptionManager[upstreamStateChange]("upstream_states"),
+		upstreamStateRequests:   make(chan upstreamStateRequest),
 	}
 }
 
@@ -190,12 +195,18 @@ func (b *GenericChainSupervisor) processEvents() {
 		case <-b.ctx.Done():
 			b.closeFeeds()
 			return
+		case request := <-b.upstreamStateRequests:
+			b.handleUpstreamStateRequest(request)
 		case event, ok := <-b.eventsChan:
 			if ok {
+				var removed *protocol.UpstreamState
 				switch eventType := event.EventType.(type) {
 				case *protocol.RemoveUpstreamEvent:
 					if upState, upOk := b.upstreamStates.Load(event.Id); upOk {
 						upHead := upState.HeadData
+						tombstone := protocol.DefaultUpstreamState(nil, nil, upState.UpstreamIndex, nil, nil)
+						tombstone.Status = protocol.Unavailable
+						removed = &tombstone
 						b.upstreamStates.Delete(event.Id)
 						delete(b.lastOver, event.Id)
 
@@ -236,6 +247,12 @@ func (b *GenericChainSupervisor) processEvents() {
 						}
 						b.updateFeeds(event.Id)
 					}
+				}
+				b.upstreamStateRevision++
+				if state := b.GetUpstreamState(event.Id); state != nil {
+					b.subUpstreamStateManager.Publish(upstreamStateChange{ID: event.Id, State: state, Revision: b.upstreamStateRevision})
+				} else if removed != nil {
+					b.subUpstreamStateManager.Publish(upstreamStateChange{ID: event.Id, State: removed, Removed: true, Revision: b.upstreamStateRevision})
 				}
 			}
 		}
@@ -278,7 +295,7 @@ func (b *GenericChainSupervisor) updateState() {
 	newState.LowerBounds = processLowerBounds(availableUpstreams)
 	newState.ChainLabels = processLabels(availableUpstreams)
 	newState.Caps = processCaps(availableUpstreams)
-	newState.SubMethods = b.processSubMethods(newState.Methods, newState.Caps)
+	newState.SubMethods = ProcessSubMethods(b.subChainMethods, newState.Methods, newState.Caps)
 
 	eventWrappers := currentState.Compare(newState)
 	b.state.Store(newState)
@@ -352,9 +369,9 @@ func (b *GenericChainSupervisor) availableUpstreams() []*protocol.UpstreamState 
 	return states
 }
 
-func (b *GenericChainSupervisor) processSubMethods(chainMethods methods.Methods, caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+func ProcessSubMethods(subChainMethods mapset.Set[string], chainMethods methods.Methods, caps mapset.Set[protocol.Cap]) mapset.Set[string] {
 	subMethods := mapset.NewThreadUnsafeSet[string]()
-	for name := range b.subChainMethods.Iter() {
+	for name := range subChainMethods.Iter() {
 		// Only a method some available upstream actually supports (after config,
 		// detection and bans) can be advertised: a disabled subscribe method is
 		// the operator saying "no subscriptions from this upstream".

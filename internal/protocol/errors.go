@@ -25,6 +25,9 @@ type ResponseError struct {
 	Code    int
 	Message string
 	Data    interface{}
+	// NodeLevel marks an error the pin caused rather than the request (see
+	// IsNodeLevelError)
+	NodeLevel bool
 }
 
 func (b *ResponseError) Error() string {
@@ -122,6 +125,15 @@ func NoAvailableUpstreamsErrorWithCause(cause string) *ResponseError {
 	return &ResponseError{
 		Message: fmt.Sprintf("no available upstreams to process a request. Cause - %s", cause),
 		Code:    NoAvailableUpstreams,
+	}
+}
+
+// UpstreamNotPresentError reports that the selected upstream has disappeared.
+func UpstreamNotPresentError(id string) *ResponseError {
+	return &ResponseError{
+		Message:   "pinned upstream not present: " + id,
+		Code:      NoAvailableUpstreams,
+		NodeLevel: true,
 	}
 }
 
