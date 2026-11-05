@@ -1,0 +1,22 @@
+server:
+  port: 9096
+
+upstream-config:
+  mode: strict
+  chain-defaults:
+    ethereum:
+      poll-interval: 1m
+      dispatch:
+        broadcast: false
+  upstreams:
+    - id: eth-1
+      chain: ethereum
+      rate-limit-budget: standard-budget
+      connectors:
+        - type: json-rpc
+          url: https://eth-1.test
+    - id: eth-3
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://eth-3.test

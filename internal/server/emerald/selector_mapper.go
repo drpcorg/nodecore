@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/public/pkg/dshackle"
 )
@@ -49,8 +50,24 @@ func mapDshackleSelector(selector *dshackle.Selector) protocol.RequestSelector {
 		return protocol.RequestSlotHeightSelector{SlotHeight: slotHeight}
 	case *dshackle.Selector_LowerHeightSelector:
 		return mapDshackleLowerHeightSelector(s.LowerHeightSelector)
-	case *dshackle.Selector_MinVersionSelector, *dshackle.Selector_MaxVersionSelector:
-		return protocol.RequestUnsupportedSelector{Reason: "version selectors are not supported in nodecore routing"}
+	case *dshackle.Selector_MinVersionSelector:
+		version, err := mapDshackleVersion("min", s.MinVersionSelector.GetVersion())
+		if err != nil {
+			return protocol.RequestUnsupportedSelector{Reason: err.Error()}
+		}
+		if version == "" {
+			return protocol.RequestAnySelector{}
+		}
+		return protocol.RequestVersionSelector{Min: version}
+	case *dshackle.Selector_MaxVersionSelector:
+		version, err := mapDshackleVersion("max", s.MaxVersionSelector.GetVersion())
+		if err != nil {
+			return protocol.RequestUnsupportedSelector{Reason: err.Error()}
+		}
+		if version == "" {
+			return protocol.RequestAnySelector{}
+		}
+		return protocol.RequestVersionSelector{Max: version}
 	default:
 		return protocol.RequestUnsupportedSelector{Reason: "unsupported selector"}
 	}
@@ -84,6 +101,20 @@ func mapDshackleHeightSelector(selector *dshackle.HeightSelector) protocol.Reque
 		}
 		return protocol.RequestHeightSelector{Height: height}
 	}
+}
+
+// mapDshackleVersion validates a version bound up front so a malformed value
+// is a client error rather than a selector that silently matches no upstream.
+// An empty bound is open, as in the dshackle client.
+func mapDshackleVersion(bound, version string) (string, error) {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return "", nil
+	}
+	if _, err := semver.StrictNewVersion(strings.TrimPrefix(version, "v")); err != nil {
+		return "", fmt.Errorf("%s version selector value %s is not a valid semver: %w", bound, version, err)
+	}
+	return version, nil
 }
 
 func mapDshackleBlockTag(tag dshackle.BlockTag) (protocol.RequestBlockTag, bool) {

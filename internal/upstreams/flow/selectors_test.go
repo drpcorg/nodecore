@@ -93,3 +93,12 @@ func publishStateWithBlocks(chainSupervisor upstreams.ChainSupervisor, upId stri
 	chainSupervisor.PublishUpstreamEvent(protocol.UpstreamEvent{Id: upId, EventType: &protocol.StateUpstreamEvent{State: &state}})
 	time.Sleep(10 * time.Millisecond)
 }
+
+func TestSelectorCompilesVersionSelectorIntoRangeMatcher(t *testing.T) {
+	matchers, order := buildSelectorRouting([]protocol.RequestSelector{protocol.RequestVersionSelector{Min: "1.2.0"}}, nil, nil)
+
+	require.Len(t, matchers, 1)
+	assert.Nil(t, order)
+	_, ok := matchers[0].(*VersionRangeMatcher)
+	assert.True(t, ok)
+}

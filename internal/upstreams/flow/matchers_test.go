@@ -194,3 +194,71 @@ func TestSelectorCompositionAndCause(t *testing.T) {
 	notMatchers, _ := buildSelectorRouting([]protocol.RequestSelector{protocol.RequestNotSelector{Child: protocol.RequestExistsSelector{Name: "archive"}}}, nil, nil)
 	assert.Equal(t, SuccessType, notMatchers[0].Match("up", &state).Type())
 }
+
+func TestGroupLabelMatcher(t *testing.T) {
+	groupLabels := map[string]mapset.Set[string]{
+		"archive-up": mapset.NewThreadUnsafeSet("archive", "fast"),
+		"full-up":    mapset.NewThreadUnsafeSet("full"),
+		"plain-up":   mapset.NewThreadUnsafeSet[string](),
+	}
+	lookup := func(id string) mapset.Set[string] { return groupLabels[id] }
+	matcher := NewGroupLabelMatcher([]string{"archive", "full"}, lookup)
+
+	assert.Equal(t, SuccessType, matcher.Match("archive-up", nil).Type())
+	assert.Equal(t, SuccessType, matcher.Match("full-up", nil).Type())
+
+	response := matcher.Match("plain-up", nil)
+	assert.Equal(t, SelectorType, response.Type())
+	assert.Contains(t, response.Cause(), "none of group-labels [archive full]")
+	// An upstream the supervisor does not know is never admitted.
+	assert.Equal(t, SelectorType, matcher.Match("unknown-up", nil).Type())
+	assert.Equal(t, SelectorType, NewGroupLabelMatcher([]string{"archive"}, nil).Match("archive-up", nil).Type())
+}
+
+// Without a supervisor there are no group-labels to resolve, so the compiled
+// restriction admits nothing rather than everything.
+func TestGroupLabelSelectorFailsClosedWithoutSupervisor(t *testing.T) {
+	matchers, order := buildSelectorRouting([]protocol.RequestSelector{protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}}, nil, nil)
+	assert.Nil(t, order)
+	assert.Len(t, matchers, 1)
+	assert.Equal(t, SelectorType, matchers[0].Match("up", nil).Type())
+}
+
+func TestVersionRangeMatcher(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	state.Labels.AddLabel("client_version", "v1.13.5-stable-916d6a44")
+
+	assert.Equal(t, SuccessType, NewVersionRangeMatcher("1.13.0", "").Match("up", &state).Type())
+	assert.Equal(t, SuccessType, NewVersionRangeMatcher("", "v1.13.5").Match("up", &state).Type())
+	assert.Equal(t, SuccessType, NewVersionRangeMatcher("1.13.5-stable-916d6a44", "1.14.0").Match("up", &state).Type())
+
+	tooOld := NewVersionRangeMatcher("1.14.0", "").Match("up", &state)
+	assert.Equal(t, SelectorType, tooOld.Type())
+	assert.Equal(t, "version range from '1.14.0' to ''", tooOld.Cause())
+
+	tooNew := NewVersionRangeMatcher("", "1.13.4").Match("up", &state)
+	assert.Equal(t, SelectorType, tooNew.Type())
+	assert.Equal(t, "version range from '' to '1.13.4'", tooNew.Cause())
+}
+
+func TestVersionRangeMatcherRejectsUnknownAndMissingVersions(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	missing := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.0.0", "").Match("up", &missing).Type())
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.0.0", "").Match("up", nil).Type())
+
+	unknown := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	unknown.Labels.AddLabel("client_version", "unknown")
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("", "9.0.0").Match("up", &unknown).Type())
+}
+
+func TestVersionRangeMatcherRejectsMalformedBounds(t *testing.T) {
+	methodsMock := mocks.NewMethodsMock()
+	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "", nil, nil)
+	state.Labels.AddLabel("client_version", "1.13.5")
+
+	// The emerald mapper rejects malformed bounds up front; the matcher still
+	// fails closed if one reaches it another way.
+	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.13", "").Match("up", &state).Type())
+}

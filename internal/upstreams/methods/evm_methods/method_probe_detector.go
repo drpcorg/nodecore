@@ -24,6 +24,7 @@ var probedMethods = []string{
 	"trace_callMany",
 	"trace_rawTransaction",
 	"eth_simulateV1",
+	"eth_callMany",
 	"eth_getStorageValues",
 	"debug_storageRangeAt",
 	"eth_getTdByNumber",

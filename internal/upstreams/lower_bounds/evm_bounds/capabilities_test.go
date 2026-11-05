@@ -198,7 +198,7 @@ func TestEvmCapabilitiesStateBelowReportedBoundFallsToSearch(t *testing.T) {
 
 	blockResult, err := blockDetector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 1, protocol.LogsBound: 40}, boundsByType(blockResult))
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 1}, boundsByType(blockResult))
 
 	assert.Equal(t, 1, countRequests(connector, "eth_capabilities"))
 	assert.Equal(t, 1, countRequests(connector, "eth_blockNumber"))
@@ -234,7 +234,7 @@ func TestEvmCapabilitiesStateKeptWhenBelowReportedBoundIsUnavailable(t *testing.
 	}
 }
 
-// Like any search of the block detector, it publishes the logs bound too.
+// The block search publishes the block bound only: the logs bound belongs to the receipts detector.
 func TestEvmCapabilitiesBlocksBelowReportedBoundFallToSearch(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectCapabilities(connector, evmOK(`{"blocks":{"disabled":false,"oldestBlock":"0x64"},"logs":{"disabled":false,"oldestBlock":"0x28"}}`)).Once()
@@ -246,7 +246,7 @@ func TestEvmCapabilitiesBlocksBelowReportedBoundFallToSearch(t *testing.T) {
 
 	result, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 30, protocol.LogsBound: 30}, boundsByType(result))
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.BlockBound: 30}, boundsByType(result))
 	connector.AssertExpectations(t)
 }
 
@@ -307,7 +307,7 @@ func TestEvmCapabilitiesZeroOldestBlockYieldsBoundOne(t *testing.T) {
 	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
-	require.Len(t, result, 2)
+	require.Len(t, result, 1)
 	for _, data := range result {
 		assert.Equal(t, int64(1), data.Bound)
 	}
@@ -335,7 +335,7 @@ func TestEvmCapabilitiesDisabledResourceYieldsNoBound(t *testing.T) {
 
 	blockResult, err := blockDetector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, blockResult, 2)
+	assert.Len(t, blockResult, 1)
 
 	// the disabled state must not trigger any state probing either
 	assert.Len(t, connector.Calls, 1)
@@ -431,7 +431,7 @@ func TestEvmCapabilitiesTransientErrorRetriedWithinRefresh(t *testing.T) {
 	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
-	require.Len(t, result, 2)
+	require.Len(t, result, 1)
 	assert.Equal(t, int64(1), result[0].Bound)
 	assert.Len(t, connector.Calls, 2, "retry must be the only extra upstream request")
 	connector.AssertExpectations(t)
@@ -458,7 +458,7 @@ func TestEvmCapabilitiesTransientErrorIsNotCachedAsUnsupported(t *testing.T) {
 	// next window succeeds: the failure was not cached as unsupported
 	second, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	require.Len(t, second, 2)
+	require.Len(t, second, 1)
 	assert.Equal(t, int64(1), second[0].Bound)
 
 	assert.Equal(t, 4, countRequests(connector, "eth_capabilities"))
@@ -484,7 +484,7 @@ func TestEvmCapabilitiesReprobeUnsupportedAfterInterval(t *testing.T) {
 
 	second, err := detector.DetectLowerBound(context.Background())
 	require.NoError(t, err)
-	require.Len(t, second, 2)
+	require.Len(t, second, 1)
 	assert.Equal(t, int64(1), second[0].Bound)
 
 	assert.Equal(t, 2, countRequests(connector, "eth_capabilities"))

@@ -1,0 +1,8 @@
+upstream-config:
+  upstreams:
+    - id: eth-1
+      chain: ethereum
+      rate-limit-budget: unknown-budget
+      connectors:
+        - type: json-rpc
+          url: https://eth-1.test

@@ -108,14 +108,14 @@ func (b *GenericLowerBoundProcessor) PredictLowerBound(bt protocol.LowerBoundTyp
 }
 
 func (b *GenericLowerBoundProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		for boundType, bound := range b.manualBounds {
 			log.Info().Msgf("upstream '%s' lower bound of type %s is %d (configured)", b.upstreamId, boundType.String(), bound)
 			b.subManager.Publish(protocol.NewLowerBoundDataNow(bound, boundType))
 		}
 		// lo.FanIn over zero channels yields a closed channel, the select below would spin on it
 		if len(b.lowerBoundsDetectors) == 0 {
-			return nil
+			return nil, nil
 		}
 
 		lowerBoundsChansArr := make([]<-chan protocol.LowerBoundData, 0, len(b.lowerBoundsDetectors))
@@ -137,7 +137,7 @@ func (b *GenericLowerBoundProcessor) Start() {
 				}
 			}
 		}()
-		return nil
+		return nil, nil
 	})
 }
 

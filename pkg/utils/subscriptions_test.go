@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -97,11 +98,73 @@ func TestPublishDropsWhenBufferFull(t *testing.T) {
 	assert.Equal(t, []int{1}, drain(sub))
 }
 
-func TestDuplicateSubscriptionPanics(t *testing.T) {
+// A name is a label, not an identity: two subscribers may share one, both are served, and
+// removing one leaves the other untouched. This is what lets a restarted consumer resubscribe
+// under its static name while the previous run's subscription is still being released.
+func TestSameNamedSubscribersAreBothServed(t *testing.T) {
 	sm := utils.NewSubscriptionManager[int]("test")
-	sm.Subscribe("dup")
+	first := sm.Subscribe("dup")
+	second := sm.Subscribe("dup")
 
-	assert.Panics(t, func() { sm.Subscribe("dup") })
+	sm.Publish(1)
+	assert.Equal(t, 1, <-first.Events)
+	assert.Equal(t, 1, <-second.Events)
+
+	first.Unsubscribe()
+	sm.Publish(2)
+	assert.Equal(t, 2, <-second.Events)
+}
+
+func TestUnsubscribeTwiceCountsOnce(t *testing.T) {
+	sm := utils.NewSubscriptionManager[int]("unsubscribe_twice_manager")
+	sub := sm.Subscribe("s1")
+	assert.Equal(t, 1.0, gaugeValue(t, "chanutil_subscriptions_num", "unsubscribe_twice_manager"))
+
+	sub.Unsubscribe()
+	sub.Unsubscribe()
+
+	assert.Equal(t, 0.0, gaugeValue(t, "chanutil_subscriptions_num", "unsubscribe_twice_manager"))
+}
+
+// The unread gauge is per subscriber name and reports the largest backlog among the
+// subscribers sharing that name, so a slow consumer is visible by name even while a
+// restarted twin with the same name is keeping up.
+func TestUnreadMessagesIsMaxPerName(t *testing.T) {
+	sm := utils.NewSubscriptionManager[int]("unread_max_manager")
+	slowStuck := sm.SubscribeWithSize("slow", 5)
+	slowDrained := sm.SubscribeWithSize("slow", 5)
+	fast := sm.SubscribeWithSize("fast", 5)
+
+	sm.Publish(1)
+	sm.Publish(2)
+	sm.Publish(3)
+	drain(slowDrained)
+	drain(fast)
+	// the gauge is sampled before each delivery: slowStuck still holds 3, the others 0
+	sm.Publish(4)
+
+	assert.Equal(t, 3.0, gaugeValue(t, "chanutil_unread_messages_num", "slow"))
+	assert.Equal(t, 0.0, gaugeValue(t, "chanutil_unread_messages_num", "fast"))
+	_ = slowStuck
+}
+
+// A name's unread series must not outlive its subscribers: a consumer that left with a backlog
+// would otherwise look slow for the rest of the process. While a same-named twin remains the
+// series stays, since it still describes a live consumer.
+func TestUnreadMessagesSeriesIsRemovedWithLastSubscriberOfName(t *testing.T) {
+	sm := utils.NewSubscriptionManager[int]("unread_removed_manager")
+	first := sm.SubscribeWithSize("leaver", 1)
+	second := sm.SubscribeWithSize("leaver", 1)
+
+	sm.Publish(1)
+	sm.Publish(2) // both now hold a backlog of 1 when sampled
+	require.Equal(t, 1.0, gaugeValue(t, "chanutil_unread_messages_num", "leaver"))
+
+	first.Unsubscribe()
+	assert.True(t, hasGauge(t, "chanutil_unread_messages_num", "leaver"), "series removed while a subscriber remains")
+
+	second.Unsubscribe()
+	assert.False(t, hasGauge(t, "chanutil_unread_messages_num", "leaver"), "series survived its last subscriber")
 }
 
 // TestSubscribeWithReplayAtomicVsPublish exercises the TOCTOU window the manager
@@ -137,6 +200,40 @@ func TestSubscribeWithReplayAtomicVsPublish(t *testing.T) {
 		// replayed [false] directly, the last observed state must be the final one.
 		assert.Falsef(t, got[len(got)-1], "iteration %d: subscriber stuck on stale state, saw %v", i, got)
 	}
+}
+
+// gaugeValue reads a registered gauge by metric name and source label from the default
+// registry; the manager's collectors are package-private, so this is the public view.
+func gaugeValue(t *testing.T, metric, source string) float64 {
+	t.Helper()
+	value, ok := findGauge(t, metric, source)
+	require.Truef(t, ok, "no gauge %s{source=%q}", metric, source)
+	return value
+}
+
+func hasGauge(t *testing.T, metric, source string) bool {
+	t.Helper()
+	_, ok := findGauge(t, metric, source)
+	return ok
+}
+
+func findGauge(t *testing.T, metric, source string) (float64, bool) {
+	t.Helper()
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != metric {
+			continue
+		}
+		for _, m := range family.GetMetric() {
+			for _, label := range m.GetLabel() {
+				if label.GetName() == "source" && label.GetValue() == source {
+					return m.GetGauge().GetValue(), true
+				}
+			}
+		}
+	}
+	return 0, false
 }
 
 // drain returns all currently-buffered events without blocking.

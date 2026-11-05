@@ -8,21 +8,21 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: "1.27.0"
+        default: "1.27.3"
   pull_request:
   push:
     branches:
       - main
 
 env:
-  GO_VERSION: ${{ inputs.go-version || '1.27.0' }}
+  GO_VERSION: ${{ inputs.go-version || '1.27.3' }}
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
@@ -33,8 +33,8 @@ jobs:
           cache-key-suffix: "lint"
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.14.0
+          version: v2.15.0
           args: --timeout=10m
           skip-cache: false

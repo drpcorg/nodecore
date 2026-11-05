@@ -62,6 +62,12 @@ func (l *LocalKey) PostCheckSetting(_ context.Context, request protocol.RequestH
 	if err != nil {
 		return err
 	}
+	if l.keySettingsCfg.Upstreams != nil {
+		err = keydata.RestrictUpstreams(l.keySettingsCfg.Upstreams.GroupLabels, request)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

@@ -89,7 +89,7 @@ func NewRpcHead(
 
 func (r *RpcHead) Start() {
 	log.Info().Msgf("starting an rpc head of upstream %s with poll interval %s", r.upstreamId, r.pollInterval)
-	r.lifecycle.Start(func(ctx context.Context) error {
+	r.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go func() {
 			for {
 				r.poll(ctx)
@@ -100,7 +100,7 @@ func (r *RpcHead) Start() {
 				}
 			}
 		}()
-		return nil
+		return nil, nil
 	})
 }
 
@@ -178,9 +178,9 @@ func (w *SubscriptionHead) GetCurrentBlock() protocol.Block {
 // goroutine, under the run's context, so a wedged socket never holds the caller.
 func (w *SubscriptionHead) Start() {
 	log.Info().Msgf("starting a subscription head of upstream %s", w.upstreamId)
-	w.lifecycle.Start(func(ctx context.Context) error {
+	w.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go w.run(ctx)
-		return nil
+		return nil, nil
 	})
 }
 

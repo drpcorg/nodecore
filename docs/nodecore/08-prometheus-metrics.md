@@ -460,15 +460,15 @@ These metrics track internal subscription manager performance (used for event pr
 
 **Type:** Gauge
 
-**Description:** The number of unread messages in internal subscription channels.
+**Description:** The largest backlog, in events, among the internal subscribers that share a name, sampled each time an event is published to them. Several subscribers may carry the same name (for example the previous and the current run of a restarted consumer); the gauge reports the worst of them. The series is removed when the last subscriber of that name unsubscribes.
 
 **Labels:**
 
-- `source` - The subscription source name
+- `source` - The subscriber name, e.g. `<upstream>_head_updates`
 
 **Source:** `pkg/utils/subscriptions.go`
 
-**Use Case:** Identify potential backpressure or slow consumers in internal event systems.
+**Use Case:** Identify a slow consumer by name. A value that climbs toward the subscriber's buffer size (100 by default) means events are about to be dropped for it.
 
 ---
 

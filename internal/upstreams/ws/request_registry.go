@@ -81,6 +81,13 @@ func (b *GenericRequestRegistry) Register(
 		req.Cancel()
 	case b.commands <- newRegisterCommand(requestId, req):
 		b.allOps.Store(requestId, req)
+		// The send can win a race against the context end, and the sweep in run may
+		// already have passed allOps by the time the operation is stored. Cancel is a
+		// compare-and-swap, so doing it here as well costs nothing when it was not needed.
+		if b.ctx.Err() != nil {
+			req.SetSkipDoOnClose()
+			req.Cancel()
+		}
 	}
 	return req
 }
@@ -128,6 +135,7 @@ func (b *GenericRequestRegistry) run() {
 	for {
 		select {
 		case <-b.ctx.Done():
+			b.cancelAllOps()
 			return
 		case cmd := <-b.commands:
 			cmd.handle(b)
@@ -160,6 +168,21 @@ func (b *GenericRequestRegistry) sendCmd(cmd registryCommand) {
 		log.Warn().Msgf("RequestRegistry of '%s' is not working, command is ignored", b.upId)
 	case b.commands <- cmd:
 	}
+}
+
+// cancelAllOps releases every operation of the registry when its context ends. The ws loop
+// sends cancelAll on its way out, but by then this loop may already be gone and the command
+// dropped, so the registry cleans up on its own. It sweeps allOps rather than registryState:
+// Register stores into allOps before its command is handled, so operations whose register
+// command is still queued are covered too. No unsubscribe is written for them - the
+// connection is closing - which is what skip-on-close means, same as cancelAll.
+func (b *GenericRequestRegistry) cancelAllOps() {
+	b.allOps.Range(func(id string, op RequestOperation) bool {
+		op.SetSkipDoOnClose()
+		op.Cancel()
+		b.allOps.Delete(id)
+		return true
+	})
 }
 
 func (b *GenericRequestRegistry) closeReq(req RequestOperation) {

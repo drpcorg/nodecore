@@ -26,8 +26,8 @@ const (
 	evmCapabilitiesReprobeInterval = time.Hour
 
 	// A transient failure is retried within the refresh: a nil report sends every
-	// detector of the cycle to the search path, and the block search re-publishes
-	// LogsBound as 1, briefly overriding a windowed log index. Unsupported and
+	// detector of the cycle to the search path, and the receipts search re-publishes
+	// LogsBound from the receipts window, briefly overriding a windowed log index. Unsupported and
 	// malformed verdicts are never retried.
 	evmCapabilitiesRetryAttempts = 3
 	evmCapabilitiesRetryDelay    = time.Second

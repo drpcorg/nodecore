@@ -368,3 +368,58 @@ func TestRequestHashCarriesLabelKey(t *testing.T) {
 	heightOnly := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth", protocol.RequestHeightSelector{Height: 100})
 	assert.Equal(t, noLabel.RequestHash(), heightOnly.RequestHash())
 }
+
+func TestGroupLabelSelectorKeyIsOrderIndependent(t *testing.T) {
+	a := protocol.RequestGroupLabelSelector{Labels: []string{"fast", "archive"}}
+	b := protocol.RequestGroupLabelSelector{Labels: []string{"archive", "fast"}}
+	assert.Equal(t, "group(archive|fast)", a.Key())
+	assert.Equal(t, a.Key(), b.Key())
+	assert.NotEqual(t, a.Key(), protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}.Key())
+}
+
+// A group-label restriction picks which upstreams serve a request, not what
+// they answer, so it must not split the cache.
+func TestLabelCacheKeyIgnoresGroupLabelSelector(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	assert.Empty(t, protocol.LabelCacheKey([]protocol.RequestSelector{group}))
+	assert.Equal(t,
+		protocol.LabelCacheKey([]protocol.RequestSelector{label("region", "us")}),
+		protocol.LabelCacheKey([]protocol.RequestSelector{label("region", "us"), group}),
+	)
+}
+
+func TestAppendSelectorsKeepsExistingSelectors(t *testing.T) {
+	group := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	requests := []protocol.RequestHolder{
+		protocol.NewUpstreamJsonRpcRequest("1", protocol.JsonRpcRequestBody{Method: "eth_call"}, false, "eth", label("region", "us")),
+		protocol.NewUpstreamRestRequest("1", "/status", nil, nil, "eth", label("region", "us")),
+		protocol.NewUpstreamGrpcRequest("1", "/svc/Method", nil, nil, "eth", label("region", "us")),
+	}
+	for _, request := range requests {
+		appender, ok := request.(protocol.SelectorAppender)
+		assert.True(t, ok, "%T must accept selectors", request)
+		appender.AppendSelectors(group)
+		assert.Equal(t, []protocol.RequestSelector{label("region", "us"), group}, request.Selectors())
+	}
+}
+
+func TestVersionSelectorKey(t *testing.T) {
+	assert.Equal(t, "version(1.2.0,)", protocol.RequestVersionSelector{Min: "1.2.0"}.Key())
+	assert.Equal(t, "version(,2.0.0)", protocol.RequestVersionSelector{Max: "2.0.0"}.Key())
+	assert.NotEqual(t, protocol.RequestVersionSelector{Min: "1.2.0"}.Key(), protocol.RequestVersionSelector{Max: "1.2.0"}.Key())
+}
+
+func TestLabelCacheKeyIncludesVersionSelector(t *testing.T) {
+	// A version range constrains the client_version node class, so it must
+	// partition the cache like a label selector does.
+	minKey := protocol.LabelCacheKey(sel(protocol.RequestVersionSelector{Min: "1.2.0"}))
+	maxKey := protocol.LabelCacheKey(sel(protocol.RequestVersionSelector{Max: "1.2.0"}))
+
+	assert.NotEmpty(t, minKey)
+	assert.NotEqual(t, minKey, maxKey)
+	assert.Equal(t, "", protocol.LabelCacheKey(sel(not(protocol.RequestHeightSelector{Height: 1}))))
+	assert.Equal(t,
+		protocol.LabelCacheKey(sel(and(label("type", "a"), protocol.RequestVersionSelector{Min: "1.2.0"}))),
+		protocol.LabelCacheKey(sel(and(protocol.RequestVersionSelector{Min: "1.2.0"}, label("type", "a")))),
+	)
+}

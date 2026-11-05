@@ -20,7 +20,7 @@ type MethodsEventProcessor struct {
 }
 
 func (m *MethodsEventProcessor) Start() {
-	m.lifecycle.Start(func(ctx context.Context) error {
+	m.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		methodsSub := m.methodsProcessor.Subscribe(fmt.Sprintf("%s_methods", m.upstreamId))
 		m.methodsProcessor.Start()
 
@@ -39,13 +39,12 @@ func (m *MethodsEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return m.methodsProcessor.Stop, nil
 	})
 }
 
 func (m *MethodsEventProcessor) Stop() {
 	m.lifecycle.Stop()
-	m.methodsProcessor.Stop()
 }
 
 func (m *MethodsEventProcessor) Running() bool {

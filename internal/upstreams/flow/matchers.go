@@ -1,93 +1,14 @@
 package flow
 
 import (
-	"fmt"
+	"strings"
 
+	"github.com/Masterminds/semver/v3"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/rs/zerolog/log"
 )
-
-type MatchResponseType int
-
-const (
-	MethodType MatchResponseType = iota
-	AvailabilityType
-	RateLimiterType
-	UpstreamIndexType
-	SelectorType
-	SuccessType
-)
-
-type MatchResponse interface {
-	Cause() string
-	Type() MatchResponseType
-}
-
-type RateLimiterResponse struct {
-}
-
-func (r RateLimiterResponse) Type() MatchResponseType {
-	return RateLimiterType
-}
-
-func (r RateLimiterResponse) Cause() string {
-	return "too many requests"
-}
-
-type UpstreamIndexResponse struct {
-	upstreamIndex string
-}
-
-func (u UpstreamIndexResponse) Cause() string {
-	return fmt.Sprintf("no upstream with index %s", u.upstreamIndex)
-}
-
-func (u UpstreamIndexResponse) Type() MatchResponseType {
-	return UpstreamIndexType
-}
-
-var _ MatchResponse = (*UpstreamIndexResponse)(nil)
-
-type SuccessResponse struct {
-}
-
-func (s SuccessResponse) Type() MatchResponseType {
-	return SuccessType
-}
-
-func (s SuccessResponse) Cause() string {
-	return ""
-}
-
-var _ MatchResponse = (*SuccessResponse)(nil)
-
-type MethodResponse struct {
-	method string
-}
-
-func (m MethodResponse) Type() MatchResponseType {
-	return MethodType
-}
-
-func (m MethodResponse) Cause() string {
-	return fmt.Sprintf("method %s is not supported", m.method)
-}
-
-var _ MatchResponse = (*MethodResponse)(nil)
-
-type AvailabilityResponse struct {
-}
-
-func (a AvailabilityResponse) Type() MatchResponseType {
-	return AvailabilityType
-}
-
-func (a AvailabilityResponse) Cause() string {
-	return "upstream is not available"
-}
-
-var _ MatchResponse = (*AvailabilityResponse)(nil)
 
 type Matcher interface {
 	Match(string, *protocol.UpstreamState) MatchResponse
@@ -192,92 +113,6 @@ func NewMultiMatcher(matchers ...Matcher) *MultiMatcher {
 	return &MultiMatcher{matchers: matchers}
 }
 
-type LabelResponse struct {
-	name   string
-	values []string
-}
-
-func (l LabelResponse) Type() MatchResponseType { return SelectorType }
-func (l LabelResponse) Cause() string {
-	return fmt.Sprintf("No label `%s` with values %v", l.name, l.values)
-}
-
-type ExistsResponse struct{ name string }
-
-func (e ExistsResponse) Type() MatchResponseType { return SelectorType }
-func (e ExistsResponse) Cause() string           { return fmt.Sprintf("Label %s does not exist", e.name) }
-
-type HeightResponse struct{ height, currentHeight int64 }
-
-func (h HeightResponse) Type() MatchResponseType { return SelectorType }
-func (h HeightResponse) Cause() string {
-	return fmt.Sprintf("Upstream height %d is less than %d", h.currentHeight, h.height)
-}
-
-type SlotHeightResponse struct{ slot, currentSlotHeight int64 }
-
-func (s SlotHeightResponse) Type() MatchResponseType { return SelectorType }
-func (s SlotHeightResponse) Cause() string {
-	return fmt.Sprintf("Upstream slot height %d is less than %d", s.currentSlotHeight, s.slot)
-}
-
-type LowerHeightResponse struct {
-	lowerHeight, predictedHeight int64
-	boundType                    protocol.LowerBoundType
-}
-
-func (l LowerHeightResponse) Type() MatchResponseType { return SelectorType }
-func (l LowerHeightResponse) Cause() string {
-	if l.predictedHeight == 0 {
-		return fmt.Sprintf("Upstream lower height of type %s cannot be predicted", l.boundType.String())
-	}
-	return fmt.Sprintf("Upstream lower height %d of type %s is greater than %d", l.predictedHeight, l.boundType.String(), l.lowerHeight)
-}
-
-type SelectorUnsupportedResponse struct{ reason string }
-
-func (s SelectorUnsupportedResponse) Type() MatchResponseType { return SelectorType }
-func (s SelectorUnsupportedResponse) Cause() string           { return s.reason }
-
-type NotMatchedResponse struct{ response MatchResponse }
-
-func (n NotMatchedResponse) Type() MatchResponseType { return SelectorType }
-func (n NotMatchedResponse) Cause() string           { return "Not matched - " + n.response.Cause() }
-
-type MultiResponse struct{ responses []MatchResponse }
-
-func (m MultiResponse) Type() MatchResponseType { return SelectorType }
-func (m MultiResponse) Cause() string {
-	parts := make([]string, 0)
-	for _, r := range flattenResponses(m.responses) {
-		if r.Type() != SuccessType {
-			parts = append(parts, r.Cause())
-		}
-	}
-	return joinCauses(parts)
-}
-func flattenResponses(responses []MatchResponse) []MatchResponse {
-	out := make([]MatchResponse, 0, len(responses))
-	for _, r := range responses {
-		if m, ok := r.(MultiResponse); ok {
-			out = append(out, flattenResponses(m.responses)...)
-		} else {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-func joinCauses(parts []string) string {
-	if len(parts) == 0 {
-		return ""
-	}
-	out := parts[0]
-	for _, p := range parts[1:] {
-		out += "; " + p
-	}
-	return out
-}
-
 type LabelMatcher struct {
 	name   string
 	values []string
@@ -315,6 +150,84 @@ func (l *LabelExistsMatcher) Match(_ string, state *protocol.UpstreamState) Matc
 		}
 	}
 	return ExistsResponse{l.name}
+}
+
+// VersionRangeMatcher admits an upstream whose client_version label parses as
+// a semver within [min, max]. An empty bound is open. A missing or unparseable
+// upstream version never matches, mirroring the dshackle matcher.
+type VersionRangeMatcher struct {
+	minRaw, maxRaw string
+	min, max       *semver.Version
+	valid          bool
+}
+
+func NewVersionRangeMatcher(minVersion, maxVersion string) *VersionRangeMatcher {
+	matcher := &VersionRangeMatcher{minRaw: minVersion, maxRaw: maxVersion, valid: true}
+	if minVersion != "" {
+		matcher.min = parseClientVersion(minVersion)
+		matcher.valid = matcher.valid && matcher.min != nil
+	}
+	if maxVersion != "" {
+		matcher.max = parseClientVersion(maxVersion)
+		matcher.valid = matcher.valid && matcher.max != nil
+	}
+	return matcher
+}
+
+func (v *VersionRangeMatcher) Match(_ string, state *protocol.UpstreamState) MatchResponse {
+	if !v.valid || state == nil || state.Labels == nil {
+		return VersionRangeResponse{v.minRaw, v.maxRaw}
+	}
+	raw, ok := state.Labels.GetLabel("client_version")
+	if !ok {
+		return VersionRangeResponse{v.minRaw, v.maxRaw}
+	}
+	actual := parseClientVersion(raw)
+	if actual == nil {
+		return VersionRangeResponse{v.minRaw, v.maxRaw}
+	}
+	if v.min != nil && actual.LessThan(v.min) {
+		return VersionRangeResponse{v.minRaw, v.maxRaw}
+	}
+	if v.max != nil && actual.GreaterThan(v.max) {
+		return VersionRangeResponse{v.minRaw, v.maxRaw}
+	}
+	return SuccessResponse{}
+}
+
+// parseClientVersion reads a strict semver, tolerating the "v" prefix that
+// clients such as geth report. It returns nil when the value is not a semver.
+func parseClientVersion(raw string) *semver.Version {
+	version, err := semver.StrictNewVersion(strings.TrimPrefix(raw, "v"))
+	if err != nil {
+		return nil
+	}
+	return version
+}
+
+// GroupLabelsLookup returns the config group-labels of an upstream, or nil
+// when the upstream is unknown.
+type GroupLabelsLookup func(upstreamId string) mapset.Set[string]
+
+// GroupLabelMatcher admits an upstream carrying at least one of labels among
+// its config group-labels. Group-labels live on the upstream's config, not in
+// its state, so they are resolved by id.
+type GroupLabelMatcher struct {
+	labels []string
+	lookup GroupLabelsLookup
+}
+
+func NewGroupLabelMatcher(labels []string, lookup GroupLabelsLookup) *GroupLabelMatcher {
+	return &GroupLabelMatcher{labels: labels, lookup: lookup}
+}
+
+func (g *GroupLabelMatcher) Match(upstreamId string, _ *protocol.UpstreamState) MatchResponse {
+	if g.lookup != nil {
+		if upstreamLabels := g.lookup(upstreamId); upstreamLabels != nil && upstreamLabels.ContainsAny(g.labels...) {
+			return SuccessResponse{}
+		}
+	}
+	return GroupLabelResponse{g.labels}
 }
 
 type HeightMatcher struct{ height int64 }

@@ -445,6 +445,14 @@ func (s *ScorePolicyConfig) GetScoreFunc() (goja.Callable, error) {
 	return s.calculationFunc, nil
 }
 
+// sameSettings compares the configured settings only, not the compiled function. Both sides
+// come out of setDefaults, which always sets the section.
+func (s *ScorePolicyConfig) sameSettings(other *ScorePolicyConfig) bool {
+	return s.CalculationInterval == other.CalculationInterval &&
+		s.CalculationFunctionName == other.CalculationFunctionName &&
+		s.CalculationFunctionFilePath == other.CalculationFunctionFilePath
+}
+
 func (s *ScorePolicyConfig) compileFunc() (goja.Callable, error) {
 	var tsFunc string
 	if s.CalculationFunctionName != "" {

@@ -124,7 +124,9 @@ nodecore maintains a single **unfiltered "all logs"** source per chain and selec
 a filtered head feed over the available upstreams that can serve logs (`LogsCap`, i.e. a
 subscription-driven head plus `eth_getLogs`) and match the request's selectors, and for each new
 block fetches that block's logs (`eth_getLogs` by block hash, against any upstream at or above the
-block height) and emits them. Each client's `address`/`topics` filter from its
+block height that matches the request's selectors) and emits them. The backfill below is
+restricted to those upstreams too, so no part of the stream comes from an upstream the selectors
+exclude. Each client's `address`/`topics` filter from its
 `eth_subscribe("logs", {...})` request is then applied **locally**, so every client sees only its
 matching logs while still sharing the one upstream source.
 

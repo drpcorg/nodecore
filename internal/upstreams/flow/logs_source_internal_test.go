@@ -122,7 +122,7 @@ func TestFetchBlockLogsSelectsByHeightAndParses(t *testing.T) {
 	connHigh.On("SendRequest", mock.Anything, mock.Anything).Return(protocol.NewSimpleHttpUpstreamResponse("1", logsJSON, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Time{})
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Time{})
 
 	require.Len(t, logs, 1)
 	assert.Equal(t, "id", upstreamId) // GenericUpstream id from TestEvmUpstream
@@ -143,7 +143,7 @@ func TestFetchBlockLogsNoUpstreamAtHeight(t *testing.T) {
 	upSup.On("GetUpstream", "low").Return(up).Maybe()
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Time{})
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Time{})
 
 	assert.Nil(t, logs)
 	assert.Empty(t, upstreamId)
@@ -168,7 +168,7 @@ func TestFetchBlockLogsErrorSkipsBlock(t *testing.T) {
 		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Time{})
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Time{})
 
 	assert.Nil(t, logs)
 }
@@ -212,7 +212,7 @@ func TestFetchBlockLogsRetriesNotReadyBlock(t *testing.T) {
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(2*time.Second))
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Now().Add(2*time.Second))
 
 	require.Len(t, logs, 1)
 	conn.AssertNumberOfCalls(t, "SendRequest", 3)
@@ -235,7 +235,7 @@ func TestFetchBlockLogsNotReadyUntilDeadline(t *testing.T) {
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
 	start := time.Now()
-	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(400*time.Millisecond))
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Now().Add(400*time.Millisecond))
 
 	assert.Nil(t, logs)
 	assert.GreaterOrEqual(t, time.Since(start), 400*time.Millisecond)
@@ -265,7 +265,7 @@ func TestFetchBlockLogsNotReadyFallsThroughToNextUpstream(t *testing.T) {
 
 		block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
 		start := time.Now()
-		logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(3*time.Second))
+		logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Now().Add(3*time.Second))
 
 		require.Len(t, logs, 1)
 		assert.Less(t, time.Since(start), logsNotReadyStep/2)
@@ -297,7 +297,7 @@ func TestFetchBlockLogsNotReadyWithFailingUpstream(t *testing.T) {
 		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc))
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
-	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(2*time.Second))
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Now().Add(2*time.Second))
 
 	require.Len(t, logs, 1)
 	assert.Equal(t, "erigon", upstreamId)
@@ -322,10 +322,77 @@ func TestFetchBlockLogsOtherErrorNotDelayed(t *testing.T) {
 
 	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
 	start := time.Now()
-	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), block, time.Now().Add(3*time.Second))
+	logs, _ := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), nil, block, time.Now().Add(3*time.Second))
 
 	assert.Nil(t, logs)
 	assert.Less(t, time.Since(start), 500*time.Millisecond)
+}
+
+// archiveOnly is the matcher of a group-label selector admitting only the
+// "admitted" upstream, as an API key restricted to "archive" adds.
+func archiveOnly() []Matcher {
+	return []Matcher{NewGroupLabelMatcher([]string{"archive"}, func(upstreamId string) mapset.Set[string] {
+		if upstreamId == "admitted" {
+			return mapset.NewThreadUnsafeSet("archive")
+		}
+		return mapset.NewThreadUnsafeSet[string]()
+	})}
+}
+
+// The client's selectors restrict which upstreams serve a block's logs, not
+// only which ones announce it: one outside them is never asked, even at the
+// height.
+func TestFetchBlockLogsHonorsSelectors(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "admitted", 100)
+	publishLogsUpstream(chSup, "outside", 100)
+
+	connAdmitted := mocks.NewConnectorMock()
+	connOutside := mocks.NewConnectorMock()
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "admitted").Return(logsTestUpstream("admitted", connAdmitted)).Maybe()
+	upSup.On("GetUpstream", "outside").Return(logsTestUpstream("outside", connOutside)).Maybe()
+	connAdmitted.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewTotalFailureFromErr("1", assert.AnError, protocol.JsonRpc)).Once()
+	connAdmitted.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[{"address":"0xa","topics":["0x1"]}]`), protocol.JsonRpc))
+	connOutside.On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`[]`), protocol.JsonRpc)).Maybe()
+
+	block := protocol.Block{Height: 100, Hash: blockchain.NewHashIdFromString("aa")}
+	logs, upstreamId := fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), archiveOnly(), block, time.Time{})
+
+	// the admitted upstream's first error does not hand the block to the other one
+	assert.Nil(t, logs)
+	assert.Empty(t, upstreamId)
+	connOutside.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+
+	logs, upstreamId = fetchBlockLogs(context.Background(), upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), archiveOnly(), block, time.Time{})
+	require.Len(t, logs, 1)
+	assert.Equal(t, "admitted", upstreamId)
+	connOutside.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+// Ancestors are resolved only on upstreams matching the client's selectors.
+func TestBlockByHashResolverHonorsSelectors(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	chSup := test_utils.CreateChainSupervisor()
+	publishLogsUpstream(chSup, "outside", 100)
+
+	conn := mocks.NewConnectorMock()
+	upSup := mocks.NewUpstreamSupervisorMock()
+	upSup.On("GetChainSupervisor", chains.ARBITRUM).Return(chSup)
+	upSup.On("GetUpstream", "outside").Return(logsTestUpstream("outside", conn)).Maybe()
+
+	resolve := blockByHashResolver(upSup, chains.ARBITRUM, chSup, newLogsTestRegistry(upSup), archiveOnly())
+	_, err := resolve(context.Background(), blockchain.NewHashIdFromString("aa"), 100)
+
+	require.Error(t, err)
+	conn.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 
 func TestSetRemovedTrue(t *testing.T) {
@@ -435,7 +502,7 @@ func TestLogsSourceEmitsPerLog(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, logsBufferSize, src.Buffer)
 
@@ -466,7 +533,7 @@ func TestLogsSourceReorgReemitsRemoved(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -488,7 +555,7 @@ func TestLogsSourceTerminatesWhenLogsCapAbsentAtStart(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	r := readWsResponse(t, src.Events)
@@ -504,7 +571,7 @@ func TestLogsSourceTerminatesWhenLogsCapLost(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -528,7 +595,7 @@ func TestLogsSourceTerminatesWhenLogsMethodGone(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -566,7 +633,7 @@ func TestLogsSourceSkipsBlockOnGetLogsError(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", logsCaps())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -606,7 +673,7 @@ func TestLogsSourceFollowsUpstreamWithMethod(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -646,7 +713,7 @@ func TestLogsSourceAnnouncesHeadWhenBackfillFails(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -678,7 +745,7 @@ func TestLogsSourceBackfillsSkippedHeight(t *testing.T) {
 	registerLogsUpstream(chSup, "up1", logsCaps())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
@@ -711,7 +778,7 @@ func TestLogsSourceRetriesNotReadyBlock(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter)(ctx)
+	src, err := newLogsSourceBuilder(upSup, chains.ARBITRUM, registry, logsTestFilter, nil)(ctx)
 	require.NoError(t, err)
 
 	time.Sleep(50 * time.Millisecond)
