@@ -45,7 +45,7 @@ func TestMapDshackleSelectorsCompositionAndUnsupported(t *testing.T) {
 	_, ok = and.Children[1].(protocol.RequestNotSelector)
 	assert.True(t, ok)
 
-	unsupported := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MaxVersionSelector{MaxVersionSelector: &dshackle.MaxVersionSelector{Version: "1.0.0"}}})
+	unsupported := mapDshackleSelector(&dshackle.Selector{})
 	_, ok = unsupported.(protocol.RequestUnsupportedSelector)
 	assert.True(t, ok)
 }
@@ -127,4 +127,30 @@ func TestMapDshackleLowerHeightSelectorFailsClosedForUnspecifiedBoundType(t *tes
 	selector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_LowerHeightSelector{LowerHeightSelector: &dshackle.LowerHeightSelector{Height: 42, LowerBoundType: dshackle.LowerBoundType_LOWER_BOUND_UNSPECIFIED}}})
 	unsupported := selector.(protocol.RequestUnsupportedSelector)
 	assert.Contains(t, unsupported.Reason, "lower bound type LOWER_BOUND_UNSPECIFIED is not supported")
+}
+
+func TestMapDshackleVersionSelectors(t *testing.T) {
+	minSelector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MinVersionSelector{MinVersionSelector: &dshackle.MinVersionSelector{Version: "v1.13.5"}}})
+	assert.Equal(t, protocol.RequestVersionSelector{Min: "v1.13.5"}, minSelector)
+
+	maxSelector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MaxVersionSelector{MaxVersionSelector: &dshackle.MaxVersionSelector{Version: "2.0.0-rc.1"}}})
+	assert.Equal(t, protocol.RequestVersionSelector{Max: "2.0.0-rc.1"}, maxSelector)
+}
+
+func TestMapDshackleVersionSelectorsTreatEmptyVersionAsAny(t *testing.T) {
+	minSelector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MinVersionSelector{MinVersionSelector: &dshackle.MinVersionSelector{Version: " "}}})
+	assert.Equal(t, protocol.RequestAnySelector{}, minSelector)
+
+	maxSelector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MaxVersionSelector{MaxVersionSelector: nil}})
+	assert.Equal(t, protocol.RequestAnySelector{}, maxSelector)
+}
+
+func TestMapDshackleVersionSelectorsFailClosedForMalformedVersion(t *testing.T) {
+	minSelector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MinVersionSelector{MinVersionSelector: &dshackle.MinVersionSelector{Version: "1.13"}}})
+	unsupported := minSelector.(protocol.RequestUnsupportedSelector)
+	assert.Contains(t, unsupported.Reason, "min version selector value 1.13 is not a valid semver")
+
+	maxSelector := mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_MaxVersionSelector{MaxVersionSelector: &dshackle.MaxVersionSelector{Version: "geth"}}})
+	unsupported = maxSelector.(protocol.RequestUnsupportedSelector)
+	assert.Contains(t, unsupported.Reason, "max version selector value geth is not a valid semver")
 }

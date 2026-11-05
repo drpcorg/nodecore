@@ -79,6 +79,8 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 		return NewLabelMatcher(s.Name, s.Values), nil
 	case protocol.RequestExistsSelector:
 		return NewLabelExistsMatcher(s.Name), nil
+	case protocol.RequestVersionSelector:
+		return NewVersionRangeMatcher(s.Min, s.Max), nil
 	case protocol.RequestAndSelector:
 		children := make([]Matcher, 0, len(s.Children))
 		var combinedSort *sortSpec

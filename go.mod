@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	cosmossdk.io/api v1.0.0
 	github.com/DataDog/sketches-go v1.4.8
+	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/bytedance/sonic v1.15.5
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/dop251/goja v0.0.0-20250531102226-cb187b08699c
