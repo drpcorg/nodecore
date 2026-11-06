@@ -241,6 +241,7 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	assert.False(t, *options.ValidatePeers)
 	assert.False(t, *options.ValidateCallLimit)
 	assert.True(t, *options.DisableLivenessSubscriptionValidation)
+	assert.True(t, *options.DisableErigonBugValidation)
 	assert.Equal(t, int64(1), options.MinPeers)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
@@ -258,6 +259,7 @@ func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags
 	assert.True(t, *options.ValidatePeers)
 	assert.True(t, *options.ValidateCallLimit)
 	assert.False(t, *options.DisableLivenessSubscriptionValidation)
+	assert.False(t, *options.DisableErigonBugValidation)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
 
