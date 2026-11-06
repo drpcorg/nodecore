@@ -52,6 +52,16 @@ func TestChainValidator(t *testing.T) {
 		_, ok := item.(*eth_validations.EthCallLimitValidator)
 		return ok
 	}))
+
+	options.DisableErigonBugValidation = new(false)
+
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options, nil).SettingsValidators()
+
+	assert.Len(t, validators, 3)
+	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
+		_, ok := item.(*eth_validations.EthErigonBugValidator)
+		return ok
+	}))
 }
 
 func TestEvmSubscribeHeadRequest(t *testing.T) {

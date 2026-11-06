@@ -76,7 +76,7 @@ func (v *EthGasPriceValidator) Validate() validations.ValidationSettingResult {
 		log.Warn().Err(err).Msgf("failed to read gas price result for upstream '%s'", v.upstreamId)
 		return validations.SettingsError
 	}
-	gasPrice, err := parseHexUint64(strings.TrimSpace(gasPriceRaw))
+	gasPrice, err := protocol.ParseHexUint64(strings.TrimSpace(gasPriceRaw))
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to parse gas price for upstream '%s'", v.upstreamId)
 		return validations.SettingsError
@@ -142,9 +142,4 @@ func (r gasPriceRule) matches(actual uint64) bool {
 	default:
 		return true
 	}
-}
-
-func parseHexUint64(raw string) (uint64, error) {
-	trimmed := strings.Trim(raw, "\"")
-	return strconv.ParseUint(trimmed, 0, 64)
 }
