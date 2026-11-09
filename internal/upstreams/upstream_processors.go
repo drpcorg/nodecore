@@ -21,7 +21,7 @@ func CreateHeadProcessor(
 	headConnector connectors.ApiConnector,
 	chainSpecific chains_specific.ChainSpecific,
 ) blocks.HeadProcessor {
-	return blocks.NewGenericHeadProcessor(ctx, conf, headConnector, chainSpecific)
+	return blocks.NewGenericHeadProcessor(ctx, conf, headConnector, chainSpecific, chainSpecific.ChainValidator())
 }
 
 func CreateHeadEventProcessor(

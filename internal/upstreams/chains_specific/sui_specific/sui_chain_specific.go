@@ -189,6 +189,11 @@ func (s *SuiChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *SuiChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (s *SuiChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

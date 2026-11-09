@@ -109,10 +109,14 @@ func (h *HeadEventProcessor) Start() {
 						return
 					}
 					// lifecycle changes of the head are for liveness consumers; the upstream
-					// state only ever learns about blocks
-					if head, isBlock := event.(blocks.HeadBlockEvent); isBlock {
+					// state learns about blocks, and about the one head verdict that must
+					// remove the upstream: the guard found the node on another chain
+					switch head := event.(type) {
+					case blocks.HeadBlockEvent:
 						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
 						headsMetric.WithLabelValues(h.chain.String(), h.upstreamId).Set(float64(head.HeadData.Height))
+					case blocks.HeadFatalEvent:
+						h.emitter(&protocol.FatalErrorUpstreamStateEvent{})
 					}
 				}
 			}

@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
 )
@@ -85,6 +86,11 @@ func (s *stellarBaseChainSpecificObject) CapDetectors(_ caps.DetectorInput) []ca
 // methods it implements, so upstreams keep the full method set their spec
 // declares.
 func (s *stellarBaseChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *stellarBaseChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

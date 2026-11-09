@@ -85,7 +85,9 @@ func TestGenericSettingsEventProcessorValidateReturnsReducedResult(t *testing.T)
 	validator2.AssertExpectations(t)
 }
 
-func TestGenericSettingsEventProcessorStartFollowsCurrentValidationStateTransitions(t *testing.T) {
+// A repeated verdict is emitted again: the upstream owns "is it valid" and dedupes, and a
+// Valid after a head-driven removal must be able to re-admit the upstream.
+func TestGenericSettingsEventProcessorEmitsTheVerdictOnEveryTick(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -98,73 +100,51 @@ func TestGenericSettingsEventProcessorStartFollowsCurrentValidationStateTransiti
 	)
 
 	require.NotNil(t, processor)
-	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
+	events := make(chan protocol.AbstractUpstreamStateEvent, 10)
 	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
 		events <- event
 	})
 
-	validator.On("Validate").Return(validations.SettingsError).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Once()
+	validator.On("Validate").Return(validations.Valid).Once()
 	validator.On("Validate").Return(validations.Valid).Once()
 	validator.On("Validate").Return(validations.FatalSettingError).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Maybe()
+	validator.On("Validate").Return(validations.FatalSettingError).Once()
+	validator.On("Validate").Return(validations.Valid).Maybe()
 
 	processor.Start()
 	defer processor.Stop()
 
-	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
-
-	select {
-	case event := <-events:
-		t.Fatalf("unexpected event after first settings validation tick: %T", event)
-	default:
+	expected := []protocol.AbstractUpstreamStateEvent{
+		&protocol.ValidUpstreamStateEvent{},
+		&protocol.ValidUpstreamStateEvent{},
+		&protocol.FatalErrorUpstreamStateEvent{},
+		&protocol.FatalErrorUpstreamStateEvent{},
+		&protocol.ValidUpstreamStateEvent{},
 	}
-
-	require.Eventually(t, func() bool {
+	for i, want := range expected {
 		select {
 		case event := <-events:
-			_, ok := event.(*protocol.FatalErrorUpstreamStateEvent)
-			return ok
-		default:
-			return false
+			assert.IsType(t, want, event, "event %d", i)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for event %d", i)
 		}
-	}, time.Second, 5*time.Millisecond)
-
-	require.Eventually(t, func() bool {
-		select {
-		case event := <-events:
-			_, ok := event.(*protocol.ValidUpstreamStateEvent)
-			return ok
-		default:
-			return false
-		}
-	}, time.Second, 5*time.Millisecond)
-
-	require.Eventually(t, func() bool {
-		select {
-		case event := <-events:
-			_, ok := event.(*protocol.FatalErrorUpstreamStateEvent)
-			return ok
-		default:
-			return false
-		}
-	}, time.Second, 5*time.Millisecond)
+	}
 
 	validator.AssertExpectations(t)
 }
 
-func TestGenericSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *testing.T) {
+func TestGenericSettingsEventProcessorEmitsNothingOnSettingsErrorOrUnknown(t *testing.T) {
 	tests := []struct {
 		name   string
 		result validations.ValidationSettingResult
 	}{
 		{
-			"FatalError",
-			validations.FatalSettingError,
+			"SettingsError",
+			validations.SettingsError,
 		},
 		{
-			"Valid",
-			validations.Valid,
+			"Unknown",
+			validations.UnknownResult,
 		},
 	}
 
@@ -177,12 +157,12 @@ func TestGenericSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *t
 			processor := event_processors.NewGenericSettingsEventProcessor(
 				ctx,
 				"upstream-1",
-				testUpstreamOptions(),
+				testUpstreamOptionsWithInterval(20*time.Millisecond),
 				validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
 			)
 
-			require.NotNil(t, processor)
-			events := make(chan protocol.AbstractUpstreamStateEvent, 1)
+			require.NotNil(te, processor)
+			events := make(chan protocol.AbstractUpstreamStateEvent, 10)
 			processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
 				events <- event
 			})
@@ -193,9 +173,10 @@ func TestGenericSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *t
 			processor.Start()
 			defer processor.Stop()
 
-			require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
+			require.Eventually(te, processor.Running, time.Second, 10*time.Millisecond)
 
-			assert.Never(t, func() bool {
+			// several ticks pass (20ms interval) and none of them emits
+			assert.Never(te, func() bool {
 				select {
 				case <-events:
 					return true
@@ -204,55 +185,9 @@ func TestGenericSettingsEventProcessorStartDoesNotEmitEventFromUnknownState(t *t
 				}
 			}, 100*time.Millisecond, 10*time.Millisecond)
 
-			validator.AssertExpectations(t)
+			validator.AssertExpectations(te)
 		})
 	}
-}
-
-func TestGenericSettingsEventProcessorStartEmitsFatalErrorAfterValidState(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	validator := mocks.NewSettingsValidatorMock()
-	processor := event_processors.NewGenericSettingsEventProcessor(
-		ctx,
-		"upstream-1",
-		testUpstreamOptionsWithInterval(20*time.Millisecond),
-		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
-	)
-
-	require.NotNil(t, processor)
-	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
-	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
-		events <- event
-	})
-
-	validator.On("Validate").Return(validations.Valid).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Maybe()
-
-	processor.Start()
-	defer processor.Stop()
-
-	require.Eventually(t, processor.Running, time.Second, 10*time.Millisecond)
-
-	select {
-	case event := <-events:
-		t.Fatalf("unexpected event after first valid settings validation tick: %T", event)
-	default:
-	}
-
-	require.Eventually(t, func() bool {
-		select {
-		case event := <-events:
-			_, ok := event.(*protocol.FatalErrorUpstreamStateEvent)
-			return ok
-		default:
-			return false
-		}
-	}, time.Second, 5*time.Millisecond)
-
-	validator.AssertExpectations(t)
 }
 
 func TestNewGenericHealthEventProcessorReturnsNilForNilValidator(t *testing.T) {

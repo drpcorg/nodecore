@@ -196,6 +196,11 @@ func (s *SolanaChainSpecificObject) MethodsProcessor() methods.MethodsProcessor 
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *SolanaChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (s *SolanaChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

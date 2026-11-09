@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -209,4 +210,24 @@ func TestSubscriptionHeadStartDoesNotBlockOnSubscribe(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Stop did not return")
 	}
+}
+
+func TestRpcHeadStopClearsTheStoredBlock(t *testing.T) {
+	head := NewRpcHead(context.Background(), "up", time.Second, time.Hour, &countingSpecific{})
+	head.Start()
+	nextBlock(t, head.HeadsChan())
+	require.False(t, head.GetCurrentBlock().IsFullEmpty())
+
+	head.Stop()
+
+	assert.True(t, head.GetCurrentBlock().IsFullEmpty())
+}
+
+func TestSubscriptionHeadStopClearsTheStoredBlock(t *testing.T) {
+	head := NewSubHead(context.Background(), "up", time.Second, &stubConnector{connectorType: specs.WebsocketConnector}, &countingSpecific{})
+	head.UpdateHead(protocol.NewBlockWithHeight(7))
+
+	head.Stop()
+
+	assert.True(t, head.GetCurrentBlock().IsFullEmpty())
 }
