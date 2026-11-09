@@ -49,6 +49,9 @@ type GenericUpstream struct {
 	headLag atomic.Int64
 
 	processorAggregator *event_processors.UpstreamProcessorAggregator
+	// pauseHeadWhileSyncing is the chain family's answer to ChainSpecific.PauseHeadWhileSyncing,
+	// captured at construction so the state pipeline does not need the chain-specific itself
+	pauseHeadWhileSyncing bool
 }
 
 // groupLabelsFromConfig builds the immutable set of config-defined group-labels
@@ -108,21 +111,22 @@ func NewGenericUpstream(
 		emitter:          emitter,
 	}
 
-	chainSpecific, err := getChainSpecific(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
+	specifics, err := getUpstreamSpecifics(ctx, conf, creationData.upstreamConnectorsInfo, configuredChain)
 	if err != nil {
 		return nil, err
 	}
-	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, chainSpecific)
+	upstream.pauseHeadWhileSyncing = specifics.probe.PauseHeadWhileSyncing()
+	headProcessor := CreateHeadProcessor(ctx, conf, creationData.upstreamConnectorsInfo.headConnector, specifics.head)
 	processorAggregator := event_processors.NewUpstreamProcessorAggregator(
 		[]event_processors.UpstreamStateEventProcessor{
-			CreateBlockEventProcessor(ctx, conf, chainSpecific, configuredChain),
+			CreateBlockEventProcessor(ctx, conf, specifics.probe, configuredChain),
 			CreateHeadEventProcessor(ctx, conf, configuredChain.Chain, headProcessor),
-			CreateLowerBoundsEventProcessor(ctx, conf, chainSpecific),
-			CreateHealthEventProcessor(ctx, conf, chainSpecific),
-			CreateSettingsEventProcessor(ctx, conf, chainSpecific),
-			CreateLabelsEventProcessor(ctx, conf, chainSpecific),
-			CreateMethodsEventProcessor(ctx, conf, chainSpecific),
-			CreateCapEventProcessor(ctx, conf, chainSpecific, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
+			CreateLowerBoundsEventProcessor(ctx, conf, specifics.probe),
+			CreateHealthEventProcessor(ctx, conf, specifics.probe),
+			CreateSettingsEventProcessor(ctx, conf, specifics.probe),
+			CreateLabelsEventProcessor(ctx, conf, specifics.probe),
+			CreateMethodsEventProcessor(ctx, conf, specifics.probe),
+			CreateCapEventProcessor(ctx, conf, specifics.probe, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
 		},
 	)
 	processorAggregator.SetEmitter(emitter)
@@ -141,6 +145,7 @@ func NewGenericUpstreamWithParams(
 	processorAggregator *event_processors.UpstreamProcessorAggregator,
 	stateChan *chan protocol.AbstractUpstreamStateEvent,
 	emitter *event_processors.Emitter,
+	pauseHeadWhileSyncing bool,
 ) *GenericUpstream {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -160,18 +165,19 @@ func NewGenericUpstreamWithParams(
 
 	mainLifecycle := utils.NewGenericLifecycle(fmt.Sprintf("%s_main_upstream", id), ctx)
 	return &GenericUpstream{
-		id:                  id,
-		configuredChain:     chains.GetChain(chain.String()),
-		upstreamCtx:         newUpstreamCtx(cancel, mainLifecycle),
-		upstreamState:       upState,
-		apiConnectors:       apiConnectors,
-		subManager:          utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
-		upstreamIndexHex:    index,
-		upConfig:            upConfig,
-		groupLabels:         groupLabelsFromConfig(upConfig),
-		processorAggregator: processorAggregator,
-		stateChan:           *stateChan,
-		emitter:             *emitter,
+		id:                    id,
+		configuredChain:       chains.GetChain(chain.String()),
+		upstreamCtx:           newUpstreamCtx(cancel, mainLifecycle),
+		upstreamState:         upState,
+		apiConnectors:         apiConnectors,
+		subManager:            utils.NewSubscriptionManager[protocol.UpstreamEvent](fmt.Sprintf("%s_upstream", id)),
+		upstreamIndexHex:      index,
+		upConfig:              upConfig,
+		groupLabels:           groupLabelsFromConfig(upConfig),
+		processorAggregator:   processorAggregator,
+		stateChan:             *stateChan,
+		emitter:               *emitter,
+		pauseHeadWhileSyncing: pauseHeadWhileSyncing,
 	}
 }
 
@@ -209,9 +215,22 @@ func (u *GenericUpstream) GetGroupLabels() mapset.Set[string] {
 	return u.groupLabels
 }
 
+// Start activates the connectors, validates the settings and, if they allow it, the state
+// processors. The teardown it returns releases all of that, whether the start succeeded or
+// failed on fatal settings; the upstream context goes first, so no nested lifecycle can be
+// started again once the upstream is stopped.
 func (u *GenericUpstream) Start() {
-	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) error {
+	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) (func(), error) {
 		u.startConnectors(ctx)
+		release := func() {
+			u.upstreamCtx.cancelFunc()
+			u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
+			u.PartialStop()
+
+			for _, connector := range u.apiConnectors {
+				connector.Stop()
+			}
+		}
 
 		result, ok := u.processorAggregator.ValidateSettings()
 		initialValid := true
@@ -222,7 +241,7 @@ func (u *GenericUpstream) Start() {
 			switch result {
 			case validations.FatalSettingError:
 				log.Error().Msgf("failed to start upstream '%s' due to invalid upstream settings", u.id)
-				return errors.New("invalid upstream settings")
+				return release, errors.New("invalid upstream settings")
 			case validations.SettingsError:
 				initialValid = false
 				log.Warn().Msgf("non fatal settings error of upstream '%s', keep validating...", u.id)
@@ -236,19 +255,12 @@ func (u *GenericUpstream) Start() {
 		}
 		u.emitter(&protocol.InitUpstreamStateEvent{})
 		go u.processStateEvents(ctx, initialValid)
-		return nil
+		return release, nil
 	})
 }
 
 func (u *GenericUpstream) Stop() {
 	u.upstreamCtx.mainLifecycle.Stop()
-	u.upstreamCtx.cancelFunc()
-	u.processorAggregator.StopProcessor(event_processors.SettingsValidatorProcessorType)
-	u.PartialStop()
-
-	for _, connector := range u.apiConnectors {
-		connector.Stop()
-	}
 }
 
 func (u *GenericUpstream) Running() bool {

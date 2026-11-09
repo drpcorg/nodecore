@@ -54,7 +54,7 @@ func (a *ApplicationServerContext) HandleRequest(
 	ctx context.Context,
 	requestHandler RequestHandler,
 	authPayload auth.AuthPayload,
-	subCtx *flow.SubCtx,
+	subCtx flow.SubCtx,
 ) *HandleResponse {
 	var request *Request
 

@@ -1,0 +1,9 @@
+upstream-config:
+  upstreams:
+    - id: tron-upstream
+      chain: tron
+      connectors:
+        - type: grpc
+          url: grpc://test.com:50051
+        - type: grpc-additional
+          url: grpc://test.com:50061

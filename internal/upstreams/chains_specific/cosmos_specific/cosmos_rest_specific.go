@@ -33,7 +33,7 @@ type CosmosRestSpecific struct {
 	pollInterval time.Duration
 }
 
-func newCosmosRestSpecific(
+func NewCosmosRestSpecific(
 	ctx context.Context,
 	upstreamId string,
 	connector connectors.ApiConnector,
@@ -107,7 +107,7 @@ func (c *CosmosRestSpecific) HealthValidators() []validations.Validator[protocol
 }
 
 func (c *CosmosRestSpecific) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if c.chain == nil || c.chain.ChainId == "" {
+	if c.chain == nil || c.chain.ChainIdFor(chains.Cosmos) == "" {
 		return nil
 	}
 	if *c.options.DisableChainValidation {
@@ -162,4 +162,8 @@ var _ chains_specific.ChainSpecific = (*CosmosRestSpecific)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (c *CosmosRestSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (c *CosmosRestSpecific) PauseHeadWhileSyncing() bool {
+	return false
 }

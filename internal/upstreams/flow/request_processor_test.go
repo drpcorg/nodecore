@@ -3,7 +3,6 @@ package flow_test
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
@@ -13,14 +12,14 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestUnaryRequestProcessorSubMethodThenError(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
@@ -121,4 +120,25 @@ func (r *RequestProcessorMock) ProcessRequest(ctx context.Context, upstreamStrat
 
 func NewRequestProcessorMock() *RequestProcessorMock {
 	return &RequestProcessorMock{}
+}
+
+// An upstream selected by the strategy can be removed by a reload before the request is
+// sent; that attempt fails like a missing upstream instead of panicking.
+func TestUnaryRequestProcessorUpstreamRemovedAfterSelectionThenError(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
+	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "")
+
+	upSupervisor.On("GetExecutor").Return(test_utils.CreateExecutor())
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(nil)
+
+	processor := flow.NewUnaryRequestProcessor(chains.POLYGON, upSupervisor)
+	response := processor.ProcessRequest(context.Background(), strategy, request)
+
+	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
+	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
+	assert.True(t, unaryRespWrapper.Response.HasError())
+	assert.Equal(t, protocol.NoAvailableUpstreamsError(), unaryRespWrapper.Response.GetError())
 }

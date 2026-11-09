@@ -63,7 +63,7 @@ func (t *TonV3ChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (t *TonV3ChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if t.configuredChain == nil || t.configuredChain.ChainId == "" {
+	if t.configuredChain == nil || t.configuredChain.ChainIdFor(chains.Ton) == "" {
 		return nil
 	}
 	if t.options != nil && *t.options.DisableChainValidation {

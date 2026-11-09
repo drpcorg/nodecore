@@ -98,7 +98,7 @@ func (b *GenericBlockProcessor) Subscribe(name string) *utils.Subscription[Block
 }
 
 func (b *GenericBlockProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		if !b.disableFinalizedBlockDetection {
 			go b.pollLoop(ctx, protocol.FinalizedBlock)
 		}
@@ -106,7 +106,7 @@ func (b *GenericBlockProcessor) Start() {
 			go b.pollLoop(ctx, protocol.SafeBlock)
 		}
 		go b.blockEventLoop(ctx)
-		return nil
+		return nil, nil
 	})
 }
 

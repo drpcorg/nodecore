@@ -46,13 +46,13 @@ func (s *StellarHorizonChainValidator) Validate() validations.ValidationSettingR
 	// lowercases every chain-id, so the compare is case-insensitive by necessity.
 	// An empty passphrase fails this compare too - the chain-id is never empty
 	// here, since SettingsValidators() skips the validator entirely in that case.
-	if strings.EqualFold(root.NetworkPassphrase, s.chain.ChainId) {
+	if strings.EqualFold(root.NetworkPassphrase, s.chain.ChainIdFor(chains.Stellar)) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects passphrase '%s' but horizon upstream '%s' reports '%s'",
 		s.chain.Chain.String(),
-		s.chain.ChainId,
+		s.chain.ChainIdFor(chains.Stellar),
 		s.upstreamId,
 		root.NetworkPassphrase,
 	)

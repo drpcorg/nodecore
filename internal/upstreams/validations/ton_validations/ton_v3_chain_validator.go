@@ -44,13 +44,13 @@ func (t *TonV3ChainValidator) Validate() validations.ValidationSettingResult {
 		return validations.SettingsError
 	}
 	// the registry stores TON chain ids as decimal strings ("-239"/"-3")
-	if strconv.FormatInt(info.Last.GlobalId, 10) == t.chain.ChainId {
+	if strconv.FormatInt(info.Last.GlobalId, 10) == t.chain.ChainIdFor(chains.Ton) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects chain id '%s' but ton v3 upstream '%s' reports global_id '%d'",
 		t.chain.Chain.String(),
-		t.chain.ChainId,
+		t.chain.ChainIdFor(chains.Ton),
 		t.upstreamId,
 		info.Last.GlobalId,
 	)

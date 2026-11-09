@@ -188,7 +188,7 @@ func CreateEventWithBlockData(
 }
 
 func GetMethodMockAndUpSupervisor() (*mocks.MethodsMock, *mocks.UpstreamSupervisorMock) {
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.POLYGON, fork_choice.NewHeightForkChoice, nil, false, nil)
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string]("eth_superTest"))
 
@@ -231,6 +231,7 @@ func TestEvmUpstream(
 		processorAggregator,
 		nil,
 		nil,
+		false,
 	)
 }
 
@@ -248,7 +249,19 @@ func NewEvmChainSpecific(connector connectors.ApiConnector) *evm_specific.EvmCha
 }
 
 func NewSolanaChainSpecific(ctx context.Context, connector connectors.ApiConnector) *specific.SolanaChainSpecificObject {
-	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, newTestChainOptions())
+	var allConnectors []connectors.ApiConnector
+	if connector != nil {
+		allConnectors = []connectors.ApiConnector{connector}
+	}
+	return NewSolanaChainSpecificWithConnectors(ctx, connector, allConnectors)
+}
+
+func NewSolanaChainSpecificWithConnectors(
+	ctx context.Context,
+	connector connectors.ApiConnector,
+	allConnectors []connectors.ApiConnector,
+) *specific.SolanaChainSpecificObject {
+	return specific.NewSolanaChainSpecificObject(ctx, chains.GetChain("solana"), "id", connector, allConnectors, newTestChainOptions())
 }
 
 func NewAztecChainSpecific(ctx context.Context, connector connectors.ApiConnector) *aztec_specific.AztecChainSpecificObject {
@@ -363,7 +376,7 @@ func newTestChainOptions() *chains.Options {
 }
 
 func CreateChainSupervisor() upstreams.ChainSupervisor {
-	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice(), nil, false, nil)
+	chainSupervisor := upstreams.NewGenericChainSupervisor(context.Background(), chains.ARBITRUM, fork_choice.NewHeightForkChoice, nil, false, nil)
 
 	go chainSupervisor.Start()
 

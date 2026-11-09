@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/rating"
+	"github.com/drpcorg/nodecore/internal/reload"
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
@@ -41,13 +43,15 @@ type App struct {
 	cacheProcessor     caches.CacheProcessor
 	outboxStorage      outbox.Storer
 	upstreamSupervisor upstreams.UpstreamSupervisor
+	reloader           *reload.Reloader
+	hups               <-chan os.Signal
 
 	httpServer   *echo.Echo
 	healthServer *echo.Echo
 	grpcServer   *grpc_server.GrpcServer
 }
 
-func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
+func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Signal) (*App, error) {
 	integrationResolver := integration.NewIntegrationResolver(appConfig.IntegrationConfig)
 
 	authProcessor, err := auth.NewAuthProcessor(ctx, appConfig.AuthConfig, integrationResolver)
@@ -72,6 +76,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		rateLimitBudgetRegistry,
 		appConfig.ServerConfig.TorUrl,
 	)
+	configReloader := reload.NewReloader(config.ConfigPath(), appConfig, upstreamSupervisor)
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
 	cacheProcessor, err := caches.NewGenericCacheProcessor(upstreamSupervisor, appConfig.CacheConfig, storageRegistry)
 	if err != nil {
@@ -117,6 +122,8 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 		authProcessor:      authProcessor,
 		statsService:       statsService,
 		upstreamSupervisor: upstreamSupervisor,
+		reloader:           configReloader,
+		hups:               hups,
 		httpServer:         httpServer,
 		healthServer:       healthServer,
 		grpcServer:         grpcServer,
@@ -127,7 +134,12 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig) (*App, error) {
 func (a *App) Start() {
 	var shuttingDown atomic.Bool
 
-	go a.upstreamSupervisor.StartUpstreams()
+	go func() {
+		// the first apply is the startup one: the reloader only starts listening once it is
+		// done, so a reload can never be applied first and then undone by the startup list
+		a.upstreamSupervisor.StartUpstreams()
+		a.reloader.Run(a.ctx, a.hups)
+	}()
 	go a.ratingRegistry.Start()
 	a.statsService.Start(a.outboxStorage)
 

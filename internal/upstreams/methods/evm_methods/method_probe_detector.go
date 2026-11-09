@@ -24,10 +24,12 @@ var probedMethods = []string{
 	"trace_callMany",
 	"trace_rawTransaction",
 	"eth_simulateV1",
+	"eth_callMany",
 	"eth_getStorageValues",
 	"debug_storageRangeAt",
 	"eth_getTdByNumber",
 	"eth_callBundle",
+	"debug_proofsSyncStatus",
 }
 
 // MethodProbeDetector calls each method it knows about and keeps the ones the node answers

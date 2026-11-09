@@ -10,14 +10,14 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFanoutRequestProcessorBroadcastPartialFailure(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_sendRawTransaction"}, false, "eth")
 
@@ -51,7 +51,7 @@ func TestFanoutRequestProcessorBroadcastPartialFailure(t *testing.T) {
 }
 
 func TestFanoutRequestProcessorBroadcastAllErrors(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_sendRawTransaction"}, false, "eth")
 
@@ -82,7 +82,7 @@ func TestFanoutRequestProcessorBroadcastAllErrors(t *testing.T) {
 }
 
 func TestFanoutRequestProcessorMaximumValueChoosesMax(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionCount"}, false, "eth")
 
@@ -116,7 +116,7 @@ func TestFanoutRequestProcessorMaximumValueChoosesMax(t *testing.T) {
 }
 
 func TestFanoutRequestProcessorMaximumValueIgnoresInvalidWhenValidExists(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionCount"}, false, "eth")
 
@@ -145,7 +145,7 @@ func TestFanoutRequestProcessorMaximumValueIgnoresInvalidWhenValidExists(t *test
 }
 
 func TestFanoutRequestProcessorMaximumValueAllInvalidReturnsError(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionCount"}, false, "eth")
 

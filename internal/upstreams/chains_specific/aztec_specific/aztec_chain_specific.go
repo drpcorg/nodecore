@@ -104,7 +104,7 @@ func (a *AztecChainSpecificObject) HealthValidators() []validations.Validator[pr
 }
 
 func (a *AztecChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Aztec) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {
@@ -199,4 +199,8 @@ var _ chains_specific.ChainSpecific = (*AztecChainSpecificObject)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (a *AztecChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (a *AztecChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

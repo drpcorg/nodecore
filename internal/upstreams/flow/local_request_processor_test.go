@@ -4,72 +4,18 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLocalRequestProcessorUnsubscribe(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
-
-	subCtx := flow.NewSubCtx()
-	processor := flow.NewLocalRequestProcessor(chains.ALEPHZERO, subCtx)
-	subId := "0x112"
-	ctx, cancel := context.WithCancel(context.Background())
-	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_unsubscribe", Params: []byte(fmt.Sprintf(`["%s"]`, subId))}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "eth")
-	subCtx.AddSub(subId, cancel)
-
-	response := processor.ProcessRequest(ctx, nil, request)
-
-	assert.IsType(t, &flow.UnaryResponse{}, response)
-
-	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-
-	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
-	assert.Equal(t, "223", unaryRespWrapper.RequestId)
-	assert.False(t, unaryRespWrapper.Response.HasError())
-	assert.False(t, unaryRespWrapper.Response.HasStream())
-	assert.Nil(t, unaryRespWrapper.Response.GetError())
-	assert.True(t, bytes.Equal(flow.ResultTrue, unaryRespWrapper.Response.ResponseResult()))
-	assert.False(t, subCtx.Exists(subId))
-}
-
-func TestLocalRequestProcessorCantParseUnsubReqThenError(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
-
-	subCtx := flow.NewSubCtx()
-	processor := flow.NewLocalRequestProcessor(chains.POLYGON, subCtx)
-	subId := "0x112"
-	ctx, cancel := context.WithCancel(context.Background())
-	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_unsubscribe"}
-	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "eth")
-	subCtx.AddSub(subId, cancel)
-
-	response := processor.ProcessRequest(ctx, nil, request)
-
-	assert.IsType(t, &flow.UnaryResponse{}, response)
-
-	unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
-
-	assert.Equal(t, flow.NoUpstream, unaryRespWrapper.UpstreamId)
-	assert.Equal(t, "223", unaryRespWrapper.RequestId)
-	assert.True(t, unaryRespWrapper.Response.HasError())
-	assert.False(t, unaryRespWrapper.Response.HasStream())
-	assert.ErrorContains(t, unaryRespWrapper.Response.GetError(), "internal server error")
-	assert.True(t, subCtx.Exists(subId))
-}
-
 func TestLocalRequestProcessorNoLocalHandlerError(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	tests := []struct {
 		name   string
@@ -83,8 +29,8 @@ func TestLocalRequestProcessorNoLocalHandlerError(t *testing.T) {
 		},
 		{
 			name:   "no local handler",
-			method: "super_method",
-			errMsg: "there is no local handler for method 'super_method'",
+			method: "eth_unsubscribe",
+			errMsg: "there is no local handler for method 'eth_unsubscribe'",
 		},
 	}
 
@@ -112,8 +58,7 @@ func TestLocalRequestProcessorNoLocalHandlerError(t *testing.T) {
 }
 
 func TestLocalRequestProcessorChainIdAndNetVersion(t *testing.T) {
-	err := specs.NewMethodSpecLoaderWithFs(os.DirFS("test_specs")).Load()
-	assert.NoError(t, err)
+	specs_utils.LoadMethodSpecs()
 
 	tests := []struct {
 		name   string
@@ -135,9 +80,9 @@ func TestLocalRequestProcessorChainIdAndNetVersion(t *testing.T) {
 	for _, test := range tests {
 		for _, wsContext := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/ws=%t", test.name, wsContext), func(te *testing.T) {
-				var subCtx *flow.SubCtx
+				var subCtx flow.SubCtx
 				if wsContext {
-					subCtx = flow.NewSubCtx()
+					subCtx = flow.NewSubCtx(chains.ETHEREUM)
 				}
 				processor := flow.NewLocalRequestProcessor(chains.ETHEREUM, subCtx)
 				ctx := context.Background()
@@ -158,5 +103,33 @@ func TestLocalRequestProcessorChainIdAndNetVersion(t *testing.T) {
 				assert.True(t, bytes.Equal(test.result, unaryRespWrapper.Response.ResponseResult()))
 			})
 		}
+	}
+}
+
+// On a cosmos chain with an EVM module the locally served eth_chainId and
+// net_version are the EVM ids, not the cosmos network name.
+func TestLocalRequestProcessorChainIdAndNetVersionOnACosmosEvmChain(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+
+	tests := []struct {
+		method string
+		result []byte
+	}{
+		{method: specs.EthChainId, result: []byte(`"0x59f"`)},
+		{method: specs.NetVersion, result: []byte(`"888"`)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.method, func(t *testing.T) {
+			processor := flow.NewLocalRequestProcessor(chains.INJECTIVE_TESTNET, nil)
+			jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: test.method}
+			request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "cosmos-evm")
+
+			response := processor.ProcessRequest(context.Background(), nil, request)
+
+			unaryRespWrapper := response.(*flow.UnaryResponse).ResponseWrapper
+			assert.Nil(t, unaryRespWrapper.Response.GetError())
+			assert.Equal(t, string(test.result), string(unaryRespWrapper.Response.ResponseResult()))
+		})
 	}
 }

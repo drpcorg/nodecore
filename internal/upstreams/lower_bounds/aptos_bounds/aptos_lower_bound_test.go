@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func TestAptosLowerBoundEmitsOldestStateAndBlock(t *testing.T) {
+func TestAptosLowerBoundEmitsOldestVersionAndBlock(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	body := `{"chain_id":1,"block_height":"860298804","oldest_block_height":"700",` +
 		`"ledger_version":"5965411071","oldest_ledger_version":"4242"}`
@@ -29,7 +29,7 @@ func TestAptosLowerBoundEmitsOldestStateAndBlock(t *testing.T) {
 	for _, b := range bounds {
 		got[b.Type] = b.Bound
 	}
-	assert.Equal(t, int64(4242), got[protocol.StateBound])
+	assert.Equal(t, int64(4242), got[protocol.SlotBound])
 	assert.Equal(t, int64(700), got[protocol.BlockBound])
 }
 
@@ -51,14 +51,14 @@ func TestAptosLowerBoundClampsArchiveZeroToOne(t *testing.T) {
 	for _, b := range bounds {
 		got[b.Type] = b.Bound
 	}
-	assert.Equal(t, int64(1), got[protocol.StateBound])
+	assert.Equal(t, int64(1), got[protocol.SlotBound])
 	assert.Equal(t, int64(1), got[protocol.BlockBound])
 }
 
 func TestAptosLowerBoundFallsBackOnMissingOldestFields(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	// 200 with a JSON envelope lacking oldest_* fields (e.g. a gateway error
-	// body) must be a failed detection, not a StateBound=0 archive claim.
+	// body) must be a failed detection, not a SlotBound=0 archive claim.
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"message":"upstream error"}`), 200, protocol.Rest))
 
@@ -90,7 +90,7 @@ func TestAptosLowerBoundRetainsCachedBoundsOnError(t *testing.T) {
 	for _, b := range bounds {
 		got[b.Type] = b.Bound
 	}
-	assert.Equal(t, int64(4242), got[protocol.StateBound])
+	assert.Equal(t, int64(4242), got[protocol.SlotBound])
 	assert.Equal(t, int64(700), got[protocol.BlockBound])
 }
 

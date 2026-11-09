@@ -3,6 +3,7 @@ package grpc_ingress
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/public/pkg/dshackle"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/drpcorg/public/pkg/sui"
@@ -82,11 +84,14 @@ func ingressAppCtx(t *testing.T, connector *mocks.ConnectorMock) *server_ctx.App
 // ingressAppCtxWithAuth is ingressAppCtx with a caller-provided auth processor.
 func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authProc auth.AuthProcessor) *server_ctx.ApplicationServerContext {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	methodsMock := mocks.NewMethodsMock()
 	methodsMock.On("GetSupportedMethods").Return(mapset.NewThreadUnsafeSet[string](suiGetServiceInfo, suiListCheckpoints, suiSubscribeCheckpoints))
 	methodsMock.On("HasMethod", mock.Anything).Return(true)
+	suiSpec := chains.GetMethodSpecNameByChain(chains.SUI)
+	methodsMock.On("GetMethod", suiListCheckpoints).Return(specs.GetSpecMethod(suiSpec, suiListCheckpoints))
+	methodsMock.On("GetMethod", suiSubscribeCheckpoints).Return(specs.GetSpecMethod(suiSpec, suiSubscribeCheckpoints))
 
 	upstream := test_utils.TestEvmUpstream(connector, &config.Upstream{
 		Id:           "id",
@@ -95,7 +100,7 @@ func ingressAppCtxWithAuth(t *testing.T, connector *mocks.ConnectorMock, authPro
 	}, methodsMock, nil)
 
 	chainSupervisor := upstreams.NewGenericChainSupervisor(
-		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice(), dimensions.NewGenericDimensionTracker(), false, nil,
+		t.Context(), chains.SUI, fork_choice.NewHeightForkChoice, dimensions.NewGenericDimensionTracker(), false, nil,
 	)
 	go chainSupervisor.Start()
 	state := protocol.DefaultUpstreamState(methodsMock, mapset.NewThreadUnsafeSet[protocol.Cap](), "00012", nil, nil)
@@ -703,7 +708,7 @@ func TestStatusFromMissingResponse(t *testing.T) {
 // today no JSON-RPC or REST method name fits the /Service/Method path shape,
 // but the invariant must not depend on naming conventions.
 func TestGrpcRequestHandlerRejectsNonGrpcMethod(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	handler := &grpcRequestHandler{
 		md:     metadata.New(map[string]string{strings.ToLower(xNodecoreChain): "ethereum"}),
 		method: "eth_chainId",
@@ -715,4 +720,37 @@ func TestGrpcRequestHandlerRejectsNonGrpcMethod(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, protocol.NoSupportedMethod, respErr.Code)
 	assert.Contains(t, respErr.Message, "eth_chainId")
+}
+
+// oneFrameStream hands RequestDecode a single request message without a
+// real transport.
+type oneFrameStream struct {
+	grpc.ServerStream
+	body []byte
+}
+
+func (s *oneFrameStream) RecvMsg(m any) error {
+	frame, ok := m.(*rawFrame)
+	if !ok {
+		return fmt.Errorf("unexpected message type %T", m)
+	}
+	frame.data = s.body
+	return nil
+}
+
+// A method declared only on grpc-additional (tron's solidity port) is a gRPC
+// method of the chain and must pass the gate.
+func TestGrpcRequestHandlerAcceptsGrpcAdditionalMethod(t *testing.T) {
+	specs_utils.LoadMethodSpecs()
+	handler := &grpcRequestHandler{
+		stream: &oneFrameStream{body: []byte{0x0a, 0x00}},
+		md:     metadata.New(map[string]string{strings.ToLower(xNodecoreChain): "tron"}),
+		method: "/protocol.WalletSolidity/GetAccount",
+	}
+
+	request, err := handler.RequestDecode(context.Background())
+	require.NoError(t, err)
+	require.Len(t, request.UpstreamRequests, 1)
+	assert.Equal(t, "/protocol.WalletSolidity/GetAccount", request.UpstreamRequests[0].Method())
+	assert.Equal(t, protocol.Grpc, request.UpstreamRequests[0].RequestType())
 }

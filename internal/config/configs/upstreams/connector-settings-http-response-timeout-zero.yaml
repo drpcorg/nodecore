@@ -1,0 +1,10 @@
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com
+          settings:
+            http:
+              response-timeout: 0s

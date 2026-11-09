@@ -13,7 +13,7 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 ### Supported chains, methods & interfaces
 
 - **Interfaces** — `json-rpc` (over HTTP), `websocket`, `rest`, `tendermint`, and `grpc` upstream connectors. The set available for a given chain is declared by that chain's [method spec](docs/nodecore/11-method-specs.md).
-- **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), Cosmos SDK (CometBFT RPC + LCD REST), Polkadot/Substrate (polkadot, kusama, vara, avail, asset hubs and more), Stellar (stellar-rpc + Horizon), Sui (native gRPC, `sui.rpc.v2`), Celestia (DA node JSON-RPC: `header.*`, `blob.*`, `share.*`), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
+- **Chains** — every chain defined in [`chains.yaml`](https://github.com/drpcorg/public/blob/main/chains.yaml). Current chain families are EVM (Ethereum, Polygon, Optimism, Arbitrum, Base, BSC, and many others), Solana, Algorand, Aztec, Aptos, Bitcoin (bitcoin, dogecoin), NEAR, Starknet, TON (v2 HTTP API + v3 indexer), Cosmos SDK (CometBFT RPC + LCD REST), Polkadot/Substrate (polkadot, kusama, vara, avail, asset hubs and more), Stellar (stellar-rpc + Horizon), Sui (native gRPC, `sui.rpc.v2`), Celestia (DA node JSON-RPC: `header.*`, `blob.*`, `share.*`, plus the consensus node over CometBFT RPC, LCD REST and gRPC), and the Ethereum/Gnosis Beacon Chain (consensus layer, REST-only).
 - **Methods** — per-chain RPC behavior is data-driven via [method specs](docs/nodecore/11-method-specs.md), covering standard EVM/Solana methods, subscriptions, and EVM filter methods. The specs themselves (and the generated Sui protobuf types) are maintained in the separate [`drpcorg/public`](https://github.com/drpcorg/public) module, shared across drpc services and pinned in `go.mod`; to add or change a method, contribute there and bump the dependency. Methods unsupported by an upstream are automatically banned for it to avoid wasted requests.
 
 ## Key features
@@ -27,6 +27,7 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 - **Quorum** — request and verify independently-signed responses from upstreams before returning data to the client. See [Quorum](docs/nodecore/10-quorum.md).
 - **Flexible authentication** — token-based and JWT authentication, plus scoped access keys with fine-grained restrictions (IP, method, and contract address whitelists). See [Auth](docs/nodecore/03-auth.md).
 - **Observability** — Prometheus [metrics](docs/nodecore/08-prometheus-metrics.md) and a public [gRPC API](docs/nodecore/12-grpc-server.md) for querying upstream and chain state.
+- **Compression** — gzip, zstd and brotli on both hops: client requests and responses are negotiated per request, and upstream responses are requested compressed and decoded on arrival. No configuration. See [Compression](docs/nodecore/15-compression.md).
 - **Streaming-first architecture** — responses can be streamed to minimize memory footprint and handle large payloads efficiently.
 
 ## Quick start
@@ -115,6 +116,7 @@ Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical conf
 | [gRPC API](docs/nodecore/12-grpc-server.md) | Public gRPC API for upstream and chain state (dshackle-compatible) |
 | [Subscriptions](docs/nodecore/13-subscriptions.md) | Subscription aggregation and local synthesis |
 | [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md) | Native gRPC chain traffic: metadata contract, auth, reflection |
+| [Compression](docs/nodecore/15-compression.md) | gzip/zstd/brotli on the client and upstream hops |
 
 ## Integrations
 

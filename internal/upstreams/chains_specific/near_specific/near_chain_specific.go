@@ -119,7 +119,7 @@ func (n *NearChainSpecificObject) HealthValidators() []validations.Validator[pro
 }
 
 func (n *NearChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if n.configuredChain == nil || n.configuredChain.ChainId == "" {
+	if n.configuredChain == nil || n.configuredChain.ChainIdFor(chains.Near) == "" {
 		return nil
 	}
 	if n.options != nil && *n.options.DisableChainValidation {
@@ -212,4 +212,8 @@ var _ chains_specific.ChainSpecific = (*NearChainSpecificObject)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (n *NearChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (n *NearChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

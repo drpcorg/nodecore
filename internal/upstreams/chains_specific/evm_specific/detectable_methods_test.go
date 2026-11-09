@@ -8,10 +8,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDetectableConnectorTypesKeepsOnlyJsonRpcSpeakingConnectors(t *testing.T) {
@@ -34,7 +34,7 @@ func TestDetectableConnectorTypesKeepsOnlyJsonRpcSpeakingConnectors(t *testing.T
 // that no JSON-RPC evidence can speak to, and moduleOf would read the segment before the
 // first underscore of one as a module and strip the method for want of a node reporting it.
 func TestDetectableMethodsExcludeRestAdditionalMethods(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chainSpecific := newHyperliquidChainSpecific(
 		newTypedConnector(specs.JsonRpcConnector),
@@ -50,7 +50,7 @@ func TestDetectableMethodsExcludeRestAdditionalMethods(t *testing.T) {
 }
 
 func TestDetectableMethodsAreEmptyWithoutJsonRpcSpeakingConnectors(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	chainSpecific := newHyperliquidChainSpecific(newTypedConnector(specs.RestAdditional))
 

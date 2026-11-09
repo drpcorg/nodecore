@@ -10,14 +10,13 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNotNullRequestProcessorStopsAfterFirstNonNull(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
 
@@ -50,7 +49,7 @@ func TestNotNullRequestProcessorStopsAfterFirstNonNull(t *testing.T) {
 }
 
 func TestNotNullRequestProcessorReturnsStreamResponse(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
 
@@ -80,7 +79,7 @@ func TestNotNullRequestProcessorReturnsStreamResponse(t *testing.T) {
 }
 
 func TestNotNullRequestProcessorRetriesAfterNull(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
 
@@ -113,7 +112,7 @@ func TestNotNullRequestProcessorRetriesAfterNull(t *testing.T) {
 }
 
 func TestNotNullRequestProcessorReturnsFirstNullWhenAttemptsExhausted(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
 
@@ -142,7 +141,7 @@ func TestNotNullRequestProcessorReturnsFirstNullWhenAttemptsExhausted(t *testing
 }
 
 func TestNotNullRequestProcessorFailsWhenAllUpstreamsError(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
 
@@ -171,7 +170,7 @@ func TestNotNullRequestProcessorFailsWhenAllUpstreamsError(t *testing.T) {
 }
 
 func TestNotNullRequestProcessorPrefersNullOverErrorsWhenNoValueExists(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	ctx := context.Background()
 	request := protocol.NewUpstreamJsonRpcRequest("223", protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_getTransactionByHash"}, false, "eth")
 

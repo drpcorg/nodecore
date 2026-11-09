@@ -51,13 +51,13 @@ func (s *SuiChainValidator) Validate() validations.ValidationSettingResult {
 	// an empty chain_id fails this compare too - the configured chain-id is
 	// never empty here, since SettingsValidators() skips the validator entirely
 	// in that case
-	if strings.EqualFold(serviceInfo.GetChainId(), s.chain.ChainId) {
+	if strings.EqualFold(serviceInfo.GetChainId(), s.chain.ChainIdFor(chains.Sui)) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects chain id '%s' but sui upstream '%s' reports '%s' (chain '%s')",
 		s.chain.Chain.String(),
-		s.chain.ChainId,
+		s.chain.ChainIdFor(chains.Sui),
 		s.upstreamId,
 		serviceInfo.GetChainId(),
 		serviceInfo.GetChain(),

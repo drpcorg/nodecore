@@ -92,7 +92,7 @@ func (h *HeadEventProcessor) Type() EventProcessorType {
 }
 
 func (h *HeadEventProcessor) Start() {
-	h.lifecycle.Start(func(ctx context.Context) error {
+	h.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		h.headProcessor.Start()
 
 		headSub := h.headProcessor.Subscribe(fmt.Sprintf("%s_head_updates", h.upstreamId))
@@ -104,8 +104,13 @@ func (h *HeadEventProcessor) Start() {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping head events of upstream '%s'", h.upstreamId)
 					return
-				case head, ok := <-headSub.Events:
-					if ok {
+				case event, ok := <-headSub.Events:
+					if !ok {
+						return
+					}
+					// lifecycle changes of the head are for liveness consumers; the upstream
+					// state only ever learns about blocks
+					if head, isBlock := event.(blocks.HeadBlockEvent); isBlock {
 						h.emitter(&protocol.HeadUpstreamStateEvent{HeadData: head.HeadData})
 						headsMetric.WithLabelValues(h.chain.String(), h.upstreamId).Set(float64(head.HeadData.Height))
 					}
@@ -113,13 +118,12 @@ func (h *HeadEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return h.headProcessor.Stop, nil
 	})
 }
 
 func (h *HeadEventProcessor) Stop() {
 	h.lifecycle.Stop()
-	h.headProcessor.Stop()
 }
 
 func (h *HeadEventProcessor) Running() bool {
@@ -169,7 +173,7 @@ func (b *GenericBlockEventProcessor) Type() EventProcessorType {
 }
 
 func (b *GenericBlockEventProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		b.blockProcessor.Start()
 
 		blockSub := b.blockProcessor.Subscribe(fmt.Sprintf("%s_block_updates", b.upstreamId))
@@ -190,13 +194,12 @@ func (b *GenericBlockEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return b.blockProcessor.Stop, nil
 	})
 }
 
 func (b *GenericBlockEventProcessor) Stop() {
 	b.lifecycle.Stop()
-	b.blockProcessor.Stop()
 }
 
 func (b *GenericBlockEventProcessor) Running() bool {

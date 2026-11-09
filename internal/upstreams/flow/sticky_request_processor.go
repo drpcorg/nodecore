@@ -56,10 +56,19 @@ func (s *StickyRequestProcessor) ProcessRequest(
 				RequestId:  request.Id(),
 				Response:   protocol.NewTotalFailureFromErr(request.Id(), err, request.RequestType()),
 			}
-		} else {
-			if !response.Response.HasError() {
+		} else if !response.Response.HasError() {
+			responseUpstream := s.upstreamSupervisor.GetUpstream(response.UpstreamId)
+			if responseUpstream == nil {
+				// The upstream was removed while the request was in flight. The id it returned
+				// cannot be routed back without the upstream's index, so it is not handed out.
+				response = &protocol.ResponseHolderWrapper{
+					UpstreamId: NoUpstream,
+					RequestId:  request.Id(),
+					Response:   protocol.NewTotalFailureFromErr(request.Id(), protocol.NoAvailableUpstreamsError(), request.RequestType()),
+				}
+			} else {
 				bodyWithoutLastByte := response.Response.ResponseResult()[:len(response.Response.ResponseResult())-1]
-				upstreamHash := []byte(s.upstreamSupervisor.GetUpstream(response.UpstreamId).GetHashIndex())
+				upstreamHash := []byte(responseUpstream.GetHashIndex())
 				body := append(append(bodyWithoutLastByte, upstreamHash...), []byte(`"`)...)
 				response = &protocol.ResponseHolderWrapper{
 					UpstreamId: response.UpstreamId,

@@ -9,9 +9,8 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
-// NewEvmBlockLowerBoundDetector detects the earliest available block. The same
-// search satisfies the logs lower bound (logs live on blocks), so both types are
-// reported.
+// NewEvmBlockLowerBoundDetector detects the earliest available block. The logs bound comes
+// from the receipts detector: pruned nodes keep headers from genesis but not receipts.
 func NewEvmBlockLowerBoundDetector(
 	upstreamId string,
 	chain *chains.ConfiguredChain,
@@ -24,7 +23,7 @@ func NewEvmBlockLowerBoundDetector(
 		internalTimeout,
 		connector,
 		protocol.BlockBound,
-		[]protocol.LowerBoundType{protocol.BlockBound, protocol.LogsBound},
+		[]protocol.LowerBoundType{protocol.BlockBound},
 		0,
 	)
 }

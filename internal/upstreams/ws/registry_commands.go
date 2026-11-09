@@ -99,13 +99,22 @@ func newSubscriptionCommand(response *protocol.WsResponse) *subscriptionCommand 
 }
 
 func (c *subscriptionCommand) handle(registry *GenericRequestRegistry) {
-	sub, ok := registry.registryState.subs[c.response.SubId]
+	state := registry.registryState
+	sub, ok := state.subs[c.response.SubId]
 	if !ok {
 		return
 	}
 
 	for _, req := range sub.ops {
 		req.Write(c.response, MessageInternal)
+	}
+
+	if c.response.Error != nil {
+		// the node ended the subscription (a go-jsonrpc xrpc.ch.close): every op
+		// cancels itself on the error it just received, and with the sub gone
+		// their finish skips the close hook - there is nothing left to cancel
+		delete(state.subs, c.response.SubId)
+		jsonRpcWsConnectionsMetric.WithLabelValues(registry.chain.String(), registry.upId, sub.subType).Dec()
 	}
 }
 

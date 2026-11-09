@@ -6,7 +6,6 @@ type WsResponse struct {
 	Message    []byte
 	Type       RequestType
 	Error      *ResponseError
-	Event      []byte
 	UpstreamId string
 	// ParsedEvent is an optional, source-attached pre-parsed view of Message,
 	ParsedEvent ParsedEvent

@@ -1,7 +1,7 @@
 upstream-config:
   upstreams:
     - id: eth-upstream
-      chain: ethereum
+      chain: injective
       connectors:
         - type: websocket
           url: https://test.com

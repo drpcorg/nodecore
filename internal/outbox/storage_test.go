@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redismock/v9"
-	"github.com/pashagolub/pgxmock/v4"
+	"github.com/pashagolub/pgxmock/v5"
 	"github.com/redis/go-redis/v9"
 )
 

@@ -255,7 +255,7 @@ func TestTendermintPeersValidatorParsesStringPeerCount(t *testing.T) {
 
 func TestTendermintChainValidator(t *testing.T) {
 	chain := chains.GetChain("cosmos-hub")
-	require.Equal(t, "cosmoshub-4", chain.ChainId)
+	require.Equal(t, "cosmoshub-4", chain.ChainIdFor(chains.Cosmos))
 
 	cases := []struct {
 		name    string

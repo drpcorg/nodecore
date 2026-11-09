@@ -138,7 +138,7 @@ func (p *PolkadotChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (p *PolkadotChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if p.configuredChain.ChainId == "" {
+	if p.configuredChain.ChainIdFor(chains.Polkadot) == "" {
 		return nil
 	}
 	if *p.options.DisableChainValidation {
@@ -192,4 +192,8 @@ var _ chains_specific.ChainSpecific = (*PolkadotChainSpecificObject)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (p *PolkadotChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (p *PolkadotChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

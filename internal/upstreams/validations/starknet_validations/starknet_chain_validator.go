@@ -48,13 +48,13 @@ func (s *StarknetChainValidator) Validate() validations.ValidationSettingResult 
 		return validations.SettingsError
 	}
 	// chains.yaml holds hex-felt chain-ids: 0x534e5f4d41494e (SN_MAIN) / 0x534e5f5345504f4c4941 (SN_SEPOLIA)
-	if strings.EqualFold(chainId, s.chain.ChainId) {
+	if strings.EqualFold(chainId, s.chain.ChainIdFor(chains.Starknet)) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects chain id '%s' but starknet upstream '%s' reports '%s'",
 		s.chain.Chain.String(),
-		s.chain.ChainId,
+		s.chain.ChainIdFor(chains.Starknet),
 		s.upstreamId,
 		chainId,
 	)

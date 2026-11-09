@@ -2,6 +2,7 @@ package evm_bounds_test
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -127,9 +128,9 @@ func TestEvmLowerBoundDetectorSupportedTypesAndPeriod(t *testing.T) {
 		supportedTypes []protocol.LowerBoundType
 	}{
 		{evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.StateBound, protocol.TraceBound}},
-		{evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.BlockBound, protocol.LogsBound}},
+		{evm_bounds.NewEvmBlockLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.BlockBound}},
 		{evm_bounds.NewEvmTxLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.TxBound}},
-		{evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.ReceiptsBound}},
+		{evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector), []protocol.LowerBoundType{protocol.ReceiptsBound, protocol.LogsBound}},
 	}
 
 	for _, tc := range detectors {
@@ -288,6 +289,75 @@ func TestEvmReceiptsLowerBoundDetectorChecksFirstTransactionObjectHash(t *testin
 	require.NotEmpty(t, result)
 	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
 	assert.Equal(t, int64(1), result[0].Bound)
+}
+
+// reth with pruned receipts keeps early history plus the last ~10064 blocks. The gap in between
+// must give the start of the recent window, not 1, for receipts and logs alike.
+func TestEvmReceiptsLowerBoundDetectorStopsAtGapBelowRecentWindow(t *testing.T) {
+	const head, bound = int64(1_000_000), int64(1_000_000 - 10_064)
+	connector := receiptsByBlock(head, func(h int64) bool { return false }, func(h int64) bool { return h <= 1000 || h >= bound })
+
+	detector := fastEvm(evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector))
+
+	result, err := detector.DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.ReceiptsBound: bound, protocol.LogsBound: bound}, boundsByType(result))
+
+	// the next cycle does not re-confirm a stale bound either
+	second, err := detector.DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, bound, second[0].Bound)
+}
+
+// Blocks without transactions say nothing about receipts: an archive node whose early blocks are
+// empty keeps bound 1.
+func TestEvmReceiptsLowerBoundDetectorTreatsEmptyBlocksAsNoEvidence(t *testing.T) {
+	connector := receiptsByBlock(1_000_000, func(h int64) bool { return h <= 30 }, func(h int64) bool { return true })
+
+	detector := fastEvm(evm_bounds.NewEvmReceiptsLowerBoundDetector("id", evmChain(), time.Second, connector))
+
+	result, err := detector.DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.ReceiptsBound: 1, protocol.LogsBound: 1}, boundsByType(result))
+}
+
+// receiptsByBlock serves a head and blocks whose last tx has a receipt per hasReceipts. Every
+// non-empty block starts with a deposit tx that always has a receipt, as on OP-stack.
+func receiptsByBlock(head int64, empty, hasReceipts func(int64) bool) *mocks.ConnectorMock {
+	connector := mocks.NewConnectorMock()
+	block := func(pred func(int64) bool) func(protocol.RequestHolder) bool {
+		return func(r protocol.RequestHolder) bool {
+			h, ok := evmBlockHeight(r)
+			return ok && pred(h)
+		}
+	}
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_blockNumber"))).
+		Return(evmOK(fmt.Sprintf(`"0x%x"`, head))).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(block(empty))).
+		Return(evmOK(`{"number":"0x1","transactions":[]}`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(block(func(h int64) bool { return !empty(h) && hasReceipts(h) }))).
+		Return(evmOK(`{"number":"0x1","transactions":["0xdeposit","0xkept"]}`)).
+		Maybe()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(block(func(h int64) bool { return !empty(h) && !hasReceipts(h) }))).
+		Return(evmOK(`{"number":"0x1","transactions":["0xdeposit","0xpruned"]}`)).
+		Maybe()
+	for _, hash := range []string{"0xdeposit", "0xkept"} {
+		connector.
+			On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionReceipt", `"`+hash+`"`))).
+			Return(evmOK(`{"transactionHash":"` + hash + `"}`)).
+			Maybe()
+	}
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_getTransactionReceipt", `"0xpruned"`))).
+		Return(evmOK(`null`)).
+		Maybe()
+	return connector
 }
 
 // Block detection (plain variant) stays stable across repeated runs: the second detection reuses
@@ -456,9 +526,7 @@ func TestEvmReceiptsLowerBoundDetectorShortCircuitsOnGoldBound(t *testing.T) {
 	result, err := detector.DetectLowerBound(context.Background())
 
 	require.NoError(t, err)
-	require.Len(t, result, 1)
-	assert.Equal(t, protocol.ReceiptsBound, result[0].Type)
-	assert.Equal(t, int64(1), result[0].Bound)
+	assert.Equal(t, map[protocol.LowerBoundType]int64{protocol.ReceiptsBound: 1, protocol.LogsBound: 1}, boundsByType(result))
 	connector.AssertExpectations(t)
 }
 

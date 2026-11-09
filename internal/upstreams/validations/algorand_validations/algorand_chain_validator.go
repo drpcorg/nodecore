@@ -38,7 +38,7 @@ func NewAlgorandChainValidator(
 }
 
 func (a *AlgorandChainValidator) Validate() validations.ValidationSettingResult {
-	expected := strings.TrimSpace(a.chain.ChainId)
+	expected := strings.TrimSpace(a.chain.ChainIdFor(chains.Algorand))
 	if expected == "" {
 		return validations.Valid
 	}

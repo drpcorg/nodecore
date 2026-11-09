@@ -20,7 +20,12 @@ const (
 	// sporadic slots (skipped/orphaned), so the search shifts left up to this many
 	// slots below a no-data probe before treating the window as pruned.
 	beaconBoundMaxOffset = 20
-	slotsPerEpoch        = 32
+	// blobBoundMaxOffset is wider than beaconBoundMaxOffset because a slot
+	// without blobs counts as a miss for the blob detector: the search must be
+	// able to step over a run of blob-less slots (one epoch) inside the
+	// retention window before treating the window as pruned.
+	blobBoundMaxOffset = 32
+	slotsPerEpoch      = 32
 )
 
 // NewBeaconChainLowerBoundDetectors returns the four data-availability detectors
@@ -128,12 +133,14 @@ func newEpochDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetec
 }
 
 func newBlobDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetector {
-	// Pre-Deneb slots answer HTTP 400 "block is pre-Deneb and has no blobs";
-	// they sit below the blob-availability bound, so they must count as a miss
-	// rather than a hard error - otherwise the binary search never converges.
-	notFound := []string{"block not found", "has not been found", "pre-deneb", "no blobs"}
+	// Pre-Deneb slots answer HTTP 400 "block is pre-Deneb and has no blobs" and
+	// PeerDAS nodes that no longer hold enough data columns answer HTTP 400
+	// "Insufficient data columns to reconstruct blobs"; both sit below the
+	// blob-availability bound, so they must count as a miss rather than a hard
+	// error - otherwise the binary search retries them and never converges.
+	notFound := []string{"block not found", "has not been found", "pre-deneb", "no blobs", "insufficient data columns"}
 	return &beaconLowerBoundDetector{
-		calculator:  lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, protocol.BlobBound, []protocol.LowerBoundType{protocol.BlobBound}, beaconBoundPeriod, beaconBoundMaxOffset),
+		calculator:  lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, protocol.BlobBound, []protocol.LowerBoundType{protocol.BlobBound}, beaconBoundPeriod, blobBoundMaxOffset),
 		fetchLatest: p.fetchHeadSlot,
 		probe: func(ctx context.Context, slot int64) (bool, error) {
 			req := protocol.NewInternalUpstreamRestRequest(
@@ -141,10 +148,12 @@ func newBlobDetector(upstreamId string, p *beaconProber) *beaconLowerBoundDetect
 				&protocol.RequestParams{PathParams: []string{strconv.FormatInt(slot, 10)}},
 				p.chain,
 			)
-			// A pruned slot answers 404; a retained slot answers 200 even when it
-			// carries no blobs, so a present "data" key (empty array included) counts
-			// as available - this keeps the availability predicate monotonic.
-			return p.doProbe(ctx, req, notFound, hasDataKey)
+			// Some clients (Lighthouse) keep answering 200 {"data":[]} after
+			// pruning a slot's blobs, exactly like a slot that never carried any,
+			// so only a non-empty sidecar list counts as available. Blob-less
+			// slots inside the retention window are stepped over by the offset
+			// search (blobBoundMaxOffset).
+			return p.doProbe(ctx, req, notFound, hasNonEmptyData)
 		},
 	}
 }
@@ -234,6 +243,24 @@ func hasDataKey(raw []byte) (bool, error) {
 		return false, nil
 	}
 	return node.Exists(), nil
+}
+
+// hasNonEmptyData succeeds only when "data" is a non-empty JSON array.
+func hasNonEmptyData(raw []byte) (bool, error) {
+	node, err := sonic.Get(raw, "data")
+	if err != nil || !node.Exists() {
+		return false, nil
+	}
+	// ast.Node.Len reports 0 for a lazily-parsed array, so decode the raw slice.
+	arrayRaw, err := node.Raw()
+	if err != nil {
+		return false, nil
+	}
+	var items []sonic.NoCopyRawMessage
+	if err := sonic.UnmarshalString(arrayRaw, &items); err != nil {
+		return false, nil
+	}
+	return len(items) > 0, nil
 }
 
 // parseBeaconError detects a beacon error envelope ({"code":404,"message":"..."})

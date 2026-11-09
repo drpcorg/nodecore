@@ -1,7 +1,7 @@
 upstream-config:
   upstreams:
     - id: eth-upstream
-      chain: ethereum
+      chain: tron
       connectors:
         - type: json-rpc
           url: https://test.com

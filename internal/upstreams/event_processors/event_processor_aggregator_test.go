@@ -2,16 +2,19 @@ package event_processors_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
+	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewUpstreamProcessorAggregator_SkipsNilProcessors(t *testing.T) {
@@ -153,4 +156,64 @@ func aggregatorTestUpstreamOptions() *chains.Options {
 		DisableHealthValidation:     new(false),
 		DisableLowerBoundsDetection: new(false),
 	}
+}
+
+func TestUpstreamProcessorAggregatorSerializesConcurrentStartStop(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	headProcessor := mocks.NewHeadProcessorMock()
+	headProcessor.On("Start").Return()
+	headProcessor.On("Stop").Return()
+	headProcessor.On("Subscribe", mock.Anything)
+
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
+	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{processor})
+	events := make(chan protocol.AbstractUpstreamStateEvent, 100)
+	aggregator.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+
+	// the supervisor (Resume/PartialStop) and the upstream state loop (pause on syncing)
+	// drive the same processor from different goroutines
+	const iterations = 3000
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+			aggregator.StopProcessor(event_processors.HeadEventProcessorType)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range iterations {
+			aggregator.StopProcessor(event_processors.HeadEventProcessorType)
+			aggregator.StartProcessor(event_processors.HeadEventProcessorType)
+		}
+	}()
+	wg.Wait()
+	aggregator.StopProcessor(event_processors.HeadEventProcessorType)
+
+	// everything is stopped: a head published now must reach no forwarder. A run that
+	// escaped the lifecycle (started behind a concurrent stop) would still forward it.
+	// Stop cancels a forwarder without waiting for it, so forwarders from the last
+	// iterations may still be winding down: those go quiet within a few polls, an orphan
+	// keeps answering every publish.
+	require.Eventually(t, func() bool {
+		headProcessor.Publish(blocks.HeadBlockEvent{HeadData: protocol.NewBlockWithHeight(1)})
+		select {
+		case <-events:
+			for {
+				select {
+				case <-events:
+				default:
+					return false
+				}
+			}
+		case <-time.After(20 * time.Millisecond):
+			return true
+		}
+	}, 3*time.Second, 10*time.Millisecond, "an orphan forwarder is still alive after the final stop")
 }

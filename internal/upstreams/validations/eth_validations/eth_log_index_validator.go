@@ -173,7 +173,7 @@ func (v *EthLogIndexValidator) getLatestBlockNumber() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return parseHexUint64(strings.TrimSpace(raw))
+	return protocol.ParseHexUint64(strings.TrimSpace(raw))
 }
 
 func (v *EthLogIndexValidator) getBlock(blockHex string) (logIndexBlock, error) {
@@ -222,7 +222,7 @@ func parseLogIndexValue(raw string) (uint64, bool) {
 	if strings.TrimSpace(raw) == "" {
 		return 0, false
 	}
-	value, err := parseHexUint64(raw)
+	value, err := protocol.ParseHexUint64(raw)
 	return value, err == nil
 }
 

@@ -52,8 +52,18 @@ func (s RequestLowerHeightSelector) Key() string {
 	return fmt.Sprintf("lower(%d,%d,%d,%d)", s.Height, s.LowerBoundType, s.TimeOffset, s.HeightDelta)
 }
 
+func (s RequestVersionSelector) Key() string {
+	return fmt.Sprintf("version(%s,%s)", s.Min, s.Max)
+}
+
 func (s RequestUnsupportedSelector) Key() string {
 	return fmt.Sprintf("unsupported(%s)", s.Reason)
+}
+
+func (s RequestGroupLabelSelector) Key() string {
+	labels := append([]string(nil), s.Labels...)
+	sort.Strings(labels)
+	return fmt.Sprintf("group(%s)", strings.Join(labels, "|"))
 }
 
 func selectorGroupKey(children []RequestSelector) string {
@@ -71,7 +81,7 @@ func selectorGroupKey(children []RequestSelector) string {
 // chosen class must be part of the cache key or one class's response can be
 // served to a request that pinned another.
 //
-// Only label/exists selectors carry a node-class constraint; every other
+// Only label/exists/version selectors carry a node-class constraint; every other
 // selector (height, block tag, slot, lower bound, any, unsupported) is treated
 // as ⊤ — it admits every class and is irrelevant to which class answers. The
 // reduction walks the boolean structure over that label dimension only:
@@ -89,6 +99,8 @@ func labelClassKey(selector RequestSelector) string {
 	case RequestLabelSelector:
 		return s.Key()
 	case RequestExistsSelector:
+		return s.Key()
+	case RequestVersionSelector:
 		return s.Key()
 	case RequestAndSelector:
 		// Intersection: ⊤ (empty-key) children drop out.
@@ -130,7 +142,9 @@ func labelClassKey(selector RequestSelector) string {
 		return fmt.Sprintf("not(%s)", key)
 	default:
 		// RequestAnySelector, height/slot/tag/lower-bound, unsupported, nil:
-		// no node-class constraint.
+		// no node-class constraint. RequestGroupLabelSelector restricts routing
+		// (which upstreams may serve), not the response, so keys sharing data
+		// keep sharing cache entries.
 		return ""
 	}
 }

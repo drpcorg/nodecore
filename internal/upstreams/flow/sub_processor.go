@@ -16,7 +16,7 @@ type SubscriptionRequestProcessor struct {
 	chain              chains.Chain
 	upstreamSupervisor upstreams.UpstreamSupervisor
 	engine             subengine.Engine
-	subCtx             *SubCtx
+	subCtx             SubCtx
 	registry           *rating.RatingRegistry
 	localSubs          config.LocalSubSettings
 }
@@ -25,7 +25,7 @@ func NewSubscriptionRequestProcessor(
 	chain chains.Chain,
 	upstreamSupervisor upstreams.UpstreamSupervisor,
 	engine subengine.Engine,
-	subCtx *SubCtx,
+	subCtx SubCtx,
 	registry *rating.RatingRegistry,
 	localSubs config.LocalSubSettings,
 ) *SubscriptionRequestProcessor {
@@ -67,7 +67,7 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			send(totalFailureWrapper(request, fmt.Errorf("%s is not a subscription method", request.Method())))
 			return
 		}
-		framing := s.framing()
+		framing := s.subCtx.Framing()
 
 		execCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -78,8 +78,13 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 		// (gRPC streams opt out via a per-request key, see resolveSource).
 		// The shared source emits events only - each client's framing decides
 		// how (and whether) the subscription is announced to the client.
-		key, builder, filter := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
-		sub, err := s.engine.Subscribe(key, builder)
+		source, err := resolveSource(s.chain, s.upstreamSupervisor, request, upstreamStrategy, s.registry, s.engine, s.localSubs)
+		if err != nil {
+			send(totalFailureWrapper(request, err))
+			return
+		}
+		filter := source.filter
+		sub, err := s.engine.Subscribe(source.key, source.builder)
 		if err != nil {
 			send(totalFailureWrapper(request, err))
 			return
@@ -100,11 +105,11 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 			case r, ok := <-sub.Events:
 				if !ok {
 					// The shared source ended. An error frame is a terminal failure
-					// (node disconnect, param reject, slow consumer) - the real
-					// cause is preserved rather than collapsed into a generic
-					// error. An end frame is the clean completion of a bounded
-					// stream, announced with its trailers. No frame at all means
-					// this client detached.
+					// (node disconnect, param reject, slow consumer, a node closing a
+					// channel) - the real cause is preserved rather than collapsed
+					// into a generic error. An end frame is the clean completion of
+					// a bounded stream, announced with its trailers. No frame at all
+					// means this client detached.
 					if terminal := sub.Terminal(); terminal != nil {
 						send(terminalWrapper(request, terminal))
 					}
@@ -133,16 +138,6 @@ func (s *SubscriptionRequestProcessor) ProcessRequest(
 	return &SubscriptionResponse{responses}
 }
 
-// framing picks how this client sees the subscription: bare event payloads
-// for result-only consumers (the gRPC ingress, the emerald server), the
-// JSON-RPC ack + notification envelope otherwise (the WS server).
-func (s *SubscriptionRequestProcessor) framing() subFraming {
-	if s.subCtx.IsSubscriptionResultOnly() {
-		return resultOnlyFraming{}
-	}
-	return &jsonRpcFraming{chain: s.chain, subCtx: s.subCtx}
-}
-
 func responseUpstreamId(r protocol.SubResponse) string {
 	if id := r.GetUpstreamId(); id != "" {
 		return id
@@ -151,7 +146,7 @@ func responseUpstreamId(r protocol.SubResponse) string {
 }
 
 // terminalWrapper turns the frame that ended a subscription into the client's
-// final response - the terminal error, or a non-event end frame for a clean
+// final response - the terminal error, or an end frame for a clean
 // completion - keeping the transport metadata it carried (gRPC trailers).
 func terminalWrapper(request protocol.RequestHolder, terminal protocol.SubResponse) *protocol.ResponseHolderWrapper {
 	headers, trailers := protocol.ResponseMetadata(terminal)

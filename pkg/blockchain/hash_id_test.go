@@ -42,3 +42,22 @@ func TestNewHashIdFromStringNonHexDecodedAsBase64(t *testing.T) {
 func TestNewHashIdFromStringHexUnchanged(t *testing.T) {
 	assert.Equal(t, "abcd", blockchain.NewHashIdFromString("0xabcd").ToHex())
 }
+
+// A raw hash whose first two bytes happen to be the ASCII characters "0x"
+// (0x30 0x78) must pass through untouched - bytes are bytes, and the hex-text
+// "0x" convention belongs to NewHashIdFromString. The former prefix strip
+// truncated such hashes (~1 block in 33k on cosmos/algorand) into 30-byte ids
+// that disagreed with the ids other connectors derive for the same block.
+func TestNewHashIdFromBytesKeepsAsciiZeroXPrefix(t *testing.T) {
+	for _, second := range []byte{'x', 'X'} {
+		raw := make([]byte, 32)
+		raw[0], raw[1] = '0', second
+		for i := 2; i < len(raw); i++ {
+			raw[i] = byte(i * 7)
+		}
+
+		hashId := blockchain.NewHashIdFromBytes(raw)
+
+		assert.Equal(t, blockchain.HashId(raw), hashId)
+	}
+}

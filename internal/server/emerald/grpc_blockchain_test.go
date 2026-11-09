@@ -15,8 +15,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/drpcorg/public/pkg/dshackle"
-	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -55,7 +55,7 @@ func TestSubscribeMethodSupported(t *testing.T) {
 }
 
 func TestMapNativeSubscribeMethod(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 
 	t.Run("uses native subscribe method as is", func(te *testing.T) {
 		method, payload, err := mapNativeSubscribeMethod("eth", nil, "eth_subscribe", []byte(`["newHeads"]`))
@@ -93,6 +93,29 @@ func TestMapNativeSubscribeMethod(t *testing.T) {
 
 	t.Run("returns unimplemented mapping error for unsupported method", func(te *testing.T) {
 		_, _, err := mapNativeSubscribeMethod("solana", nil, "newHeads", nil)
+		require.Error(te, err)
+		assert.ErrorIs(te, err, errSubscribeMappingNotSupported)
+	})
+
+	// Celestia's go-jsonrpc channel subscriptions ride the same passthrough as
+	// any native sub method: the dialect lives in the upstream ws protocol and
+	// the client framing, never in the NativeSubscribe mapping.
+	t.Run("passes celestia header.Subscribe through with empty params", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("celestia", nil, "header.Subscribe", nil)
+		require.NoError(te, err)
+		assert.Equal(te, "header.Subscribe", method)
+		assert.Equal(te, `[]`, string(payload))
+	})
+
+	t.Run("passes celestia blob.Subscribe through with the namespace param", func(te *testing.T) {
+		method, payload, err := mapNativeSubscribeMethod("celestia", nil, "blob.Subscribe", []byte(`["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]`))
+		require.NoError(te, err)
+		assert.Equal(te, "blob.Subscribe", method)
+		assert.Equal(te, `["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]`, string(payload))
+	})
+
+	t.Run("celestia xrpc.cancel is not a subscription", func(te *testing.T) {
+		_, _, err := mapNativeSubscribeMethod("celestia", nil, "xrpc.cancel", []byte(`[1]`))
 		require.Error(te, err)
 		assert.ErrorIs(te, err, errSubscribeMappingNotSupported)
 	})
@@ -708,7 +731,7 @@ func grpcItem(id uint32, method string, payload []byte, md ...*dshackle.KeyValue
 }
 
 func TestBuildNativeCallRequestsBuildsGrpcRequest(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	configuredChain := &chains.ConfiguredChain{MethodSpec: "sui"}
 	request := &dshackle.NativeCallRequest{
@@ -740,7 +763,7 @@ func TestBuildNativeCallRequestsBuildsGrpcRequest(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsGrpcUnknownMethodIsUnimplemented(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(3, "/sui.rpc.v2.LedgerService/Nope", nil)}}
 
@@ -754,7 +777,7 @@ func TestBuildNativeCallRequestsGrpcUnknownMethodIsUnimplemented(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsGrpcServerStreamMethodIsRejected(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(4, "/sui.rpc.v2.LedgerService/ListTransactions", nil)}}
 
@@ -776,7 +799,7 @@ func TestBuildNativeCallRequestsGrpcMissingDataIsInvalidArgument(t *testing.T) {
 }
 
 func TestBuildNativeCallRequestsGrpcSigningUnavailableIsInternal(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	item := grpcItem(6, "/sui.rpc.v2.LedgerService/GetObject", nil)
 	item.Nonce = 42
@@ -887,7 +910,7 @@ func TestJsonRpcSendReplyKeepsNodecoreErrorCodes(t *testing.T) {
 // rejected at the edge: routed on, its proto bytes would reach the HTTP
 // connector, which cannot build a response of type Grpc.
 func TestBuildNativeCallRequestsGrpcItemForJsonRpcMethodIsUnimplemented(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	request := &dshackle.NativeCallRequest{Items: []*dshackle.NativeCallItem{grpcItem(8, "eth_chainId", []byte{0x0a})}}
 
@@ -915,7 +938,7 @@ func TestSendReplyStreamWithoutHintIsAnError(t *testing.T) {
 // item under its own id and in its own kind's error vocabulary - a gRPC item
 // with a canonical code, a JSON-RPC item with a nodecore code.
 func TestNativeCallRequestFailureIsRenderedPerItem(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	service := NewGrpcBlockchainService(nil, nil, signature.NewDisabledSigner())
 	stream := &testNativeCallStream{ctx: context.Background()}
 
@@ -957,4 +980,84 @@ func TestGrpcSendReplyDropsUnparseableStatusProto(t *testing.T) {
 	assert.Empty(t, stream.sent[0].GetErrorAsIs())
 	assert.Equal(t, int32(codes.NotFound), stream.sent[0].GetItemErrorCode())
 	assert.Equal(t, "object not found", stream.sent[0].GetErrorMessage())
+}
+
+// countingAdapter is a nativeSubscribeAdapter that records replies and answers
+// with a scripted (done, err) per call.
+type countingAdapter struct {
+	replies []*protocol.ResponseHolderWrapper
+	done    bool
+	err     error
+}
+
+func (a *countingAdapter) BuildRequest(*chains.ConfiguredChain, upstreams.ChainSupervisor, *dshackle.NativeSubscribeRequest) (protocol.RequestHolder, error) {
+	return nil, nil
+}
+
+func (a *countingAdapter) SendReply(_ dshackle.Blockchain_NativeSubscribeServer, wrapper *protocol.ResponseHolderWrapper, _ uint64, _ signature.ResponseSigner) (bool, error) {
+	a.replies = append(a.replies, wrapper)
+	return a.done, a.err
+}
+
+func TestServeNativeSubscribeForwardsUntilChannelCloses(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{}
+	responses := make(chan *protocol.ResponseHolderWrapper, 2)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`2`))}
+	close(responses)
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.NoError(t, err)
+	assert.Len(t, adapter.replies, 2)
+	assert.Empty(t, stream.sent, "the scripted adapter sends nothing itself")
+}
+
+func TestServeNativeSubscribeStopsWhenAdapterIsDone(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{done: true}
+	responses := make(chan *protocol.ResponseHolderWrapper, 2)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`2`))}
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.NoError(t, err)
+	assert.Len(t, adapter.replies, 1, "done stops the loop before the second wrapper")
+}
+
+func TestServeNativeSubscribeReturnsAdapterError(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	adapter := &countingAdapter{done: true, err: status.Error(codes.Unavailable, "gone")}
+	responses := make(chan *protocol.ResponseHolderWrapper, 1)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0", Response: protocol.NewSubscriptionEventResponse("0", []byte(`1`))}
+
+	err := serveNativeSubscribe(stream, responses, adapter, 0, signature.NewDisabledSigner(), time.Hour)
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestServeNativeSubscribeEmptyWrapperIsInternal(t *testing.T) {
+	stream := &testNativeSubscribeStream{ctx: context.Background()}
+	responses := make(chan *protocol.ResponseHolderWrapper, 1)
+	responses <- &protocol.ResponseHolderWrapper{RequestId: "0"}
+
+	err := serveNativeSubscribe(stream, responses, &countingAdapter{}, 0, signature.NewDisabledSigner(), time.Hour)
+	require.Error(t, err)
+	assert.Equal(t, codes.Internal, status.Code(err))
+}
+
+func TestServeNativeSubscribeSendsHeartbeatsWithoutGrpcData(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	stream := &testNativeSubscribeStream{ctx: ctx}
+	responses := make(chan *protocol.ResponseHolderWrapper)
+
+	err := serveNativeSubscribe(stream, responses, &countingAdapter{}, 0, signature.NewDisabledSigner(), 20*time.Millisecond)
+	require.NoError(t, err, "ctx expiry is a clean end")
+	require.NotEmpty(t, stream.sent)
+	for _, item := range stream.sent {
+		assert.True(t, item.GetHeartbeat())
+		assert.Nil(t, item.GetGrpcData())
+		assert.Nil(t, item.GetSignature())
+	}
 }

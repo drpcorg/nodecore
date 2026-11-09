@@ -51,13 +51,13 @@ func (p *PolkadotChainValidator) Validate() validations.ValidationSettingResult 
 		log.Error().Err(err).Msgf("failed to fetch the chain name of polkadot upstream '%s'", p.upstreamId)
 		return validations.SettingsError
 	}
-	if strings.EqualFold(chainName, p.chain.ChainId) {
+	if strings.EqualFold(chainName, p.chain.ChainIdFor(chains.Polkadot)) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects chain '%s' but polkadot upstream '%s' reports '%s'",
 		p.chain.Chain.String(),
-		p.chain.ChainId,
+		p.chain.ChainIdFor(chains.Polkadot),
 		p.upstreamId,
 		chainName,
 	)

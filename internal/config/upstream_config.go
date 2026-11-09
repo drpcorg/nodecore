@@ -143,7 +143,21 @@ type Upstream struct {
 	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
 	GroupLabels       []string                 `yaml:"group-labels"`
 	Labels            UpstreamLabels           `yaml:"labels"`
+	LowerBounds       UpstreamLowerBounds      `yaml:"lower-bounds"`
 }
+
+// hasGrpcLabel is published on every upstream configured with a gRPC-family connector
+// (grpc or grpc-additional), so
+// gRPC clients can select upstreams that serve gRPC methods with a label selector.
+const hasGrpcLabel = "has_grpc"
+
+// LowerBoundTypeNames are the keys accepted in an upstream's lower-bounds map;
+// each is the lowercased protocol.LowerBoundType name.
+var LowerBoundTypeNames = []string{"slot", "state", "receipts", "tx", "block", "logs", "trace", "proof", "epoch", "blob"}
+
+// UpstreamLowerBounds maps a bound type name to a manually configured lower bound.
+// A configured type is published as is and never detected.
+type UpstreamLowerBounds map[string]int64
 
 // UpstreamLabels is a manual upstream label map. Label values are strings, but any
 // YAML scalar is accepted and stored as its literal text, so `archive: false` and
@@ -358,6 +372,60 @@ type ApiConnectorConfig struct {
 	// hard-coded defaults (hop-by-hop per RFC 7230 plus Set-Cookie /
 	// Server). Matching is case-insensitive (HTTP header rules).
 	ResponseHeaderDeny []string `yaml:"response-header-deny,omitempty"`
+	// Settings carries per-transport connector tuning; see ConnectorSettings.
+	Settings *ConnectorSettings `yaml:"settings,omitempty"`
+}
+
+const DefaultHttpResponseTimeout = 60 * time.Second
+
+// ConnectorSettings groups per-connector tuning by the transport it applies to, so that
+// settings for different connector kinds can be added without widening
+// ApiConnectorConfig itself. Only the group matching the connector's own transport may be
+// set - validate rejects the others rather than ignoring them silently.
+type ConnectorSettings struct {
+	Http *HttpConnectorSettings `yaml:"http,omitempty"`
+}
+type HttpConnectorSettings struct {
+	ResponseTimeout *time.Duration `yaml:"response-timeout"`
+}
+
+var httpConnectorTypes = []specs.ApiConnectorType{
+	specs.JsonRpcConnector,
+	specs.TendermintConnector,
+	specs.RestConnector,
+	specs.RestIndexer,
+	specs.RestAdditional,
+}
+
+func isHttpConnectorType(connectorType specs.ApiConnectorType) bool {
+	return slices.Contains(httpConnectorTypes, connectorType)
+}
+func (a *ApiConnectorConfig) HttpResponseTimeout() time.Duration {
+	if a == nil || a.Settings == nil || a.Settings.Http == nil || a.Settings.Http.ResponseTimeout == nil {
+		return DefaultHttpResponseTimeout
+	}
+	return *a.Settings.Http.ResponseTimeout
+}
+func (s *ConnectorSettings) validate(connectorName string, connectorType specs.ApiConnectorType) error {
+	if s == nil {
+		return nil
+	}
+	if s.Http != nil {
+		if !isHttpConnectorType(connectorType) {
+			return fmt.Errorf("http settings are not applicable to the '%s' connector", connectorName)
+		}
+		if err := s.Http.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *HttpConnectorSettings) validate() error {
+	if h.ResponseTimeout != nil && *h.ResponseTimeout < 0 {
+		return errors.New("http response timeout can't be less than 0")
+	}
+	return nil
 }
 
 func (a *ApiConnectorConfig) GetApiConnectorType() specs.ApiConnectorType {
@@ -375,6 +443,14 @@ func (s *ScorePolicyConfig) GetScoreFunc() (goja.Callable, error) {
 		s.calculationFunc = sortUpstreams
 	}
 	return s.calculationFunc, nil
+}
+
+// sameSettings compares the configured settings only, not the compiled function. Both sides
+// come out of setDefaults, which always sets the section.
+func (s *ScorePolicyConfig) sameSettings(other *ScorePolicyConfig) bool {
+	return s.CalculationInterval == other.CalculationInterval &&
+		s.CalculationFunctionName == other.CalculationFunctionName &&
+		s.CalculationFunctionFilePath == other.CalculationFunctionFilePath
 }
 
 func (s *ScorePolicyConfig) compileFunc() (goja.Callable, error) {
@@ -588,6 +664,8 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		)
 	}
 
+	specName := chains.GetMethodSpecNameByChainName(u.ChainName)
+	specConnectors := specs.GetSpecConnectors(specName)
 	connectorTypeSet := mapset.NewThreadUnsafeSet[specs.ApiConnectorType]()
 	for _, connector := range u.Connectors {
 		if connectorTypeSet.Contains(connector.GetApiConnectorType()) {
@@ -595,6 +673,11 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		}
 		if err := connector.validate(torProxyUrl); err != nil {
 			return err
+		}
+		// A connector the chain's spec doesn't declare serves no method at all: it would
+		// be dialed for nothing and misrepresent the upstream's transports.
+		if !slices.Contains(specConnectors, connector.GetApiConnectorType()) {
+			return fmt.Errorf("connector '%s' is not supported by the '%s' method spec of chain '%s'", connector.Type, specName, u.ChainName)
 		}
 		connectorTypeSet.Add(connector.GetApiConnectorType())
 	}
@@ -632,6 +715,10 @@ func (u *Upstream) validate(torProxyUrl string) error {
 		return err
 	}
 
+	if err := u.validateLowerBounds(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -644,6 +731,19 @@ func (u *Upstream) validateLabels() error {
 		}
 		if u.Labels[label] == "" {
 			return fmt.Errorf("label '%s' must have a non-empty value", label)
+		}
+	}
+	return nil
+}
+
+// validateLowerBounds iterates in sorted key order so the reported error is deterministic.
+func (u *Upstream) validateLowerBounds() error {
+	for _, key := range slices.Sorted(maps.Keys(u.LowerBounds)) {
+		if !slices.Contains(LowerBoundTypeNames, key) {
+			return fmt.Errorf("lower-bounds: unknown bound type '%s', allowed: %s", key, strings.Join(LowerBoundTypeNames, ", "))
+		}
+		if value := u.LowerBounds[key]; value < 1 {
+			return fmt.Errorf("lower-bounds: bound '%s' must be >= 1, got %d", key, value)
 		}
 	}
 	return nil
@@ -710,6 +810,10 @@ func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 		return err
 	}
 
+	if err := a.Settings.validate(a.Type, a.GetApiConnectorType()); err != nil {
+		return err
+	}
+
 	if a.Url == "" {
 		return fmt.Errorf("url must be specified for connector '%s'", a.Type)
 	}
@@ -721,10 +825,10 @@ func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 		return fmt.Errorf("invalid url for connector '%s' - scheme and host are required", a.Type)
 	}
 	if strings.HasSuffix(parsedUrl.Hostname(), ".onion") {
-		if a.GetApiConnectorType() == specs.GrpcConnector {
-			// the grpc connector dials directly (no SOCKS5 support); reject at
+		if specs.IsGrpcApiConnectorType(a.GetApiConnectorType()) {
+			// the grpc connectors dial directly (no SOCKS5 support); reject at
 			// config time instead of failing at dial time with no hint
-			return errors.New("onion endpoints are not supported for the 'grpc' connector")
+			return fmt.Errorf("onion endpoints are not supported for the '%s' connector", a.Type)
 		}
 		if torProxyUrl == "" {
 			return errors.New("tor proxy url is required for onion endpoints")

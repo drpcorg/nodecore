@@ -42,13 +42,13 @@ func (n *NearChainValidator) Validate() validations.ValidationSettingResult {
 		return validations.FatalSettingError
 	}
 	// for near chains.yaml holds network-name chain-ids: mainnet/testnet/betanet
-	if strings.EqualFold(status.ChainId, n.chain.ChainId) {
+	if strings.EqualFold(status.ChainId, n.chain.ChainIdFor(chains.Near)) {
 		return validations.Valid
 	}
 	log.Error().Msgf(
 		"'%s' expects chain_id '%s' but near upstream '%s' reports '%s'",
 		n.chain.Chain.String(),
-		n.chain.ChainId,
+		n.chain.ChainIdFor(chains.Near),
 		n.upstreamId,
 		status.ChainId,
 	)

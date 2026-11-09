@@ -57,6 +57,7 @@ type ChainSettings struct {
 type ChainData struct {
 	ShortNames           []string               `yaml:"short-names"`
 	ChainId              string                 `yaml:"chain-id"`
+	ChainIds             map[string]string      `yaml:"chain-ids"`
 	GrpcId               int                    `yaml:"grpcId"`
 	MethodSpec           string                 `yaml:"method-spec"`
 	Settings             map[string]interface{} `yaml:"settings"`
@@ -102,8 +103,12 @@ type Settings struct {
 }
 
 type ConfiguredChain struct {
-	GrpcId               int
-	ChainId              string
+	GrpcId  int
+	ChainId string
+	// ChainIds holds the ids a chain carries on other blockchain families, keyed
+	// by family - a cosmos chain with an EVM module has a cosmos network name and
+	// an EVM chain id. Read it through ChainIdFor.
+	ChainIds             map[BlockchainType]string
 	NetVersion           string
 	ShortNames           []string
 	Type                 BlockchainType
@@ -241,13 +246,30 @@ func GetChainByGrpcId(grpcId int) *ConfiguredChain {
 	return found
 }
 
+// GetChainByChainIdAndVersion finds the chain answering the given ids on a
+// blockchain family: chains of that family, plus chains that declare an id for
+// it in chain-ids (the EVM side of a cosmos chain).
 func GetChainByChainIdAndVersion(blockchainType BlockchainType, chainId, netVersion string) *ConfiguredChain {
 	for _, chain := range chains {
-		if chain.Type == blockchainType && chain.ChainId == chainId && chain.NetVersion == netVersion {
+		_, declared := chain.ChainIds[blockchainType]
+		if !declared && chain.Type != blockchainType {
+			continue
+		}
+		if chain.ChainIdFor(blockchainType) == chainId && chain.NetVersion == netVersion {
 			return chain
 		}
 	}
 	return UnknownChain
+}
+
+// ChainIdFor is the id the chain carries on the given blockchain family: the
+// chain-ids entry for that family when chains.yaml declares one, otherwise the
+// chain's own chain-id.
+func (c *ConfiguredChain) ChainIdFor(blockchainType BlockchainType) string {
+	if chainId, ok := c.ChainIds[blockchainType]; ok {
+		return chainId
+	}
+	return c.ChainId
 }
 
 func GetMethodSpecNameByChain(chain Chain) string {
@@ -300,7 +322,13 @@ func configureChainsFromBytes(rawYaml []byte) (map[string]*ConfiguredChain, map[
 				dynamicChainNames[network] = chain.ShortNames[0]
 			}
 
-			netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(chain.ChainId))
+			chainIds, err := parseChainIds(chain, protocol.Type)
+			if err != nil {
+				return nil, nil, err
+			}
+			// net_version is an EVM notion, so it derives from the EVM chain id
+			evmChainId := lo.ValueOr(chainIds, Ethereum, chain.ChainId)
+			netVersion := lo.Ternary(chain.NetVersion != "", chain.NetVersion, getNetVersion(evmChainId))
 			methodSpec := lo.Ternary(
 				chain.MethodSpec != "",
 				getMethodSpecName(protocol.Type, chain.MethodSpec),
@@ -310,6 +338,7 @@ func configureChainsFromBytes(rawYaml []byte) (map[string]*ConfiguredChain, map[
 			configuredChain := &ConfiguredChain{
 				GrpcId:               chain.GrpcId,
 				ChainId:              strings.ToLower(chain.ChainId),
+				ChainIds:             chainIds,
 				ShortNames:           chain.ShortNames,
 				NetVersion:           strings.ToLower(netVersion),
 				Type:                 protocol.Type,
@@ -329,6 +358,30 @@ func configureChainsFromBytes(rawYaml []byte) (map[string]*ConfiguredChain, map[
 	}
 
 	return configuredChains, configuredGrpcChains, nil
+}
+
+// parseChainIds lowercases the chain-ids entries the way chain-id is, refuses a
+// key that is not a blockchain type, and refuses an entry that contradicts the
+// chain's own chain-id - a yaml slip there would silently validate upstreams
+// against the wrong network.
+func parseChainIds(chain ChainData, ownType BlockchainType) (map[BlockchainType]string, error) {
+	if len(chain.ChainIds) == 0 {
+		return nil, nil
+	}
+	chainIds := make(map[BlockchainType]string, len(chain.ChainIds))
+	for rawType, chainId := range chain.ChainIds {
+		if !IsValidBlockchainType(rawType) {
+			return nil, fmt.Errorf("chain %s declares a chain-id for unknown blockchain type '%s'", chain.ShortNames[0], rawType)
+		}
+		chainIds[BlockchainType(rawType)] = strings.ToLower(chainId)
+	}
+	if own, ok := chainIds[ownType]; ok && own != strings.ToLower(chain.ChainId) {
+		return nil, fmt.Errorf(
+			"chain %s declares chain-ids.%s '%s' but its chain-id is '%s'",
+			chain.ShortNames[0], ownType, own, strings.ToLower(chain.ChainId),
+		)
+	}
+	return chainIds, nil
 }
 
 func getNetVersion(chainId string) string {

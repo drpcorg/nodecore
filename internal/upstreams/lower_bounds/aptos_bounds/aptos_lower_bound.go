@@ -26,8 +26,8 @@ type AptosLowerBoundDetector struct {
 	chain           chains.Chain
 	internalTimeout time.Duration
 
-	lastState atomic.Int64
-	lastBlock atomic.Int64
+	lastVersion atomic.Int64
+	lastBlock   atomic.Int64
 }
 
 func NewAptosLowerBoundDetector(
@@ -44,20 +44,24 @@ func NewAptosLowerBoundDetector(
 	}
 }
 
-// DetectLowerBound reads the oldest retained state version and block height
+// DetectLowerBound reads the oldest retained ledger version and block height
 // straight from GET /v1 - Aptos exposes both directly, so no binary search is
 // needed (unlike Algorand).
 //
-// StateBound is deliberately in ledger-version space (not block heights):
-// Aptos state queries are version-addressed (ledger_version params), so
-// clients matching on LOWER_BOUND_STATE must pass versions, not heights.
-// BlockBound is in block-height space.
+// The version bound is published as SlotBound, not StateBound, because it lives
+// in ledger-version space - roughly 7x the block height, which is what the head
+// reports. A bound above the head is discarded as bogus (see
+// LowerBoundUpstreamStateEvent.Same), and SlotBound is the one type exempt from
+// that comparison, so a StateBound here never reached the router and every
+// version-addressed request was rejected for having no bound data. Slot is also
+// the axis the head's own Slot field already carries for Aptos. BlockBound stays
+// in block-height space.
 func (a *AptosLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
 	info, err := a.fetchLedgerInfo(ctx)
 	if err != nil {
 		return a.fallback(err), nil
 	}
-	state, err := parseBound(info.OldestLedgerVersion)
+	version, err := parseBound(info.OldestLedgerVersion)
 	if err != nil {
 		return a.fallback(fmt.Errorf("invalid oldest_ledger_version '%s': %w", info.OldestLedgerVersion, err)), nil
 	}
@@ -65,10 +69,10 @@ func (a *AptosLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]proto
 	if err != nil {
 		return a.fallback(fmt.Errorf("invalid oldest_block_height '%s': %w", info.OldestBlockHeight, err)), nil
 	}
-	a.lastState.Store(state)
+	a.lastVersion.Store(version)
 	a.lastBlock.Store(block)
 	return []protocol.LowerBoundData{
-		protocol.NewLowerBoundDataNow(state, protocol.StateBound),
+		protocol.NewLowerBoundDataNow(version, protocol.SlotBound),
 		protocol.NewLowerBoundDataNow(block, protocol.BlockBound),
 	}, nil
 }
@@ -93,14 +97,14 @@ func parseBound(s string) (int64, error) {
 // last known good values; otherwise emit UnknownBound=0 as an explicit
 // "we don't know" signal.
 func (a *AptosLowerBoundDetector) fallback(reason error) []protocol.LowerBoundData {
-	state, block := a.lastState.Load(), a.lastBlock.Load()
-	if state > 0 && block > 0 {
+	version, block := a.lastVersion.Load(), a.lastBlock.Load()
+	if version > 0 && block > 0 {
 		log.Warn().Err(reason).Msgf(
-			"aptos upstream '%s' lower-bound fetch failed; retaining cached STATE=%d BLOCK=%d",
-			a.upstreamId, state, block,
+			"aptos upstream '%s' lower-bound fetch failed; retaining cached SLOT=%d BLOCK=%d",
+			a.upstreamId, version, block,
 		)
 		return []protocol.LowerBoundData{
-			protocol.NewLowerBoundDataNow(state, protocol.StateBound),
+			protocol.NewLowerBoundDataNow(version, protocol.SlotBound),
 			protocol.NewLowerBoundDataNow(block, protocol.BlockBound),
 		}
 	}
@@ -112,7 +116,7 @@ func (a *AptosLowerBoundDetector) fallback(reason error) []protocol.LowerBoundDa
 }
 
 func (a *AptosLowerBoundDetector) SupportedTypes() []protocol.LowerBoundType {
-	return []protocol.LowerBoundType{protocol.StateBound, protocol.BlockBound, protocol.UnknownBound}
+	return []protocol.LowerBoundType{protocol.SlotBound, protocol.BlockBound, protocol.UnknownBound}
 }
 
 func (a *AptosLowerBoundDetector) Period() time.Duration {

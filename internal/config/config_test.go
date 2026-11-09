@@ -65,6 +65,7 @@ func TestReadFullConfig(t *testing.T) {
 			Type:          config.Drpc,
 			FlushInterval: 5 * time.Minute,
 		},
+		ConfigReload: &config.ConfigReloadConfig{},
 		ServerConfig: &config.ServerConfig{
 			Port:       9095,
 			HealthPort: 9096,
@@ -259,6 +260,7 @@ func TestReadFullConfig(t *testing.T) {
 						DisableLabelsDetection:                new(true),
 						DisableMethodsDetection:               new(true),
 						DisableLogIndexValidation:             new(true),
+						DisableErigonBugValidation:            new(true),
 						DisableLivenessSubscriptionValidation: new(true),
 						ValidateSyncing:                       new(false),
 						ValidatePeers:                         new(false),
@@ -273,7 +275,8 @@ func TestReadFullConfig(t *testing.T) {
 					HeadConnector: specs.RestConnector.String(),
 					HeadMode:      config.HeadModeSubscribe,
 					PollInterval:  1 * time.Minute,
-					ChainName:     "polygon",
+					ChainName:     "cosmos-hub",
+					Labels:        config.UpstreamLabels{"has_grpc": "true"},
 					Methods: &config.MethodsConfig{
 						BanDuration: 5 * time.Minute,
 					},
@@ -310,6 +313,7 @@ func TestReadFullConfig(t *testing.T) {
 						DisableLabelsDetection:                new(true),
 						DisableMethodsDetection:               new(true),
 						DisableLogIndexValidation:             new(true),
+						DisableErigonBugValidation:            new(true),
 						DisableLivenessSubscriptionValidation: new(true),
 						ValidateSyncing:                       new(false),
 						ValidatePeers:                         new(false),
@@ -323,5 +327,7 @@ func TestReadFullConfig(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, expected, appConfig)
+	// exported values only: the parsed-from bytes the config keeps for reloads are not part
+	// of what this test pins down
+	assert.EqualExportedValues(t, expected, appConfig)
 }

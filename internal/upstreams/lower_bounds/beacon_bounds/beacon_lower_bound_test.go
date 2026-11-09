@@ -105,7 +105,7 @@ func TestBeaconBlobLowerBoundTreatsPreDenebAsMiss(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
 		slot, ok := blobPathSlot(r)
 		return ok && slot >= denebFrom
-	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"data":[]}`), 200, protocol.Rest))
+	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(sidecarBody), 200, protocol.Rest))
 
 	// Pre-Deneb: HTTP 400 with the pre-Deneb message (surfaced as an error).
 	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
@@ -126,4 +126,102 @@ func TestBeaconBlobLowerBoundTreatsPreDenebAsMiss(t *testing.T) {
 	require.Len(t, bounds, 1)
 	assert.Equal(t, protocol.BlobBound, bounds[0].Type)
 	assert.Equal(t, denebFrom, bounds[0].Bound)
+}
+
+const (
+	sidecarBody     = `{"data":[{"index":"0","blob":"0x00"}]}`
+	emptyBlobsBody  = `{"data":[]}`
+	blobDenebFrom   = int64(20)
+	blobRetainedAge = int64(60) // blobs retained for slots [60, 100]
+)
+
+func mockHead(connector *mocks.ConnectorMock) {
+	headBody := `{"data":{"root":"0xaa","header":{"message":{"slot":"` +
+		strconv.FormatInt(headSlot, 10) + `","parent_root":"0xbb"}}}}`
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		return r.Method() == "GET#/eth/v1/beacon/headers/head"
+	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(headBody), 200, protocol.Rest))
+}
+
+func mockPreDeneb(connector *mocks.ConnectorMock) {
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		slot, ok := blobPathSlot(r)
+		return ok && slot < blobDenebFrom
+	})).Return(protocol.NewHttpUpstreamResponseWithError(
+		protocol.ResponseErrorWithData(400, "BAD_REQUEST: block is pre-Deneb and has no blobs", nil),
+	))
+}
+
+// mockBlobSlots serves slots [from, head]: even slots carry blobs, odd slots
+// carry none and answer 200 {"data":[]}.
+func mockBlobSlots(connector *mocks.ConnectorMock, from int64) {
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		slot, ok := blobPathSlot(r)
+		return ok && slot >= from && slot%2 == 0
+	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(sidecarBody), 200, protocol.Rest))
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		slot, ok := blobPathSlot(r)
+		return ok && slot >= from && slot%2 == 1
+	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(emptyBlobsBody), 200, protocol.Rest))
+}
+
+func detectBlobBound(t *testing.T, connector *mocks.ConnectorMock) int64 {
+	t.Helper()
+	detectors := beacon_bounds.NewBeaconChainLowerBoundDetectors(
+		"id", chains.GetChain("eth-beacon-chain").Chain, 5*time.Second, connector,
+	)
+	bounds, err := detectors[3].DetectLowerBound(context.Background())
+	require.NoError(t, err)
+	require.Len(t, bounds, 1)
+	assert.Equal(t, protocol.BlobBound, bounds[0].Type)
+	return bounds[0].Bound
+}
+
+// TestBeaconBlobLowerBoundEmptyAnswerOnPrunedSlots reproduces a node that keeps
+// answering 200 {"data":[]} for slots whose blobs it already pruned. An empty
+// answer is a miss, so the bound lands on the retention window, not on the
+// Deneb fork, while blob-less slots inside the window are stepped over.
+func TestBeaconBlobLowerBoundEmptyAnswerOnPrunedSlots(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	mockHead(connector)
+	mockPreDeneb(connector)
+	mockBlobSlots(connector, blobRetainedAge)
+
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		slot, ok := blobPathSlot(r)
+		return ok && slot >= blobDenebFrom && slot < blobRetainedAge
+	})).Return(protocol.NewHttpUpstreamResponse("1", []byte(emptyBlobsBody), 200, protocol.Rest))
+
+	assert.Equal(t, blobRetainedAge, detectBlobBound(t, connector))
+}
+
+// TestBeaconBlobLowerBoundInsufficientDataColumns covers PeerDAS nodes that answer
+// HTTP 400 "Insufficient data columns to reconstruct blobs" once they no longer
+// hold the columns of a slot: that answer is a miss, not a probe error.
+func TestBeaconBlobLowerBoundInsufficientDataColumns(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	mockHead(connector)
+	mockPreDeneb(connector)
+	mockBlobSlots(connector, blobRetainedAge)
+
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		slot, ok := blobPathSlot(r)
+		return ok && slot >= blobDenebFrom && slot < blobRetainedAge
+	})).Return(protocol.NewHttpUpstreamResponseWithError(
+		protocol.ResponseErrorWithData(400, "BAD_REQUEST: Insufficient data columns to reconstruct blobs: required 64, but only 0 were found.", nil),
+	))
+
+	assert.Equal(t, blobRetainedAge, detectBlobBound(t, connector))
+}
+
+// TestBeaconBlobLowerBoundArchive keeps an archive node (every slot since Deneb
+// served, blob-less slots interleaved) at the first blob-carrying slot after
+// the Deneb fork.
+func TestBeaconBlobLowerBoundArchive(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	mockHead(connector)
+	mockPreDeneb(connector)
+	mockBlobSlots(connector, blobDenebFrom)
+
+	assert.Equal(t, blobDenebFrom, detectBlobBound(t, connector))
 }

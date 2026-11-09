@@ -87,6 +87,11 @@ func (m *HeadProcessorMock) Subscribe(name string) *utils.Subscription[blocks.He
 	return m.subManager.Subscribe(name)
 }
 
+func (m *HeadProcessorMock) SubscribeWithReplay(name string) *utils.Subscription[blocks.HeadEvent] {
+	m.Called(name)
+	return m.subManager.SubscribeWithReplay(name)
+}
+
 func (m *HeadProcessorMock) Publish(event blocks.HeadEvent) {
 	m.subManager.Publish(event)
 }

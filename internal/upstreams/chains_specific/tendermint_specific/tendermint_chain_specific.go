@@ -115,7 +115,7 @@ func (t *TendermintChainSpecific) HealthValidators() []validations.Validator[pro
 }
 
 func (t *TendermintChainSpecific) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if t.chain == nil || t.chain.ChainId == "" {
+	if t.chain == nil || t.chain.ChainIdFor(chains.Cosmos) == "" {
 		return nil
 	}
 	if *t.options.DisableChainValidation {
@@ -189,4 +189,8 @@ var _ chains_specific.ChainSpecific = (*TendermintChainSpecific)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (t *TendermintChainSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (t *TendermintChainSpecific) PauseHeadWhileSyncing() bool {
+	return false
 }

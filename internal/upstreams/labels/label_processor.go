@@ -26,7 +26,7 @@ type GenericLabelsProcessor struct {
 }
 
 func (b *GenericLabelsProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		labelDetectorsChanArr := make([]<-chan lo.Tuple2[string, string], 0, len(b.labelsDetectors))
 		for _, detector := range b.labelsDetectors {
 			labelDetectorsChanArr = append(labelDetectorsChanArr, b.detectLabels(ctx, detector))
@@ -46,7 +46,7 @@ func (b *GenericLabelsProcessor) Start() {
 				}
 			}
 		}()
-		return nil
+		return nil, nil
 	})
 }
 

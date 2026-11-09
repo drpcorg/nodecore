@@ -28,6 +28,10 @@ type UpstreamStateEventProcessor interface {
 
 type Emitter func(event protocol.AbstractUpstreamStateEvent)
 
+// UpstreamProcessorAggregator is driven from two goroutines - the supervisor (Resume,
+// PartialStop) and the upstream state loop (head pause while syncing) - and needs no lock
+// of its own: each processor's start returns the undo of the nested processor it owns, so
+// its lifecycle switches both as one transition (see utils.StartFunc).
 type UpstreamProcessorAggregator struct {
 	eventProcessors map[EventProcessorType]UpstreamStateEventProcessor
 }
@@ -87,6 +91,13 @@ func (u *UpstreamProcessorAggregator) StopProcessor(processorType EventProcessor
 	if processor, ok := u.eventProcessors[processorType]; ok {
 		processor.Stop()
 	}
+}
+
+// IsProcessorRunning reports whether the processor of the given type is currently running;
+// false when there is no such processor.
+func (u *UpstreamProcessorAggregator) IsProcessorRunning(processorType EventProcessorType) bool {
+	processor, ok := u.eventProcessors[processorType]
+	return ok && processor.Running()
 }
 
 func (u *UpstreamProcessorAggregator) IsHealthProcessorDisabled() bool {

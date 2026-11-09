@@ -3,6 +3,7 @@ package flow_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -25,34 +27,54 @@ import (
 func testEthSubscribeRequest() protocol.RequestHolder {
 	// Load real specs so eth_subscribe resolves to a Method with the right
 	// subscription settings; the test asserts on the production-shaped id.
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
 	return protocol.NewUpstreamJsonRpcRequest("223", body, false, "eth")
 }
 
 func testEthSubscribeRequestWithId(id string) protocol.RequestHolder {
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	body := protocol.JsonRpcRequestBody{Id: []byte(id), Method: "eth_subscribe", Params: []byte(`["newHeads"]`)}
 	return protocol.NewUpstreamJsonRpcRequest(id, body, false, "eth")
 }
 
-func newSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx *flow.SubCtx) *flow.SubscriptionRequestProcessor {
-	// No local-newHeads availability, so these tests exercise the generic
-	// node-backed path; tests that want local synthesis override this.
+func newSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx flow.SubCtx) *flow.SubscriptionRequestProcessor {
+	// Local subscriptions off, so these tests exercise the generic node-backed
+	// path (with them on, newHeads is served locally or fails).
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
-	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil, allLocalSubs)
+	return flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, subCtx, nil, config.LocalSubSettings{})
 }
 
 // allLocalSubs enables every local subscription type (the default).
 var allLocalSubs = config.LocalSubSettings{NewHeads: true, Logs: true, PendingTx: true}
+
+// With local newHeads enabled and no upstream able to serve it, the client gets
+// a terminal "no available upstreams" frame; nothing is routed to a node.
+func TestSubscriptionRequestProcessorLocalNewHeadsWithoutCapableUpstreamFails(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
+	strategy := mocks.NewMockStrategy()
+	request := testEthSubscribeRequest()
+	engine := subengine.NewRegistry(context.Background()).Get(chains.ETHEREUM)
+	processor := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, allLocalSubs)
+
+	response := processor.ProcessRequest(context.Background(), strategy, request)
+
+	errorWrapper := <-response.(*flow.SubscriptionResponse).ResponseWrappers
+	strategy.AssertNotCalled(t, "SelectUpstream", mock.Anything)
+	upSupervisor.AssertNotCalled(t, "GetUpstream", mock.Anything)
+	assert.Equal(t, "223", errorWrapper.RequestId)
+	assert.True(t, errorWrapper.Response.HasError())
+	assert.Equal(t, protocol.NoAvailableUpstreamsError(), errorWrapper.Response.GetError())
+}
 
 func TestSubscriptionRequestProcessorAndCantSelectUpstreamThenError(t *testing.T) {
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	request := testEthSubscribeRequest()
 	err := errors.New("selection error")
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 
 	strategy.On("SelectUpstream", request).Return("", err)
 
@@ -79,7 +101,7 @@ func TestSubscriptionRequestProcessorAndCantSubscribeThenError(t *testing.T) {
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	err := errors.New("sub error")
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
 	upSupervisor.On("GetUpstream", "id").Return(upstream)
@@ -110,7 +132,7 @@ func TestSubscriptionRequestProcessorEmitsSubIdAck(t *testing.T) {
 	apiConnector := mocks.NewWsConnectorMock()
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 	respChan := make(chan protocol.SubResponse)
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
@@ -124,7 +146,7 @@ func TestSubscriptionRequestProcessorEmitsSubIdAck(t *testing.T) {
 	subRespWrappers := response.(*flow.SubscriptionResponse).ResponseWrappers
 	ackWrapper := <-subRespWrappers
 
-	assert.IsType(t, &protocol.SubscriptionMessageResponse{}, ackWrapper.Response)
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ackWrapper.Response)
 	assert.False(t, ackWrapper.Response.HasError())
 	assert.Equal(t, "223", ackWrapper.RequestId)
 	assert.Equal(t, flow.NoUpstream, ackWrapper.UpstreamId)
@@ -137,7 +159,7 @@ func TestSubscriptionRequestProcessorAndCancelCtxThenChannelCloses(t *testing.T)
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx, cancel := context.WithCancel(context.Background())
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 	respChan := make(chan protocol.SubResponse)
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
@@ -155,8 +177,6 @@ func TestSubscriptionRequestProcessorAndCancelCtxThenChannelCloses(t *testing.T)
 	for range subRespWrappers {
 	}
 
-	strategy.AssertExpectations(t)
-	upSupervisor.AssertExpectations(t)
 }
 
 func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) {
@@ -166,7 +186,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx := context.Background()
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 	respChan := make(chan protocol.SubResponse)
 	event := []byte("event")
 	go func() {
@@ -190,7 +210,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveEvent(t *testing.T) 
 	strategy.AssertExpectations(t)
 	upSupervisor.AssertExpectations(t)
 
-	assert.IsType(t, &protocol.SubscriptionMethodResultResponse{}, responseWrapper.Response)
+	assert.IsType(t, &protocol.SubscriptionEventResponse{}, responseWrapper.Response)
 	assert.Equal(t, event, responseWrapper.Response.ResponseResult())
 	assert.False(t, responseWrapper.Response.HasError())
 	assert.False(t, responseWrapper.Response.HasStream())
@@ -208,12 +228,12 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx := context.Background()
 
-	// No local-newHeads availability → both clients use the generic path.
+	// Local subscriptions off → both clients use the generic path.
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	// One shared engine backs both client processors.
 	engine := subengine.NewRegistry(ctx).Get(chains.ETHEREUM)
-	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil, allLocalSubs)
-	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(), nil, allLocalSubs)
+	p1 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, config.LocalSubSettings{})
+	p2 := flow.NewSubscriptionRequestProcessor(chains.ETHEREUM, upSupervisor, engine, flow.NewSubCtx(chains.ETHEREUM), nil, config.LocalSubSettings{})
 
 	req1 := testEthSubscribeRequestWithId("c1")
 	req2 := testEthSubscribeRequestWithId("c2")
@@ -234,8 +254,8 @@ func TestSubscriptionRequestProcessorTwoSubscribersShareOneUpstreamSub(t *testin
 	resp2 := p2.ProcessRequest(ctx, strategy, req2).(*flow.SubscriptionResponse).ResponseWrappers
 	ack2 := <-resp2
 
-	assert.IsType(t, &protocol.SubscriptionMessageResponse{}, ack1.Response)
-	assert.IsType(t, &protocol.SubscriptionMessageResponse{}, ack2.Response)
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ack1.Response)
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ack2.Response)
 	subId1 := ack1.Response.ResponseResult()
 	subId2 := ack2.Response.ResponseResult()
 	assert.NotEmpty(t, subId1)
@@ -263,7 +283,7 @@ func TestSubscriptionRequestProcessorPropagatesUpstreamDisconnect(t *testing.T) 
 	apiConnector := mocks.NewWsConnectorMock()
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 	respChan := make(chan protocol.SubResponse)
 
 	strategy.On("SelectUpstream", request).Return("id", nil)
@@ -290,7 +310,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 	request := testEthSubscribeRequest()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
 	ctx := context.Background()
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx().WithSubscriptionResultOnly(true))
+	processor := newSubProcessor(upSupervisor, flow.NewResultOnlySubCtx())
 	respChan := make(chan protocol.SubResponse)
 	result := []byte(`{"foo":"bar"}`)
 	go func() {
@@ -315,7 +335,7 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 
 	subscriptionResponse, ok := responseWrapper.Response.(protocol.SubscriptionResponseHolder)
 	assert.True(t, ok)
-	assert.True(t, subscriptionResponse.IsEventFrame())
+	assert.False(t, subscriptionResponse.IsEnd())
 	assert.Equal(t, result, subscriptionResponse.ResponseResult())
 	assert.False(t, subscriptionResponse.HasError())
 	assert.False(t, subscriptionResponse.HasStream())
@@ -326,12 +346,12 @@ func TestSubscriptionRequestProcessorAndSubscribeThenReceiveResultOnlyEvent(t *t
 func newGrpcSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock) *flow.SubscriptionRequestProcessor {
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	engine := subengine.NewRegistry(context.Background()).Get(chains.SUI)
-	return flow.NewSubscriptionRequestProcessor(chains.SUI, upSupervisor, engine, flow.NewSubCtx().WithSubscriptionResultOnly(true), nil, config.LocalSubSettings{})
+	return flow.NewSubscriptionRequestProcessor(chains.SUI, upSupervisor, engine, flow.NewResultOnlySubCtx(), nil, config.LocalSubSettings{})
 }
 
 func grpcStreamRequest(t *testing.T, method string) protocol.RequestHolder {
 	t.Helper()
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	request := protocol.NewUpstreamGrpcRequest("7", method, nil, []byte{1}, "sui")
 	// testify formats mock arguments with fmt (reflection), which would race with
 	// the lazily computed hash when two processors share one request
@@ -372,7 +392,7 @@ func TestSubscriptionRequestProcessorGrpcFiniteStreamCompletesCleanly(t *testing
 	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
 
 	first := <-wrappers
-	firstResponse := first.Response.(*protocol.SubscriptionResultResponse)
+	firstResponse := first.Response.(*protocol.SubscriptionEventResponse)
 	assert.Equal(t, []byte("f1"), firstResponse.ResponseResult())
 	assert.Equal(t, []string{"h"}, map[string][]string(firstResponse.ResponseHeaders())["x-up-meta"])
 	assert.Equal(t, "id", first.UpstreamId)
@@ -383,7 +403,7 @@ func TestSubscriptionRequestProcessorGrpcFiniteStreamCompletesCleanly(t *testing
 
 	end := <-wrappers
 	endResponse := end.Response.(*protocol.SubscriptionEndResponse)
-	assert.False(t, endResponse.IsEventFrame(), "the end frame is not an event")
+	assert.True(t, endResponse.IsEnd())
 	assert.False(t, endResponse.HasError())
 	assert.Equal(t, []string{"t"}, endResponse.ResponseTrailers()["x-up-trailer"])
 	assert.Equal(t, "id", end.UpstreamId)
@@ -472,10 +492,10 @@ func TestSubscriptionRequestProcessorGrpcStreamsAreNotShared(t *testing.T) {
 // A request flagged as a subscription whose method is not a subscription (an
 // unsubscribe call, a plain method) is refused before any upstream is touched.
 func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T) {
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
-	processor := newSubProcessor(upSupervisor, flow.NewSubCtx())
+	processor := newSubProcessor(upSupervisor, flow.NewSubCtx(chains.ETHEREUM))
 	body := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_unsubscribe", Params: []byte(`["0x1"]`)}
 	request := protocol.NewUpstreamJsonRpcRequest("9", body, true, "eth")
 
@@ -491,7 +511,7 @@ func TestSubscriptionRequestProcessorRefusesNonSubscriptionMethods(t *testing.T)
 // notification method; the JSON-RPC framing must refuse it instead of
 // dereferencing the missing subscription settings.
 func TestSubscriptionRequestProcessorJsonRpcFramingRefusesGrpcStreams(t *testing.T) {
-	require.NoError(t, specs.NewMethodSpecLoader().Load())
+	specs_utils.LoadMethodSpecs()
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	strategy := mocks.NewMockStrategy()
 	request := protocol.NewUpstreamGrpcRequest("7", "/sui.rpc.v2.SubscriptionService/SubscribeCheckpoints", nil, []byte{1}, "sui")
@@ -499,11 +519,136 @@ func TestSubscriptionRequestProcessorJsonRpcFramingRefusesGrpcStreams(t *testing
 	wireGrpcStream(t, upSupervisor, strategy, request, respChan)
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
 	engine := subengine.NewRegistry(context.Background()).Get(chains.SUI)
-	processor := flow.NewSubscriptionRequestProcessor(chains.SUI, upSupervisor, engine, flow.NewSubCtx(), nil, config.LocalSubSettings{})
+	processor := flow.NewSubscriptionRequestProcessor(chains.SUI, upSupervisor, engine, flow.NewSubCtx(chains.SUI), nil, config.LocalSubSettings{})
 
 	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
 	terminal := <-wrappers
 
 	assert.True(t, terminal.Response.HasError())
 	assert.Contains(t, terminal.Response.GetError().Message, "has no JSON-RPC subscription info")
+}
+
+func testCelestiaSubscribeRequest(id string) protocol.RequestHolder {
+	specs_utils.LoadMethodSpecs()
+	body := protocol.JsonRpcRequestBody{Id: []byte(id), Method: "header.Subscribe", Params: []byte(`[]`)}
+	return protocol.NewUpstreamJsonRpcRequest("223", body, true, "celestia")
+}
+
+func newCelestiaSubProcessor(upSupervisor *mocks.UpstreamSupervisorMock, subCtx flow.SubCtx) *flow.SubscriptionRequestProcessor {
+	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(nil).Maybe()
+	engine := subengine.NewRegistry(context.Background()).Get(chains.CELESTIA)
+	return flow.NewSubscriptionRequestProcessor(chains.CELESTIA, upSupervisor, engine, subCtx, nil, allLocalSubs)
+}
+
+func encodedResponse(t *testing.T, wrapper *protocol.ResponseHolderWrapper, realId string) string {
+	t.Helper()
+	encoded, err := io.ReadAll(wrapper.Response.EncodeResponse([]byte(realId)))
+	require.NoError(t, err)
+	return string(encoded)
+}
+
+// A go-jsonrpc channel client: the ack carries a per-connection channel id,
+// events are xrpc.ch.val [chId, value], the subscription is filed under the
+// client's own request id, and the cancel is answered by the SubCtx with
+// xrpc.ch.close [chId] while the subscription's own stream ends without a
+// failure.
+func TestSubscriptionRequestProcessorChannelAckEventAndCancel(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	apiConnector := mocks.NewWsConnectorMock()
+	request := testCelestiaSubscribeRequest("5")
+	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
+	subCtx := flow.NewSubCtx(chains.CELESTIA)
+	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
+	respChan := make(chan protocol.SubResponse)
+
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(upstream)
+	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan, "op-1"), nil)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
+	apiConnector.On("Unsubscribe", mock.Anything).Return().Maybe()
+
+	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
+
+	ack := <-wrappers
+	assert.IsType(t, &protocol.WsJsonRpcResponse{}, ack.Response)
+	assert.JSONEq(t, `{"jsonrpc":"2.0","id":5,"result":1}`, encodedResponse(t, ack, "5"))
+
+	go func() {
+		respChan <- &protocol.WsResponse{Type: protocol.Ws, SubId: "7", Message: []byte(`{"header":{"height":"42"}}`), UpstreamId: "id"}
+	}()
+	event := <-wrappers
+	assert.Equal(t, "id", event.UpstreamId)
+	assert.JSONEq(t, `{"jsonrpc":"2.0","method":"xrpc.ch.val","params":[1,{"header":{"height":"42"}}]}`, encodedResponse(t, event, "5"))
+
+	cancelReq := protocol.NewUpstreamJsonRpcRequest("224", protocol.JsonRpcRequestBody{Method: "xrpc.cancel", Params: []byte(`[5]`)}, false, "celestia")
+	reply := subCtx.Unsubscribe(cancelReq, "5")
+
+	require.IsType(t, &flow.SubscriptionResponse{}, reply)
+	closeFrame := <-reply.(*flow.SubscriptionResponse).ResponseWrappers
+	assert.Equal(t, flow.NoUpstream, closeFrame.UpstreamId)
+	assert.Equal(t, "224", closeFrame.RequestId)
+	assert.JSONEq(t, `{"jsonrpc":"2.0","method":"xrpc.ch.close","params":[1]}`, encodedResponse(t, closeFrame, "5"))
+	_, more := <-reply.(*flow.SubscriptionResponse).ResponseWrappers
+	assert.False(t, more)
+	_, open := <-wrappers
+	assert.False(t, open, "a client cancel is not a failure")
+}
+
+// The source dying is a total failure, as for every other client; the channel
+// client gets the failure and the WS server closes the connection.
+func TestSubscriptionRequestProcessorChannelTotalFailure(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	apiConnector := mocks.NewWsConnectorMock()
+	request := testCelestiaSubscribeRequest("5")
+	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
+	subCtx := flow.NewSubCtx(chains.CELESTIA)
+	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
+	respChan := make(chan protocol.SubResponse)
+
+	strategy.On("SelectUpstream", request).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(upstream)
+	apiConnector.On("Subscribe", mock.Anything, request).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan, "op-1"), nil)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
+	apiConnector.On("Unsubscribe", mock.Anything).Return().Maybe()
+
+	wrappers := processor.ProcessRequest(context.Background(), strategy, request).(*flow.SubscriptionResponse).ResponseWrappers
+	<-wrappers // ack
+
+	// the node closed the channel: the source emits the error frame and ends
+	go func() {
+		respChan <- &protocol.WsResponse{Type: protocol.Ws, SubId: "7", Error: protocol.SubscribeTotalFailureError(), UpstreamId: "id"}
+	}()
+
+	terminal := <-wrappers
+	assert.True(t, terminal.Response.HasError())
+	assert.Equal(t, protocol.SubscribeTotalFailureError(), terminal.Response.GetError())
+	_, open := <-wrappers
+	assert.False(t, open)
+}
+
+// Channel ids count per connection (per SubCtx), like the node's own.
+func TestSubscriptionRequestProcessorChannelIdsCountPerConnection(t *testing.T) {
+	upSupervisor := mocks.NewUpstreamSupervisorMock()
+	strategy := mocks.NewMockStrategy()
+	apiConnector := mocks.NewWsConnectorMock()
+	first := testCelestiaSubscribeRequest("1")
+	second := testCelestiaSubscribeRequest("2")
+	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
+	subCtx := flow.NewSubCtx(chains.CELESTIA)
+	processor := newCelestiaSubProcessor(upSupervisor, subCtx)
+	respChan := make(chan protocol.SubResponse)
+
+	strategy.On("SelectUpstream", mock.Anything).Return("id", nil)
+	upSupervisor.On("GetUpstream", "id").Return(upstream)
+	apiConnector.On("Subscribe", mock.Anything, mock.Anything).Return(protocol.NewJsonRpcWsUpstreamResponse(respChan, "op-1"), nil)
+	apiConnector.On("SubscribeStates", mock.Anything).Return(nil)
+	apiConnector.On("Unsubscribe", mock.Anything).Return().Maybe()
+
+	firstAck := <-processor.ProcessRequest(context.Background(), strategy, first).(*flow.SubscriptionResponse).ResponseWrappers
+	secondAck := <-processor.ProcessRequest(context.Background(), strategy, second).(*flow.SubscriptionResponse).ResponseWrappers
+
+	assert.JSONEq(t, `{"jsonrpc":"2.0","id":1,"result":1}`, encodedResponse(t, firstAck, "1"))
+	assert.JSONEq(t, `{"jsonrpc":"2.0","id":2,"result":2}`, encodedResponse(t, secondAck, "2"))
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/drpcorg/public/pkg/dshackle"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -46,7 +45,7 @@ func SubscribeChainStatusWithResync(
 
 	responses := make(chan *dshackle.SubscribeChainStatusResponse, 100)
 	chainSubs := make(map[chains.Chain]*utils.Subscription[*upstreams.ChainSupervisorStateWrapperEvent])
-	chainSupervisorEventsSub := upstreamSupervisor.SubscribeChainSupervisor(fmt.Sprintf("chain_status_%s", uuid.NewString()))
+	chainSupervisorEventsSub := upstreamSupervisor.SubscribeChainSupervisor("chain_status")
 	defer func() {
 		chainSupervisorEventsSub.Unsubscribe()
 		for _, sub := range chainSubs {
@@ -94,9 +93,7 @@ func subscribeChainSupervisorStates(
 		return
 	}
 
-	chainSupervisorStatesSub := chainSupervisor.SubscribeState(
-		fmt.Sprintf("chain_supervisor_states_%s_%s", chainSupervisor.GetChain(), uuid.NewString()),
-	)
+	chainSupervisorStatesSub := chainSupervisor.SubscribeState(fmt.Sprintf("chain_supervisor_states_%s", chainSupervisor.GetChain()))
 	chainSubs[chainSupervisor.GetChain()] = chainSupervisorStatesSub
 	configChain := chains.GetChain(chainSupervisor.GetChain().String())
 	grpcId := configChain.GrpcId

@@ -100,7 +100,7 @@ func (b *BitcoinChainSpecificObject) HealthValidators() []validations.Validator[
 }
 
 func (b *BitcoinChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if b.configuredChain == nil || b.configuredChain.ChainId == "" {
+	if b.configuredChain == nil || b.configuredChain.ChainIdFor(chains.Bitcoin) == "" {
 		return nil
 	}
 	if b.options != nil && *b.options.DisableChainValidation {
@@ -196,4 +196,8 @@ var _ chains_specific.ChainSpecific = (*BitcoinChainSpecificObject)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (b *BitcoinChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (b *BitcoinChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

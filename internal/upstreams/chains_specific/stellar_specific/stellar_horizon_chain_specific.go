@@ -83,7 +83,7 @@ func (s *StellarHorizonChainSpecificObject) HealthValidators() []validations.Val
 }
 
 func (s *StellarHorizonChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain.ChainId == "" {
+	if s.configuredChain.ChainIdFor(chains.Stellar) == "" {
 		return nil
 	}
 	if *s.options.DisableChainValidation {

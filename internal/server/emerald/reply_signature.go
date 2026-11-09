@@ -7,6 +7,9 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/signature"
 	"github.com/drpcorg/public/pkg/dshackle"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // newResponseSigner builds the response signer from the gRPC auth config.
@@ -66,7 +69,8 @@ func buildReplySignature(
 
 // nativeSubscribeReplyItem builds one subscription event reply, signing the
 // payload when the client requested it with a non-zero nonce on the subscribe
-// request.
+// request. A failure is logged with its cause here and returned as the gRPC
+// status the NativeSubscribe stream ends with; callers just return it.
 func nativeSubscribeReplyItem(
 	wrapper *protocol.ResponseHolderWrapper,
 	result []byte,
@@ -75,7 +79,8 @@ func nativeSubscribeReplyItem(
 ) (*dshackle.NativeSubscribeReplyItem, error) {
 	replySignature, err := buildReplySignature(signer, nonce, result, wrapper.UpstreamId)
 	if err != nil {
-		return nil, err
+		log.Warn().Err(err).Str("upstream", wrapper.UpstreamId).Msg("unable to build a subscription reply")
+		return nil, status.Error(codes.Internal, "unable to build a subscription reply")
 	}
 
 	return &dshackle.NativeSubscribeReplyItem{

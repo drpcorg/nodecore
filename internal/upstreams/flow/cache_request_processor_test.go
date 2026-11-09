@@ -11,7 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
-	specs "github.com/drpcorg/public/pkg/methods"
+	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -167,7 +167,7 @@ func TestCacheRequestProcessorWrappingUnaryStoresFreshResponse(t *testing.T) {
 	chain := chains.POLYGON
 	ctx := context.Background()
 	upstream := test_utils.TestEvmUpstream(apiConnector, upConfig(), mocks.NewMethodsMock(), nil)
-	_ = specs.NewMethodSpecLoader().Load()
+	specs_utils.LoadMethodSpecs()
 	jsonBody := protocol.JsonRpcRequestBody{Id: []byte(`1`), Method: "eth_call"}
 	request := protocol.NewUpstreamJsonRpcRequest("223", jsonBody, false, "eth")
 	result := []byte("result")

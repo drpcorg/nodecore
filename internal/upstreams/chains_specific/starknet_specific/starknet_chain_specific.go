@@ -109,7 +109,7 @@ func (s *StarknetChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (s *StarknetChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain == nil || s.configuredChain.ChainId == "" {
+	if s.configuredChain == nil || s.configuredChain.ChainIdFor(chains.Starknet) == "" {
 		return nil
 	}
 	if s.options != nil && *s.options.DisableChainValidation {
@@ -200,4 +200,8 @@ var _ chains_specific.ChainSpecific = (*StarknetChainSpecificObject)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (s *StarknetChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (s *StarknetChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

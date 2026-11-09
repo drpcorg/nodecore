@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -47,6 +48,18 @@ func (t LowerBoundType) String() string {
 		return "BLOB"
 	}
 	panic(fmt.Sprintf("unknown lower bound type %d", t))
+}
+
+// ParseLowerBoundType maps a case-insensitive type name to its LowerBoundType.
+// It never returns UnknownBound.
+func ParseLowerBoundType(name string) (LowerBoundType, bool) {
+	upper := strings.ToUpper(name)
+	for t := SlotBound; t <= BlobBound; t++ {
+		if t.String() == upper {
+			return t, true
+		}
+	}
+	return 0, false
 }
 
 type LowerBoundData struct {

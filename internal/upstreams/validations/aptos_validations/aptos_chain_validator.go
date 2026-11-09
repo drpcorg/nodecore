@@ -34,7 +34,7 @@ func NewAptosChainValidator(
 }
 
 func (a *AptosChainValidator) Validate() validations.ValidationSettingResult {
-	expected := strings.TrimSpace(a.chain.ChainId)
+	expected := strings.TrimSpace(a.chain.ChainIdFor(chains.Aptos))
 	if expected == "" {
 		return validations.Valid
 	}

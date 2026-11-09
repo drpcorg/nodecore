@@ -102,7 +102,7 @@ func (a *AlgorandChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (a *AlgorandChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if a.configuredChain == nil || a.configuredChain.ChainId == "" {
+	if a.configuredChain == nil || a.configuredChain.ChainIdFor(chains.Algorand) == "" {
 		return nil
 	}
 	if a.options != nil && *a.options.DisableChainValidation {
@@ -257,4 +257,8 @@ var _ chains_specific.ChainSpecific = (*AlgorandChainSpecificObject)(nil)
 // implements, so its upstreams keep the full method set their spec declares.
 func (a *AlgorandChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (a *AlgorandChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }

@@ -81,6 +81,12 @@ func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 			eth_labels.NewEthArchiveLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		)
 	}
+	if e.hasMethod("eth_getProof") {
+		labelsDetectors = append(
+			labelsDetectors,
+			eth_labels.NewEthHistoricalProofsLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
+		)
+	}
 
 	return labelsDetectors
 }
@@ -99,6 +105,12 @@ func (e *EvmChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	}
 
 	return methods.NewGenericMethodsProcessor(e.ctx, e.upstreamId, detectors, methods.DetectionInterval)
+}
+
+// PauseHeadWhileSyncing is true for EVM nodes: a syncing execution client streams
+// newHeads at replay speed, and nothing downstream consumes those heads.
+func (e *EvmChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return true
 }
 
 // detectableMethods is the set of spec methods the detectors above may form an opinion
@@ -192,6 +204,9 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	}
 	if e.options.DisableLogIndexValidation == nil || !*e.options.DisableLogIndexValidation {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthLogIndexValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
+	if e.options.DisableErigonBugValidation != nil && !*e.options.DisableErigonBugValidation {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthErigonBugValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 
 	return settingsValidators

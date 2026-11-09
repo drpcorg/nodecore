@@ -41,7 +41,7 @@ func (b *GenericSettingsEventProcessor) SetEmitter(emitter Emitter) {
 }
 
 func (b *GenericSettingsEventProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go func() {
 			for {
 				select {
@@ -68,7 +68,7 @@ func (b *GenericSettingsEventProcessor) Start() {
 				}
 			}
 		}()
-		return nil
+		return nil, nil
 	})
 }
 
@@ -130,7 +130,7 @@ func (b *GenericHealthEventProcessor) SetEmitter(emitter Emitter) {
 }
 
 func (b *GenericHealthEventProcessor) Start() {
-	b.lifecycle.Start(func(ctx context.Context) error {
+	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go func() {
 			b.validateHealth()
 			for {
@@ -144,7 +144,7 @@ func (b *GenericHealthEventProcessor) Start() {
 			}
 		}()
 
-		return nil
+		return nil, nil
 	})
 }
 

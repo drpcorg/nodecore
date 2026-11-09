@@ -124,7 +124,7 @@ func (s *SuiChainSpecificObject) HealthValidators() []validations.Validator[prot
 }
 
 func (s *SuiChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain.ChainId == "" {
+	if s.configuredChain.ChainIdFor(chains.Sui) == "" {
 		return nil
 	}
 	if *s.options.DisableChainValidation {
@@ -143,6 +143,9 @@ func (s *SuiChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDe
 func (s *SuiChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
 		sui_bounds.NewSuiLowerBoundDetector(
+			s.upstreamId, s.configuredChain.Chain, s.internalTimeout, s.connector,
+		),
+		sui_bounds.NewSuiEpochLowerBoundDetector(
 			s.upstreamId, s.configuredChain.Chain, s.internalTimeout, s.connector,
 		),
 	}
@@ -184,6 +187,10 @@ func (s *SuiChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 // idea is parked).
 func (s *SuiChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (s *SuiChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }
 
 func newSuiBlock(serviceInfo *sui.GetServiceInfoResponse, rawData []byte) (protocol.Block, error) {

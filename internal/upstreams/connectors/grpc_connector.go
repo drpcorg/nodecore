@@ -36,6 +36,7 @@ type GrpcConnector struct {
 	endpoint       string
 	upstreamId     string
 	conn           *grpc.ClientConn
+	connectorType  specs.ApiConnectorType
 	requestTimeout time.Duration
 	// additionalMetadata holds the connector config headers, sent as
 	// per-call metadata; keys are lowercase per gRPC metadata convention.
@@ -112,7 +113,10 @@ func (rawGrpcCodec) Name() string {
 	return "proto"
 }
 
-func NewGrpcConnector(connectorConfig *config.ApiConnectorConfig, upstreamId string) (*GrpcConnector, error) {
+// NewGrpcConnector dials one gRPC endpoint. connectorType is grpc or
+// grpc-additional - the same client either way, the type only tells the
+// upstream which spec bucket this endpoint serves.
+func NewGrpcConnector(connectorConfig *config.ApiConnectorConfig, connectorType specs.ApiConnectorType, upstreamId string) (*GrpcConnector, error) {
 	endpoint, err := url.Parse(connectorConfig.Url)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing the endpoint: %v", err)
@@ -140,16 +144,17 @@ func NewGrpcConnector(connectorConfig *config.ApiConnectorConfig, upstreamId str
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create a grpc client: %v", err)
 	}
-	return NewGrpcConnectorWithClientConn(conn, connectorConfig, upstreamId), nil
+	return NewGrpcConnectorWithClientConn(conn, connectorConfig, connectorType, upstreamId), nil
 }
 
 // NewGrpcConnectorWithClientConn wraps an already-dialed ClientConn (used by
 // tests to connect over bufconn).
-func NewGrpcConnectorWithClientConn(conn *grpc.ClientConn, connectorConfig *config.ApiConnectorConfig, upstreamId string) *GrpcConnector {
+func NewGrpcConnectorWithClientConn(conn *grpc.ClientConn, connectorConfig *config.ApiConnectorConfig, connectorType specs.ApiConnectorType, upstreamId string) *GrpcConnector {
 	return &GrpcConnector{
 		endpoint:               connectorConfig.Url,
 		upstreamId:             upstreamId,
 		conn:                   conn,
+		connectorType:          connectorType,
 		requestTimeout:         grpcRequestTimeout,
 		additionalMetadata:     lowercaseKeys(connectorConfig.Headers),
 		deniedResponseMetadata: buildDeniedGrpcResponseMetadata(connectorConfig.ResponseHeaderDeny),
@@ -255,7 +260,7 @@ func (g *GrpcConnector) Unsubscribe(_ string) {
 }
 
 func (g *GrpcConnector) GetType() specs.ApiConnectorType {
-	return specs.GrpcConnector
+	return g.connectorType
 }
 
 func (g *GrpcConnector) GetUrl() string {

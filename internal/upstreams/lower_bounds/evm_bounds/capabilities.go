@@ -26,8 +26,8 @@ const (
 	evmCapabilitiesReprobeInterval = time.Hour
 
 	// A transient failure is retried within the refresh: a nil report sends every
-	// detector of the cycle to the search path, and the block search re-publishes
-	// LogsBound as 1, briefly overriding a windowed log index. Unsupported and
+	// detector of the cycle to the search path, and the receipts search re-publishes
+	// LogsBound from the receipts window, briefly overriding a windowed log index. Unsupported and
 	// malformed verdicts are never retried.
 	evmCapabilitiesRetryAttempts = 3
 	evmCapabilitiesRetryDelay    = time.Second
@@ -44,8 +44,8 @@ const (
 // EvmCapabilities caches the upstream's eth_capabilities report (geth >= 1.17.4), which
 // states the oldest served block per data type and replaces the per-type binary searches.
 // One instance is shared by all lower-bound detectors of an upstream, so the method is
-// called once per result window instead of once per bound type. The values are trusted
-// as reported; the probe path stays intact for upstreams without the method.
+// called once per result window instead of once per bound type. A reported bound is checked
+// one block below; the probe path stays intact for upstreams without the method.
 type EvmCapabilities struct {
 	upstreamId      string
 	chain           *chains.ConfiguredChain
@@ -220,7 +220,7 @@ type evmCapabilityEntry struct {
 	OldestBlock json.RawMessage `json:"oldestBlock"`
 }
 
-// head and deleteStrategy are intentionally ignored for now.
+// deleteStrategy is intentionally ignored for now.
 type evmCapabilitiesResponse struct {
 	State       *evmCapabilityEntry `json:"state"`
 	Tx          *evmCapabilityEntry `json:"tx"`
@@ -228,6 +228,11 @@ type evmCapabilitiesResponse struct {
 	Blocks      *evmCapabilityEntry `json:"blocks"`
 	Logs        *evmCapabilityEntry `json:"logs"`
 	StateProofs *evmCapabilityEntry `json:"stateproofs"`
+	Head        *evmCapabilityHead  `json:"head"`
+}
+
+type evmCapabilityHead struct {
+	Number json.RawMessage `json:"number"`
 }
 
 type evmCapabilityResource struct {
@@ -237,6 +242,9 @@ type evmCapabilityResource struct {
 
 type evmCapabilitiesSnapshot struct {
 	resources map[protocol.LowerBoundType]evmCapabilityResource
+	// head is the block the upstream reports as its tip, 0 when it is absent or
+	// unparseable. The proof detector validates stateproofs.oldestBlock against it.
+	head int64
 }
 
 // resource answers for TraceBound with the state capability: nodecore derives the trace
@@ -291,7 +299,13 @@ func parseEvmCapabilities(raw []byte) *evmCapabilitiesSnapshot {
 	if len(resources) == 0 {
 		return nil
 	}
-	return &evmCapabilitiesSnapshot{resources: resources}
+	snapshot := &evmCapabilitiesSnapshot{resources: resources}
+	if parsed.Head != nil {
+		if head, err := parseHexInt(parsed.Head.Number); err == nil && head > 0 {
+			snapshot.head = head
+		}
+	}
+	return snapshot
 }
 
 // detectFromCapabilities resolves this detector's bound types straight from the upstream's
@@ -319,5 +333,14 @@ func (e *EvmLowerBoundDetector) detectFromCapabilities(ctx context.Context) ([]p
 		}
 		results = append(results, protocol.NewLowerBoundDataNow(res.bound, boundType))
 	}
+	// the upstream may serve more than it reports: data one block below goes to the search
+	if main, _ := snapshot.resource(e.MainBoundType); main.bound > 1 && hasDataAt(ctx, e.probe, main.bound-1) {
+		return nil, false
+	}
 	return results, true
+}
+
+func hasDataAt(ctx context.Context, probe func(context.Context, int64) (bool, error), height int64) bool {
+	available, err := probe(ctx, height)
+	return err == nil && available
 }

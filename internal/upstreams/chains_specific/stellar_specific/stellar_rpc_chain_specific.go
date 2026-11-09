@@ -81,7 +81,7 @@ func (s *StellarRpcChainSpecificObject) HealthValidators() []validations.Validat
 }
 
 func (s *StellarRpcChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if s.configuredChain.ChainId == "" {
+	if s.configuredChain.ChainIdFor(chains.Stellar) == "" {
 		return nil
 	}
 	if *s.options.DisableChainValidation {

@@ -65,17 +65,21 @@ func (c *CelestiaChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 	)
 }
 
-// CapDetectors returns nil: celestia is served over json-rpc only (the go-jsonrpc
-// channel protocol is not supported by the ws connector), so no ws-derived cap
-// can be asserted.
-func (c *CelestiaChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
-	return nil
+// CapDetectors grants WsCap while the upstream's websocket connector is
+// connected: celestia-node subscriptions (header.Subscribe, blob.Subscribe)
+// ride on it. Without a websocket connector the detector never asserts.
+func (c *CelestiaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
+	return caps.DefaultCapDetectors(c.upstreamId, input.WsConnector)
 }
 
 // MethodsProcessor returns nil: celestia-node has no way to ask which methods it
 // implements, so upstreams keep the full method set the spec declares.
 func (c *CelestiaChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
+}
+
+func (c *CelestiaChainSpecificObject) PauseHeadWhileSyncing() bool {
+	return false
 }
 
 // node.Info requires an admin token, so client labels can't be detected.
@@ -112,7 +116,7 @@ func (c *CelestiaChainSpecificObject) HealthValidators() []validations.Validator
 }
 
 func (c *CelestiaChainSpecificObject) SettingsValidators() []validations.Validator[validations.ValidationSettingResult] {
-	if c.configuredChain == nil || c.configuredChain.ChainId == "" {
+	if c.configuredChain == nil || c.configuredChain.ChainIdFor(chains.Celestia) == "" {
 		return nil
 	}
 	if c.options != nil && *c.options.DisableChainValidation {
@@ -166,14 +170,22 @@ func (c *CelestiaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 	), nil
 }
 
-// celestia-node subscriptions use the go-jsonrpc channel protocol (xrpc.ch.val),
-// which the ws connector doesn't speak yet.
-func (c *CelestiaChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
-	return protocol.ZeroBlock{}, fmt.Errorf("celestia does not support websocket subscriptions")
+// ParseSubscriptionBlock parses a header.Subscribe value: an ExtendedHeader,
+// the same shape header.LocalHead returns. The raw header stays on the block,
+// as the EVM head keeps its block JSON.
+func (c *CelestiaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+	block, err := c.ParseBlock(blockBytes)
+	if err != nil {
+		return block, err
+	}
+	block.RawData = append([]byte(nil), blockBytes...)
+	return block, nil
 }
 
+// SubscribeHeadRequest is the head subscription of a websocket-driven
+// upstream: header.Subscribe streams every new ExtendedHeader.
 func (c *CelestiaChainSpecificObject) SubscribeHeadRequest() (protocol.RequestHolder, error) {
-	return nil, fmt.Errorf("celestia does not support websocket subscriptions")
+	return protocol.NewInternalSubUpstreamJsonRpcRequest("header.Subscribe", []interface{}{}, c.configuredChain.Chain)
 }
 
 var _ chains_specific.ChainSpecific = (*CelestiaChainSpecificObject)(nil)

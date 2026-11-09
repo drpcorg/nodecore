@@ -57,7 +57,7 @@ func NewGenericMethodsProcessor(
 }
 
 func (m *GenericMethodsProcessor) Start() {
-	m.lifecycle.Start(func(ctx context.Context) error {
+	m.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go func() {
 			// latest holds each detector's most recent non-nil verdict for the lifetime of
 			// this run, so a detector that cannot answer keeps contributing what it last
@@ -76,7 +76,7 @@ func (m *GenericMethodsProcessor) Start() {
 				}
 			}
 		}()
-		return nil
+		return nil, nil
 	})
 }
 

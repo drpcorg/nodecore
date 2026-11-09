@@ -13,11 +13,12 @@ var EmptyHash HashId = nil
 
 type HashId []byte
 
+// NewHashIdFromBytes passes raw hash bytes through verbatim. No "0x" handling
+// on purpose: that is a hex-text convention (NewHashIdFromString's business),
+// and a raw hash legitimately starts with the bytes 0x30 0x78 (ASCII "0x")
+// about once in 33k blocks - stripping them truncated the id and made it
+// disagree with the ids other connectors derive for the same block.
 func NewHashIdFromBytes(value []byte) HashId {
-	// just pass bytes as is
-	if len(value) >= 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X') {
-		value = value[2:]
-	}
 	return value
 }
 

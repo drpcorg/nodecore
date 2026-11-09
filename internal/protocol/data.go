@@ -178,6 +178,15 @@ type RequestHolder interface {
 	IsSubscribe() bool
 }
 
+// RealIdHolder is a request that carries the client's own JSON-RPC id, as
+// opposed to Id(), nodecore's internal tag. Only JSON-RPC requests have one;
+// consumers that need it (quorum header checks, go-jsonrpc channel framing)
+// type-assert for it.
+type RealIdHolder interface {
+	// RealId is the client's JSON-RPC id as text, string ids unquoted.
+	RealId() string
+}
+
 type ResponseHolder interface {
 	ResponseResult() []byte
 	ResponseResultString() (string, error)
@@ -194,9 +203,13 @@ type ResponseHolder interface {
 	Id() string
 }
 
+// SubscriptionResponseHolder is a client-facing frame of a subscription or
+// stream: an event carrying a payload, or the clean end of a bounded stream.
 type SubscriptionResponseHolder interface {
 	ResponseHolder
-	IsEventFrame() bool
+	// IsEnd reports the final frame of a stream that completed cleanly. It
+	// carries no payload, only the trailers the upstream closed with.
+	IsEnd() bool
 }
 
 type RequestBlockTag int
@@ -277,11 +290,37 @@ type RequestLowerHeightSelector struct {
 
 func (RequestLowerHeightSelector) isRequestSelector() {}
 
+// RequestVersionSelector admits an upstream whose client_version label is a
+// semver within [Min, Max]; an empty bound is open. The dshackle client sends
+// min and max as separate selectors, so a value normally carries only one.
+type RequestVersionSelector struct {
+	Min string
+	Max string
+}
+
+func (RequestVersionSelector) isRequestSelector() {}
+
 type RequestUnsupportedSelector struct {
 	Reason string
 }
 
 func (RequestUnsupportedSelector) isRequestSelector() {}
+
+// RequestGroupLabelSelector admits an upstream that carries at least one of
+// Labels among its config group-labels. Clients cannot send it: nodecore adds
+// it on behalf of an API key whose settings restrict its upstreams.
+type RequestGroupLabelSelector struct {
+	Labels []string
+}
+
+func (RequestGroupLabelSelector) isRequestSelector() {}
+
+// SelectorAppender is implemented by request holders that accept selectors
+// after construction. Callers adding a mandatory restriction must treat a
+// holder that does not implement it as an error, never skip the restriction.
+type SelectorAppender interface {
+	AppendSelectors(selectors ...RequestSelector)
+}
 
 // SubResponse is one event of an upstream subscription/stream: a data
 // notification (GetMessage), a terminal error (GetError), or a clean end of

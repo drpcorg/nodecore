@@ -34,7 +34,7 @@ func NewTendermintChainValidator(
 }
 
 func (t *TendermintChainValidator) Validate() validations.ValidationSettingResult {
-	expected := strings.TrimSpace(t.chain.ChainId)
+	expected := strings.TrimSpace(t.chain.ChainIdFor(chains.Cosmos))
 	if expected == "" {
 		return validations.Valid
 	}

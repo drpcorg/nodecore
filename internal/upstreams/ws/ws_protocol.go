@@ -34,30 +34,7 @@ type JsonRpcWsProtocol struct {
 }
 
 func (j *JsonRpcWsProtocol) RequestFrame(request protocol.RequestHolder) (*RequestFrame, error) {
-	body, err := request.Body()
-	if err != nil {
-		return nil, fmt.Errorf("couldn't parse a request body, cause - %s", err.Error())
-	}
-
-	jsonBody, err := sonic.Get(body)
-	if err != nil {
-		return nil, fmt.Errorf("invalid json-rpc request, cause - %s", err.Error())
-	}
-	nextId := j.internalId.Add(1)
-
-	requestId := fmt.Sprintf("%d", nextId)
-	if _, err = jsonBody.SetAny("id", nextId); err != nil {
-		return nil, fmt.Errorf("couldn't replace an id, cause - %s", err.Error())
-	}
-
-	rawBody, _ := jsonBody.Raw()
-
-	subType, err := getSubscription(&jsonBody, request)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't get a subscription type, cause - %w", err)
-	}
-
-	return NewRequestFrame(requestId, subType, []byte(rawBody)), nil
+	return requestFrame(&j.internalId, request)
 }
 
 func (j *JsonRpcWsProtocol) DoOnCloseFunc(writeRequestFunc WriteRequest) DoOnClose {
@@ -118,6 +95,36 @@ func NewJsonRpcWsProtocol(upstreamId, methodSpec string, chain chains.Chain) *Js
 // WithLabelValues panics on invalid UTF-8; nothing in this process recovers,
 // so it would crash nodecore (same class as execution_flow.go:262).
 var errNonUtf8SubType = errors.New("subscription type is not a valid utf-8 string")
+
+// requestFrame stamps the next internal numeric id on the request body and
+// derives the metrics sub type. Both subscription dialects build their
+// outgoing frames this way; they differ only in how they read the node.
+func requestFrame(internalId *atomic.Int64, request protocol.RequestHolder) (*RequestFrame, error) {
+	body, err := request.Body()
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse a request body, cause - %s", err.Error())
+	}
+
+	jsonBody, err := sonic.Get(body)
+	if err != nil {
+		return nil, fmt.Errorf("invalid json-rpc request, cause - %s", err.Error())
+	}
+	nextId := internalId.Add(1)
+
+	requestId := fmt.Sprintf("%d", nextId)
+	if _, err = jsonBody.SetAny("id", nextId); err != nil {
+		return nil, fmt.Errorf("couldn't replace an id, cause - %s", err.Error())
+	}
+
+	rawBody, _ := jsonBody.Raw()
+
+	subType, err := getSubscription(&jsonBody, request)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't get a subscription type, cause - %w", err)
+	}
+
+	return NewRequestFrame(requestId, subType, []byte(rawBody)), nil
+}
 
 func getSubscription(jsonBody *ast.Node, request protocol.RequestHolder) (string, error) {
 	if !request.IsSubscribe() {

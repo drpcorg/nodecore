@@ -197,14 +197,35 @@ func TestSuiLowerBoundDetector(t *testing.T) {
 	bounds, err := detector.DetectLowerBound(ctx)
 	require.NoError(t, err)
 
-	require.Len(t, bounds, 2)
+	// lowest_available_checkpoint_objects (50000 here) is deliberately ignored:
+	// since sui-node v1.66 it duplicates lowest_available_checkpoint, and the
+	// Sui gRPC surface has no "state at checkpoint N" read to route on anyway.
+	require.Len(t, bounds, 1)
 	assert.Equal(t, int64(1000), bounds[0].Bound)
 	assert.Equal(t, protocol.BlockBound, bounds[0].Type)
-	assert.Equal(t, int64(50000), bounds[1].Bound)
-	assert.Equal(t, protocol.StateBound, bounds[1].Type)
+	assert.Equal(t, []protocol.LowerBoundType{protocol.BlockBound}, detector.SupportedTypes())
 }
 
-func TestSuiLowerBoundDetectorSkipsAbsentBounds(t *testing.T) {
+// sui-node always sets lowest_available_checkpoint and reports an explicit 0
+// when nothing has been pruned. That node is an archive, so the bound is 1
+// (the predictor's archive value), never a skipped tick: an upstream without
+// a block bound would be treated as unavailable for every checkpoint read.
+func TestSuiLowerBoundDetectorArchiveNodeReportsOne(t *testing.T) {
+	ctx := context.Background()
+	conn := mocks.NewConnectorMock()
+	serviceInfo := fullServiceInfo()
+	serviceInfo.LowestAvailableCheckpoint = new(uint64(0))
+	conn.On("SendRequest", mock.Anything, mock.Anything).Return(serviceInfoResponse(t, serviceInfo)).Once()
+
+	bounds, err := sui_bounds.NewSuiLowerBoundDetector("id", chains.GetChain("sui").Chain, time.Second, conn).DetectLowerBound(ctx)
+	require.NoError(t, err)
+
+	require.Len(t, bounds, 1)
+	assert.Equal(t, int64(1), bounds[0].Bound)
+	assert.Equal(t, protocol.BlockBound, bounds[0].Type)
+}
+
+func TestSuiLowerBoundDetectorSkipsAbsentBound(t *testing.T) {
 	ctx := context.Background()
 	conn := mocks.NewConnectorMock()
 	serviceInfo := fullServiceInfo()
@@ -214,6 +235,5 @@ func TestSuiLowerBoundDetectorSkipsAbsentBounds(t *testing.T) {
 	bounds, err := sui_bounds.NewSuiLowerBoundDetector("id", chains.GetChain("sui").Chain, time.Second, conn).DetectLowerBound(ctx)
 	require.NoError(t, err)
 
-	require.Len(t, bounds, 1)
-	assert.Equal(t, protocol.StateBound, bounds[0].Type)
+	assert.Empty(t, bounds)
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,6 +41,7 @@ type GenericChainSupervisor struct {
 	ctx             context.Context
 	chain           chains.Chain
 	fc              choice.ForkChoice
+	newFc           func() choice.ForkChoice
 	state           *utils.Atomic[ChainSupervisorState]
 	eventsChan      chan protocol.UpstreamEvent
 	upstreamStates  *utils.CMap[string, *protocol.UpstreamState]
@@ -54,12 +56,18 @@ type GenericChainSupervisor struct {
 	roundRobinIndex atomic.Uint64
 
 	subStateManager *utils.SubscriptionManager[*ChainSupervisorStateWrapperEvent]
+
+	// feeds are the live filtered head feeds (SubscribeHead). feedsMu guards the
+	// map, feedsClosed and every send/close on a feed's channel.
+	feedsMu     sync.Mutex
+	feeds       map[*headFeed]struct{}
+	feedsClosed bool
 }
 
 func NewGenericChainSupervisor(
 	ctx context.Context,
 	chain chains.Chain,
-	fc choice.ForkChoice,
+	newFc func() choice.ForkChoice,
 	tracker dimensions.DimensionTracker,
 	validateLag bool,
 	getUpstream func(string) Upstream,
@@ -82,7 +90,9 @@ func NewGenericChainSupervisor(
 		ctx:             ctx,
 		tracker:         tracker,
 		chain:           chain,
-		fc:              fc,
+		fc:              newFc(),
+		newFc:           newFc,
+		feeds:           make(map[*headFeed]struct{}),
 		eventsChan:      make(chan protocol.UpstreamEvent, 100),
 		upstreamStates:  utils.NewCMap[string, *protocol.UpstreamState](),
 		state:           state,
@@ -178,6 +188,7 @@ func (b *GenericChainSupervisor) processEvents() {
 	for {
 		select {
 		case <-b.ctx.Done():
+			b.closeFeeds()
 			return
 		case event, ok := <-b.eventsChan:
 			if ok {
@@ -190,6 +201,7 @@ func (b *GenericChainSupervisor) processEvents() {
 
 						b.updateState()
 						b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: protocol.Unavailable, Head: upHead})
+						b.updateFeeds(event.Id)
 					}
 				case *protocol.HeadUpstreamEvent:
 					// Keep the per-upstream snapshot's head fresh - head updates
@@ -203,10 +215,12 @@ func (b *GenericChainSupervisor) processEvents() {
 						b.upstreamStates.Store(event.Id, &newUpState)
 					}
 					b.updateHead(event.Id, eventType)
+					b.updateFeeds(event.Id)
 				case *protocol.StateUpstreamEvent:
 					availabilityMetric.WithLabelValues(b.chain.String(), event.Id).Set(float64(eventType.State.Status))
 					b.upstreamStates.Store(event.Id, eventType.State)
 					b.updateState()
+					b.updateFeeds(event.Id)
 				case *protocol.ValidUpstreamEvent:
 					// Symmetric to RemoveUpstreamEvent: a recovered upstream is
 					// re-registered right away from the event's state snapshot.
@@ -220,6 +234,7 @@ func (b *GenericChainSupervisor) processEvents() {
 						if !eventType.State.HeadData.IsEmptyByHeight() {
 							b.updateHead(event.Id, &protocol.HeadUpstreamEvent{Status: eventType.State.Status, Head: eventType.State.HeadData})
 						}
+						b.updateFeeds(event.Id)
 					}
 				}
 			}
@@ -263,7 +278,7 @@ func (b *GenericChainSupervisor) updateState() {
 	newState.LowerBounds = processLowerBounds(availableUpstreams)
 	newState.ChainLabels = processLabels(availableUpstreams)
 	newState.Caps = processCaps(availableUpstreams)
-	newState.SubMethods = b.processSubMethods(newState.Caps)
+	newState.SubMethods = b.processSubMethods(newState.Methods, newState.Caps)
 
 	eventWrappers := currentState.Compare(newState)
 	b.state.Store(newState)
@@ -337,11 +352,23 @@ func (b *GenericChainSupervisor) availableUpstreams() []*protocol.UpstreamState 
 	return states
 }
 
-func (b *GenericChainSupervisor) processSubMethods(caps mapset.Set[protocol.Cap]) mapset.Set[string] {
-	if caps == nil || !caps.Contains(protocol.WsCap) {
-		return mapset.NewThreadUnsafeSet[string]()
+func (b *GenericChainSupervisor) processSubMethods(chainMethods methods.Methods, caps mapset.Set[protocol.Cap]) mapset.Set[string] {
+	subMethods := mapset.NewThreadUnsafeSet[string]()
+	for name := range b.subChainMethods.Iter() {
+		// Only a method some available upstream actually supports (after config,
+		// detection and bans) can be advertised: a disabled subscribe method is
+		// the operator saying "no subscriptions from this upstream".
+		method := chainMethods.GetMethod(name)
+		if method == nil {
+			continue
+		}
+		// A gRPC stream rides the grpc connector the spec binds it to (all grpc
+		// calls share the one connection); a JSON-RPC subscription additionally
+		// needs a live websocket connector somewhere.
+		if method.GrpcCallType().IsServerStream() || (caps != nil && caps.Contains(protocol.WsCap)) {
+			subMethods.Add(name)
+		}
 	}
-	subMethods := b.subChainMethods.Clone()
 	// EVM advertises concrete topics derived from caps instead of the generic
 	// eth_subscribe method, so SubscribeChainStatus and NativeSubscribe see the
 	// real sub types. A topic is offered only if it can be served locally
