@@ -78,6 +78,11 @@ func (c *CelestiaChainSpecificObject) MethodsProcessor() methods.MethodsProcesso
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (c *CelestiaChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (c *CelestiaChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

@@ -221,6 +221,11 @@ func (b *BeaconChainSpecificObject) MethodsProcessor() methods.MethodsProcessor 
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (b *BeaconChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (b *BeaconChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

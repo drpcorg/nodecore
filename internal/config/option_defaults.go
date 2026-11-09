@@ -163,6 +163,13 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
+	if upstreamOptions.DisableErigonBugValidation == nil {
+		upstreamOptions.DisableErigonBugValidation = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableErigonBugValidation }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableErigonBugValidation }),
+			lo.Ternary(upstreamMode == StrictMode, false, true),
+		)
+	}
 	if upstreamOptions.DisableLivenessSubscriptionValidation == nil {
 		upstreamOptions.DisableLivenessSubscriptionValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
