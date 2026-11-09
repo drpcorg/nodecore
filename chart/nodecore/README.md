@@ -96,19 +96,21 @@ This removes all Kubernetes resources created by the chart.
 
 ## Configuration
 
-| Key                | Type   | Description                      |
-| ------------------ | ------ | -------------------------------- |
-| `replicaCount`     | int    | Number of replicas               |
-| `image.repository` | string | Container image repository       |
-| `image.tag`        | string | Image tag                        |
-| `image.pullPolicy` | string | Image pull policy                |
-| `service.type`     | string | Kubernetes Service type          |
-| `service.port`     | int    | Service port                     |
-| `resources`        | object | CPU/memory requests and limits   |
-| `nodeSelector`     | object | Node selector for pod scheduling |
-| `tolerations`      | list   | Tolerations for pod scheduling   |
-| `affinity`         | object | Affinity/anti-affinity rules     |
-| `nodecoreConfig`   | object | Nodecore configuration           |
+| Key                  | Type   | Description                                                                          |
+| -------------------- | ------ | ------------------------------------------------------------------------------------ |
+| `replicaCount`       | int    | Number of replicas                                                                   |
+| `image.repository`   | string | Container image repository                                                           |
+| `image.tag`          | string | Image tag                                                                            |
+| `image.pullPolicy`   | string | Image pull policy                                                                    |
+| `service.type`       | string | Kubernetes Service type                                                              |
+| `service.port`       | int    | Service port                                                                         |
+| `resources`          | object | CPU/memory requests and limits                                                       |
+| `nodeSelector`       | object | Node selector for pod scheduling                                                     |
+| `tolerations`        | list   | Tolerations for pod scheduling                                                       |
+| `affinity`           | object | Affinity/anti-affinity rules                                                         |
+| `podSecurityContext` | object | Pod-level security context (non-root uid 65532, `RuntimeDefault` seccomp)            |
+| `securityContext`    | object | Container-level security context (no privilege escalation, all capabilities dropped) |
+| `nodecoreConfig`     | object | Nodecore configuration                                                               |
 
 Check [`values.yaml`](./values.yaml) for all configuration options and their default
 settings.
