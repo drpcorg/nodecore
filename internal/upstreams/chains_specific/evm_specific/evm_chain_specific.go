@@ -225,7 +225,10 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 }
 
 func (e *EvmChainSpecificObject) ChainValidator() validations.SettingsValidator {
-	if *e.options.DisableChainValidation {
+	// The head guard removes an upstream, and only a Valid tick of the settings processor
+	// re-admits it. So the guard exists exactly when that processor exists: the two broader
+	// flags that silence the settings pipeline silence the guard as well.
+	if *e.options.DisableValidation || *e.options.DisableSettingsValidation || *e.options.DisableChainValidation {
 		return nil
 	}
 	return eth_validations.NewEthChainValidator(e.upstreamId, e.connector, e.chain, e.options)

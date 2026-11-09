@@ -312,13 +312,32 @@ func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
 
 func TestChainValidatorForTheHeadGuard(t *testing.T) {
 	connector := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
-	options := &chains.Options{DisableChainValidation: new(false)}
 	chain := chains.GetChain("ethereum")
+	newValidator := func(options *chains.Options) validations.SettingsValidator {
+		return specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, time.Second, options, nil).ChainValidator()
+	}
+	enabled := func() *chains.Options {
+		return &chains.Options{
+			DisableValidation:         new(false),
+			DisableSettingsValidation: new(false),
+			DisableChainValidation:    new(false),
+		}
+	}
 
-	validator := specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, time.Second, options, nil).ChainValidator()
-	_, ok := validator.(*eth_validations.EthChainValidator)
+	_, ok := newValidator(enabled()).(*eth_validations.EthChainValidator)
 	assert.True(t, ok)
 
+	// the guard exists only when the settings pipeline that can undo its verdict exists:
+	// any of the three flags that silence that pipeline silences the guard too
+	options := enabled()
 	options.DisableChainValidation = new(true)
-	assert.Nil(t, specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, time.Second, options, nil).ChainValidator())
+	assert.Nil(t, newValidator(options))
+
+	options = enabled()
+	options.DisableSettingsValidation = new(true)
+	assert.Nil(t, newValidator(options))
+
+	options = enabled()
+	options.DisableValidation = new(true)
+	assert.Nil(t, newValidator(options))
 }

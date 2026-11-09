@@ -92,7 +92,11 @@ ChainValidator() validations.SettingsValidator
 ```
 
 The EVM specific returns `eth_validations.NewEthChainValidator(e.upstreamId, e.connector,
-e.chain, e.options)` when `DisableChainValidation` is false, nil otherwise. Every other
+e.chain, e.options)` unless any of `disable-validation`, `disable-settings-validation` or
+`disable-chain-validation` is set, in which case it returns nil. The two broader flags matter
+because they stop the settings processor from being created (§3): the guard removes an upstream
+and only a Valid settings tick re-admits it, so the guard must exist exactly when that
+processor exists, or one guard trip would remove the upstream until restart. Every other
 specific returns nil. This follows the existing `MethodsProcessor()` convention (nil when the
 family has nothing to offer).
 
