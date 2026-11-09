@@ -236,12 +236,6 @@ accepted.
   the cap pipeline (websocket caps). Per-connector status, connector-aware routing and
   per-connector health probes are a design of their own. This task is identity only.
 
-## Left to the builder
-
-- Exact log wording and levels beyond what is stated above.
-- Test fixtures for a head processor with a validator (a stub `SettingsValidator` returning a
-  scripted sequence is enough).
-
 ## References
 
 - `internal/upstreams/chains_specific/evm_specific/evm_chain_specific.go`
