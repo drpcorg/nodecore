@@ -40,8 +40,8 @@ func NewAlgorandHealthValidator(
 	}
 }
 
-func (a *AlgorandHealthValidator) Validate() protocol.AvailabilityStatus {
-	status, err := a.fetchStatus()
+func (a *AlgorandHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	status, err := a.fetchStatus(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("algorand upstream '%s' health validation failed", a.upstreamId)
 		return protocol.Unavailable
@@ -61,8 +61,8 @@ func (a *AlgorandHealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (a *AlgorandHealthValidator) fetchStatus() (*AlgorandStatus, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AlgorandHealthValidator) fetchStatus(ctx context.Context) (*AlgorandStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/v2/status", nil, a.chain)

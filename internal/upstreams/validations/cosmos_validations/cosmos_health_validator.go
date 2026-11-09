@@ -33,8 +33,8 @@ func NewCosmosSyncingValidator(
 	}
 }
 
-func (c *CosmosSyncingValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+func (c *CosmosSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	syncing, err := specific_helpers.FetchCosmosSyncing(ctx, c.connector, c.chain)

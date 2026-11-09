@@ -35,8 +35,8 @@ func NewTronGrpcPeersValidator(
 	}
 }
 
-func (t *TronGrpcPeersValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), t.options.InternalTimeout)
+func (t *TronGrpcPeersValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, t.options.InternalTimeout)
 	defer cancel()
 
 	nodeInfo, err := specific_helpers.FetchTronGrpcNodeInfo(ctx, t.connector, t.chain)
@@ -74,8 +74,8 @@ func NewTronGrpcSyncingValidator(
 	}
 }
 
-func (t *TronGrpcSyncingValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
+func (t *TronGrpcSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, t.internalTimeout)
 	defer cancel()
 
 	raw, err := specific_helpers.FetchTronGrpcNowBlock(ctx, t.connector, t.chain.Chain)

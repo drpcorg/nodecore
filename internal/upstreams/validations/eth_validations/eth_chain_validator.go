@@ -41,8 +41,8 @@ func NewEthChainValidator(
 	}
 }
 
-func (c *EthChainValidator) Validate() validations.ValidationSettingResult {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+func (c *EthChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	group, ctx := errgroup.WithContext(ctx)

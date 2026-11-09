@@ -1,6 +1,7 @@
 package starknet_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestStarknetChainValidatorValidOnMatch(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isChainId)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x534e5f5345504f4c4941"`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetChainValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestStarknetChainValidatorValidOnCaseInsensitiveMatch(t *testing.T) {
@@ -29,7 +30,7 @@ func TestStarknetChainValidatorValidOnCaseInsensitiveMatch(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isChainId)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x534E5F4D41494E"`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetChainValidator("id", conn, chains.GetChain("starknet"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestStarknetChainValidatorFatalOnMismatch(t *testing.T) {
@@ -38,7 +39,7 @@ func TestStarknetChainValidatorFatalOnMismatch(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isChainId)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x534e5f4d41494e"`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetChainValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestStarknetChainValidatorRetriesOnFetchError(t *testing.T) {
@@ -46,7 +47,7 @@ func TestStarknetChainValidatorRetriesOnFetchError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isChainId)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := starknet_validations.NewStarknetChainValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }
 
 func TestStarknetChainValidatorFatalOnEmptyChainId(t *testing.T) {
@@ -54,7 +55,7 @@ func TestStarknetChainValidatorFatalOnEmptyChainId(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isChainId)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`""`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetChainValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthAvailableOnFalse(t *testing.T) {
@@ -62,7 +63,7 @@ func TestStarknetHealthAvailableOnFalse(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`false`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthSyncingOnTrue(t *testing.T) {
@@ -70,7 +71,7 @@ func TestStarknetHealthSyncingOnTrue(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`true`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthAvailableOnSmallLagHexNums(t *testing.T) {
@@ -80,7 +81,7 @@ func TestStarknetHealthAvailableOnSmallLagHexNums(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthSyncingOnBigLagHexNums(t *testing.T) {
@@ -90,7 +91,7 @@ func TestStarknetHealthSyncingOnBigLagHexNums(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthAvailableOnSmallLagNumberNums(t *testing.T) {
@@ -100,7 +101,7 @@ func TestStarknetHealthAvailableOnSmallLagNumberNums(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthSyncingOnBigLagNumberNums(t *testing.T) {
@@ -109,7 +110,7 @@ func TestStarknetHealthSyncingOnBigLagNumberNums(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(body), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthUnavailableOnGarbage(t *testing.T) {
@@ -117,7 +118,7 @@ func TestStarknetHealthUnavailableOnGarbage(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"current_block_num":"not-a-number"}`), protocol.JsonRpc))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestStarknetHealthUnavailableOnError(t *testing.T) {
@@ -125,5 +126,5 @@ func TestStarknetHealthUnavailableOnError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isSyncing)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := starknet_validations.NewStarknetSyncingValidator("id", conn, chains.GetChain("starknet-sepolia"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }

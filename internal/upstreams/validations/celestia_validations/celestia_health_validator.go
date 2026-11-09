@@ -36,16 +36,16 @@ func NewCelestiaHealthValidator(
 	}
 }
 
-func (c *CelestiaHealthValidator) Validate() protocol.AvailabilityStatus {
-	if err := c.checkReady(); err != nil {
+func (c *CelestiaHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	if err := c.checkReady(ctx); err != nil {
 		log.Error().Err(err).Msgf("celestia upstream '%s' health validation failed", c.upstreamId)
 		return protocol.Unavailable
 	}
 	return protocol.Available
 }
 
-func (c *CelestiaHealthValidator) checkReady() error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+func (c *CelestiaHealthValidator) checkReady(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(

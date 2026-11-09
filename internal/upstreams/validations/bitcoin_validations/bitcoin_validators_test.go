@@ -1,6 +1,7 @@
 package bitcoin_validations_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestBitcoinChainValidatorValidOnMatch(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockHash)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(bitcoinGenesis), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinChainValidator("id", conn, chains.GetChain("bitcoin"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestBitcoinChainValidatorFatalOnMismatch(t *testing.T) {
@@ -44,13 +45,13 @@ func TestBitcoinChainValidatorFatalOnMismatch(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockHash)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(dogecoinGenesis), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinChainValidator("id", conn, chains.GetChain("bitcoin"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestBitcoinChainValidatorSkipsUnmappedChain(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	v := bitcoin_validations.NewBitcoinChainValidator("id", conn, chains.GetChain("litecoin"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 	conn.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 
@@ -59,7 +60,7 @@ func TestBitcoinChainValidatorRetriesOnFetchError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockHash)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := bitcoin_validations.NewBitcoinChainValidator("id", conn, chains.GetChain("bitcoin"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }
 
 func TestBitcoinHealthAvailable(t *testing.T) {
@@ -67,7 +68,7 @@ func TestBitcoinHealthAvailable(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockchainInfo)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", blockchainInfoBody(100, 100, false), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, false)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestBitcoinHealthSyncingOnInitialBlockDownload(t *testing.T) {
@@ -75,7 +76,7 @@ func TestBitcoinHealthSyncingOnInitialBlockDownload(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockchainInfo)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", blockchainInfoBody(100, 100, true), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, false)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestBitcoinHealthSyncingOnHeadersLag(t *testing.T) {
@@ -84,7 +85,7 @@ func TestBitcoinHealthSyncingOnHeadersLag(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockchainInfo)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", blockchainInfoBody(100, 110, false), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, false)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestBitcoinHealthUnavailableOnZeroPeers(t *testing.T) {
@@ -94,7 +95,7 @@ func TestBitcoinHealthUnavailableOnZeroPeers(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetConnectionCount)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`0`), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, true)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestBitcoinHealthAvailableWithPeers(t *testing.T) {
@@ -104,7 +105,7 @@ func TestBitcoinHealthAvailableWithPeers(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetConnectionCount)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`8`), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, true)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestBitcoinHealthIgnoresPeersWhenDisabled(t *testing.T) {
@@ -112,7 +113,7 @@ func TestBitcoinHealthIgnoresPeersWhenDisabled(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockchainInfo)).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", blockchainInfoBody(100, 100, false), protocol.JsonRpc))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, false)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 	conn.AssertNotCalled(t, "SendRequest", mock.Anything, mock.MatchedBy(isGetConnectionCount))
 }
 
@@ -121,5 +122,5 @@ func TestBitcoinHealthUnavailableOnError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isGetBlockchainInfo)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := bitcoin_validations.NewBitcoinHealthValidator("id", conn, chains.GetChain("bitcoin"), time.Second, false)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }

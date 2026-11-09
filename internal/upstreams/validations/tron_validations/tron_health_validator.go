@@ -35,8 +35,8 @@ func NewTronPeersValidator(
 	}
 }
 
-func (t *TronPeersValidator) Validate() protocol.AvailabilityStatus {
-	resp, err := t.fetchNodeInfo()
+func (t *TronPeersValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	resp, err := t.fetchNodeInfo(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to get node info of upstream '%s'", t.upstreamId)
 		return protocol.Unavailable
@@ -58,8 +58,8 @@ func (t *TronPeersValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (t *TronPeersValidator) fetchNodeInfo() ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), t.options.InternalTimeout)
+func (t *TronPeersValidator) fetchNodeInfo(ctx context.Context) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, t.options.InternalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("POST#/wallet/getnodeinfo", nil, t.chain)
@@ -92,8 +92,8 @@ func NewTronSyncingValidator(
 	}
 }
 
-func (t *TronSyncingValidator) Validate() protocol.AvailabilityStatus {
-	resp, err := t.fetchLatestBlock()
+func (t *TronSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	resp, err := t.fetchLatestBlock(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to get latest block of upstream '%s'", t.upstreamId)
 		return protocol.Unavailable
@@ -118,8 +118,8 @@ func (t *TronSyncingValidator) Validate() protocol.AvailabilityStatus {
 	)
 }
 
-func (t *TronSyncingValidator) fetchLatestBlock() ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
+func (t *TronSyncingValidator) fetchLatestBlock(ctx context.Context) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, t.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("POST#/wallet/getblock", nil, t.chain.Chain)

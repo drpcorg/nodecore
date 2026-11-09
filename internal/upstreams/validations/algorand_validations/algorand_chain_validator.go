@@ -37,7 +37,7 @@ func NewAlgorandChainValidator(
 	}
 }
 
-func (a *AlgorandChainValidator) Validate() validations.ValidationSettingResult {
+func (a *AlgorandChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	expected := strings.TrimSpace(a.chain.ChainIdFor(chains.Algorand))
 	if expected == "" {
 		return validations.Valid
@@ -51,7 +51,7 @@ func (a *AlgorandChainValidator) Validate() validations.ValidationSettingResult 
 		)
 		return validations.FatalSettingError
 	}
-	genesis, err := a.fetchGenesis()
+	genesis, err := a.fetchGenesis(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch algorand genesis for upstream '%s'", a.upstreamId)
 		return validations.SettingsError
@@ -77,8 +77,8 @@ var algorandChainIdNetwork = map[string]string{
 	"0x65903": "betanet",
 }
 
-func (a *AlgorandChainValidator) fetchGenesis() (*algorandGenesis, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AlgorandChainValidator) fetchGenesis(ctx context.Context) (*algorandGenesis, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/genesis", nil, a.chain.Chain)

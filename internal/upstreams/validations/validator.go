@@ -1,6 +1,7 @@
 package validations
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +51,7 @@ func ValidatorExecutor(upstreamId, validationName string, ignoreErrors []string)
 }
 
 type Validator[R any] interface {
-	Validate() R
+	Validate(ctx context.Context) R
 }
 
 type HealthValidator interface {
@@ -92,7 +93,7 @@ func NewHealthValidationProcessor(validators []Validator[protocol.AvailabilitySt
 	}
 }
 
-func (s *ValidationProcessor[R]) Validate() R {
+func (s *ValidationProcessor[R]) Validate(ctx context.Context) R {
 	results := make([]R, len(s.validators))
 	var wg sync.WaitGroup
 	wg.Add(len(s.validators))
@@ -100,7 +101,7 @@ func (s *ValidationProcessor[R]) Validate() R {
 	for i, validator := range s.validators {
 		go func(index int) {
 			defer wg.Done()
-			results[index] = validator.Validate()
+			results[index] = validator.Validate(ctx)
 		}(i)
 	}
 

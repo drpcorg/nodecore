@@ -20,8 +20,8 @@ type SolanaHealthValidator struct {
 	internalTimeout time.Duration
 }
 
-func (s *SolanaHealthValidator) Validate() protocol.AvailabilityStatus {
-	err := s.getHealth()
+func (s *SolanaHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	err := s.getHealth(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("solana upstream '%s' health validation failed", s.upstreamId)
 		return protocol.Unavailable
@@ -29,8 +29,8 @@ func (s *SolanaHealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (s *SolanaHealthValidator) getHealth() error {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *SolanaHealthValidator) getHealth(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getHealth", nil, chains.SOLANA)

@@ -1,6 +1,8 @@
 package event_processors
 
 import (
+	"context"
+
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -72,10 +74,10 @@ func (u *UpstreamProcessorAggregator) PredictLowerBound(boundType protocol.Lower
 	return lowerBoundProcessor.PredictLowerBound(boundType, timeOffset)
 }
 
-func (u *UpstreamProcessorAggregator) ValidateSettings() (validations.ValidationSettingResult, bool) {
+func (u *UpstreamProcessorAggregator) ValidateSettings(ctx context.Context) (validations.ValidationSettingResult, bool) {
 	if processor, ok := u.eventProcessors[SettingsValidatorProcessorType]; ok {
 		if settingsProcessor, ok := processor.(SettingsEventProcessor); ok {
-			return settingsProcessor.Validate(), true
+			return settingsProcessor.Validate(ctx), true
 		}
 	}
 	return validations.UnknownResult, false

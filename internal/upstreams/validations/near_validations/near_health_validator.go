@@ -20,8 +20,8 @@ type nearStatusClient struct {
 	internalTimeout time.Duration
 }
 
-func (n *nearStatusClient) fetchNearStatus() (*NearStatus, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), n.internalTimeout)
+func (n *nearStatusClient) fetchNearStatus(ctx context.Context) (*NearStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, n.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("status", []any{}, n.chain.Chain)
@@ -58,8 +58,8 @@ func NewNearSyncingValidator(
 	}
 }
 
-func (n *NearSyncingValidator) Validate() protocol.AvailabilityStatus {
-	status, err := n.fetchNearStatus()
+func (n *NearSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	status, err := n.fetchNearStatus(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("near upstream '%s' syncing validation failed", n.upstreamId)
 		return protocol.Unavailable

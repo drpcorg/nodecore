@@ -1,6 +1,7 @@
 package eth_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func TestEthClientVersionValidatorReturnsFatalForBlacklistedVersion(t *testing.T
 
 	validator := eth_validations.NewEthClientVersionValidator("upstream-1", connector, chain, &chains.Options{InternalTimeout: time.Second})
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -29,7 +30,7 @@ func TestEthClientVersionValidatorReturnsValidForAllowedVersion(t *testing.T) {
 
 	validator := eth_validations.NewEthClientVersionValidator("upstream-1", connector, chain, &chains.Options{InternalTimeout: time.Second})
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -39,7 +40,7 @@ func TestEthClientVersionValidatorIgnoresNetworkSpecificRuleForOtherNetwork(t *t
 
 	validator := eth_validations.NewEthClientVersionValidator("upstream-1", connector, chain, &chains.Options{InternalTimeout: time.Second})
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -49,7 +50,7 @@ func TestEthClientVersionValidatorMatchesFullRawVersion(t *testing.T) {
 
 	validator := eth_validations.NewEthClientVersionValidator("upstream-1", connector, chain, &chains.Options{InternalTimeout: time.Second})
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -59,7 +60,7 @@ func TestEthClientVersionValidatorReturnsSettingsErrorOnConnectorError(t *testin
 
 	validator := eth_validations.NewEthClientVersionValidator("upstream-1", connector, chain, &chains.Options{InternalTimeout: time.Second})
 
-	assert.Equal(t, validations.SettingsError, validator.Validate())
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 

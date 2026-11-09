@@ -36,8 +36,8 @@ func NewStarknetChainValidator(
 	}
 }
 
-func (s *StarknetChainValidator) Validate() validations.ValidationSettingResult {
-	chainId, err := s.fetchChainId()
+func (s *StarknetChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	chainId, err := s.fetchChainId(ctx)
 	if err != nil {
 		if errors.Is(err, errStarknetEmptyChainId) {
 			// no chain id means we can't tell what network the node is on - unusable as configured
@@ -61,8 +61,8 @@ func (s *StarknetChainValidator) Validate() validations.ValidationSettingResult 
 	return validations.FatalSettingError
 }
 
-func (s *StarknetChainValidator) fetchChainId() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *StarknetChainValidator) fetchChainId(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("starknet_chainId", []any{}, s.chain.Chain)

@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,10 +78,10 @@ func TestGenericSettingsEventProcessorValidateReturnsReducedResult(t *testing.T)
 	)
 
 	require.NotNil(t, processor)
-	validator1.On("Validate").Return(validations.Valid).Once()
-	validator2.On("Validate").Return(validations.FatalSettingError).Once()
+	validator1.On("Validate", mock.Anything).Return(validations.Valid).Once()
+	validator2.On("Validate", mock.Anything).Return(validations.FatalSettingError).Once()
 
-	assert.Equal(t, validations.FatalSettingError, processor.Validate())
+	assert.Equal(t, validations.FatalSettingError, processor.Validate(context.Background()))
 	validator1.AssertExpectations(t)
 	validator2.AssertExpectations(t)
 }
@@ -105,11 +106,11 @@ func TestGenericSettingsEventProcessorEmitsTheVerdictOnEveryTick(t *testing.T) {
 		events <- event
 	})
 
-	validator.On("Validate").Return(validations.Valid).Once()
-	validator.On("Validate").Return(validations.Valid).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Once()
-	validator.On("Validate").Return(validations.FatalSettingError).Once()
-	validator.On("Validate").Return(validations.Valid).Maybe()
+	validator.On("Validate", mock.Anything).Return(validations.Valid).Once()
+	validator.On("Validate", mock.Anything).Return(validations.Valid).Once()
+	validator.On("Validate", mock.Anything).Return(validations.FatalSettingError).Once()
+	validator.On("Validate", mock.Anything).Return(validations.FatalSettingError).Once()
+	validator.On("Validate", mock.Anything).Return(validations.Valid).Maybe()
 
 	processor.Start()
 	defer processor.Stop()
@@ -167,8 +168,8 @@ func TestGenericSettingsEventProcessorEmitsNothingOnSettingsErrorOrUnknown(t *te
 				events <- event
 			})
 
-			validator.On("Validate").Return(tt.result).Once()
-			validator.On("Validate").Return(tt.result).Maybe()
+			validator.On("Validate", mock.Anything).Return(tt.result).Once()
+			validator.On("Validate", mock.Anything).Return(tt.result).Maybe()
 
 			processor.Start()
 			defer processor.Stop()
@@ -253,10 +254,10 @@ func TestGenericHealthEventProcessorValidateReturnsReducedStatus(t *testing.T) {
 	)
 
 	require.NotNil(t, processor)
-	validator1.On("Validate").Return(protocol.Available).Once()
-	validator2.On("Validate").Return(protocol.Unavailable).Once()
+	validator1.On("Validate", mock.Anything).Return(protocol.Available).Once()
+	validator2.On("Validate", mock.Anything).Return(protocol.Unavailable).Once()
 
-	assert.Equal(t, protocol.Unavailable, processor.Validate())
+	assert.Equal(t, protocol.Unavailable, processor.Validate(context.Background()))
 	validator1.AssertExpectations(t)
 	validator2.AssertExpectations(t)
 }
@@ -281,7 +282,7 @@ func TestGenericHealthEventProcessorStartEmitsStatusEvents(t *testing.T) {
 		events <- event
 	})
 
-	validator.On("Validate").Return(protocol.Syncing).Once()
+	validator.On("Validate", mock.Anything).Return(protocol.Syncing).Once()
 
 	processor.Start()
 	defer processor.Stop()
@@ -317,7 +318,7 @@ func TestGenericHealthEventProcessorStopStopsLifecycle(t *testing.T) {
 
 	require.NotNil(t, processor)
 	processor.SetEmitter(func(protocol.AbstractUpstreamStateEvent) {})
-	validator.On("Validate").Return(protocol.Available).Maybe()
+	validator.On("Validate", mock.Anything).Return(protocol.Available).Maybe()
 
 	processor.Start()
 
@@ -340,5 +341,70 @@ func testUpstreamOptionsWithInterval(interval time.Duration) *chains.Options {
 		DisableValidation:         new(false),
 		DisableSettingsValidation: new(false),
 		DisableHealthValidation:   new(false),
+	}
+}
+
+func TestGenericHealthEventProcessorDoesNotEmitAVerdictOfAValidationCancelledByStop(t *testing.T) {
+	validator := mocks.NewHealthValidatorMock()
+	processor := event_processors.NewGenericHealthEventProcessor(
+		context.Background(),
+		"upstream-1",
+		testUpstreamOptions(),
+		validations.NewHealthValidationProcessor([]validations.Validator[protocol.AvailabilityStatus]{validator}),
+	)
+	require.NotNil(t, processor)
+
+	events := make(chan protocol.AbstractUpstreamStateEvent, 10)
+	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+	validating := make(chan struct{}, 10)
+	// the probe answers only once its context is cancelled, like a connector call does
+	validator.On("Validate", mock.Anything).Run(func(args mock.Arguments) {
+		validating <- struct{}{}
+		<-args.Get(0).(context.Context).Done()
+	}).Return(protocol.Unavailable)
+
+	processor.Start()
+	<-validating
+	processor.Stop()
+
+	require.Eventually(t, func() bool { return !processor.Running() }, time.Second, 10*time.Millisecond)
+	select {
+	case event := <-events:
+		t.Fatalf("unexpected event %T after stop", event)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestGenericSettingsEventProcessorDoesNotEmitAVerdictOfAValidationCancelledByStop(t *testing.T) {
+	validator := mocks.NewSettingsValidatorMock()
+	processor := event_processors.NewGenericSettingsEventProcessor(
+		context.Background(),
+		"upstream-1",
+		testUpstreamOptions(),
+		validations.NewSettingsValidationProcessor([]validations.Validator[validations.ValidationSettingResult]{validator}),
+	)
+	require.NotNil(t, processor)
+
+	events := make(chan protocol.AbstractUpstreamStateEvent, 10)
+	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+	validating := make(chan struct{}, 10)
+	validator.On("Validate", mock.Anything).Run(func(args mock.Arguments) {
+		validating <- struct{}{}
+		<-args.Get(0).(context.Context).Done()
+	}).Return(validations.Valid)
+
+	processor.Start()
+	<-validating
+	processor.Stop()
+
+	require.Eventually(t, func() bool { return !processor.Running() }, time.Second, 10*time.Millisecond)
+	select {
+	case event := <-events:
+		t.Fatalf("unexpected event %T after stop", event)
+	case <-time.After(100 * time.Millisecond):
 	}
 }

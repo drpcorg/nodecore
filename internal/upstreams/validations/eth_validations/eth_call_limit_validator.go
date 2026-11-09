@@ -24,7 +24,7 @@ type EthCallLimitValidator struct {
 	executor failsafe.Executor[protocol.ResponseHolder]
 }
 
-func (e *EthCallLimitValidator) Validate() validations.ValidationSettingResult {
+func (e *EthCallLimitValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"eth_call",
 		[]any{
@@ -42,10 +42,10 @@ func (e *EthCallLimitValidator) Validate() validations.ValidationSettingResult {
 		return validations.SettingsError
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.option.InternalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.option.InternalTimeout)
 	defer cancel()
 
-	response, _ := e.executor.Get(func() (protocol.ResponseHolder, error) {
+	response, _ := e.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
 		return e.connector.SendRequest(ctx, req), nil
 	})
 	if response.HasError() {

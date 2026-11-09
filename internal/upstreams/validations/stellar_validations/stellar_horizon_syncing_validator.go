@@ -33,8 +33,8 @@ func NewStellarHorizonSyncingValidator(
 	}
 }
 
-func (s *StellarHorizonSyncingValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *StellarHorizonSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	health, err := specific_helpers.FetchStellarHorizonHealth(ctx, s.connector, s.chain.Chain)

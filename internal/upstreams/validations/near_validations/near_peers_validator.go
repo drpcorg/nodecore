@@ -37,8 +37,8 @@ func NewNearPeersValidator(
 	}
 }
 
-func (n *NearPeersValidator) Validate() protocol.AvailabilityStatus {
-	peers, err := n.fetchActivePeers()
+func (n *NearPeersValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	peers, err := n.fetchActivePeers(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch near network info for upstream '%s'", n.upstreamId)
 		return protocol.Unavailable
@@ -50,8 +50,8 @@ func (n *NearPeersValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (n *NearPeersValidator) fetchActivePeers() (uint64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), n.internalTimeout)
+func (n *NearPeersValidator) fetchActivePeers(ctx context.Context) (uint64, error) {
+	ctx, cancel := context.WithTimeout(ctx, n.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("network_info", []any{}, n.chain.Chain)

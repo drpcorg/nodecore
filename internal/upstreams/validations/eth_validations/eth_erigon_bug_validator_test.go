@@ -1,6 +1,7 @@
 package eth_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestEthErigonBugValidatorReturnsValidForNonErigonClient(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, erigonRequest("web3_clientVersion")).Return(jsonRpcResult(`"Geth/v1.14.0"`)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -32,7 +33,7 @@ func TestEthErigonBugValidatorReturnsFatalWhenProbeReturnsEmptyResult(t *testing
 	connector.On("SendRequest", mock.Anything, erigonProbe("0x32")).Return(jsonRpcResult(`"0x"`)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -45,7 +46,7 @@ func TestEthErigonBugValidatorSearchesLeftOnDataAndReturnsValid(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, erigonProbe("0x1")).Return(jsonRpcResult(erigonProbeData)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -58,7 +59,7 @@ func TestEthErigonBugValidatorReturnsSettingsErrorWhenNoProbeAnswersWithData(t *
 	connector.On("SendRequest", mock.Anything, erigonProbe("0x7")).Return(jsonRpcResult(`"garbage"`)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.SettingsError, validator.Validate())
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -71,7 +72,7 @@ func TestEthErigonBugValidatorReturnsValidWhenSearchSawDataBeforeErrors(t *testi
 	connector.On("SendRequest", mock.Anything, erigonProbe("0x3")).Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -80,7 +81,7 @@ func TestEthErigonBugValidatorReturnsSettingsErrorWhenFirstClientVersionFails(t 
 	connector.On("SendRequest", mock.Anything, erigonRequest("web3_clientVersion")).Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.SettingsError, validator.Validate())
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -93,7 +94,7 @@ func TestEthErigonBugValidatorFindsBugBehindPrunedState(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, erigonProbe("0x6")).Return(jsonRpcResult(`"0x"`)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -104,7 +105,7 @@ func TestEthErigonBugValidatorStopsAtMaxDepth(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, erigonRequest("eth_call")).Return(jsonRpcResult(erigonProbeData)).Times(21)
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -116,12 +117,12 @@ func TestEthErigonBugValidatorCachesSettingsErrorWhenClientVersionFails(t *testi
 	connector.On("SendRequest", mock.Anything, erigonRequest("web3_clientVersion")).Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	for i := 0; i < 9; i++ {
-		assert.Equal(t, validations.FatalSettingError, validator.Validate())
+		assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	}
-	assert.Equal(t, validations.SettingsError, validator.Validate())
-	assert.Equal(t, validations.SettingsError, validator.Validate())
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -134,11 +135,11 @@ func TestEthErigonBugValidatorReturnsSettingsErrorWhenBlockNumberFails(t *testin
 	connector.On("SendRequest", mock.Anything, erigonRequest("eth_blockNumber")).Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	for i := 0; i < 9; i++ {
-		assert.Equal(t, validations.FatalSettingError, validator.Validate())
+		assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	}
-	assert.Equal(t, validations.SettingsError, validator.Validate())
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -152,11 +153,11 @@ func TestEthErigonBugValidatorRecoversOnCleanCheck(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, erigonProbe("0x1")).Return(jsonRpcResult(erigonProbeData)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	for i := 0; i < 9; i++ {
-		assert.Equal(t, validations.FatalSettingError, validator.Validate())
+		assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	}
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -180,7 +181,7 @@ func TestEthErigonBugValidatorSendsStateOverrideProbe(t *testing.T) {
 	})).Return(jsonRpcResult(erigonProbeData)).Once()
 	validator := newErigonBugValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 

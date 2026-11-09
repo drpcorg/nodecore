@@ -40,8 +40,8 @@ func NewPolkadotChainValidator(
 	}
 }
 
-func (p *PolkadotChainValidator) Validate() validations.ValidationSettingResult {
-	chainName, err := p.fetchChainName()
+func (p *PolkadotChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	chainName, err := p.fetchChainName(ctx)
 	if err != nil {
 		if errors.Is(err, errPolkadotEmptyChainName) {
 			// No chain name means we cannot tell what network this is - unusable as configured.
@@ -64,8 +64,8 @@ func (p *PolkadotChainValidator) Validate() validations.ValidationSettingResult 
 	return validations.FatalSettingError
 }
 
-func (p *PolkadotChainValidator) fetchChainName() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.internalTimeout)
+func (p *PolkadotChainValidator) fetchChainName(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("system_chain", []any{}, p.chain.Chain)

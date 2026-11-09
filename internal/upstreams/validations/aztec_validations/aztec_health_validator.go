@@ -50,20 +50,20 @@ func NewAztecHealthValidator(
 	}
 }
 
-func (a *AztecHealthValidator) Validate() protocol.AvailabilityStatus {
-	if err := a.checkReady(); err != nil {
+func (a *AztecHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	if err := a.checkReady(ctx); err != nil {
 		log.Error().Err(err).Msgf("aztec upstream '%s' health validation failed", a.upstreamId)
 		return protocol.Unavailable
 	}
-	if err := a.checkTips(); err != nil {
+	if err := a.checkTips(ctx); err != nil {
 		log.Error().Err(err).Msgf("aztec upstream '%s' tips validation failed", a.upstreamId)
 		return protocol.Unavailable
 	}
 	return protocol.Available
 }
 
-func (a *AztecHealthValidator) checkReady() error {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AztecHealthValidator) checkReady(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
@@ -137,8 +137,8 @@ func (a *AztecVersionedTip) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (a *AztecHealthValidator) checkTips() error {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AztecHealthValidator) checkTips(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	response, err := a.tips.FetchTips(ctx, a.connector, a.chain)

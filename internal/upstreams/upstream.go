@@ -232,7 +232,7 @@ func (u *GenericUpstream) Start() {
 			}
 		}
 
-		result, ok := u.processorAggregator.ValidateSettings()
+		result, ok := u.processorAggregator.ValidateSettings(ctx)
 		initialValid := true
 		if !ok {
 			u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)

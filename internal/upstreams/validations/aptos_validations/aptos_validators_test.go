@@ -1,6 +1,7 @@
 package aptos_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ func TestAptosHealthAvailable(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHealthy)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"message":"aptos-node:ok"}`), 200, protocol.Rest))
 	v := aptos_validations.NewAptosHealthValidator("id", conn, chains.GetChain("aptos-mainnet").Chain, time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestAptosHealthSyncingOn503(t *testing.T) {
@@ -34,7 +35,7 @@ func TestAptosHealthSyncingOn503(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHealthy)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"message":"aptos-node:not ready"}`), 503, protocol.Rest))
 	v := aptos_validations.NewAptosHealthValidator("id", conn, chains.GetChain("aptos-mainnet").Chain, time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestAptosHealthUnavailableOnError(t *testing.T) {
@@ -42,7 +43,7 @@ func TestAptosHealthUnavailableOnError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isHealthy)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := aptos_validations.NewAptosHealthValidator("id", conn, chains.GetChain("aptos-mainnet").Chain, time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestAptosChainValidatorValidOnMatch(t *testing.T) {
@@ -50,7 +51,7 @@ func TestAptosChainValidatorValidOnMatch(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isLedger)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(ledgerInfoBody), 200, protocol.Rest))
 	v := aptos_validations.NewAptosChainValidator("id", conn, chains.GetChain("aptos-mainnet"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestAptosChainValidatorFatalOnMismatch(t *testing.T) {
@@ -59,7 +60,7 @@ func TestAptosChainValidatorFatalOnMismatch(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(ledgerInfoBody), 200, protocol.Rest))
 	// aptos-testnet expects chain_id 2 but the node reports 1.
 	v := aptos_validations.NewAptosChainValidator("id", conn, chains.GetChain("aptos-testnet"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestAptosChainValidatorRetriesOnMissingChainId(t *testing.T) {
@@ -69,5 +70,5 @@ func TestAptosChainValidatorRetriesOnMissingChainId(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isLedger)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{}`), 200, protocol.Rest))
 	v := aptos_validations.NewAptosChainValidator("id", conn, chains.GetChain("aptos-mainnet"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }

@@ -43,8 +43,8 @@ func NewBitcoinHealthValidator(
 	}
 }
 
-func (b *BitcoinHealthValidator) Validate() protocol.AvailabilityStatus {
-	info, err := b.fetchBlockchainInfo()
+func (b *BitcoinHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	info, err := b.fetchBlockchainInfo(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("bitcoin upstream '%s' health validation failed", b.upstreamId)
 		return protocol.Unavailable
@@ -64,7 +64,7 @@ func (b *BitcoinHealthValidator) Validate() protocol.AvailabilityStatus {
 		return protocol.Syncing
 	}
 	if b.validatePeers {
-		peers, err := b.fetchConnectionCount()
+		peers, err := b.fetchConnectionCount(ctx)
 		if err != nil {
 			log.Error().Err(err).Msgf("failed to fetch bitcoin connection count for upstream '%s'", b.upstreamId)
 			return protocol.Unavailable
@@ -77,8 +77,8 @@ func (b *BitcoinHealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (b *BitcoinHealthValidator) fetchBlockchainInfo() (*BitcoinBlockchainInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.internalTimeout)
+func (b *BitcoinHealthValidator) fetchBlockchainInfo(ctx context.Context) (*BitcoinBlockchainInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, b.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getblockchaininfo", []any{}, b.chain.Chain)
@@ -96,8 +96,8 @@ func (b *BitcoinHealthValidator) fetchBlockchainInfo() (*BitcoinBlockchainInfo, 
 	return &info, nil
 }
 
-func (b *BitcoinHealthValidator) fetchConnectionCount() (uint64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.internalTimeout)
+func (b *BitcoinHealthValidator) fetchConnectionCount(ctx context.Context) (uint64, error) {
+	ctx, cancel := context.WithTimeout(ctx, b.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getconnectioncount", []any{}, b.chain.Chain)

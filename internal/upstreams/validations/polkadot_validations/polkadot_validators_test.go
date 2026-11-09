@@ -1,6 +1,7 @@
 package polkadot_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -115,7 +116,7 @@ func TestPolkadotHealthValidator(t *testing.T) {
 			connector := mocks.NewConnectorMock()
 			connector.On("SendRequest", mock.Anything, mock.Anything).Return(healthResponse(tt.body))
 
-			assert.Equal(t, tt.expected, newHealthValidator(connector, tt.validateSyncing, tt.validatePeers, tt.minPeers).Validate())
+			assert.Equal(t, tt.expected, newHealthValidator(connector, tt.validateSyncing, tt.validatePeers, tt.minPeers).Validate(context.Background()))
 		})
 	}
 }
@@ -125,7 +126,7 @@ func TestPolkadotHealthValidatorUpstreamError(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 
-	assert.Equal(t, protocol.Unavailable, newHealthValidator(connector, true, true, 3).Validate())
+	assert.Equal(t, protocol.Unavailable, newHealthValidator(connector, true, true, 3).Validate(context.Background()))
 }
 
 // system_health carries both signals, so one call must serve both arms.
@@ -135,7 +136,7 @@ func TestPolkadotHealthValidatorIssuesOneCall(t *testing.T) {
 		return req.Method() == "system_health"
 	})).Return(healthResponse(`{"peers":42,"isSyncing":false,"shouldHavePeers":true}`)).Once()
 
-	assert.Equal(t, protocol.Available, newHealthValidator(connector, true, true, 3).Validate())
+	assert.Equal(t, protocol.Available, newHealthValidator(connector, true, true, 3).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -166,7 +167,7 @@ func TestPolkadotChainValidator(t *testing.T) {
 			validator := polkadot_validations.NewPolkadotChainValidator(
 				"id", connector, chains.GetChain(tt.chain), 5*time.Second,
 			)
-			assert.Equal(t, tt.expected, validator.Validate())
+			assert.Equal(t, tt.expected, validator.Validate(context.Background()))
 		})
 	}
 }
@@ -181,5 +182,5 @@ func TestPolkadotChainValidatorUpstreamErrorIsNotFatal(t *testing.T) {
 	validator := polkadot_validations.NewPolkadotChainValidator(
 		"id", connector, chains.GetChain("polkadot"), 5*time.Second,
 	)
-	assert.Equal(t, validations.SettingsError, validator.Validate())
+	assert.Equal(t, validations.SettingsError, validator.Validate(context.Background()))
 }

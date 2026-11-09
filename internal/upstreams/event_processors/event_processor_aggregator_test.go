@@ -67,7 +67,7 @@ func TestUpstreamProcessorAggregatorUpdateBlock_ForwardsData(t *testing.T) {
 
 func TestUpstreamProcessorAggregatorValidateSettings_ReturnsProcessorResult(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
-	validator.On("Validate").Return(validations.Valid).Once()
+	validator.On("Validate", mock.Anything).Return(validations.Valid).Once()
 
 	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),
@@ -77,7 +77,7 @@ func TestUpstreamProcessorAggregatorValidateSettings_ReturnsProcessorResult(t *t
 	)
 	aggregator := event_processors.NewUpstreamProcessorAggregator([]event_processors.UpstreamStateEventProcessor{settingsProcessor})
 
-	result, ok := aggregator.ValidateSettings()
+	result, ok := aggregator.ValidateSettings(context.Background())
 
 	assert.True(t, ok)
 	assert.Equal(t, validations.Valid, result)
@@ -87,7 +87,7 @@ func TestUpstreamProcessorAggregatorValidateSettings_ReturnsProcessorResult(t *t
 func TestUpstreamProcessorAggregatorValidateSettings_ReturnsUnknownWithoutSettingsProcessor(t *testing.T) {
 	aggregator := event_processors.NewUpstreamProcessorAggregator(nil)
 
-	result, ok := aggregator.ValidateSettings()
+	result, ok := aggregator.ValidateSettings(context.Background())
 
 	assert.False(t, ok)
 	assert.Equal(t, validations.UnknownResult, result)

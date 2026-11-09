@@ -164,11 +164,11 @@ func TestSuiHealthValidator(t *testing.T) {
 
 	validators := test_utils.NewSuiChainSpecific(ctx, conn).HealthValidators()
 	require.Len(t, validators, 1)
-	assert.Equal(t, protocol.Available, validators[0].Validate())
+	assert.Equal(t, protocol.Available, validators[0].Validate(context.Background()))
 
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewTotalFailure(protocol.NewUpstreamGrpcRequest("1", "/pkg.S/M", nil, nil, ""), protocol.ServerError())).Once()
-	assert.Equal(t, protocol.Unavailable, validators[0].Validate())
+	assert.Equal(t, protocol.Unavailable, validators[0].Validate(context.Background()))
 }
 
 func TestSuiChainValidator(t *testing.T) {
@@ -180,12 +180,12 @@ func TestSuiChainValidator(t *testing.T) {
 
 	// the digest matches case-insensitively - the registry lowercases chain-ids
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(serviceInfoResponse(t, fullServiceInfo())).Once()
-	assert.Equal(t, validations.Valid, validators[0].Validate())
+	assert.Equal(t, validations.Valid, validators[0].Validate(context.Background()))
 
 	wrongChain := fullServiceInfo()
 	wrongChain.ChainId = new("69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD")
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(serviceInfoResponse(t, wrongChain)).Once()
-	assert.Equal(t, validations.FatalSettingError, validators[0].Validate())
+	assert.Equal(t, validations.FatalSettingError, validators[0].Validate(context.Background()))
 }
 
 func TestSuiLowerBoundDetector(t *testing.T) {
