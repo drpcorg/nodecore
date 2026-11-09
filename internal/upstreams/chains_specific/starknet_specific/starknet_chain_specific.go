@@ -202,6 +202,11 @@ func (s *StarknetChainSpecificObject) MethodsProcessor() methods.MethodsProcesso
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *StarknetChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (s *StarknetChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

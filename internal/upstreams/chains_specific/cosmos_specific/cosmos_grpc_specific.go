@@ -168,6 +168,11 @@ func (c *CosmosGrpcSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (c *CosmosGrpcSpecific) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (c *CosmosGrpcSpecific) PauseHeadWhileSyncing() bool {
 	return false
 }

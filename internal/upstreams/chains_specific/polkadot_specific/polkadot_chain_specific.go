@@ -194,6 +194,11 @@ func (p *PolkadotChainSpecificObject) MethodsProcessor() methods.MethodsProcesso
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (p *PolkadotChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (p *PolkadotChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

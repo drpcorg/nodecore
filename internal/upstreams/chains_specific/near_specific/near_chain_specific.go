@@ -214,6 +214,11 @@ func (n *NearChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (n *NearChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (n *NearChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

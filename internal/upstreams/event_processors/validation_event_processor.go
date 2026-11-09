@@ -28,8 +28,6 @@ type GenericSettingsEventProcessor struct {
 	validationInterval time.Duration
 	validator          *validations.ValidationProcessor[validations.ValidationSettingResult]
 	emitter            Emitter
-
-	currentValidationState *utils.Atomic[validations.ValidationSettingResult]
 }
 
 func (b *GenericSettingsEventProcessor) Type() EventProcessorType {
@@ -49,19 +47,16 @@ func (b *GenericSettingsEventProcessor) Start() {
 					log.Info().Msgf("stopping settings validations events of upstream '%s'", b.upstreamId)
 					return
 				case <-time.After(b.validationInterval):
-					currentValidationState := b.currentValidationState.Load()
-					validationResult := b.Validate()
-					switch validationResult {
+					// The verdict is reported every tick. GenericUpstream.processStateEvents owns
+					// the valid/invalid state and ignores repeats, which is what lets a Valid tick
+					// re-admit an upstream that something else (the head guard) removed.
+					switch b.Validate() {
 					case validations.FatalSettingError:
-						if currentValidationState == validations.SettingsError || currentValidationState == validations.Valid {
-							b.emitter(&protocol.FatalErrorUpstreamStateEvent{})
-						}
+						b.emitter(&protocol.FatalErrorUpstreamStateEvent{})
 					case validations.SettingsError:
 						log.Debug().Msg("keep validating...")
 					case validations.Valid:
-						if currentValidationState == validations.SettingsError || currentValidationState == validations.FatalSettingError {
-							b.emitter(&protocol.ValidUpstreamStateEvent{})
-						}
+						b.emitter(&protocol.ValidUpstreamStateEvent{})
 					case validations.UnknownResult:
 						// skip
 					}
@@ -81,10 +76,7 @@ func (b *GenericSettingsEventProcessor) Running() bool {
 }
 
 func (b *GenericSettingsEventProcessor) Validate() validations.ValidationSettingResult {
-	result := b.validator.Validate()
-	b.currentValidationState.Store(result)
-
-	return result
+	return b.validator.Validate()
 }
 
 func NewGenericSettingsEventProcessor(
@@ -97,15 +89,11 @@ func NewGenericSettingsEventProcessor(
 		return nil
 	}
 
-	currentValidationState := utils.NewAtomic[validations.ValidationSettingResult]()
-	currentValidationState.Store(validations.UnknownResult)
-
 	return &GenericSettingsEventProcessor{
-		lifecycle:              utils.NewGenericLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
-		validationInterval:     options.ValidationInterval,
-		validator:              validator,
-		upstreamId:             upstreamId,
-		currentValidationState: currentValidationState,
+		lifecycle:          utils.NewGenericLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
+		validationInterval: options.ValidationInterval,
+		validator:          validator,
+		upstreamId:         upstreamId,
 	}
 }
 

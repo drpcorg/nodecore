@@ -259,6 +259,11 @@ func (a *AlgorandChainSpecificObject) MethodsProcessor() methods.MethodsProcesso
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (a *AlgorandChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (a *AlgorandChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

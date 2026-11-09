@@ -201,6 +201,11 @@ func (a *AztecChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (a *AztecChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (a *AztecChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

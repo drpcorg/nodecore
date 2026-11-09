@@ -133,10 +133,16 @@ func detectableConnectorTypes(apiConnectors []connectors.ApiConnector) []specs.A
 	})
 
 	return lo.Filter(types, func(connectorType specs.ApiConnectorType, index int) bool {
-		// Websocket counts: its methods (eth_subscribe and friends) are JSON-RPC in shape and
-		// carry a real module prefix, so module attribution holds for them too.
-		return connectorType == specs.JsonRpcConnector || connectorType == specs.WebsocketConnector
+		return speaksJsonRpc(connectorType)
 	})
+}
+
+// speaksJsonRpc reports whether a connector carries JSON-RPC calls. The methods detectors
+// and the chain validator both reason only over these. Websocket counts: its methods
+// (eth_subscribe and friends) are JSON-RPC in shape and carry a real module prefix, and it
+// answers eth_chainId like any other JSON-RPC endpoint.
+func speaksJsonRpc(connectorType specs.ApiConnectorType) bool {
+	return connectorType == specs.JsonRpcConnector || connectorType == specs.WebsocketConnector
 }
 
 // archiveDetectionSuppressed reports whether the upstream's manual 'archive' label
@@ -191,7 +197,13 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	settingsValidators := make([]validations.Validator[validations.ValidationSettingResult], 0)
 
 	if !*e.options.DisableChainValidation {
-		settingsValidators = append(settingsValidators, eth_validations.NewEthChainValidator(e.upstreamId, e.connector, e.chain, e.options))
+		// one validator per connector, so a wrong-chain websocket next to a right-chain
+		// json-rpc is caught; the internal connector is in the slice
+		for _, connector := range e.allConnectors {
+			if speaksJsonRpc(connector.GetType()) {
+				settingsValidators = append(settingsValidators, eth_validations.NewEthChainValidator(e.upstreamId, connector, e.chain, e.options))
+			}
+		}
 	}
 	if *e.options.ValidateCallLimit && e.chain.CallValidateContract != "" {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthCallLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
@@ -210,6 +222,13 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	}
 
 	return settingsValidators
+}
+
+func (e *EvmChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	if *e.options.DisableChainValidation {
+		return nil
+	}
+	return eth_validations.NewEthChainValidator(e.upstreamId, e.connector, e.chain, e.options)
 }
 
 func (e *EvmChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {

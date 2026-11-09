@@ -166,6 +166,11 @@ func (a *AptosChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (a *AptosChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (a *AptosChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

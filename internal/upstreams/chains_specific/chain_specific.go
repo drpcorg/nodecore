@@ -24,6 +24,11 @@ type ChainSpecific interface {
 	HealthValidators() []validations.Validator[protocol.AvailabilityStatus]
 	SettingsValidators() []validations.Validator[validations.ValidationSettingResult]
 
+	// ChainValidator returns the chain-identity validator bound to this specific's
+	// connector, or nil when the family has none or chain validation is disabled. The
+	// head processor runs it on a head whose height jumped (see blocks.headJumpThreshold).
+	ChainValidator() validations.SettingsValidator
+
 	// CapDetectors returns the chain's capability detectors, given the connectors and
 	// methods discovered at the upstream level. The detectors are aggregated by a
 	// caps.CapProcessor into the upstream's live capability set.
