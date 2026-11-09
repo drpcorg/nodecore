@@ -220,6 +220,11 @@ func (t *TronRestSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (t *TronRestSpecific) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (t *TronRestSpecific) PauseHeadWhileSyncing() bool {
 	return false
 }

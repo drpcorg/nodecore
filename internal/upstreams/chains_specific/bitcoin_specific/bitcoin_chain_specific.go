@@ -198,6 +198,11 @@ func (b *BitcoinChainSpecificObject) MethodsProcessor() methods.MethodsProcessor
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (b *BitcoinChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (b *BitcoinChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }

@@ -58,6 +58,7 @@ func (r *RpcHead) Running() bool {
 func (r *RpcHead) Stop() {
 	log.Info().Msgf("stopping an rpc head of upstream '%s'", r.upstreamId)
 	r.lifecycle.Stop()
+	r.block.Store(protocol.ZeroBlock{})
 }
 
 func (r *RpcHead) UpdateHead(newHead protocol.Block) {
@@ -161,6 +162,7 @@ func (w *SubscriptionHead) Running() bool {
 func (w *SubscriptionHead) Stop() {
 	log.Info().Msgf("stopping subscription head of upstream '%s'", w.upstreamId)
 	w.lifecycle.Stop()
+	w.block.Store(protocol.ZeroBlock{})
 }
 
 func (w *SubscriptionHead) UpdateHead(newHead protocol.Block) {
@@ -233,7 +235,6 @@ func (w *SubscriptionHead) serveSubscription(ctx context.Context) error {
 		return err
 	}
 	defer w.headConnector.Unsubscribe(subResponse.OpId())
-
 	// get the latest block in order not to wait for the sub event
 	w.getLatestBlock(ctx)
 	for {

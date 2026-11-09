@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing/iotest"
 
 	"github.com/bytedance/sonic"
@@ -190,6 +191,10 @@ func (h *GenericUpstreamResponse) HasError() bool {
 }
 
 func jsonRpcResponseReader(id []byte, bodyName string, body []byte) io.Reader {
+	if len(id) == 0 {
+		id = []byte("null")
+	}
+
 	return io.MultiReader(
 		bytes.NewReader([]byte(`{"id":`)),
 		bytes.NewReader(id),
@@ -243,6 +248,11 @@ func NewHttpUpstreamResponse(id string, body []byte, responseCode int, requestTy
 }
 
 var quote = byte('"')
+
+// ParseHexUint64 parses a JSON-RPC quantity such as "0x1b4", with or without surrounding quotes.
+func ParseHexUint64(raw string) (uint64, error) {
+	return strconv.ParseUint(strings.Trim(raw, "\""), 0, 64)
+}
 
 func ResultAsString(result []byte) string {
 	if len(result) == 0 {

@@ -191,6 +191,11 @@ func (t *TendermintChainSpecific) MethodsProcessor() methods.MethodsProcessor {
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (t *TendermintChainSpecific) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (t *TendermintChainSpecific) PauseHeadWhileSyncing() bool {
 	return false
 }
