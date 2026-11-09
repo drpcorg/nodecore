@@ -23,6 +23,7 @@ type Options struct {
 	DisableLabelsDetection                *bool         `yaml:"disable-labels-detection"`
 	DisableMethodsDetection               *bool         `yaml:"disable-methods-detection"`
 	DisableLogIndexValidation             *bool         `yaml:"disable-log-index-validation"`
+	DisableErigonBugValidation            *bool         `yaml:"disable-erigon-bug-validation"`
 	DisableLivenessSubscriptionValidation *bool         `yaml:"disable-liveness-subscription-validation"`
 	// ArchiveCapability is deprecated: set the 'archive' upstream label instead. It is
 	// still honoured - Upstream.setDefaults translates it into that label and warns -

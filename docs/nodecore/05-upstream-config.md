@@ -38,6 +38,7 @@ upstream-config:
         call-limit-size: 131072
         validate-client-version: false
         disable-log-index-validation: true
+        disable-erigon-bug-validation: true
         disable-liveness-subscription-validation: false
       dispatch:
         broadcast: false
@@ -164,6 +165,7 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `validate-call-limit` | `false` (off) | `true` (on) |
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
 | `disable-log-index-validation` | `true` (off) | `false` (on) |
+| `disable-erigon-bug-validation` | `true` (off) | `false` (on) |
 | `validate-client-version` | `false` (off) | `true` (on) |
 | `chain-defaults.<chain>.dispatch.*` | `false` (off) | `true` (on) |
 
@@ -351,6 +353,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
   * `validate-client-version` - For EVM chains, validates the detected `web3_clientVersion`/client labels against the embedded compatible-client rules. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `disable-erigon-bug-validation` - Disables the EVM Erigon balance-bug validator. Every 10th settings validation the validator checks `web3_clientVersion`; on an Erigon node it then binary-searches `[1, latest]` with an `eth_call` whose state override installs a contract returning its own balance. A block where the node answers `0x` instead of data means the historical state is broken and the upstream is removed (fatal settings error) until a later check is clean. Each probe is a single call bounded by `internal-timeout`. A check that cannot reach a verdict (client version or latest block unreadable, or no probe answered with data) is a non-fatal settings error: at startup the upstream is not admitted until a later check passes, afterwards its state is kept. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
   * `disable-finalized-block-detection` - Disables periodic finalized-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("finalized", …)` calls, does not cache with `finalization-type: finalized`, and skips finalization-lag tracking. Set to `true` for chains like Viction (PoSV) that lack Ethereum's finalized-block concept. **_Default_**: `false`
   * `disable-liveness-subscription-validation` - Controls whether an EVM upstream whose head is driven by a WebSocket must prove its head is *live* before it advertises the WebSocket subscription capability (`WsCap`) and can back client subscriptions. When the validation is enabled, such an upstream gains `WsCap` only once its head has advanced **consecutively** — 3 blocks in a row (2 consecutive height increments) — and loses it on a forward gap of skipped blocks, a stall (no head progress within an adaptive timeout derived from the chain's expected block time), or a WebSocket disconnect, pulling the upstream out of subscription serving until it recovers; after a gap it stays out for a short cooldown before it can go live again (duplicate heights and backward reorgs are tolerated, and regular RPC routing is unaffected throughout). Set to `true` to skip the check and keep the historical "connected WebSocket ⇒ `WsCap`" behavior. Only affects EVM upstreams with a WebSocket head connector; poll-head upstreams and non-EVM chains are never gated. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
@@ -797,6 +800,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | `eth_syncing` validator | EVM | `validate-syncing` (set to `false`) or `disable-settings-validation` | Marks the upstream as syncing/unavailable when the node reports it is not fully synced |
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers`. Accepts the count as a hex string (Ethereum nodes) or a plain number (Cosmos chains with an EVM module) |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
+| Erigon balance-bug validator | EVM | `disable-erigon-bug-validation` or `disable-settings-validation` | On Erigon nodes only (by `web3_clientVersion`), binary-searches historical blocks with a state-override `eth_call`; a `0x` answer where data is expected is fatal and removes the upstream until a later check is clean |
 | Health validator (EVM) | EVM | `disable-health-validation` | Generic liveness check appropriate to the chain family |
 | Health validator (Solana) | Solana | `disable-health-validation` | Calls the Solana `getHealth` RPC and propagates the result |
 | Health validator (Aztec) | Aztec | `disable-health-validation` | Probes Aztec node health |
