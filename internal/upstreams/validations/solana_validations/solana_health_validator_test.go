@@ -1,6 +1,7 @@
 package solana_validations_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestSolanaHealthValidatorValidateReturnsAvailableWhenHealthIsOk(t *testing.
 
 	validator := solana_validations.NewSolanaHealthValidator("id", connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Available, status)
 	connector.AssertExpectations(t)
@@ -49,7 +50,7 @@ func TestSolanaHealthValidatorValidateReturnsUnavailableWhenConnectorReturnsErro
 
 	validator := solana_validations.NewSolanaHealthValidator("id", connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -64,7 +65,7 @@ func TestSolanaHealthValidatorValidateReturnsUnavailableWhenResponseIsNotString(
 
 	validator := solana_validations.NewSolanaHealthValidator("id", connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -79,7 +80,7 @@ func TestSolanaHealthValidatorValidateReturnsUnavailableWhenHealthIsNotOk(t *tes
 
 	validator := solana_validations.NewSolanaHealthValidator("id", connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -94,7 +95,7 @@ func TestSolanaHealthValidatorValidateReturnsUnavailableWhenHealthCaseDoesNotMat
 
 	validator := solana_validations.NewSolanaHealthValidator("id", connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)

@@ -33,7 +33,7 @@ func NewAptosChainValidator(
 	}
 }
 
-func (a *AptosChainValidator) Validate() validations.ValidationSettingResult {
+func (a *AptosChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	expected := strings.TrimSpace(a.chain.ChainIdFor(chains.Aptos))
 	if expected == "" {
 		return validations.Valid
@@ -44,7 +44,7 @@ func (a *AptosChainValidator) Validate() validations.ValidationSettingResult {
 		return validations.FatalSettingError
 	}
 
-	info, err := a.fetchLedgerInfo()
+	info, err := a.fetchLedgerInfo(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch aptos ledger info for upstream '%s'", a.upstreamId)
 		return validations.SettingsError
@@ -72,8 +72,8 @@ func parseHexChainId(chainId string) (uint64, error) {
 	return strconv.ParseUint(strings.TrimPrefix(strings.ToLower(chainId), "0x"), 16, 64)
 }
 
-func (a *AptosChainValidator) fetchLedgerInfo() (*AptosLedgerInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AptosChainValidator) fetchLedgerInfo(ctx context.Context) (*AptosLedgerInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	return FetchLedgerInfo(ctx, a.connector, a.chain.Chain)

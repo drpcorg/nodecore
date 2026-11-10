@@ -251,20 +251,14 @@ func (h *GenericHeadProcessor) isSuspicious(block protocol.Block) bool {
 	return distance > headJumpThreshold
 }
 
-// checkChain runs the chain validator and waits for its verdict or for the run to end,
-// whichever comes first. On a cancelled run the verdict is discarded and the validator
-// call finishes on its own within its own timeout; the second value is false then.
+// checkChain runs the chain validator under the run context. A cancelled run cancels the
+// probe, and its verdict is discarded: the second value is false then.
 func (h *GenericHeadProcessor) checkChain(ctx context.Context) (validations.ValidationSettingResult, bool) {
-	verdict := make(chan validations.ValidationSettingResult, 1)
-	go func() {
-		verdict <- h.chainValidator.Validate()
-	}()
-	select {
-	case result := <-verdict:
-		return result, true
-	case <-ctx.Done():
+	result := h.chainValidator.Validate(ctx)
+	if ctx.Err() != nil {
 		return validations.UnknownResult, false
 	}
+	return result, true
 }
 
 func createHead(

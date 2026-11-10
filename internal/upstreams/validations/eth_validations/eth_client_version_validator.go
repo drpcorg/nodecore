@@ -55,12 +55,12 @@ func NewEthClientVersionValidator(
 	}
 }
 
-func (v *EthClientVersionValidator) Validate() validations.ValidationSettingResult {
+func (v *EthClientVersionValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	if len(v.rules) == 0 || v.chain == nil {
 		return validations.Valid
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), v.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, v.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, v.chain.Chain)
@@ -69,7 +69,7 @@ func (v *EthClientVersionValidator) Validate() validations.ValidationSettingResu
 		return validations.SettingsError
 	}
 
-	response, err := v.executor.Get(func() (protocol.ResponseHolder, error) {
+	response, err := v.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
 		return v.connector.SendRequest(ctx, request), nil
 	})
 	if err != nil {

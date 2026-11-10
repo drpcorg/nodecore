@@ -311,7 +311,7 @@ func TestCosmosSyncingValidator(t *testing.T) {
 		validator := cosmos_validations.NewCosmosSyncingValidator(
 			"id", chains.GetChain("cosmos-hub").Chain, connector, time.Second,
 		)
-		assert.Equal(t, c.want, validator.Validate())
+		assert.Equal(t, c.want, validator.Validate(context.Background()))
 		connector.AssertExpectations(t)
 	}
 }
@@ -340,7 +340,7 @@ func TestCosmosChainValidator(t *testing.T) {
 				Once()
 
 			validator := cosmos_validations.NewCosmosChainValidator("id", connector, chain, time.Second)
-			assert.Equal(t, c.want, validator.Validate())
+			assert.Equal(t, c.want, validator.Validate(context.Background()))
 			connector.AssertExpectations(t)
 		})
 	}

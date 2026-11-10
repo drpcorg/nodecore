@@ -170,15 +170,15 @@ func TestCelestiaHealthValidator(t *testing.T) {
 	require.Len(t, validators, 1)
 
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse("true")).Once()
-	assert.Equal(t, protocol.Available, validators[0].Validate())
+	assert.Equal(t, protocol.Available, validators[0].Validate(context.Background()))
 
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse("false")).Once()
-	assert.Equal(t, protocol.Unavailable, validators[0].Validate())
+	assert.Equal(t, protocol.Unavailable, validators[0].Validate(context.Background()))
 
 	// no auth token: celestia-node answers every call with code 1 "missing permission"
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "missing permission to invoke 'Ready' (need 'read')", nil))).Once()
-	assert.Equal(t, protocol.Unavailable, validators[0].Validate())
+	assert.Equal(t, protocol.Unavailable, validators[0].Validate(context.Background()))
 }
 
 func TestCelestiaChainValidator(t *testing.T) {
@@ -189,20 +189,20 @@ func TestCelestiaChainValidator(t *testing.T) {
 	require.Len(t, validators, 1)
 
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse(extendedHeader)).Once()
-	assert.Equal(t, validations.Valid, validators[0].Validate())
+	assert.Equal(t, validations.Valid, validators[0].Validate(context.Background()))
 
 	mocha := strings.Replace(extendedHeader, `"chain_id": "celestia"`, `"chain_id": "mocha-4"`, 1)
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse(mocha)).Once()
-	assert.Equal(t, validations.FatalSettingError, validators[0].Validate())
+	assert.Equal(t, validations.FatalSettingError, validators[0].Validate(context.Background()))
 
 	// an empty chain id is a mismatch too, not a transient error
 	empty := strings.Replace(extendedHeader, `"chain_id": "celestia"`, `"chain_id": ""`, 1)
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(headerResponse(empty)).Once()
-	assert.Equal(t, validations.FatalSettingError, validators[0].Validate())
+	assert.Equal(t, validations.FatalSettingError, validators[0].Validate(context.Background()))
 
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "rpc error", nil))).Once()
-	assert.Equal(t, validations.SettingsError, validators[0].Validate())
+	assert.Equal(t, validations.SettingsError, validators[0].Validate(context.Background()))
 }
 
 // ---------- dispatch ----------

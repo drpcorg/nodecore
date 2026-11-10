@@ -108,7 +108,7 @@ func TestChainValidatorsOneWrongConnectorMakesTheUpstreamFatal(t *testing.T) {
 	}
 
 	validators := specific.NewEvmChainSpecific(context.Background(), "id", jsonRpc, []connectors.ApiConnector{jsonRpc, ws}, chains.GetChain("ethereum"), time.Second, options, nil).SettingsValidators()
-	result := validations.NewSettingsValidationProcessor(validators).Validate()
+	result := validations.NewSettingsValidationProcessor(validators).Validate(context.Background())
 
 	assert.Equal(t, validations.FatalSettingError, result)
 }

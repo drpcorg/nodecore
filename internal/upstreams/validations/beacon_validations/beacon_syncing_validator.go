@@ -43,8 +43,8 @@ func NewBeaconChainSyncingValidator(
 	}
 }
 
-func (b *BeaconChainSyncingValidator) Validate() protocol.AvailabilityStatus {
-	syncing, err := b.fetchSyncing()
+func (b *BeaconChainSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	syncing, err := b.fetchSyncing(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("beacon upstream '%s' syncing validation failed", b.upstreamId)
 		return protocol.Unavailable
@@ -60,8 +60,8 @@ func (b *BeaconChainSyncingValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (b *BeaconChainSyncingValidator) fetchSyncing() (*beaconChainSyncing, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.internalTimeout)
+func (b *BeaconChainSyncingValidator) fetchSyncing(ctx context.Context) (*beaconChainSyncing, error) {
+	ctx, cancel := context.WithTimeout(ctx, b.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/eth/v1/node/syncing", nil, b.chain)

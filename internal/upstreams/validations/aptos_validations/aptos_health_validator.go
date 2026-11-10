@@ -36,8 +36,8 @@ func NewAptosHealthValidator(
 	}
 }
 
-func (a *AptosHealthValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AptosHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest(

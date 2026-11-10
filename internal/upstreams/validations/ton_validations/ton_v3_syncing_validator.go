@@ -1,6 +1,7 @@
 package ton_validations
 
 import (
+	"context"
 	"errors"
 	"strconv"
 	"time"
@@ -41,8 +42,8 @@ func NewTonV3SyncingValidator(
 	}
 }
 
-func (t *TonV3SyncingValidator) Validate() protocol.AvailabilityStatus {
-	info, err := FetchV3MasterchainInfo(t.connector, t.chain.Chain, t.internalTimeout)
+func (t *TonV3SyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	info, err := FetchV3MasterchainInfo(ctx, t.connector, t.chain.Chain, t.internalTimeout)
 	if err != nil {
 		log.Error().Err(err).Msgf("ton v3 upstream '%s' syncing validation failed", t.upstreamId)
 		return protocol.Unavailable

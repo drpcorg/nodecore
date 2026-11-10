@@ -1,6 +1,7 @@
 package validations_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestNewSettingsValidationProcessorReturnsNilWhenValidatorsAreNil(t *testing.T) {
@@ -63,7 +65,7 @@ func TestSettingsValidationProcessorMultipleValidators(t *testing.T) {
 	processor := validations.NewSettingsValidationProcessor(
 		[]validations.Validator[validations.ValidationSettingResult]{validResultValidator, settingsErrorResultValidator, fatalErrorResultValidator},
 	)
-	actual := processor.Validate()
+	actual := processor.Validate(context.Background())
 
 	conn1.AssertExpectations(t)
 	conn2.AssertExpectations(t)
@@ -83,4 +85,25 @@ func getTestChainValidator(chainIdResp, netVersionResp protocol.ResponseHolder) 
 	test_utils.ExpectEthValidationRequest(connector, netVersionRequest, netVersionResp)
 
 	return connector, eth_validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
+}
+
+type ctxKey struct{}
+
+func TestValidationProcessorPassesTheCallerContextToEveryValidator(t *testing.T) {
+	ctx := context.WithValue(context.Background(), ctxKey{}, "caller")
+	fromCaller := mock.MatchedBy(func(c context.Context) bool { return c.Value(ctxKey{}) == "caller" })
+
+	first := mocks.NewSettingsValidatorMock()
+	second := mocks.NewSettingsValidatorMock()
+	first.On("Validate", fromCaller).Return(validations.Valid).Once()
+	second.On("Validate", fromCaller).Return(validations.SettingsError).Once()
+
+	processor := validations.NewSettingsValidationProcessor(
+		[]validations.Validator[validations.ValidationSettingResult]{first, second},
+	)
+	actual := processor.Validate(ctx)
+
+	first.AssertExpectations(t)
+	second.AssertExpectations(t)
+	assert.Equal(t, validations.SettingsError, actual)
 }

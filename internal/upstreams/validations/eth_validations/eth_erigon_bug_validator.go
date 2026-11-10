@@ -54,19 +54,19 @@ func NewEthErigonBugValidator(
 	}
 }
 
-func (v *EthErigonBugValidator) Validate() validations.ValidationSettingResult {
+func (v *EthErigonBugValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	currentCount := v.callCount.Add(1)
 	if (currentCount-1)%erigonBugCheckFrequency != 0 {
 		return validations.ValidationSettingResult(v.lastResult.Load())
 	}
 
-	result := v.validateNow()
+	result := v.validateNow(ctx)
 	v.lastResult.Store(int32(result))
 	return result
 }
 
-func (v *EthErigonBugValidator) validateNow() validations.ValidationSettingResult {
-	isErigon, err := v.isErigon()
+func (v *EthErigonBugValidator) validateNow(ctx context.Context) validations.ValidationSettingResult {
+	isErigon, err := v.isErigon(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to read the client version for the Erigon bug validation of upstream '%s'", v.upstreamId)
 		return validations.SettingsError
@@ -75,7 +75,7 @@ func (v *EthErigonBugValidator) validateNow() validations.ValidationSettingResul
 		return validations.Valid
 	}
 
-	latest, err := v.getLatestBlockNumber()
+	latest, err := v.getLatestBlockNumber(ctx)
 	if err != nil || latest == 0 {
 		if err != nil {
 			log.Warn().Err(err).Msgf("failed to read the latest block for the Erigon bug validation of upstream '%s'", v.upstreamId)
@@ -83,19 +83,19 @@ func (v *EthErigonBugValidator) validateNow() validations.ValidationSettingResul
 		return validations.SettingsError
 	}
 
-	return v.searchForBug(latest)
+	return v.searchForBug(ctx, latest)
 }
 
-func (v *EthErigonBugValidator) isErigon() (bool, error) {
-	version, err := v.getStringResult("web3_clientVersion", nil)
+func (v *EthErigonBugValidator) isErigon(ctx context.Context) (bool, error) {
+	version, err := v.getStringResult(ctx, "web3_clientVersion", nil)
 	if err != nil {
 		return false, err
 	}
 	return strings.Contains(strings.ToLower(version), "erigon"), nil
 }
 
-func (v *EthErigonBugValidator) getLatestBlockNumber() (uint64, error) {
-	raw, err := v.getStringResult("eth_blockNumber", nil)
+func (v *EthErigonBugValidator) getLatestBlockNumber(ctx context.Context) (uint64, error) {
+	raw, err := v.getStringResult(ctx, "eth_blockNumber", nil)
 	if err != nil {
 		return 0, err
 	}
@@ -105,12 +105,12 @@ func (v *EthErigonBugValidator) getLatestBlockNumber() (uint64, error) {
 // searchForBug binary-searches [1, latest] for a block where the probe answers "0x": blocks with
 // data move the search towards older blocks, errors (no state, timeouts) towards newer ones.
 // A search that never saw data is inconclusive rather than valid.
-func (v *EthErigonBugValidator) searchForBug(latest uint64) validations.ValidationSettingResult {
+func (v *EthErigonBugValidator) searchForBug(ctx context.Context, latest uint64) validations.ValidationSettingResult {
 	result := validations.SettingsError
 	start, end := uint64(1), latest
 	for depth := 0; depth <= erigonBugMaxSearchDepth && start < end; depth++ {
 		mid := start + (end-start)/2
-		switch v.probeBlock(mid) {
+		switch v.probeBlock(ctx, mid) {
 		case validations.FatalSettingError:
 			log.Error().Msgf("Erigon balance bug detected on upstream '%s' at block %d", v.upstreamId, mid)
 			return validations.FatalSettingError
@@ -126,7 +126,7 @@ func (v *EthErigonBugValidator) searchForBug(latest uint64) validations.Validati
 
 // probeBlock answers FatalSettingError for the bug ("0x"), Valid for return data and SettingsError
 // for anything else (no state at that block, timeout, transport or JSON-RPC error).
-func (v *EthErigonBugValidator) probeBlock(height uint64) validations.ValidationSettingResult {
+func (v *EthErigonBugValidator) probeBlock(ctx context.Context, height uint64) validations.ValidationSettingResult {
 	params := []any{
 		map[string]any{
 			"to":   erigonBugProbeAddress,
@@ -139,7 +139,7 @@ func (v *EthErigonBugValidator) probeBlock(height uint64) validations.Validation
 			},
 		},
 	}
-	result, err := v.getStringResult("eth_call", params)
+	result, err := v.getStringResult(ctx, "eth_call", params)
 	if err != nil {
 		return validations.SettingsError
 	}
@@ -153,12 +153,12 @@ func (v *EthErigonBugValidator) probeBlock(height uint64) validations.Validation
 	}
 }
 
-func (v *EthErigonBugValidator) getStringResult(method string, params any) (string, error) {
+func (v *EthErigonBugValidator) getStringResult(ctx context.Context, method string, params any) (string, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params, v.chain.Chain)
 	if err != nil {
 		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), v.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, v.internalTimeout)
 	defer cancel()
 	response := v.connector.SendRequest(ctx, request)
 	if response.HasError() {

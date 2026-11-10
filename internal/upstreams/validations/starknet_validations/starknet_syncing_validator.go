@@ -37,8 +37,8 @@ func NewStarknetSyncingValidator(
 	}
 }
 
-func (s *StarknetSyncingValidator) Validate() protocol.AvailabilityStatus {
-	syncStatus, err := s.fetchSyncStatus()
+func (s *StarknetSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	syncStatus, err := s.fetchSyncStatus(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("starknet upstream '%s' syncing validation failed", s.upstreamId)
 		return protocol.Unavailable
@@ -96,8 +96,8 @@ func (n *starknetBlockNum) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *StarknetSyncingValidator) fetchSyncStatus() (*starknetSyncStatus, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *StarknetSyncingValidator) fetchSyncStatus(ctx context.Context) (*starknetSyncStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("starknet_syncing", []any{}, s.chain.Chain)

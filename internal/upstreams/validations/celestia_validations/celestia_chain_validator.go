@@ -34,8 +34,8 @@ func NewCelestiaChainValidator(
 	}
 }
 
-func (c *CelestiaChainValidator) Validate() validations.ValidationSettingResult {
-	chainId, err := c.getChainId()
+func (c *CelestiaChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	chainId, err := c.getChainId(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to get chainId of chain %s upstream '%s'", c.chain.Chain, c.upstreamId)
 		return validations.SettingsError
@@ -53,8 +53,8 @@ func (c *CelestiaChainValidator) Validate() validations.ValidationSettingResult 
 	return validations.Valid
 }
 
-func (c *CelestiaChainValidator) getChainId() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+func (c *CelestiaChainValidator) getChainId(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(

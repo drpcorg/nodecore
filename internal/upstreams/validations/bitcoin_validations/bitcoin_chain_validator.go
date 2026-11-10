@@ -43,7 +43,7 @@ func NewBitcoinChainValidator(
 	}
 }
 
-func (b *BitcoinChainValidator) Validate() validations.ValidationSettingResult {
+func (b *BitcoinChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	expected, hasMapping := expectedGenesisHashes[b.chain.Chain]
 	if !hasMapping {
 		log.Warn().Msgf(
@@ -53,7 +53,7 @@ func (b *BitcoinChainValidator) Validate() validations.ValidationSettingResult {
 		)
 		return validations.Valid
 	}
-	genesis, err := b.fetchGenesisHash()
+	genesis, err := b.fetchGenesisHash(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch bitcoin genesis hash for upstream '%s'", b.upstreamId)
 		return validations.SettingsError
@@ -71,8 +71,8 @@ func (b *BitcoinChainValidator) Validate() validations.ValidationSettingResult {
 	return validations.FatalSettingError
 }
 
-func (b *BitcoinChainValidator) fetchGenesisHash() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.internalTimeout)
+func (b *BitcoinChainValidator) fetchGenesisHash(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, b.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getblockhash", []any{0}, b.chain.Chain)

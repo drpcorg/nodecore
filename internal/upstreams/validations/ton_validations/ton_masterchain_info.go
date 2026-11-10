@@ -30,11 +30,12 @@ type TonMasterchainInfo struct {
 }
 
 func fetchMasterchainInfo(
+	ctx context.Context,
 	connector connectors.ApiConnector,
 	chain chains.Chain,
 	internalTimeout time.Duration,
 ) (*TonMasterchainInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/getMasterchainInfo", nil, chain)
