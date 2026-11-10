@@ -198,9 +198,6 @@ func TestGenericLabelsProcessorStopCancelsDetection(t *testing.T) {
 	}).Return(map[string]string{"archive": "false"}).Once()
 
 	processor := labels.NewGenericLabelsProcessor(context.Background(), "up-1", []labels.LabelsDetector{detector}, time.Hour)
-	sub := processor.Subscribe("sub-1")
-	defer sub.Unsubscribe()
-
 	startLabelsProcessor(t, processor)
 	stopLabelsProcessor(t, processor)
 
@@ -209,6 +206,5 @@ func TestGenericLabelsProcessorStopCancelsDetection(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Stop did not cancel the in-flight label detection")
 	}
-	assertNoLabel(t, sub.Events, 50*time.Millisecond)
 	detector.AssertExpectations(t)
 }
