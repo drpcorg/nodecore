@@ -215,10 +215,6 @@ func (u *GenericUpstream) GetGroupLabels() mapset.Set[string] {
 	return u.groupLabels
 }
 
-// Start activates the connectors, validates the settings and, if they allow it, the state
-// processors. The teardown it returns releases all of that, whether the start succeeded or
-// failed on fatal settings; the upstream context goes first, so no nested lifecycle can be
-// started again once the upstream is stopped.
 func (u *GenericUpstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) (func(), error) {
 		u.startConnectors(ctx)
