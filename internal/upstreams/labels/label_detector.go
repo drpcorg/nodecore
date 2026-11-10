@@ -12,7 +12,7 @@ import (
 type EthClientLabelMapping func(data []byte) (string, error)
 
 type LabelsDetector interface {
-	DetectLabels() map[string]string
+	DetectLabels(ctx context.Context) map[string]string
 }
 
 type ClientLabelsDetector interface {
@@ -27,8 +27,8 @@ type ClientLabelsDetectorHandler struct {
 	internalTimeout     time.Duration
 }
 
-func (c *ClientLabelsDetectorHandler) DetectLabels() map[string]string {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+func (c *ClientLabelsDetectorHandler) DetectLabels(ctx context.Context) map[string]string {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	request, err := c.clientLabelDetector.NodeTypeRequest()

@@ -108,7 +108,7 @@ func TestChainValidatorsOneWrongConnectorMakesTheUpstreamFatal(t *testing.T) {
 	}
 
 	validators := specific.NewEvmChainSpecific(context.Background(), "id", jsonRpc, []connectors.ApiConnector{jsonRpc, ws}, chains.GetChain("ethereum"), time.Second, options, nil).SettingsValidators()
-	result := validations.NewSettingsValidationProcessor(validators).Validate()
+	result := validations.NewSettingsValidationProcessor(validators).Validate(context.Background())
 
 	assert.Equal(t, validations.FatalSettingError, result)
 }
@@ -133,7 +133,7 @@ func TestEvmParseSubBLock(t *testing.T) {
 	  "parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
     }`)
 
-	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(body)
+	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(context.Background(), body)
 	assert.Nil(t, err)
 
 	expected := protocol.Block{

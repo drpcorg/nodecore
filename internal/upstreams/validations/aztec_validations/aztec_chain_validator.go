@@ -39,8 +39,8 @@ func NewAztecChainValidator(
 	}
 }
 
-func (a *AztecChainValidator) Validate() validations.ValidationSettingResult {
-	chainId, err := a.getChainId()
+func (a *AztecChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	chainId, err := a.getChainId(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to get chainId of chain %s upstream '%s'", a.chain.Chain, a.upstreamId)
 		return validations.SettingsError
@@ -62,8 +62,8 @@ func (a *AztecChainValidator) Validate() validations.ValidationSettingResult {
 	return validations.Valid
 }
 
-func (a *AztecChainValidator) getChainId() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), a.internalTimeout)
+func (a *AztecChainValidator) getChainId(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("node_getChainId", []string{}, a.chain.Chain)

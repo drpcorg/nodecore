@@ -1,6 +1,7 @@
 package near_validations
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -30,8 +31,8 @@ func NewNearChainValidator(
 	}
 }
 
-func (n *NearChainValidator) Validate() validations.ValidationSettingResult {
-	status, err := n.fetchNearStatus()
+func (n *NearChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	status, err := n.fetchNearStatus(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch near status for upstream '%s'", n.upstreamId)
 		return validations.SettingsError

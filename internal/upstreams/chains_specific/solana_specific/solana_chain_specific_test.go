@@ -59,7 +59,7 @@ func TestSolanaWsHeadSpecificAsksEpochInfoOverJsonRpc(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, expected, block)
 
-	block, err = solanaSpecific.ParseSubscriptionBlock([]byte(`{"slot": 405220706, "parent": 405220705, "root": 405220674}`))
+	block, err = solanaSpecific.ParseSubscriptionBlock(context.Background(), []byte(`{"slot": 405220706, "parent": 405220705, "root": 405220674}`))
 	require.NoError(t, err)
 	assert.Equal(t, expected, block)
 
@@ -88,7 +88,7 @@ func TestSolanaParseSubBlockErrEpochInfoWithoutKnownHeight(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := test_utils.NewSolanaChainSpecific(context.Background(), connector).ParseSubscriptionBlock(slot)
+	block, err := test_utils.NewSolanaChainSpecific(context.Background(), connector).ParseSubscriptionBlock(context.Background(), slot)
 
 	connector.AssertExpectations(t)
 	assert.True(t, block.IsFullEmpty())
@@ -127,11 +127,11 @@ func TestSolanaParseSubBlockErrEpochInfoUsesEstimatedHeight(t *testing.T) {
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(protocol.NewHttpUpstreamResponse("1", epochBody, 200, protocol.JsonRpc)).Once()
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(protocol.NewHttpUpstreamResponse("1", errorBody, 200, protocol.JsonRpc)).Once()
 
-	_, err := solanaSpecific.ParseSubscriptionBlock([]byte(`{"slot": 405219988, "parent": 405219987, "root": 405219900}`))
+	_, err := solanaSpecific.ParseSubscriptionBlock(context.Background(), []byte(`{"slot": 405219988, "parent": 405219987, "root": 405219900}`))
 	require.NoError(t, err)
 
 	// 10 slots later: past the check interval, so getEpochInfo is asked again and fails
-	block, err := solanaSpecific.ParseSubscriptionBlock([]byte(`{"slot": 405219998, "parent": 405219997, "root": 405219900}`))
+	block, err := solanaSpecific.ParseSubscriptionBlock(context.Background(), []byte(`{"slot": 405219998, "parent": 405219997, "root": 405219900}`))
 	require.NoError(t, err)
 
 	connector.AssertExpectations(t)
@@ -168,7 +168,7 @@ func TestSolanaParseSubBLock(t *testing.T) {
 
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(epochResponse)
 
-	block, err := solanaSpecific.ParseSubscriptionBlock(body)
+	block, err := solanaSpecific.ParseSubscriptionBlock(context.Background(), body)
 	assert.Nil(t, err)
 
 	connector.AssertExpectations(t)
@@ -177,7 +177,7 @@ func TestSolanaParseSubBLock(t *testing.T) {
 	blockData := protocol.NewBlock(383325939, 405219988, hash, parentHash)
 	assert.Equal(t, blockData, block)
 
-	block, err = solanaSpecific.ParseSubscriptionBlock(body1)
+	block, err = solanaSpecific.ParseSubscriptionBlock(context.Background(), body1)
 	assert.Nil(t, err)
 
 	hash, parentHash = specific_helpers.SyntheticHashes(405219989, 405219988)
@@ -235,4 +235,20 @@ func TestSolanaGetLatestBlockWithError(t *testing.T) {
 
 	assert.Equal(t, 1, upErr.Code)
 	assert.Equal(t, "block error", upErr.Message)
+}
+
+func TestSolanaParseSubscriptionBlockEpochInfoFollowsCallerContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	connector := mocks.NewConnectorMock()
+	connector.On("SendRequest", mock.MatchedBy(func(reqCtx context.Context) bool {
+		return reqCtx.Err() != nil
+	}), mock.Anything).Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "cancelled", nil)))
+
+	// no height is known yet, so the first slot event has to ask the node for the epoch info
+	_, err := test_utils.NewSolanaChainSpecific(context.Background(), connector).
+		ParseSubscriptionBlock(ctx, []byte(`{"slot": 405220706, "parent": 405220705, "root": 405220674}`))
+
+	require.Error(t, err)
+	connector.AssertExpectations(t)
 }

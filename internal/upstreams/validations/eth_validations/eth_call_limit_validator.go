@@ -24,7 +24,7 @@ type EthCallLimitValidator struct {
 	executor failsafe.Executor[protocol.ResponseHolder]
 }
 
-func (e *EthCallLimitValidator) Validate() validations.ValidationSettingResult {
+func (e *EthCallLimitValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"eth_call",
 		[]any{
@@ -42,12 +42,16 @@ func (e *EthCallLimitValidator) Validate() validations.ValidationSettingResult {
 		return validations.SettingsError
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.option.InternalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.option.InternalTimeout)
 	defer cancel()
 
-	response, _ := e.executor.Get(func() (protocol.ResponseHolder, error) {
+	response, err := e.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
 		return e.connector.SendRequest(ctx, req), nil
 	})
+	if err != nil {
+		log.Warn().Err(err).Msgf("failed to execute call limit validation request for upstream '%s'", e.upstreamId)
+		return validations.SettingsError
+	}
 	if response.HasError() {
 		if strings.Contains(response.GetError().Message, "rpc.returndata.limit") {
 			log.Error().Err(response.GetError()).

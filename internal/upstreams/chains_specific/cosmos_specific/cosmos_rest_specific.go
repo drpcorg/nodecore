@@ -88,7 +88,7 @@ func (c *CosmosRestSpecific) ParseBlock(blockBytes []byte) (protocol.Block, erro
 	), nil
 }
 
-func (c *CosmosRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (c *CosmosRestSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

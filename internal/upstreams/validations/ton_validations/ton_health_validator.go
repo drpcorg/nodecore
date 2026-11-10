@@ -1,6 +1,7 @@
 package ton_validations
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -34,8 +35,8 @@ func NewTonHealthValidator(
 	}
 }
 
-func (t *TonHealthValidator) Validate() protocol.AvailabilityStatus {
-	info, err := fetchMasterchainInfo(t.connector, t.chain.Chain, t.internalTimeout)
+func (t *TonHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	info, err := fetchMasterchainInfo(ctx, t.connector, t.chain.Chain, t.internalTimeout)
 	if err != nil {
 		log.Error().Err(err).Msgf("ton upstream '%s' health validation failed", t.upstreamId)
 		return protocol.Unavailable

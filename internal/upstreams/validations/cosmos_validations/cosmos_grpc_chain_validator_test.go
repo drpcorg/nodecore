@@ -1,6 +1,7 @@
 package cosmos_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -59,7 +60,7 @@ func TestCosmosGrpcChainValidator(t *testing.T) {
 				Once()
 
 			validator := cosmos_validations.NewCosmosGrpcChainValidator("id", connector, chain, time.Second)
-			assert.Equal(t, c.want, validator.Validate())
+			assert.Equal(t, c.want, validator.Validate(context.Background()))
 			connector.AssertExpectations(t)
 		})
 	}

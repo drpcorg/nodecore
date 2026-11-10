@@ -190,7 +190,7 @@ func TestTendermintHeadSubscriptionsUnsupported(t *testing.T) {
 	assert.Nil(t, req)
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
-	block, err := cs.ParseSubscriptionBlock([]byte(`{}`))
+	block, err := cs.ParseSubscriptionBlock(context.Background(), []byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }
@@ -232,7 +232,7 @@ func TestTendermintSyncingValidatorReadsCatchingUp(t *testing.T) {
 		validator := tendermint_validations.NewTendermintSyncingValidator(
 			"id", chains.GetChain("cosmos-hub").Chain, connector, time.Second,
 		)
-		assert.Equal(t, c.want, validator.Validate())
+		assert.Equal(t, c.want, validator.Validate(context.Background()))
 		connector.AssertExpectations(t)
 	}
 }
@@ -249,7 +249,7 @@ func TestTendermintPeersValidatorParsesStringPeerCount(t *testing.T) {
 	validator := tendermint_validations.NewTendermintPeersValidator(
 		"id", chains.GetChain("cosmos-hub").Chain, connector, options,
 	)
-	assert.Equal(t, protocol.Immature, validator.Validate())
+	assert.Equal(t, protocol.Immature, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -278,7 +278,7 @@ func TestTendermintChainValidator(t *testing.T) {
 				Once()
 
 			validator := tendermint_validations.NewTendermintChainValidator("id", connector, chain, time.Second)
-			assert.Equal(t, c.want, validator.Validate())
+			assert.Equal(t, c.want, validator.Validate(context.Background()))
 			connector.AssertExpectations(t)
 		})
 	}

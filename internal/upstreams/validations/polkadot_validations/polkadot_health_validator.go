@@ -54,8 +54,8 @@ func NewPolkadotHealthValidator(
 	}
 }
 
-func (p *PolkadotHealthValidator) Validate() protocol.AvailabilityStatus {
-	health, err := p.fetchHealth()
+func (p *PolkadotHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	health, err := p.fetchHealth(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to get system_health of upstream '%s'", p.upstreamId)
 		return protocol.Unavailable
@@ -77,8 +77,8 @@ func (p *PolkadotHealthValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (p *PolkadotHealthValidator) fetchHealth() (*polkadotHealth, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.internalTimeout)
+func (p *PolkadotHealthValidator) fetchHealth(ctx context.Context) (*polkadotHealth, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("system_health", []any{}, p.chain)

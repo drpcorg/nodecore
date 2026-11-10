@@ -35,8 +35,8 @@ func NewTendermintSyncingValidator(
 	}
 }
 
-func (t *TendermintSyncingValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
+func (t *TendermintSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, t.internalTimeout)
 	defer cancel()
 
 	status, err := specific_helpers.FetchTendermintStatus(ctx, t.connector, t.chain)
@@ -71,8 +71,8 @@ func NewTendermintPeersValidator(
 	}
 }
 
-func (t *TendermintPeersValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), t.options.InternalTimeout)
+func (t *TendermintPeersValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, t.options.InternalTimeout)
 	defer cancel()
 
 	raw, err := specific_helpers.TendermintCall(

@@ -111,7 +111,7 @@ func (b *GenericBlockProcessor) Start() {
 }
 
 func (b *GenericBlockProcessor) pollLoop(ctx context.Context, blockType protocol.BlockType) {
-	b.poll(blockType)
+	b.poll(ctx, blockType)
 
 	ticker := time.NewTicker(b.pollInterval)
 	defer ticker.Stop()
@@ -121,7 +121,7 @@ func (b *GenericBlockProcessor) pollLoop(ctx context.Context, blockType protocol
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			b.poll(blockType)
+			b.poll(ctx, blockType)
 		}
 	}
 }
@@ -141,12 +141,12 @@ func (b *GenericBlockProcessor) blockEventLoop(ctx context.Context) {
 	}
 }
 
-func (b *GenericBlockProcessor) poll(blockType protocol.BlockType) {
+func (b *GenericBlockProcessor) poll(runCtx context.Context, blockType protocol.BlockType) {
 	if b.detectionDisabled(blockType) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(b.lifecycle.GetParentContext(), b.internalTimeout)
+	ctx, cancel := context.WithTimeout(runCtx, b.internalTimeout)
 	defer cancel()
 
 	block, err := b.detectBlock(ctx, blockType)
@@ -159,6 +159,10 @@ func (b *GenericBlockProcessor) poll(blockType protocol.BlockType) {
 					b.disableBlockDetection(blockType)
 				}
 			}
+		}
+		if runCtx.Err() != nil {
+			// a cancelled probe has no verdict
+			return
 		}
 		log.Error().Err(err).Msgf("couldn't detect %s block of upstream %s", blockType.String(), b.upstreamId)
 	} else {

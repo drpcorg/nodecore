@@ -173,7 +173,7 @@ func TestTronGrpcHeadSubscriptionsUnsupported(t *testing.T) {
 	assert.Nil(t, req)
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
-	block, err := cs.ParseSubscriptionBlock(nil)
+	block, err := cs.ParseSubscriptionBlock(context.Background(), nil)
 	assert.True(t, block.IsFullEmpty())
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }

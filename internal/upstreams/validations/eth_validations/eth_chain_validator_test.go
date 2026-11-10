@@ -1,6 +1,7 @@
 package eth_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
@@ -33,7 +35,7 @@ func TestChainValidatorChaiIdErrorThenSettingErrorResult(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.UnknownChain, options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.SettingsError, actualResult)
@@ -59,7 +61,7 @@ func TestChainValidatorNetVersionErrorThenSettingErrorResult(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.UnknownChain, options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.SettingsError, actualResult)
@@ -85,7 +87,7 @@ func TestChainValidatorWrongChainSettingsThenFatalErrorResult(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("ethereum"), options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.FatalSettingError, actualResult)
@@ -111,7 +113,7 @@ func TestChainValidatorValidResult(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.Valid, actualResult)
@@ -137,7 +139,7 @@ func TestChainValidatorHexNetVersionConvertedThenValid(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.Valid, actualResult)
@@ -164,7 +166,7 @@ func TestChainValidatorLargeHexNetVersionConvertedThenFatalErrorResult(t *testin
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.FatalSettingError, actualResult)
@@ -190,7 +192,7 @@ func TestChainValidatorInvalidHexNetVersionThenSettingErrorResult(t *testing.T) 
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("bsc"), options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.SettingsError, actualResult)
@@ -219,7 +221,31 @@ func TestChainValidatorCosmosEvmChainUsesTheEvmIds(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("injective-testnet"), options)
-	actualResult := validator.Validate()
+	actualResult := validator.Validate(context.Background())
+
+	connector.AssertExpectations(t)
+	assert.Equal(t, validations.Valid, actualResult)
+}
+
+type ctxKey struct{}
+
+func TestChainValidatorDerivesTheRequestContextFromTheCallerContext(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	options := &chains.Options{
+		InternalTimeout: time.Second,
+	}
+	ctx := context.WithValue(context.Background(), ctxKey{}, "caller")
+	fromCaller := mock.MatchedBy(func(c context.Context) bool { return c.Value(ctxKey{}) == "caller" })
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
+
+	connector.On("SendRequest", fromCaller, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(chainIdRequest))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc)).Once()
+	connector.On("SendRequest", fromCaller, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(netVersionRequest))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"1"`), protocol.JsonRpc)).Once()
+
+	validator := eth_validations.NewEthChainValidator("id", connector, chains.GetChain("ethereum"), options)
+	actualResult := validator.Validate(ctx)
 
 	connector.AssertExpectations(t)
 	assert.Equal(t, validations.Valid, actualResult)

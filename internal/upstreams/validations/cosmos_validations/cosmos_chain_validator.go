@@ -33,13 +33,13 @@ func NewCosmosChainValidator(
 	}
 }
 
-func (c *CosmosChainValidator) Validate() validations.ValidationSettingResult {
+func (c *CosmosChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	expected := strings.TrimSpace(c.chain.ChainIdFor(chains.Cosmos))
 	if expected == "" {
 		return validations.Valid
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	nodeInfo, err := specific_helpers.FetchCosmosNodeInfo(ctx, c.connector, c.chain.Chain)

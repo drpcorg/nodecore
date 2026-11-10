@@ -98,7 +98,7 @@ func (s *stellarBaseChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }
 
-func (s *stellarBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (s *stellarBaseChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

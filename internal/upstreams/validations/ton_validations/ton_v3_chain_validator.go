@@ -1,6 +1,7 @@
 package ton_validations
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -31,8 +32,8 @@ func NewTonV3ChainValidator(
 	}
 }
 
-func (t *TonV3ChainValidator) Validate() validations.ValidationSettingResult {
-	info, err := FetchV3MasterchainInfo(t.connector, t.chain.Chain, t.internalTimeout)
+func (t *TonV3ChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	info, err := FetchV3MasterchainInfo(ctx, t.connector, t.chain.Chain, t.internalTimeout)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch ton v3 masterchain info for upstream '%s'", t.upstreamId)
 		return validations.SettingsError

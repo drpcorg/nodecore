@@ -1,6 +1,7 @@
 package stellar_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -40,7 +41,7 @@ func TestStellarHorizonChainValidatorValidOnMatch(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(horizonRootBody), 200, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonChainValidatorFatalOnMismatch(t *testing.T) {
@@ -50,7 +51,7 @@ func TestStellarHorizonChainValidatorFatalOnMismatch(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(horizonRootBody), 200, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonChainValidator("id", conn, chains.GetChain("stellar-testnet"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonChainValidatorFatalOnEmptyPassphrase(t *testing.T) {
@@ -59,7 +60,7 @@ func TestStellarHorizonChainValidatorFatalOnEmptyPassphrase(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`{"horizon_version":"27.0.0"}`), 200, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonChainValidatorSettingsErrorOnFetchFailure(t *testing.T) {
@@ -68,7 +69,7 @@ func TestStellarHorizonChainValidatorSettingsErrorOnFetchFailure(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(503, "boom", nil)))
 
 	v := stellar_validations.NewStellarHorizonChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonSyncingValidatorAvailableWhenAllTrue(t *testing.T) {
@@ -77,7 +78,7 @@ func TestStellarHorizonSyncingValidatorAvailableWhenAllTrue(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, true), 200, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonSyncingValidatorSyncingWhenCoreNotSynced(t *testing.T) {
@@ -86,7 +87,7 @@ func TestStellarHorizonSyncingValidatorSyncingWhenCoreNotSynced(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, false), 200, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 // Horizon answers /health with 503 while unhealthy but still sends the
@@ -98,7 +99,7 @@ func TestStellarHorizonSyncingValidatorParsesThe503Body(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(true, true, false), 503, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonSyncingValidatorUnavailableWhenDatabaseDown(t *testing.T) {
@@ -107,7 +108,7 @@ func TestStellarHorizonSyncingValidatorUnavailableWhenDatabaseDown(t *testing.T)
 		Return(protocol.NewHttpUpstreamResponse("1", horizonHealthBody(false, true, true), 503, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestStellarHorizonSyncingValidatorUnavailableOnUnparseableError(t *testing.T) {
@@ -116,5 +117,5 @@ func TestStellarHorizonSyncingValidatorUnavailableOnUnparseableError(t *testing.
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(`<html>502 Bad Gateway</html>`), 502, protocol.Rest))
 
 	v := stellar_validations.NewStellarHorizonSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }

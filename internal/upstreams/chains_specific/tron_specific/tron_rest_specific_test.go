@@ -100,7 +100,7 @@ func TestTronSubscribeHeadRequest(t *testing.T) {
 func TestTronParseSubscriptionBlock(t *testing.T) {
 	cs := freshTron(t, mocks.NewConnectorMockWithType(specs.RestConnector), nil)
 
-	block, err := cs.ParseSubscriptionBlock([]byte(`{}`))
+	block, err := cs.ParseSubscriptionBlock(context.Background(), []byte(`{}`))
 
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 	assert.True(t, block.IsFullEmpty())

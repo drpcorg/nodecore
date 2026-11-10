@@ -1,6 +1,7 @@
 package eth_labels_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ func TestEthHistoricalProofsLabelsDetector(t *testing.T) {
 				Once()
 			detector := eth_labels.NewEthHistoricalProofsLabelsDetector("id", chains.OPTIMISM, time.Second, connector)
 
-			assert.Equal(t, tt.expected, detector.DetectLabels())
+			assert.Equal(t, tt.expected, detector.DetectLabels(context.Background()))
 			connector.AssertExpectations(t)
 		})
 	}

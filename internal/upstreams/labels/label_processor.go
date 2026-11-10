@@ -88,14 +88,14 @@ func (b *GenericLabelsProcessor) detectLabels(ctx context.Context, detector Labe
 
 	go func() {
 		defer close(labelsChan)
-		detectLabelsAndSend(detector, labelsChan)
+		detectLabelsAndSend(ctx, detector, labelsChan)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(b.delay):
-				detectLabelsAndSend(detector, labelsChan)
+				detectLabelsAndSend(ctx, detector, labelsChan)
 			}
 		}
 	}()
@@ -103,8 +103,13 @@ func (b *GenericLabelsProcessor) detectLabels(ctx context.Context, detector Labe
 	return labelsChan
 }
 
-func detectLabelsAndSend(detector LabelsDetector, labelsChan chan lo.Tuple2[string, string]) {
-	labels := detector.DetectLabels()
+func detectLabelsAndSend(ctx context.Context, detector LabelsDetector, labelsChan chan lo.Tuple2[string, string]) {
+	labels := detector.DetectLabels(ctx)
+	if ctx.Err() != nil {
+		// a cancelled probe has no verdict: a detector that maps a failed request to a
+		// label would otherwise report the cancellation as one
+		return
+	}
 	for key, value := range labels {
 		if key == "" || value == "" {
 			continue

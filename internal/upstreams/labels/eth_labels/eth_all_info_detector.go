@@ -37,14 +37,14 @@ type EthAllInfoLabelsDetector struct {
 	internalTimeout time.Duration
 }
 
-func (e *EthAllInfoLabelsDetector) DetectLabels() map[string]string {
+func (e *EthAllInfoLabelsDetector) DetectLabels(ctx context.Context) map[string]string {
 	if e.chain != chains.HYPERLIQUID || e.connector == nil {
 		return nil
 	}
 
 	req := protocol.NewInternalUpstreamRestRequestWithBody("POST#/info", nil, allInfoProbeBody, e.chain)
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	resp := e.connector.SendRequest(ctx, req)

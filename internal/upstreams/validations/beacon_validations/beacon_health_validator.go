@@ -36,8 +36,8 @@ func NewBeaconChainHealthValidator(
 	}
 }
 
-func (b *BeaconChainHealthValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), b.internalTimeout)
+func (b *BeaconChainHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, b.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/eth/v1/node/health", nil, b.chain)

@@ -47,14 +47,14 @@ type proofsSyncStatusShape struct {
 // window (even an empty one - the store exists), historical_proofs=false when the upstream
 // definitely lacks the method, and nothing on transient or unparseable answers so the last
 // verdict stands.
-func (e *EthHistoricalProofsLabelsDetector) DetectLabels() map[string]string {
+func (e *EthHistoricalProofsLabelsDetector) DetectLabels(ctx context.Context) map[string]string {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("debug_proofsSyncStatus", []any{}, e.chain)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to create a request to detect historical proofs of upstream '%s'", e.upstreamId)
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	response := e.connector.SendRequest(ctx, request)

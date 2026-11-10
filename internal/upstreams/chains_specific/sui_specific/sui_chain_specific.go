@@ -93,7 +93,7 @@ func (s *SuiChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, 
 // to the delivered checkpoint's sequence number - so the checkpoint payload is
 // never inspected and progress-only frames (filtered streams only) need no
 // special handling. Hashes stay synthetic, matching the polled head.
-func (s *SuiChainSpecificObject) ParseSubscriptionBlock(data []byte) (protocol.Block, error) {
+func (s *SuiChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, data []byte) (protocol.Block, error) {
 	var frame sui.SubscribeCheckpointsResponse
 	if err := proto.Unmarshal(data, &frame); err != nil {
 		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the sui SubscribeCheckpoints frame, reason - %s", err.Error())

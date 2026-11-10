@@ -30,8 +30,100 @@ func (c *countingSpecific) GetLatestBlock(context.Context) (protocol.Block, erro
 	return protocol.NewBlockWithHeight(c.height.Add(1)), nil
 }
 
-func (c *countingSpecific) ParseSubscriptionBlock([]byte) (protocol.Block, error) {
+func (c *countingSpecific) ParseSubscriptionBlock(context.Context, []byte) (protocol.Block, error) {
 	return protocol.NewBlockWithHeight(c.height.Add(1)), nil
+}
+
+// blockingSpecific parks every network call until the context it was given ends, and
+// reports each one that ended that way.
+type blockingSpecific struct {
+	stubSpecific
+	cancelled chan struct{}
+}
+
+func newBlockingSpecific() *blockingSpecific {
+	return &blockingSpecific{cancelled: make(chan struct{}, 10)}
+}
+
+func (b *blockingSpecific) wait(ctx context.Context) (protocol.Block, error) {
+	<-ctx.Done()
+	b.cancelled <- struct{}{}
+	return protocol.ZeroBlock{}, ctx.Err()
+}
+
+func (b *blockingSpecific) GetLatestBlock(ctx context.Context) (protocol.Block, error) {
+	return b.wait(ctx)
+}
+
+func (b *blockingSpecific) GetFinalizedBlock(ctx context.Context) (protocol.Block, error) {
+	return b.wait(ctx)
+}
+
+func (b *blockingSpecific) ParseSubscriptionBlock(ctx context.Context, _ []byte) (protocol.Block, error) {
+	return b.wait(ctx)
+}
+
+func requireCancelled(t *testing.T, specific *blockingSpecific, what string) {
+	t.Helper()
+	select {
+	case <-specific.cancelled:
+	case <-time.After(time.Second):
+		t.Fatalf("Stop did not cancel %s", what)
+	}
+}
+
+func TestRpcHeadStopCancelsInFlightPoll(t *testing.T) {
+	specific := newBlockingSpecific()
+	// the timeout is far away: only the run's context can end the fetch
+	head := NewRpcHead(context.Background(), "up", time.Hour, time.Hour, specific)
+
+	head.Start()
+	require.Eventually(t, head.pollInProgress.Load, time.Second, time.Millisecond)
+	head.Stop()
+
+	requireCancelled(t, specific, "the in-flight latest block fetch")
+	require.Eventually(t, func() bool { return !head.pollInProgress.Load() }, time.Second, time.Millisecond)
+}
+
+func TestSubscriptionHeadStopCancelsInitialLatestBlockFetch(t *testing.T) {
+	specific := newBlockingSpecific()
+	head := NewSubHead(context.Background(), "up", time.Hour, &recordingConnector{}, specific)
+
+	head.Start()
+	head.Stop()
+
+	requireCancelled(t, specific, "the latest block fetch of the subscription head")
+}
+
+func TestSubscriptionHeadStopCancelsSubscriptionBlockParsing(t *testing.T) {
+	messages := make(chan protocol.SubResponse, 1)
+	messages <- protocol.ParseJsonRpcWsMessage([]byte(`{"jsonrpc":"2.0","method":"eth_subscription","params":{"result":{"number":"0x1"},"subscription":"0x1"}}`))
+	connector := &subStubConnector{response: protocol.NewJsonRpcWsUpstreamResponse(messages, "op-1")}
+	specific := &parseBlockingSpecific{blockingSpecific: newBlockingSpecific()}
+	head := NewSubHead(context.Background(), "up", time.Hour, connector, specific)
+
+	head.Start()
+	require.Eventually(t, specific.parsing.Load, time.Second, time.Millisecond)
+	head.Stop()
+
+	requireCancelled(t, specific.blockingSpecific, "a subscription block parse that calls the node")
+}
+
+// parseBlockingSpecific fails the latest block fetch at once, so the head reaches the
+// subscription stream, and parks in ParseSubscriptionBlock like a chain that resolves a
+// part of the head with a request.
+type parseBlockingSpecific struct {
+	*blockingSpecific
+	parsing atomic.Bool
+}
+
+func (p *parseBlockingSpecific) GetLatestBlock(context.Context) (protocol.Block, error) {
+	return protocol.ZeroBlock{}, errors.New("no latest block")
+}
+
+func (p *parseBlockingSpecific) ParseSubscriptionBlock(ctx context.Context, data []byte) (protocol.Block, error) {
+	p.parsing.Store(true)
+	return p.blockingSpecific.ParseSubscriptionBlock(ctx, data)
 }
 
 // subStubConnector serves one subscription response, shared across Subscribe calls, so a

@@ -22,8 +22,8 @@ type EthPeersValidator struct {
 	options    *chains.Options
 }
 
-func (e *EthPeersValidator) Validate() protocol.AvailabilityStatus {
-	peerCountResp, err := e.getPeerCount()
+func (e *EthPeersValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	peerCountResp, err := e.getPeerCount(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to get peer count of upstream '%s'", e.upstreamId)
 		return protocol.Unavailable
@@ -69,8 +69,8 @@ func NewEthPeersValidator(
 	}
 }
 
-func (e *EthPeersValidator) getPeerCount() ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.options.InternalTimeout)
+func (e *EthPeersValidator) getPeerCount(ctx context.Context) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, e.options.InternalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("net_peerCount", nil, e.chain)
@@ -93,8 +93,8 @@ type EthSyncingValidator struct {
 	internalTimeout time.Duration
 }
 
-func (e *EthSyncingValidator) Validate() protocol.AvailabilityStatus {
-	syncingResp, err := e.getSyncingStatus()
+func (e *EthSyncingValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	syncingResp, err := e.getSyncingStatus(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to get syncing status of upstream '%s'", e.upstreamId)
 		return protocol.Unavailable
@@ -153,8 +153,8 @@ func NewEthSyncingValidator(
 	}
 }
 
-func (e *EthSyncingValidator) getSyncingStatus() ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+func (e *EthSyncingValidator) getSyncingStatus(ctx context.Context) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_syncing", nil, e.chain.Chain)

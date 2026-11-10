@@ -72,7 +72,7 @@ func (s *stubSpecific) ParseBlock([]byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, nil
 }
 
-func (s *stubSpecific) ParseSubscriptionBlock([]byte) (protocol.Block, error) {
+func (s *stubSpecific) ParseSubscriptionBlock(context.Context, []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, nil
 }
 
@@ -237,10 +237,14 @@ type scriptedValidator struct {
 	hold    chan struct{} // nil: answer at once; otherwise answer when closed
 }
 
-func (s *scriptedValidator) Validate() validations.ValidationSettingResult {
+func (s *scriptedValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	call := int(s.calls.Add(1)) - 1
 	if s.hold != nil {
-		<-s.hold
+		select {
+		case <-s.hold:
+		case <-ctx.Done():
+			return validations.UnknownResult
+		}
 	}
 	if call >= len(s.results) {
 		call = len(s.results) - 1
@@ -398,7 +402,8 @@ func TestGenericHeadProcessorManualHeadsBypassTheGuardAndMoveTheReference(t *tes
 	assert.Equal(t, int32(0), validator.calls.Load())
 }
 
-func TestGenericHeadProcessorStopDoesNotWaitForTheChainCheck(t *testing.T) {
+func TestGenericHeadProcessorStopCancelsTheChainCheck(t *testing.T) {
+	// the validator answers only when released or cancelled, like a connector call does
 	validator := &scriptedValidator{results: []validations.ValidationSettingResult{validations.Valid}, hold: make(chan struct{})}
 	processor, head := newGuardedProcessor(validator)
 	sub := processor.Subscribe("test")
@@ -419,11 +424,10 @@ func TestGenericHeadProcessorStopDoesNotWaitForTheChainCheck(t *testing.T) {
 	select {
 	case <-stopped:
 	case <-time.After(200 * time.Millisecond):
-		t.Fatal("Stop waited for the chain check")
+		t.Fatal("Stop did not cancel the chain check")
 	}
 	assert.Equal(t, HeadStateEvent{Running: false}, nextHeadEvent(t, sub.Events))
-
-	close(validator.hold)
+	// the validator was never released, so only cancellation can have let Stop through
 	noHeadEvent(t, sub.Events)
 }
 

@@ -114,11 +114,26 @@ func TestPolkadotParseSubscriptionBlockResolvesHash(t *testing.T) {
 	})).Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0xfeed"`), protocol.JsonRpc))
 
 	block, err := test_utils.NewPolkadotChainSpecific(context.Background(), connector).
-		ParseSubscriptionBlock([]byte(testHeader))
+		ParseSubscriptionBlock(context.Background(), []byte(testHeader))
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(1715004), block.Height)
 	assert.Equal(t, blockchain.NewHashIdFromString("0xfeed"), block.Hash)
+}
+
+func TestPolkadotParseSubscriptionBlockHashLookupFollowsCallerContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	connector := mocks.NewConnectorMock()
+	connector.On("SendRequest", mock.MatchedBy(func(reqCtx context.Context) bool {
+		return reqCtx.Err() != nil
+	}), mock.Anything).Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "cancelled", nil)))
+
+	_, err := test_utils.NewPolkadotChainSpecific(context.Background(), connector).
+		ParseSubscriptionBlock(ctx, []byte(testHeader))
+	require.NoError(t, err)
+
+	connector.AssertExpectations(t)
 }
 
 // A parse error from ParseSubscriptionBlock is terminal in blocks/head.go: it
@@ -132,7 +147,7 @@ func TestPolkadotParseSubscriptionBlockDegradesWhenHashFails(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 
 	block, err := test_utils.NewPolkadotChainSpecific(context.Background(), connector).
-		ParseSubscriptionBlock([]byte(testHeader))
+		ParseSubscriptionBlock(context.Background(), []byte(testHeader))
 	require.NoError(t, err)
 
 	assert.Equal(t, uint64(1715004), block.Height)
@@ -143,7 +158,7 @@ func TestPolkadotParseSubscriptionBlockDegradesWhenHashFails(t *testing.T) {
 // An unparseable notification is still an error - there is no height to publish.
 func TestPolkadotParseSubscriptionBlockRejectsGarbage(t *testing.T) {
 	block, err := test_utils.NewPolkadotChainSpecific(context.Background(), mocks.NewConnectorMock()).
-		ParseSubscriptionBlock([]byte(`not json`))
+		ParseSubscriptionBlock(context.Background(), []byte(`not json`))
 	assert.True(t, block.IsFullEmpty())
 	assert.Error(t, err)
 }

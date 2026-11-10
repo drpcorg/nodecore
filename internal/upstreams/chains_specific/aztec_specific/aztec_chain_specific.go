@@ -185,7 +185,7 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 	), nil
 }
 
-func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

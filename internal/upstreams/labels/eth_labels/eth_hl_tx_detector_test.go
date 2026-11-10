@@ -1,6 +1,7 @@
 package eth_labels_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -22,7 +23,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilForUnsupportedChain(t *testi
 	connector := mocks.NewConnectorMock()
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
@@ -34,7 +35,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsUsesUrlFlagFalse(t *testing.T) {
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"include_hl_native_tx": "true",
@@ -49,7 +50,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsUsesUrlFlagTrue(t *testing.T) {
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"exclude_hl_native_tx": "true",
@@ -64,7 +65,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilForTestnetWithoutUrlFlag(t *
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
@@ -76,7 +77,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsUsesUrlFlagOnTestnet(t *testing.T) {
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID_TESTNET, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"exclude_hl_native_tx": "true",
@@ -117,7 +118,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsTrueWhenNativeTxIsFound(t *test
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"include_hl_native_tx": "true",
@@ -148,7 +149,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsFalseWhenNoNativeTxIsFound(t *t
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"include_hl_native_tx": "false",
@@ -181,11 +182,11 @@ func TestEthHLTxLabelsDetectorDetectLabelsRunsOnlyEveryFifthProbe(t *testing.T) 
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	first := detector.DetectLabels()
+	first := detector.DetectLabels(context.Background())
 	for i := 0; i < 4; i++ {
-		assert.Nil(t, detector.DetectLabels())
+		assert.Nil(t, detector.DetectLabels(context.Background()))
 	}
-	sixth := detector.DetectLabels()
+	sixth := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"include_hl_native_tx": "false",
@@ -212,7 +213,7 @@ func TestEthHLTxLabelsDetectorDetectLabelsReturnsNilWhenLatestBlockLookupFails(t
 
 	detector := eth_labels.NewEthHLTxLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	require.Nil(t, result)
 	connector.AssertExpectations(t)

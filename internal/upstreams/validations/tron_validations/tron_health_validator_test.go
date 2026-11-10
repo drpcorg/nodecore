@@ -1,6 +1,7 @@
 package tron_validations_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func TestTronPeersValidatorReturnsUnavailableOnConnectorError(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -37,7 +38,7 @@ func TestTronPeersValidatorReturnsUnavailableOnInvalidJSON(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -50,7 +51,7 @@ func TestTronPeersValidatorReturnsImmatureWhenPeerListMissing(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	assert.Equal(t, protocol.Immature, validator.Validate())
+	assert.Equal(t, protocol.Immature, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -63,7 +64,7 @@ func TestTronPeersValidatorReturnsImmatureWhenBelowMinPeers(t *testing.T) {
 		MinPeers:        3,
 	})
 
-	assert.Equal(t, protocol.Immature, validator.Validate())
+	assert.Equal(t, protocol.Immature, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -86,7 +87,7 @@ func TestTronPeersValidatorReturnsAvailableWhenPeerCountMeetsOrExceedsMinPeers(t
 				MinPeers:        tc.minPeers,
 			})
 
-			assert.Equal(t, protocol.Available, validator.Validate())
+			assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 			connector.AssertExpectations(t)
 		})
 	}
@@ -100,7 +101,7 @@ func TestTronSyncingValidatorReturnsUnavailableOnConnectorError(t *testing.T) {
 	)
 	validator := tron_validations.NewTronSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -110,7 +111,7 @@ func TestTronSyncingValidatorReturnsUnavailableOnInvalidJSON(t *testing.T) {
 	)
 	validator := tron_validations.NewTronSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -121,7 +122,7 @@ func TestTronSyncingValidatorReturnsAvailableForFreshBlock(t *testing.T) {
 	)
 	validator := tron_validations.NewTronSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Available, validator.Validate())
+	assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -133,7 +134,7 @@ func TestTronSyncingValidatorReturnsSyncingWhenProjectedLagExceedsThreshold(t *t
 	)
 	validator := tron_validations.NewTronSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Syncing, validator.Validate())
+	assert.Equal(t, protocol.Syncing, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -146,7 +147,7 @@ func TestTronSyncingValidatorReturnsAvailableForFutureBlockTimestamp(t *testing.
 	)
 	validator := tron_validations.NewTronSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Available, validator.Validate())
+	assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
