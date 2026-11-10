@@ -99,7 +99,7 @@ func (t *TronRestSpecific) ParseBlock(bytes []byte) (protocol.Block, error) {
 	), nil
 }
 
-func (t *TronRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *TronRestSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

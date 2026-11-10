@@ -91,7 +91,7 @@ func (t *TendermintChainSpecific) ParseBlock(blockBytes []byte) (protocol.Block,
 	), nil
 }
 
-func (t *TendermintChainSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *TendermintChainSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

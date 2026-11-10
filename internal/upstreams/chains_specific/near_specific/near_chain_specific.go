@@ -188,7 +188,7 @@ func (n *NearChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block,
 	), nil
 }
 
-func (n *NearChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (n *NearChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

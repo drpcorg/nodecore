@@ -186,7 +186,7 @@ func (b *BeaconChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bloc
 	), nil
 }
 
-func (b *BeaconChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (b *BeaconChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

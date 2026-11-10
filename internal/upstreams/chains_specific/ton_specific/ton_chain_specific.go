@@ -115,7 +115,7 @@ func (t *tonBaseChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBou
 	return nil
 }
 
-func (t *tonBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *tonBaseChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

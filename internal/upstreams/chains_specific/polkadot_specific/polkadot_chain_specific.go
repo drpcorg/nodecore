@@ -82,7 +82,7 @@ func (p *PolkadotChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 	return blockFromHeader(header)
 }
 
-func (p *PolkadotChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (p *PolkadotChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	header, err := specific_helpers.ParsePolkadotHeader(blockBytes)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
@@ -92,7 +92,7 @@ func (p *PolkadotChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) 
 		return protocol.ZeroBlock{}, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, p.internalTimeout)
 	defer cancel()
 
 	hash, err := specific_helpers.FetchPolkadotBlockHash(ctx, p.connector, p.configuredChain.Chain, header.Number)

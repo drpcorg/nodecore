@@ -25,15 +25,15 @@ type EthGasLabelsDetector struct {
 	internalTimeout time.Duration
 }
 
-func (e *EthGasLabelsDetector) DetectLabels() map[string]string {
+func (e *EthGasLabelsDetector) DetectLabels(ctx context.Context) map[string]string {
 	if e.chain != chains.MONAD_MAINNET && e.chain != chains.MONAD_TESTNET {
-		return e.basicGasDetect()
+		return e.basicGasDetect(ctx)
 	}
-	labels := e.basicGasDetect()
+	labels := e.basicGasDetect(ctx)
 	if gas, ok := labels["extra_gas_limit"]; ok && gas == "600000000" {
 		return labels
 	}
-	return e.monadGasDetect()
+	return e.monadGasDetect(ctx)
 }
 
 func NewEthGasLabelsDetector(
@@ -50,7 +50,7 @@ func NewEthGasLabelsDetector(
 	}
 }
 
-func (e *EthGasLabelsDetector) monadGasDetect() map[string]string {
+func (e *EthGasLabelsDetector) monadGasDetect(ctx context.Context) map[string]string {
 	params := []any{
 		map[string]any{
 			"to":   gasProbeContract,
@@ -70,7 +70,7 @@ func (e *EthGasLabelsDetector) monadGasDetect() map[string]string {
 		return nil
 	}
 
-	resp := e.sendGasRequest(req)
+	resp := e.sendGasRequest(ctx, req)
 	if !resp.HasError() {
 		log.Error().Err(resp.GetError()).Msgf("unable to get monad eth_call response of upstream '%s' to detect gas labels", e.upstreamId)
 		return nil
@@ -86,7 +86,7 @@ func (e *EthGasLabelsDetector) monadGasDetect() map[string]string {
 	return nil
 }
 
-func (e *EthGasLabelsDetector) basicGasDetect() map[string]string {
+func (e *EthGasLabelsDetector) basicGasDetect(ctx context.Context) map[string]string {
 	params := []any{
 		map[string]any{
 			"to":   gasProbeContract,
@@ -105,7 +105,7 @@ func (e *EthGasLabelsDetector) basicGasDetect() map[string]string {
 		return nil
 	}
 
-	resp := e.sendGasRequest(req)
+	resp := e.sendGasRequest(ctx, req)
 	if resp.HasError() {
 		log.Error().Err(resp.GetError()).Msgf("unable to get eth_call response of upstream '%s' to detect gas labels", e.upstreamId)
 		return nil
@@ -136,8 +136,8 @@ func (e *EthGasLabelsDetector) basicGasDetect() map[string]string {
 	return labels
 }
 
-func (e *EthGasLabelsDetector) sendGasRequest(request protocol.RequestHolder) protocol.ResponseHolder {
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+func (e *EthGasLabelsDetector) sendGasRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	return e.connector.SendRequest(ctx, request)

@@ -178,7 +178,7 @@ func (c *CelestiaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 // ParseSubscriptionBlock parses a header.Subscribe value: an ExtendedHeader,
 // the same shape header.LocalHead returns. The raw header stays on the block,
 // as the EVM head keeps its block JSON.
-func (c *CelestiaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (c *CelestiaChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	block, err := c.ParseBlock(blockBytes)
 	if err != nil {
 		return block, err

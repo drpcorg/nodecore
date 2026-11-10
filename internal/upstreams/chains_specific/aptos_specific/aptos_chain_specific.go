@@ -92,7 +92,7 @@ func (a *AptosChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 	return protocol.NewBlock(height, 0, blockchain.EmptyHash, blockchain.EmptyHash), nil
 }
 
-func (a *AptosChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (a *AptosChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

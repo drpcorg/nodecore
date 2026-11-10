@@ -52,7 +52,7 @@ func TestCelestiaSubscribeHeadRequest(t *testing.T) {
 // A header.Subscribe value is an ExtendedHeader, the shape header.LocalHead
 // returns; the raw header stays on the block like the EVM head keeps its block.
 func TestCelestiaParseSubscriptionBlock(t *testing.T) {
-	block, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(extendedHeader))
+	block, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).ParseSubscriptionBlock(context.Background(), []byte(extendedHeader))
 	require.NoError(t, err)
 
 	expected := protocol.NewBlock(
@@ -66,7 +66,7 @@ func TestCelestiaParseSubscriptionBlock(t *testing.T) {
 }
 
 func TestCelestiaParseSubscriptionBlockInvalidHeader(t *testing.T) {
-	block, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
+	block, err := test_utils.NewCelestiaChainSpecific(context.Background(), nil).ParseSubscriptionBlock(context.Background(), []byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
 	assert.ErrorContains(t, err, "couldn't parse the celestia extended header")
 }

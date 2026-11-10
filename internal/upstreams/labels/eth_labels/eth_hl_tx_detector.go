@@ -62,7 +62,7 @@ type EthHLTxLabelsDetector struct {
 	detectCount atomic.Int64
 }
 
-func (e *EthHLTxLabelsDetector) DetectLabels() map[string]string {
+func (e *EthHLTxLabelsDetector) DetectLabels(ctx context.Context) map[string]string {
 	e.detectCount.Add(1)
 
 	switch e.chain {
@@ -85,13 +85,13 @@ func (e *EthHLTxLabelsDetector) DetectLabels() map[string]string {
 		return nil
 	}
 
-	latest, err := e.fetchLatestBlock()
+	latest, err := e.fetchLatestBlock(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to get the latest block to detect HL tx status of upstream '%s'", e.upstreamId)
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(hlMaxConcurrency)
@@ -132,13 +132,13 @@ func NewEthHLTxLabelsDetector(
 	}
 }
 
-func (e *EthHLTxLabelsDetector) fetchLatestBlock() (*big.Int, error) {
+func (e *EthHLTxLabelsDetector) fetchLatestBlock(ctx context.Context) (*big.Int, error) {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, e.chain)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	resp := e.connector.SendRequest(ctx, req)

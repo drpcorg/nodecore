@@ -133,7 +133,7 @@ func TestEvmParseSubBLock(t *testing.T) {
 	  "parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
     }`)
 
-	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(body)
+	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(context.Background(), body)
 	assert.Nil(t, err)
 
 	expected := protocol.Block{

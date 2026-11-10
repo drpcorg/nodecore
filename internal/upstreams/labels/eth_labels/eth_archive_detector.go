@@ -29,25 +29,25 @@ type EthArchiveLabelsDetector struct {
 	connector       connectors.ApiConnector
 }
 
-func (e *EthArchiveLabelsDetector) DetectLabels() map[string]string {
-	if !e.hasArchiveState(e.readEarliestBlock()) {
+func (e *EthArchiveLabelsDetector) DetectLabels(ctx context.Context) map[string]string {
+	if !e.hasArchiveState(ctx, e.readEarliestBlock()) {
 		return map[string]string{chains.ArchiveLabel: "false"}
 	}
-	recentBlock, ok := e.recentArchiveProbeBlock()
-	if ok && !e.hasArchiveState(recentBlock) {
+	recentBlock, ok := e.recentArchiveProbeBlock(ctx)
+	if ok && !e.hasArchiveState(ctx, recentBlock) {
 		return map[string]string{chains.ArchiveLabel: "false"}
 	}
 	return map[string]string{chains.ArchiveLabel: "true"}
 }
 
-func (e *EthArchiveLabelsDetector) hasArchiveState(block string) bool {
+func (e *EthArchiveLabelsDetector) hasArchiveState(ctx context.Context, block string) bool {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBalance", []any{"0x0000000000000000000000000000000000000000", block}, e.chain)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to create a request to detect archival state of upstream '%s'", e.upstreamId)
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	resp := e.connector.SendRequest(ctx, req)
@@ -58,14 +58,14 @@ func (e *EthArchiveLabelsDetector) hasArchiveState(block string) bool {
 	return true
 }
 
-func (e *EthArchiveLabelsDetector) recentArchiveProbeBlock() (string, bool) {
+func (e *EthArchiveLabelsDetector) recentArchiveProbeBlock(ctx context.Context) (string, bool) {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_blockNumber", nil, e.chain)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to create latest block request for archive detection of upstream '%s'", e.upstreamId)
 		return "", false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	resp := e.connector.SendRequest(ctx, req)

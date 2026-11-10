@@ -94,7 +94,7 @@ func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bloc
 	return createNewSolanaBlock(epochInfo.BlockHeight, epochInfo.AbsoluteSlot), nil
 }
 
-func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	slotEvent := SolanaSlotEvent{}
 	err := sonic.Unmarshal(blockBytes, &slotEvent)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (p
 	estimatedHeight := lo.Ternary(lastHeight != 0 && lastSlot != 0, lastHeight+(slotEvent.Slot-lastSlot), 0)
 
 	if shouldCheck || estimatedHeight == 0 {
-		block, err := s.getEpochInfo(context.Background())
+		block, err := s.getEpochInfo(ctx)
 		if err != nil {
 			if estimatedHeight == 0 {
 				// a slot is not a height: without a known height there is nothing to publish

@@ -286,7 +286,7 @@ func (e *EvmChainSpecificObject) GetSafeBlock(ctx context.Context) (protocol.Blo
 	return e.getBlockByTag(ctx, e.connector, rpc.SafeBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (e *EvmChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	block, err := e.ParseBlock(blockBytes)
 	if err != nil {
 		return block, err
