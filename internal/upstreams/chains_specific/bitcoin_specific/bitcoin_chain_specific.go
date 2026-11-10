@@ -176,7 +176,7 @@ func (b *BitcoinChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Blo
 	), nil
 }
 
-func (b *BitcoinChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (b *BitcoinChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

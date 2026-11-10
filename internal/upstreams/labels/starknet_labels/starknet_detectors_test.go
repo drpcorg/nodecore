@@ -52,7 +52,7 @@ func TestStarknetLabelsDetectorPathfinderAnswers(t *testing.T) {
 
 	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_type":    "pathfinder",
@@ -78,7 +78,7 @@ func TestStarknetLabelsDetectorFallsBackToJunoAndStripsLeadingV(t *testing.T) {
 
 	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_type":    "juno",
@@ -103,7 +103,7 @@ func TestStarknetLabelsDetectorBothProbesFail(t *testing.T) {
 
 	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	connector.AssertExpectations(t)
@@ -120,7 +120,7 @@ func TestStarknetLabelsDetectorGarbageResultEmitsOnlyClientType(t *testing.T) {
 
 	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{"client_type": "pathfinder"}, result)
 	connector.AssertExpectations(t)
@@ -138,7 +138,7 @@ func TestStarknetLabelsDetectorEmptyVersionEmitsOnlyClientType(t *testing.T) {
 
 	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{"client_type": "pathfinder"}, result)
 	connector.AssertExpectations(t)
@@ -163,7 +163,7 @@ func TestStarknetLabelsDetectorUsesConfiguredTimeout(t *testing.T) {
 
 	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, timeout)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_type":    "pathfinder",

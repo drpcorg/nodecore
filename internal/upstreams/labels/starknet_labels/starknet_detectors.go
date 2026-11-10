@@ -47,7 +47,7 @@ func NewStarknetLabelsDetector(
 	}
 }
 
-func (s *StarknetClientLabelsDetector) DetectLabels() map[string]string {
+func (s *StarknetClientLabelsDetector) DetectLabels(ctx context.Context) map[string]string {
 	for _, probe := range versionProbes {
 		request, err := protocol.NewInternalUpstreamJsonRpcRequest(probe.method, []any{}, s.chain)
 		if err != nil {
@@ -55,8 +55,8 @@ func (s *StarknetClientLabelsDetector) DetectLabels() map[string]string {
 			return nil
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
-		response := s.connector.SendRequest(ctx, request)
+		probeCtx, cancel := context.WithTimeout(ctx, s.internalTimeout)
+		response := s.connector.SendRequest(probeCtx, request)
 		cancel()
 
 		if response.HasError() {

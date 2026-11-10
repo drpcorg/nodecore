@@ -33,7 +33,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsNilWhenNodeTypeRequestFai
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	clientDetector.AssertExpectations(t)
@@ -55,7 +55,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsNilWhenConnectorReturnsEr
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	clientDetector.AssertExpectations(t)
@@ -81,7 +81,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsNilWhenClientVersionParsi
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	clientDetector.AssertExpectations(t)
@@ -106,7 +106,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsBothLabels(t *testing.T) 
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_version": "1.18.23",
@@ -134,7 +134,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsOnlyClientVersionWhenType
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_version": "1.18.23",
@@ -161,7 +161,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsOnlyClientTypeWhenVersion
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_type": "solana",
@@ -188,7 +188,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsEmptyMapWhenAllLabelsAreE
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Empty(t, result)
 	require.NotNil(t, result)
@@ -223,7 +223,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsUsesConfiguredTimeout(t *testing
 
 	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, timeout)
 
-	result := handler.DetectLabels()
+	result := handler.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"client_version": "1.18.23",

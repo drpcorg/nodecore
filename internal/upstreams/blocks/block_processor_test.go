@@ -178,7 +178,7 @@ func (b *blockProcessorChainSpecificNoSafeStub) ParseBlock([]byte) (protocol.Blo
 	return protocol.ZeroBlock{}, nil
 }
 
-func (b *blockProcessorChainSpecificNoSafeStub) ParseSubscriptionBlock([]byte) (protocol.Block, error) {
+func (b *blockProcessorChainSpecificNoSafeStub) ParseSubscriptionBlock(context.Context, []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, nil
 }
 

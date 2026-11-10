@@ -1,6 +1,7 @@
 package eth_labels_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -115,7 +116,7 @@ func TestEthGasLabelsDetectorDetectLabels(t *testing.T) {
 
 		detector := eth_labels.NewEthGasLabelsDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-		result := detector.DetectLabels()
+		result := detector.DetectLabels(context.Background())
 
 		assert.Equal(t, map[string]string{
 			"gas-limit":       "42182",
@@ -133,7 +134,7 @@ func TestEthGasLabelsDetectorDetectLabels(t *testing.T) {
 
 		detector := eth_labels.NewEthGasLabelsDetector("upstream-id", chains.MONAD_MAINNET, time.Second, connector)
 
-		result := detector.DetectLabels()
+		result := detector.DetectLabels(context.Background())
 
 		assert.Equal(t, map[string]string{
 			"gas-limit":       "590000001",
@@ -155,7 +156,7 @@ func TestEthGasLabelsDetectorDetectLabels(t *testing.T) {
 
 		detector := eth_labels.NewEthGasLabelsDetector("upstream-id", chains.MONAD_MAINNET, time.Second, connector)
 
-		result := detector.DetectLabels()
+		result := detector.DetectLabels(context.Background())
 
 		assert.Equal(t, map[string]string{
 			"gas-limit":       "600000000",

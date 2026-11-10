@@ -163,7 +163,11 @@ func (b *GenericLowerBoundProcessor) detectLowerBound(
 	go func() {
 		defer close(boundsChan)
 		// delay detection the first bound
-		time.Sleep(b.initialDelay)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(b.initialDelay):
+		}
 		b.processBounds(ctx, detector, boundsChan)
 
 		for {

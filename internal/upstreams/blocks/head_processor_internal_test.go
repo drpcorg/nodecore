@@ -72,7 +72,7 @@ func (s *stubSpecific) ParseBlock([]byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, nil
 }
 
-func (s *stubSpecific) ParseSubscriptionBlock([]byte) (protocol.Block, error) {
+func (s *stubSpecific) ParseSubscriptionBlock(context.Context, []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, nil
 }
 

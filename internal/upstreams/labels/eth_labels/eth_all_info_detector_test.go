@@ -1,6 +1,7 @@
 package eth_labels_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestEthAllInfoLabelsDetectorReturnsNilForNonHyperliquidChain(t *testing.T) 
 	connector := mocks.NewConnectorMock()
 	detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
@@ -36,7 +37,7 @@ func TestEthAllInfoLabelsDetectorReturnsNilForNonHyperliquidChain(t *testing.T) 
 func TestEthAllInfoLabelsDetectorReturnsNilWhenConnectorIsNil(t *testing.T) {
 	detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, nil)
 
-	assert.Nil(t, detector.DetectLabels())
+	assert.Nil(t, detector.DetectLabels(context.Background()))
 }
 
 func TestEthAllInfoLabelsDetectorReturnsAllInfoWhenInfoSucceeds(t *testing.T) {
@@ -48,7 +49,7 @@ func TestEthAllInfoLabelsDetectorReturnsAllInfoWhenInfoSucceeds(t *testing.T) {
 
 	detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{"allInfo": "true", "partialInfo": "false"}, result)
 	connector.AssertExpectations(t)
@@ -63,7 +64,7 @@ func TestEthAllInfoLabelsDetectorReturnsPartialInfoWhenInfoErrors(t *testing.T) 
 
 	detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{"allInfo": "false", "partialInfo": "true"}, result)
 	connector.AssertExpectations(t)
@@ -94,7 +95,7 @@ func TestEthAllInfoLabelsDetectorLabelsAreAlwaysComplementary(t *testing.T) {
 
 			detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-			result := detector.DetectLabels()
+			result := detector.DetectLabels(context.Background())
 
 			assert.Len(t, result, 2)
 			assert.NotEqual(t, result[eth_labels.AllInfoLabel], result[eth_labels.PartialInfoLabel])
@@ -116,7 +117,7 @@ func TestEthAllInfoLabelsDetectorDetectsOnEveryCall(t *testing.T) {
 
 	detector := eth_labels.NewEthAllInfoLabelsDetector("upstream-id", chains.HYPERLIQUID, time.Second, connector)
 
-	assert.Equal(t, map[string]string{"allInfo": "false", "partialInfo": "true"}, detector.DetectLabels())
-	assert.Equal(t, map[string]string{"allInfo": "true", "partialInfo": "false"}, detector.DetectLabels())
+	assert.Equal(t, map[string]string{"allInfo": "false", "partialInfo": "true"}, detector.DetectLabels(context.Background()))
+	assert.Equal(t, map[string]string{"allInfo": "true", "partialInfo": "false"}, detector.DetectLabels(context.Background()))
 	connector.AssertExpectations(t)
 }

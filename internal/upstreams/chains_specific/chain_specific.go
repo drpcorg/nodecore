@@ -17,7 +17,7 @@ type ChainSpecific interface {
 	GetFinalizedBlock(context.Context) (protocol.Block, error)
 
 	ParseBlock([]byte) (protocol.Block, error)
-	ParseSubscriptionBlock(data []byte) (protocol.Block, error)
+	ParseSubscriptionBlock(ctx context.Context, data []byte) (protocol.Block, error)
 
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 

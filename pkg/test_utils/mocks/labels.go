@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"context"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/samber/lo"
@@ -49,8 +50,8 @@ func (m *ClientLabelsDetectorMock) ClientVersionAndType(data []byte) (string, st
 	return args.String(0), args.String(1), args.Error(2)
 }
 
-func (m *LabelsDetectorMock) DetectLabels() map[string]string {
-	args := m.Called()
+func (m *LabelsDetectorMock) DetectLabels(ctx context.Context) map[string]string {
+	args := m.Called(ctx)
 	if args.Get(0) == nil {
 		return nil
 	}

@@ -92,7 +92,7 @@ func (t *TronGrpcSpecific) ParseBlock(blockBytes []byte) (protocol.Block, error)
 	), nil
 }
 
-func (t *TronGrpcSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *TronGrpcSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

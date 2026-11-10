@@ -50,7 +50,7 @@ func TestAlgorandSubscribeHeadRequest(t *testing.T) {
 }
 
 func TestAlgorandParseSubscriptionBlock(t *testing.T) {
-	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), nil).ParseSubscriptionBlock([]byte(`{}`))
+	block, err := test_utils.NewAlgorandChainSpecific(context.Background(), nil).ParseSubscriptionBlock(context.Background(), []byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }

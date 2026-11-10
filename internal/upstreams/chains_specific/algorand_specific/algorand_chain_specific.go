@@ -165,7 +165,7 @@ func (a *AlgorandChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 	return protocol.NewBlock(height, 0, blockchain.EmptyHash, blockchain.EmptyHash), nil
 }
 
-func (a *AlgorandChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (a *AlgorandChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

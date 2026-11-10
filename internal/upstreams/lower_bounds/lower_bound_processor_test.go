@@ -297,6 +297,19 @@ func TestGenericLowerBoundServiceStopStopsLifecycle(t *testing.T) {
 	detector.AssertExpectations(t)
 }
 
+func TestGenericLowerBoundServiceStopDuringInitialDelaySkipsDetection(t *testing.T) {
+	detector := mocks.NewLowerBoundDetectorMock()
+
+	service := lower_bounds.NewGenericLowerBoundProcessorWithDelay(context.Background(), "up-1", 0, 50*time.Millisecond, []lower_bounds.LowerBoundDetector{detector})
+
+	done := startService(t, service)
+	stopService(t, service, done)
+
+	// the delay has passed: a stopped run must not have woken up to probe the node
+	time.Sleep(150 * time.Millisecond)
+	detector.AssertNotCalled(t, "DetectLowerBound", mock.Anything)
+}
+
 func TestGenericLowerBoundServiceSecondStartDoesNotDuplicatePublishing(t *testing.T) {
 	detector := mocks.NewLowerBoundDetectorMock()
 	detector.On("DetectLowerBound", mock.Anything).Return([]protocol.LowerBoundData{

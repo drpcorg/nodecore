@@ -71,7 +71,7 @@ func TestSuiParseSubscriptionBlockUsesTheCursor(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	block, err := specific.ParseSubscriptionBlock(frame)
+	block, err := specific.ParseSubscriptionBlock(context.Background(), frame)
 	require.NoError(t, err)
 
 	hash, parentHash := specific_helpers.SyntheticHashes(120000000, 119999999)
@@ -86,7 +86,7 @@ func TestSuiParseSubscriptionBlockWithoutCursorIsAnError(t *testing.T) {
 	frame, err := proto.Marshal(&sui.SubscribeCheckpointsResponse{})
 	require.NoError(t, err)
 
-	block, err := specific.ParseSubscriptionBlock(frame)
+	block, err := specific.ParseSubscriptionBlock(context.Background(), frame)
 	assert.Equal(t, protocol.ZeroBlock{}, block)
 	assert.EqualError(t, err, "sui SubscribeCheckpoints frame carries no cursor")
 }
@@ -94,7 +94,7 @@ func TestSuiParseSubscriptionBlockWithoutCursorIsAnError(t *testing.T) {
 func TestSuiParseSubscriptionBlockGarbageIsAnError(t *testing.T) {
 	specific := test_utils.NewSuiChainSpecific(context.Background(), nil)
 
-	_, err := specific.ParseSubscriptionBlock([]byte{0xff, 0xff, 0xff})
+	_, err := specific.ParseSubscriptionBlock(context.Background(), []byte{0xff, 0xff, 0xff})
 	assert.ErrorContains(t, err, "couldn't parse the sui SubscribeCheckpoints frame")
 }
 

@@ -180,7 +180,7 @@ func (s *StarknetChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 	), nil
 }
 
-func (s *StarknetChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (s *StarknetChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
