@@ -29,6 +29,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
+	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
@@ -36,6 +37,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -50,6 +52,9 @@ type upstreamCreationData struct {
 	upstreamMethods        *methods.UpstreamMethods
 	rt                     *ratelimiter.RateLimitBudget
 	autoTune               *ratelimiter.UpstreamAutoTune
+	// compatibleClients is the process-wide client-version rule holder, nil when the
+	// compatible-clients check is disabled
+	compatibleClients *utils.Reloadable[compatible_clients.Rules]
 }
 
 func CreateUpstream(
@@ -61,6 +66,7 @@ func CreateUpstream(
 	upstreamIndex int,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
+	compatibleClients *utils.Reloadable[compatible_clients.Rules],
 ) (Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
@@ -84,6 +90,7 @@ func CreateUpstream(
 		upstreamMethods:        upstreamMethods,
 		rt:                     rt,
 		autoTune:               autoTune,
+		compatibleClients:      compatibleClients,
 	}
 
 	up, err := NewGenericUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
@@ -201,12 +208,25 @@ func createConnector(
 	}
 }
 
-func createSettingValidationProcessor(chainSpecific chains_specific.ChainSpecific, options *chains.Options) *validations.ValidationProcessor[validations.ValidationSettingResult] {
-	if *options.DisableValidation || *options.DisableSettingsValidation {
+// createSettingValidationProcessor combines the family's own settings validators with
+// the client-version validator, which every family with a client detector gets when
+// the compatible-clients rules are enabled (a nil holder means disabled).
+func createSettingValidationProcessor(
+	chainSpecific chains_specific.ChainSpecific,
+	conf *config.Upstream,
+	configuredChain *chains.ConfiguredChain,
+	compatibleClients *utils.Reloadable[compatible_clients.Rules],
+) *validations.ValidationProcessor[validations.ValidationSettingResult] {
+	if *conf.Options.DisableValidation || *conf.Options.DisableSettingsValidation {
 		return nil
 	}
 
 	validators := chainSpecific.SettingsValidators()
+	if compatibleClients != nil {
+		if detector := chainSpecific.ClientLabelsDetector(); detector != nil {
+			validators = append(validators, validations.NewClientVersionValidator(conf.Id, configuredChain, detector, compatibleClients))
+		}
+	}
 	if len(validators) == 0 {
 		return nil
 	}

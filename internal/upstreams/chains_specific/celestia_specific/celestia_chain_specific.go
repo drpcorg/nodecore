@@ -92,6 +92,10 @@ func (c *CelestiaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return nil
 }
 
+func (c *CelestiaChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return nil
+}
+
 func (c *CelestiaChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
 	detectors := []lower_bounds.LowerBoundDetector{
 		celestia_bounds.NewCelestiaLowerBoundDetector(

@@ -98,7 +98,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilWhenValidatorsDisabledByChainSpe
 	connector := mocks.NewConnectorMock()
 	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, []connectors.ApiConnector{connector}, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
-	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
+	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chains.GetChain(chains.POLYGON.String()), chainSpecific, nil)
 
 	assert.Nil(t, processor)
 }
@@ -111,7 +111,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilOnlyWhenSettingsValidationDisabl
 	connector := mocks.NewConnectorMock()
 	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, []connectors.ApiConnector{connector}, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
-	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
+	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chains.GetChain(chains.POLYGON.String()), chainSpecific, nil)
 
 	assert.Nil(t, processor)
 }
@@ -124,7 +124,7 @@ func TestCreateSettingsEventProcessor_ReturnsNilWhenOnlyGlobalValidationDisabled
 	connector := mocks.NewConnectorMock()
 	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, []connectors.ApiConnector{connector}, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
-	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
+	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chains.GetChain(chains.POLYGON.String()), chainSpecific, nil)
 
 	assert.Nil(t, processor)
 }
@@ -137,7 +137,7 @@ func TestCreateSettingsEventProcessor_ReturnsSettingsProcessor(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	chainSpecific := evm_specific.NewEvmChainSpecific(context.Background(), conf.Id, connector, []connectors.ApiConnector{connector}, chains.GetChain(chains.POLYGON.String()), conf.PollInterval, conf.Options, nil)
 
-	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chainSpecific)
+	processor := upstreams.CreateSettingsEventProcessor(context.Background(), conf, chains.GetChain(chains.POLYGON.String()), chainSpecific, nil)
 
 	assert.NotNil(t, processor)
 	assert.IsType(t, &event_processors.GenericSettingsEventProcessor{}, processor)
@@ -258,7 +258,6 @@ func testUpstreamOptions(mutators ...upstreamOptionsMutator) *chains.Options {
 		ValidatePeers:               new(false),
 		ValidateSyncing:             new(false),
 		ValidateCallLimit:           new(false),
-		ValidateClientVersion:       new(false),
 		DisableLogIndexValidation:   new(true),
 	}
 

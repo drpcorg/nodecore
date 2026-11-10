@@ -45,6 +45,8 @@ func clientVersionValidationConfig(incompatible, compatible *harness.RPCNode) st
     enabled: false
 upstream-config:
   mode: default
+  compatible-clients:
+    enabled: true
   label-balancing:
     order: [primary, fallback]
     include-default: false
@@ -75,7 +77,6 @@ upstream-config:
         validation-interval: 30s
         disable-lower-bounds-detection: true
         disable-labels-detection: true
-        validate-client-version: true
         validate-syncing: false
         validate-peers: false
 `, upstream.Alias, label, upstream.InternalURL())

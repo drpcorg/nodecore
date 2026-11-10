@@ -267,6 +267,10 @@ func (u *UpstreamConfig) setDefaults(grpcAuth *GrpcAuthConfig) {
 		u.IntegrityConfig = &IntegrityConfig{}
 	}
 	u.IntegrityConfig.setDefaults(u.Mode)
+	if u.CompatibleClients == nil {
+		u.CompatibleClients = &CompatibleClientsConfig{}
+	}
+	u.CompatibleClients.setDefaults(u.Mode)
 }
 
 func (i *IntegrityConfig) setDefaults(upstreamMode UpstreamMode) {

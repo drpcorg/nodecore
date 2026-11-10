@@ -138,15 +138,17 @@ func (c *CosmosGrpcSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProces
 }
 
 func (c *CosmosGrpcSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			c.upstreamId,
-			c.connector,
-			cosmos_labels.NewCosmosGrpcClientLabelsDetector(c.chain.Chain),
-			c.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{c.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(c.ctx, c.upstreamId, labelsDetectors, c.options.ValidationInterval*5)
+}
+
+func (c *CosmosGrpcSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		c.upstreamId,
+		c.connector,
+		c.options.InternalTimeout,
+		cosmos_labels.NewCosmosGrpcClientLabelsDetector(c.chain.Chain),
+	)
 }
 
 func (c *CosmosGrpcSpecific) BlockProcessor() blocks.BlockProcessor {

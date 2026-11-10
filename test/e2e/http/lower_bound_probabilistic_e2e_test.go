@@ -105,7 +105,6 @@ upstream-config:
         disable-lower-bounds-detection: false
         disable-labels-detection: true
         disable-log-index-validation: true
-        validate-client-version: false
         validate-syncing: false
         validate-peers: false
 `, upstream.Alias, upstream.InternalURL())

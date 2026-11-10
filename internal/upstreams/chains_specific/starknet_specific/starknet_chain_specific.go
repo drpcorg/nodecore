@@ -67,15 +67,18 @@ func (s *StarknetChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (s *StarknetChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		starknet_labels.NewStarknetLabelsDetector(
-			s.upstreamId,
-			s.connector,
-			s.configuredChain.Chain,
-			s.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+}
+
+func (s *StarknetChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		s.upstreamId,
+		s.connector,
+		s.internalTimeout,
+		starknet_labels.NewPathfinderClientLabelsDetector(s.configuredChain.Chain),
+		starknet_labels.NewJunoClientLabelsDetector(s.configuredChain.Chain),
+	)
 }
 
 func (s *StarknetChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {

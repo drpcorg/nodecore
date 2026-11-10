@@ -129,15 +129,17 @@ func (t *TronGrpcSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcesso
 }
 
 func (t *TronGrpcSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			t.upstreamId,
-			t.connector,
-			tron_labels.NewTronGrpcClientLabelsDetector(t.chain.Chain),
-			t.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{t.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+}
+
+func (t *TronGrpcSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		t.upstreamId,
+		t.connector,
+		t.options.InternalTimeout,
+		tron_labels.NewTronGrpcClientLabelsDetector(t.chain.Chain),
+	)
 }
 
 // MethodsProcessor returns nil: java-tron exposes no way to ask which methods

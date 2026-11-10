@@ -1,0 +1,11 @@
+upstream-config:
+  mode: default
+  compatible-clients:
+    enabled: true
+    url: ""
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

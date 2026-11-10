@@ -17,7 +17,7 @@ import (
 )
 
 func TestNewClientLabelDetectorHandlerImplementsLabelsDetector(t *testing.T) {
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", mocks.NewConnectorMock(), mocks.NewClientLabelsDetectorMock(), time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", mocks.NewConnectorMock(), time.Second, mocks.NewClientLabelsDetectorMock())
 
 	require.NotNil(t, handler)
 
@@ -31,7 +31,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsNilWhenNodeTypeRequestFai
 
 	connector := mocks.NewConnectorMock()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -53,7 +53,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsNilWhenConnectorReturnsEr
 		Return(protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -79,7 +79,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsNilWhenClientVersionParsi
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", responseBody, protocol.JsonRpc)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -104,7 +104,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsBothLabels(t *testing.T) 
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", responseBody, protocol.JsonRpc)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -132,7 +132,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsOnlyClientVersionWhenType
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", responseBody, protocol.JsonRpc)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -159,7 +159,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsOnlyClientTypeWhenVersion
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", responseBody, protocol.JsonRpc)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -186,7 +186,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsReturnsEmptyMapWhenAllLabelsAreE
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", responseBody, protocol.JsonRpc)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, time.Second)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, time.Second, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 
@@ -221,7 +221,7 @@ func TestClientLabelsDetectorHandlerDetectLabelsUsesConfiguredTimeout(t *testing
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", responseBody, protocol.JsonRpc)).
 		Once()
 
-	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, clientDetector, timeout)
+	handler := labels.NewClientLabelDetectorHandler("upstream-id", connector, timeout, clientDetector)
 
 	result := handler.DetectLabels(context.Background())
 

@@ -170,6 +170,10 @@ func (p *PolkadotChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return nil
 }
 
+func (p *PolkadotChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return nil
+}
+
 func (p *PolkadotChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 	return nil
 }

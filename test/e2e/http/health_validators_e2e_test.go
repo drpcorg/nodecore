@@ -140,7 +140,6 @@ upstream-config:
         validation-interval: 1s
         disable-lower-bounds-detection: true
         disable-labels-detection: true
-        validate-client-version: false
         validate-syncing: %t
         validate-peers: %t
         min-peers: %d

@@ -60,15 +60,17 @@ func NewAztecChainSpecificObject(
 }
 
 func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			a.upstreamId,
-			a.connector,
-			aztec_labels.NewAztecClientLabelsDetector(a.configuredChain.Chain),
-			a.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{a.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+}
+
+func (a *AztecChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		a.upstreamId,
+		a.connector,
+		a.internalTimeout,
+		aztec_labels.NewAztecClientLabelsDetector(a.configuredChain.Chain),
+	)
 }
 
 func (a *AztecChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {

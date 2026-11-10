@@ -26,8 +26,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/pyroscope"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -68,6 +70,10 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the rate limit budget registry: %w", err)
 	}
+	compatibleClients, err := newCompatibleClients(ctx, appConfig.UpstreamConfig.CompatibleClients)
+	if err != nil {
+		return nil, err
+	}
 	upstreamSupervisor := upstreams.NewGenericUpstreamSupervisor(
 		ctx,
 		appConfig.UpstreamConfig,
@@ -75,6 +81,7 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 		statsService,
 		rateLimitBudgetRegistry,
 		appConfig.ServerConfig.TorUrl,
+		compatibleClients,
 	)
 	configReloader := reload.NewReloader(config.ConfigPath(), appConfig, upstreamSupervisor)
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
@@ -129,6 +136,19 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 		grpcServer:         grpcServer,
 		outboxStorage:      outboxStorage,
 	}, nil
+}
+
+// newCompatibleClients builds the process-wide client-version rule holder: seeded from
+// the embedded rules, refreshed from the configured url. Nil when the check is disabled.
+func newCompatibleClients(ctx context.Context, cfg *config.CompatibleClientsConfig) (*utils.Reloadable[compatible_clients.Rules], error) {
+	if !cfg.IsEnabled() {
+		return nil, nil
+	}
+	seed, err := compatible_clients.Embedded()
+	if err != nil {
+		return nil, fmt.Errorf("unable to load the embedded compatible clients: %w", err)
+	}
+	return utils.NewReloadable(ctx, seed, cfg.Url, utils.YAML, cfg.RefreshInterval), nil
 }
 
 func (a *App) Start() {
