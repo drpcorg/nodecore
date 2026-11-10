@@ -101,10 +101,14 @@ func (c *EthChainValidator) getChainId(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	response, _ := c.executor.
+	response, err := c.executor.
+		WithContext(ctx).
 		Get(func() (protocol.ResponseHolder, error) {
 			return c.connector.SendRequest(ctx, request), nil
 		})
+	if err != nil {
+		return "", err
+	}
 
 	if response.HasError() {
 		return "", response.GetError()
@@ -119,10 +123,14 @@ func (c *EthChainValidator) getNetVersion(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	response, _ := c.executor.
+	response, err := c.executor.
+		WithContext(ctx).
 		Get(func() (protocol.ResponseHolder, error) {
 			return c.connector.SendRequest(ctx, request), nil
 		})
+	if err != nil {
+		return "", err
+	}
 
 	if response.HasError() {
 		return "", response.GetError()
