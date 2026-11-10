@@ -45,9 +45,13 @@ func (e *EthCallLimitValidator) Validate(ctx context.Context) validations.Valida
 	ctx, cancel := context.WithTimeout(ctx, e.option.InternalTimeout)
 	defer cancel()
 
-	response, _ := e.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
+	response, err := e.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
 		return e.connector.SendRequest(ctx, req), nil
 	})
+	if err != nil {
+		log.Warn().Err(err).Msgf("failed to execute call limit validation request for upstream '%s'", e.upstreamId)
+		return validations.SettingsError
+	}
 	if response.HasError() {
 		if strings.Contains(response.GetError().Message, "rpc.returndata.limit") {
 			log.Error().Err(response.GetError()).
