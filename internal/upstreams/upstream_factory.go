@@ -199,13 +199,12 @@ func (f *GenericUpstreamFactory) createConnector(
 	configuredChain *chains.ConfiguredChain,
 	connectorConfig *config.ApiConnectorConfig,
 ) (connectors.ApiConnector, error) {
-	torProxyUrl := f.torProxyUrl
 	switch connectorConfig.GetApiConnectorType() {
 	case specs.JsonRpcConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, f.torProxyUrl, upId)
 	case specs.WebsocketConnector:
 		wsProtocol := newWsProtocol(upId, configuredChain)
-		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
+		dialWsService := ws.NewDefaultDialWsService(connectorConfig, f.torProxyUrl)
 		reqRegistry := ws.NewGenericRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
 		wsProcessor, err := ws.NewGenericWsProcessor(
 			ctx,
@@ -221,13 +220,13 @@ func (f *GenericUpstreamFactory) createConnector(
 		}
 		return connectors.NewWsConnector(wsProcessor), nil
 	case specs.TendermintConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, f.torProxyUrl, upId)
 	case specs.RestConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, f.torProxyUrl, upId)
 	case specs.RestIndexer:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, f.torProxyUrl, upId)
 	case specs.RestAdditional:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, f.torProxyUrl, upId)
 	case specs.GrpcConnector:
 		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcConnector, upId)
 	case specs.GrpcAdditional:

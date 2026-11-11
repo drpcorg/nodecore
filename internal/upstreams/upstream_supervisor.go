@@ -65,8 +65,7 @@ type GenericUpstreamSupervisor struct {
 	tracker         dimensions.DimensionTracker
 
 	upstreamIndicesCounter int
-	// upstreamFactory builds an instance from its effective config; it carries everything
-	// creation needs (stats, budgets, tor) so the supervisor does not have to.
+	// upstreamFactory builds upstreams from their effective config
 	upstreamFactory UpstreamFactory
 	removalGrace    time.Duration
 
