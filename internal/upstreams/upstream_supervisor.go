@@ -11,9 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/dimensions"
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
-	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -33,8 +31,6 @@ const (
 	// pipeline can never hang a reload.
 	removalDoneTimeout = 60 * time.Second
 )
-
-type upstreamFactory func(ctx context.Context, conf *config.Upstream, executor failsafe.Executor[protocol.ResponseHolder], index int) (Upstream, error)
 
 // supervisorEvent is an upstream event on its way to processEvents. handled, when set, is
 // closed once processEvents has dealt with the event; the forwarder of a removed upstream
@@ -69,10 +65,9 @@ type GenericUpstreamSupervisor struct {
 	tracker         dimensions.DimensionTracker
 
 	upstreamIndicesCounter int
-	// createUpstream builds an instance from its effective config; it carries everything
-	// creation needs (stats, budgets, tor) so the supervisor does not have to.
-	createUpstream upstreamFactory
-	removalGrace   time.Duration
+	// upstreamFactory builds upstreams from their effective config
+	upstreamFactory UpstreamFactory
+	removalGrace    time.Duration
 
 	subChainSupervisorManager *utils.SubscriptionManager[ChainSupervisorEvent]
 }
@@ -81,12 +76,9 @@ func NewGenericUpstreamSupervisor(
 	ctx context.Context,
 	upstreamsConfig *config.UpstreamConfig,
 	tracker dimensions.DimensionTracker,
-	statsService UpstreamStatsService,
-	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
-	torProxyUrl string,
-	compatibleClients *compatible_clients.Registry,
+	upstreamFactory UpstreamFactory,
 ) UpstreamSupervisor {
-	supervisor := &GenericUpstreamSupervisor{
+	return &GenericUpstreamSupervisor{
 		ctx:                       ctx,
 		upstreams:                 utils.NewCMap[string, *runningUpstream](),
 		chainSupervisors:          utils.NewCMap[chains.Chain, ChainSupervisor](),
@@ -95,13 +87,10 @@ func NewGenericUpstreamSupervisor(
 		tracker:                   tracker,
 		executor:                  createFlowExecutor(upstreamsConfig.FailsafeConfig),
 		upstreamIndicesCounter:    1,
+		upstreamFactory:           upstreamFactory,
 		removalGrace:              removalGracePeriod,
 		subChainSupervisorManager: utils.NewSubscriptionManager[ChainSupervisorEvent]("chain_supervisor_events"),
 	}
-	supervisor.createUpstream = func(ctx context.Context, conf *config.Upstream, executor failsafe.Executor[protocol.ResponseHolder], index int) (Upstream, error) {
-		return CreateUpstream(ctx, conf, tracker, statsService, executor, index, rateLimitBudgetRegistry, torProxyUrl, compatibleClients)
-	}
-	return supervisor
 }
 
 func (b *GenericUpstreamSupervisor) SubscribeChainSupervisor(name string) *utils.Subscription[ChainSupervisorEvent] {
@@ -261,7 +250,7 @@ func (b *GenericUpstreamSupervisor) createUpstreams(confs []*config.Upstream) []
 		b.upstreamIndicesCounter++
 
 		creations.Go(func() {
-			up, err := b.createUpstream(b.ctx, conf, createUpstreamExecutor(conf.FailsafeConfig), index)
+			up, err := b.upstreamFactory.Create(b.ctx, conf, createUpstreamExecutor(conf.FailsafeConfig), index)
 			if err != nil {
 				log.Error().Err(err).Msgf("couldn't create upstream %s", conf.Id)
 				return
