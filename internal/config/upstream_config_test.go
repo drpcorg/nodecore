@@ -115,7 +115,6 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			ValidatePeers:                         new(false),
 			MinPeers:                              1,
 			ValidateCallLimit:                     new(false),
-			ValidateClientVersion:                 new(false),
 			CallLimitSize:                         1000000,
 		},
 	}
@@ -167,7 +166,6 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			ValidatePeers:                         new(false),
 			MinPeers:                              1,
 			ValidateCallLimit:                     new(false),
-			ValidateClientVersion:                 new(false),
 			CallLimitSize:                         1000000,
 		},
 	}
@@ -219,7 +217,6 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			ValidatePeers:                         new(false),
 			MinPeers:                              1,
 			ValidateCallLimit:                     new(false),
-			ValidateClientVersion:                 new(false),
 			CallLimitSize:                         1000000,
 		},
 	}
@@ -251,7 +248,6 @@ func TestSetStrictMode(t *testing.T) {
 		ValidatePeers:                         new(true),
 		MinPeers:                              1,
 		ValidateCallLimit:                     new(true),
-		ValidateClientVersion:                 new(true),
 		CallLimitSize:                         1000000,
 	}
 
@@ -423,7 +419,6 @@ func TestDefaultMode(t *testing.T) {
 		ValidatePeers:                         new(false),
 		MinPeers:                              1,
 		ValidateCallLimit:                     new(false),
-		ValidateClientVersion:                 new(false),
 		CallLimitSize:                         1000000,
 	}
 
@@ -509,7 +504,6 @@ func TestSetChainsDefault(t *testing.T) {
 						ValidatePeers:                         new(false),
 						MinPeers:                              1,
 						ValidateCallLimit:                     new(false),
-						ValidateClientVersion:                 new(false),
 						CallLimitSize:                         1000000,
 					},
 				},

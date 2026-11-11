@@ -47,11 +47,13 @@ func (s *SolanaChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, solana_labels.NewSolanaClientLabelsDetector(), s.options.InternalTimeout),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
+}
+
+func (s *SolanaChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, s.options.InternalTimeout, solana_labels.NewSolanaClientLabelsDetector())
 }
 
 func (s *SolanaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {

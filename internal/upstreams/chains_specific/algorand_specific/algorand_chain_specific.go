@@ -58,15 +58,17 @@ func NewAlgorandChainSpecificObject(
 }
 
 func (a *AlgorandChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			a.upstreamId,
-			a.connector,
-			algorand_labels.NewAlgorandClientLabelsDetector(a.configuredChain.Chain),
-			a.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{a.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+}
+
+func (a *AlgorandChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		a.upstreamId,
+		a.connector,
+		a.internalTimeout,
+		algorand_labels.NewAlgorandClientLabelsDetector(a.configuredChain.Chain),
+	)
 }
 
 func (a *AlgorandChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {

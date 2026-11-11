@@ -1,0 +1,10 @@
+upstream-config:
+  mode: default
+  compatible-clients:
+    refresh-interval: -1s
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

@@ -36,7 +36,6 @@ upstream-config:
         min-peers: 5
         validate-call-limit: true
         call-limit-size: 131072
-        validate-client-version: false
         disable-log-index-validation: true
         disable-erigon-bug-validation: true
         disable-liveness-subscription-validation: false
@@ -145,7 +144,7 @@ This mode is the right choice when upstreams are expensive (paid RPCs, metered p
 The high-fidelity profile. nodecore tracks upstream state as aggressively as it can:
 
 - **Head tracking via WebSocket when available.** When `head-connector` is not set, nodecore picks the *most capable* connector (`websocket` over `grpc` over `rest` over `json-rpc`). If a WebSocket connector is configured, heads come from `newHeads`-style subscriptions in real time. If the upstream only exposes HTTP, the fallback `poll-interval` is the chain's `expected-block-time` from [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml) rather than `1m`, so even HTTP-only upstreams stay close to the tip.
-- **All validators run by default.** With no explicit overrides, the following fall back to *enabled*: lower-bounds detection, labels detection, `eth_syncing`, `net_peerCount` (with the `min-peers` threshold), and the `eth_call` return-data limit probe. This produces an accurate, real-time view of each upstream's capabilities for routing decisions.
+- **All validators run by default.** With no explicit overrides, the following fall back to *enabled*: lower-bounds detection, labels detection, `eth_syncing`, `net_peerCount` (with the `min-peers` threshold), the `eth_call` return-data limit probe, and the [compatible-clients](#compatible-clients) check. This produces an accurate, real-time view of each upstream's capabilities for routing decisions.
 - **[Integrity](#integrity) is forcibly disabled.** Real-time head tracking (or block-time polling) makes the lazy stale-read compensation unnecessary. Setting `integrity.enabled: true` together with `mode: strict` is accepted by the parser but logged as a warning, and the feature is turned off.
 
 This mode is the right choice when upstreams are self-hosted or unmetered, when you need accurate label-based routing (e.g. archive vs. full nodes), or when always-current data matters more than minimising upstream traffic.
@@ -166,8 +165,74 @@ This mode is the right choice when upstreams are self-hosted or unmetered, when 
 | `integrity.enabled` | as configured (default `false`) | forced to `false` |
 | `disable-log-index-validation` | `true` (off) | `false` (on) |
 | `disable-erigon-bug-validation` | `true` (off) | `false` (on) |
-| `validate-client-version` | `false` (off) | `true` (on) |
+| `compatible-clients.enabled` | `false` (off) | `true` (on) |
 | `chain-defaults.<chain>.dispatch.*` | `false` (off) | `true` (on) |
+
+## compatible-clients
+
+nodecore can refuse upstreams that run a node client version known to be broken. The rules come from [`compatible-clients.yaml`](https://github.com/drpcorg/public/blob/main/compatible-clients.yaml) in `drpcorg/public`: a copy is embedded at build time, and the running process refreshes it from a URL so a newly blacklisted version takes effect without a redeploy.
+
+```yaml
+upstream-config:
+  compatible-clients:
+    enabled: true          # default: true in strict mode, false in default mode
+    allow-undetected: true # default: a node whose client cannot be probed is not held out
+    url: https://raw.githubusercontent.com/drpcorg/public/main/compatible-clients.yaml
+    refresh-interval: 10m
+```
+
+* `enabled` - Turns the whole feature on: the rules are refreshed and every upstream whose chain family has a client label detector (see [Validators and labels](#validators-and-labels)) gets the client version validator. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
+* `allow-undetected` - What happens when a node that has never answered its client probe keeps not answering (the provider blocks `web3_clientVersion`, a timeout, an unparseable answer). `true`: the upstream passes the check, no client means no rule; `false`: the upstream is held out as a non-fatal settings error until a later tick answers. A node that answered at least once is always judged on its last reported client instead. **_Default_**: `true`
+* `url` - Where the rules are refreshed from. An `http(s)://` URL fetched with a plain GET, or a local file path (with or without a `file://` prefix). **_Default_**: the raw file on the `main` branch of `drpcorg/public`
+* `refresh-interval` - How often the rules are re-read. Must be greater than zero. **_Default_**: `10m`
+
+The section is applied on restart only; a [config reload](#config-reload) reports a change to it.
+
+### The rules file
+
+```yaml
+rules:
+  - client: reth
+    blacklist: [v1.4.0, v1.4.1, v1.4.2]
+  - client: reth
+    networks: [bsc]
+    blacklist: ["reth/v1.6.0-2a4968e/x86_64-unknown-linux-gnu"]
+  - client: erigon
+    networks: [ethereum]
+    blacklist: [v2.40.0, "3.1.0"]
+```
+
+Each entry names a `client` (matched case-insensitively against the detected `client_type` label, e.g. `reth`, `erigon`, `geth`, `lighthouse`, `solana`), an optional list of `networks` (chain names or short names, case-insensitive), a `blacklist` of versions and an optional `whitelist`. Any other key (such as `excluded-methods`) is ignored.
+
+An entry **without** `networks` is the client's default rule. An entry **with** `networks` extends that default on those networks: the effective blacklist is the union of both, while the effective whitelist is the network entry's when it has one, otherwise the default's. Several entries for the same client and network merge the same way. A client with no entry at all is never checked.
+
+| Upstream | Effective blacklist | Effective whitelist |
+|---|---|---|
+| reth on ethereum | 1.4.0, 1.4.1, 1.4.2 | none |
+| reth on bsc | 1.4.0, 1.4.1, 1.4.2, `reth/v1.6.0-…` | none |
+| erigon on ethereum | 2.40.0, 3.1.0 | none |
+| erigon on polygon | no rule, never checked | |
+
+A non-empty whitelist that does not contain the detected version is a violation, as is a version in the blacklist. A whitelist is not unioned on purpose: unioning would make a network entry *looser* than the default, which is never what a network-specific allow list means.
+
+### Version matching
+
+The detected version and every rule entry are normalized (trimmed, one leading `v` dropped, lowercased). The detected version additionally has a *core*, the part before the first `-` or `+`. A rule entry matches when it equals the normalized version or its core, so a bare entry such as `v1.4.0` matches every build of that release while `v1.4.0-5e4e5c6` matches only that build. Entries are never prefixes: `1.4` does not match `1.40.0`. The raw string the node reports is not compared, only the parsed version label.
+
+| Node reports | Detected version | Core | Entry `v1.4.0` | Entry `v1.4.0-5e4e5c6` |
+|---|---|---|---|---|
+| `reth/v1.4.0-5e4e5c6/x86_64-unknown-linux-gnu` | `v1.4.0-5e4e5c6` | `1.4.0` | match | match |
+| `reth/v1.4.0-9a1b2c3/…` | `v1.4.0-9a1b2c3` | `1.4.0` | match | no |
+| `erigon/2.40.0/linux-amd64/go1.19` | `2.40.0` | `2.40.0` | entry `v2.40.0` matches | |
+| `Nethermind/v1.25.4+20b10b35/linux-x64/dotnet8` | `v1.25.4+20b10b35` | `1.25.4` | entry `1.25.4` matches | |
+
+### What a violation does
+
+The check is a settings validator: it runs at startup and then on every `validation-interval`, probing the node's client with the family's client label detector (`web3_clientVersion` on EVM, `GET /eth/v1/node/version` on a beacon node, `getVersion` on Solana, and so on). A violation is a fatal settings error: the upstream is refused at startup and removed at runtime, and re-admitted as soon as a later check is clean (after the node is upgraded, or after the rules change). A node that does not answer the probe is judged on the client it last reported, against the current rules: a transient probe failure says nothing new about it, so a removed node stays out until it proves a different version, and a node that was fine stays in. A node that has **never** answered cannot be checked: with `allow-undetected: true` (the default) it passes, no client means no rule, and the next tick probes it again; with `allow-undetected: false` it is a non-fatal settings error, like with every other settings validator: at startup the upstream is not admitted until a later tick answers, at runtime its state is kept. A node whose client or version comes back empty matches no rule and passes.
+
+### Refresh behaviour
+
+The process starts on the embedded copy of the rules and fetches `url` right away in the background, then every `refresh-interval`. Unchanged content is skipped. A fetch that fails, returns a non-200 status or does not parse keeps the rules currently in use; the first failure after a success is logged at Warn, repeats at Debug, so an offline deployment keeps working on the embedded rules without filling the log. An accepted change is logged once at Info and is seen by every upstream on its next check.
 
 ## Extending the chain registry at startup
 
@@ -351,7 +416,6 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `min-peers` - Minimum acceptable peer count when `validate-peers` is on. **_Default_**: `1`
   * `validate-call-limit` - For EVM chains, periodically probes the upstream's `eth_call` return-data limit and marks the upstream unhealthy when its observed limit is below `call-limit-size`. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
-  * `validate-client-version` - For EVM chains, validates the detected `web3_clientVersion`/client labels against the embedded compatible-client rules. Mode-dependent default: `false` in `default` mode, `true` in `strict` mode
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-erigon-bug-validation` - Disables the EVM Erigon balance-bug validator. Every 10th settings validation the validator checks `web3_clientVersion`; on an Erigon node it then binary-searches `[1, latest]` with an `eth_call` whose state override installs a contract returning its own balance. A block where the node answers `0x` instead of data means the historical state is broken and the upstream is removed (fatal settings error) until a later check is clean. Each probe is a single call bounded by `internal-timeout`. A check that cannot reach a verdict (client version or latest block unreadable, or no probe answered with data) is a non-fatal settings error: at startup the upstream is not admitted until a later check passes, afterwards its state is kept. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
@@ -801,6 +865,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers`. Accepts the count as a hex string (Ethereum nodes) or a plain number (Cosmos chains with an EVM module) |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
 | Erigon balance-bug validator | EVM | `disable-erigon-bug-validation` or `disable-settings-validation` | On Erigon nodes only (by `web3_clientVersion`), binary-searches historical blocks with a state-override `eth_call`; a `0x` answer where data is expected is fatal and removes the upstream until a later check is clean |
+| Client version validator | every family with a client label detector: EVM, Beacon Chain, Solana, Bitcoin, NEAR, Aztec, Aptos, Sui, Algorand, Stellar, TON, Cosmos, Celestia (`tendermint`, `rest`, `grpc`), TRON, Starknet | [`compatible-clients.enabled: false`](#compatible-clients) or `disable-settings-validation` | Probes the node's client type and version with the family's client label detector on every settings tick and checks them against the [compatible-clients](#compatible-clients) rules; a version outside a whitelist or inside a blacklist is fatal and removes the upstream until a later check is clean |
 | Health validator (EVM) | EVM | `disable-health-validation` | Generic liveness check appropriate to the chain family |
 | Health validator (Solana) | Solana | `disable-health-validation` | Calls the Solana `getHealth` RPC and propagates the result |
 | Health validator (Aztec) | Aztec | `disable-health-validation` | Probes Aztec node health |
@@ -841,7 +906,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
 | Client label detector (Bitcoin) | Bitcoin | `disable-labels-detection` | Parses `getnetworkinfo.subversion` (`/Satoshi:26.1.0/`) into client type and version labels |
 | Client label detector (NEAR) | NEAR | `disable-labels-detection` | Reads `version.version` from `status` and publishes the client (`neard`) and version labels |
-| Client label detector (Starknet) | Starknet | `disable-labels-detection` | Two-step probe: `pathfinder_version` first, then `juno_version`; the one that answers sets the client and version labels |
+| Client label detector (Starknet) | Starknet | `disable-labels-detection` | Two client detectors behind one handler: `pathfinder_version` is tried first, then `juno_version`; the one that answers sets the client (`pathfinder` or `juno`) and version labels |
 | Client label detector (Stellar) | Stellar | `disable-labels-detection` | rpc: reads `getVersionInfo` and publishes `stellar-rpc` with its version; Horizon: reads `horizon_version` from the root endpoint and publishes `horizon` |
 | Client label detector (TON) | TON | `disable-labels-detection` | v2: reads title/version from `GET /openapi.json`; v3: reads `GET /doc.json` and publishes `ton-index-go` with its version |
 | Client label detector (Tendermint) | Cosmos, Celestia (`tendermint`) | `disable-labels-detection` | Publishes `client_type=cosmos` and the **CometBFT** version from `status` → `node_info.version` |

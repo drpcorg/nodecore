@@ -67,15 +67,17 @@ func (n *NearChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (n *NearChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			n.upstreamId,
-			n.connector,
-			near_labels.NewNearClientLabelsDetector(n.configuredChain.Chain),
-			n.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{n.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
+}
+
+func (n *NearChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		n.upstreamId,
+		n.connector,
+		n.internalTimeout,
+		near_labels.NewNearClientLabelsDetector(n.configuredChain.Chain),
+	)
 }
 
 func (n *NearChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {

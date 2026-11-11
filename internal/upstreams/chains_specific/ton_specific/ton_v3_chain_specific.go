@@ -40,15 +40,17 @@ func (t *TonV3ChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (t *TonV3ChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			t.upstreamId,
-			t.connector,
-			ton_labels.NewTonV3ClientLabelsDetector(t.configuredChain.Chain),
-			t.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{t.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.labelsDelay)
+}
+
+func (t *TonV3ChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		t.upstreamId,
+		t.connector,
+		t.internalTimeout,
+		ton_labels.NewTonV3ClientLabelsDetector(t.configuredChain.Chain),
+	)
 }
 
 func (t *TonV3ChainSpecificObject) HealthValidators() []validations.Validator[protocol.AvailabilityStatus] {

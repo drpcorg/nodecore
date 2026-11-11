@@ -82,7 +82,6 @@ upstream-config:
         validation-interval: 30s
         disable-lower-bounds-detection: true
         disable-labels-detection: true
-        validate-client-version: false
         validate-syncing: false
         validate-peers: false
 `, upstream.Alias, label, upstream.InternalURL())

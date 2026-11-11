@@ -53,7 +53,7 @@ func newApplyFixtureWithoutEventProcessing(t *testing.T) *applyFixture {
 	specs_utils.LoadMethodSpecs()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	supervisor := NewGenericUpstreamSupervisor(ctx, &config.UpstreamConfig{FailsafeConfig: &config.FailsafeConfig{}}, nil, nil, nil, "").(*GenericUpstreamSupervisor)
+	supervisor := NewGenericUpstreamSupervisor(ctx, &config.UpstreamConfig{FailsafeConfig: &config.FailsafeConfig{}}, nil, nil, nil, "", nil).(*GenericUpstreamSupervisor)
 	f := &applyFixture{
 		t:          t,
 		supervisor: supervisor,

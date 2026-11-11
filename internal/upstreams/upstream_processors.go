@@ -7,6 +7,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/blocks"
 	"github.com/drpcorg/nodecore/internal/upstreams/caps"
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
@@ -56,9 +57,11 @@ func CreateHealthEventProcessor(
 func CreateSettingsEventProcessor(
 	ctx context.Context,
 	conf *config.Upstream,
+	configuredChain *chains.ConfiguredChain,
 	chainSpecific chains_specific.ChainSpecific,
+	compatibleClients *compatible_clients.Registry,
 ) event_processors.UpstreamStateEventProcessor {
-	validator := createSettingValidationProcessor(chainSpecific, conf.Options)
+	validator := createSettingValidationProcessor(chainSpecific, conf, configuredChain, compatibleClients)
 	if validator == nil {
 		return nil
 	}

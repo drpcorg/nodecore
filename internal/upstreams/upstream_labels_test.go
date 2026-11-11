@@ -102,7 +102,6 @@ func newUpstreamWithLabelsDetection(t *testing.T, labels config.UpstreamLabels, 
 			ValidateSyncing:             &disabled,
 			ValidatePeers:               &disabled,
 			ValidateCallLimit:           &disabled,
-			ValidateClientVersion:       &disabled,
 		},
 	}
 

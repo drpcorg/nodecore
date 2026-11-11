@@ -56,20 +56,24 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return labels.NewGenericLabelsProcessor(e.ctx, e.upstreamId, e.labelsDetectors(), e.options.ValidationInterval*5)
 }
 
+func (e *EvmChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		e.upstreamId,
+		e.connector,
+		e.options.InternalTimeout,
+		eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+			return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain.Chain)
+		}),
+	)
+}
+
 func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 	restAdditional, _ := lo.Find(e.allConnectors, func(c connectors.ApiConnector) bool {
 		return c.GetType() == specs.RestAdditional
 	})
 
 	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			e.upstreamId,
-			e.connector,
-			eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
-				return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain.Chain)
-			}),
-			e.options.InternalTimeout,
-		),
+		e.ClientLabelsDetector(),
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
@@ -207,9 +211,6 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	}
 	if *e.options.ValidateCallLimit && e.chain.CallValidateContract != "" {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthCallLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
-	}
-	if e.options.ValidateClientVersion != nil && *e.options.ValidateClientVersion {
-		settingsValidators = append(settingsValidators, eth_validations.NewEthClientVersionValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 	if len(e.chain.GasPriceCondition) > 0 {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthGasPriceValidator(e.upstreamId, e.connector, e.chain, e.options))

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
@@ -172,6 +173,12 @@ func TestReadFullConfig(t *testing.T) {
 			Mode:              config.DefaultMode,
 			BalancingStrategy: config.RatingBalancingStrategy,
 			IntegrityConfig:   &config.IntegrityConfig{},
+			CompatibleClients: &config.CompatibleClientsConfig{
+				Enabled:         new(false),
+				AllowUndetected: new(true),
+				Url:             compatible_clients.DefaultUrl,
+				RefreshInterval: 10 * time.Minute,
+			},
 			ScorePolicyConfig: &config.ScorePolicyConfig{
 				CalculationInterval:     10 * time.Second,
 				CalculationFunctionName: config.DefaultLatencyPolicyFuncName,
@@ -266,7 +273,6 @@ func TestReadFullConfig(t *testing.T) {
 						ValidatePeers:                         new(false),
 						MinPeers:                              1,
 						ValidateCallLimit:                     new(false),
-						ValidateClientVersion:                 new(false),
 						CallLimitSize:                         1000000,
 					},
 				},
@@ -319,7 +325,6 @@ func TestReadFullConfig(t *testing.T) {
 						ValidatePeers:                         new(false),
 						MinPeers:                              1,
 						ValidateCallLimit:                     new(false),
-						ValidateClientVersion:                 new(false),
 						CallLimitSize:                         1000000,
 					},
 				},

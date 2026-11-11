@@ -1,0 +1,8 @@
+upstream-config:
+  mode: default
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

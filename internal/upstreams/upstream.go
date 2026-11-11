@@ -123,7 +123,7 @@ func NewGenericUpstream(
 			CreateHeadEventProcessor(ctx, conf, configuredChain.Chain, headProcessor),
 			CreateLowerBoundsEventProcessor(ctx, conf, specifics.probe),
 			CreateHealthEventProcessor(ctx, conf, specifics.probe),
-			CreateSettingsEventProcessor(ctx, conf, specifics.probe),
+			CreateSettingsEventProcessor(ctx, conf, configuredChain, specifics.probe, creationData.compatibleClients),
 			CreateLabelsEventProcessor(ctx, conf, specifics.probe),
 			CreateMethodsEventProcessor(ctx, conf, specifics.probe),
 			CreateCapEventProcessor(ctx, conf, specifics.probe, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),

@@ -78,7 +78,6 @@ upstream-config:
         disable-lower-bounds-detection: true
         disable-labels-detection: false
         disable-log-index-validation: true
-        validate-client-version: false
         validate-syncing: false
         validate-peers: false
 `, upstream.Alias, archiveOption, upstream.InternalURL())

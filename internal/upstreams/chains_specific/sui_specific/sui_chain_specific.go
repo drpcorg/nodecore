@@ -155,15 +155,17 @@ func (s *SuiChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 }
 
 func (s *SuiChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			s.upstreamId,
-			s.connector,
-			sui_labels.NewSuiClientLabelsDetector(s.configuredChain.Chain),
-			s.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+}
+
+func (s *SuiChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		s.upstreamId,
+		s.connector,
+		s.internalTimeout,
+		sui_labels.NewSuiClientLabelsDetector(s.configuredChain.Chain),
+	)
 }
 
 // BlockProcessor is the standard block processor (the head itself is chosen

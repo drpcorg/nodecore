@@ -13,6 +13,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/ratelimiter"
 	"github.com/drpcorg/nodecore/internal/resilience"
+	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	choice "github.com/drpcorg/nodecore/internal/upstreams/fork_choice"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
@@ -83,6 +84,7 @@ func NewGenericUpstreamSupervisor(
 	statsService UpstreamStatsService,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
+	compatibleClients *compatible_clients.Registry,
 ) UpstreamSupervisor {
 	supervisor := &GenericUpstreamSupervisor{
 		ctx:                       ctx,
@@ -97,7 +99,7 @@ func NewGenericUpstreamSupervisor(
 		subChainSupervisorManager: utils.NewSubscriptionManager[ChainSupervisorEvent]("chain_supervisor_events"),
 	}
 	supervisor.createUpstream = func(ctx context.Context, conf *config.Upstream, executor failsafe.Executor[protocol.ResponseHolder], index int) (Upstream, error) {
-		return CreateUpstream(ctx, conf, tracker, statsService, executor, index, rateLimitBudgetRegistry, torProxyUrl)
+		return CreateUpstream(ctx, conf, tracker, statsService, executor, index, rateLimitBudgetRegistry, torProxyUrl, compatibleClients)
 	}
 	return supervisor
 }

@@ -139,15 +139,17 @@ func (t *TronRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcesso
 }
 
 func (t *TronRestSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			t.upstreamId,
-			t.connector,
-			tron_labels.NewTronClientLabelsDetector(t.chain.Chain),
-			t.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{t.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+}
+
+func (t *TronRestSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		t.upstreamId,
+		t.connector,
+		t.options.InternalTimeout,
+		tron_labels.NewTronClientLabelsDetector(t.chain.Chain),
+	)
 }
 
 type TronRestBlock struct {

@@ -36,6 +36,13 @@ type ChainSpecific interface {
 
 	LowerBoundProcessor() lower_bounds.LowerBoundProcessor
 	LabelsProcessor() labels.LabelsProcessor
+
+	// ClientLabelsDetector returns the detector that probes the node's client type and
+	// version, or nil for a family that cannot ask. The factory builds the client-version
+	// validator on it. "nil" means a literal nil: returning a nil *handler through this
+	// interface would read as a detector and be probed.
+	ClientLabelsDetector() labels.ClientDetector
+
 	BlockProcessor() blocks.BlockProcessor
 
 	// MethodsProcessor returns the chain's method-detection processor, or nil when the

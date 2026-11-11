@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,11 +113,13 @@ func TestRestartOnlyChangesReportsEverythingButReloadableFields(t *testing.T) {
 	changed, err := config.RestartOnlyChanges(readReloadFixture(t, "startup.yaml"), readReloadFixture(t, "upstreams-changed.yaml"))
 	require.NoError(t, err)
 
-	// sorted; integrity is not in the list because both modes default it to disabled
+	// sorted; integrity is not in the list because both modes default it to disabled, while
+	// compatible-clients is: its enabled default follows the mode
 	assert.Equal(t, []string{
 		"chain-defaults.ethereum.dispatch",
 		"rate-limit",
 		"server",
+		"upstream-config.compatible-clients",
 		"upstream-config.mode",
 	}, changed)
 }
@@ -126,6 +129,16 @@ func TestRestartOnlyChangesIsEmptyForSameFile(t *testing.T) {
 	changed, err := config.RestartOnlyChanges(startup, startup)
 	require.NoError(t, err)
 	assert.Empty(t, changed)
+}
+
+func TestRestartOnlyChangesReportsCompatibleClients(t *testing.T) {
+	startup := readReloadFixture(t, "startup.yaml")
+	file := []byte(strings.Replace(string(startup), "upstream-config:\n", "upstream-config:\n  compatible-clients:\n    enabled: true\n", 1))
+
+	changed, err := config.RestartOnlyChanges(startup, file)
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"upstream-config.compatible-clients"}, changed)
 }
 
 func TestRestartOnlyChangesIgnoresUpstreamAndPollIntervalChanges(t *testing.T) {

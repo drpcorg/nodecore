@@ -133,15 +133,17 @@ func (a *AptosChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 }
 
 func (a *AptosChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			a.upstreamId,
-			a.connector,
-			aptos_labels.NewAptosClientLabelsDetector(a.configuredChain.Chain),
-			a.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{a.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+}
+
+func (a *AptosChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		a.upstreamId,
+		a.connector,
+		a.internalTimeout,
+		aptos_labels.NewAptosClientLabelsDetector(a.configuredChain.Chain),
+	)
 }
 
 func (a *AptosChainSpecificObject) BlockProcessor() blocks.BlockProcessor {

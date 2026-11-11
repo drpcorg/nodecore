@@ -55,15 +55,17 @@ func (b *BitcoinChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (b *BitcoinChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			b.upstreamId,
-			b.connector,
-			bitcoin_labels.NewBitcoinClientLabelsDetector(b.configuredChain.Chain),
-			b.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{b.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+}
+
+func (b *BitcoinChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		b.upstreamId,
+		b.connector,
+		b.internalTimeout,
+		bitcoin_labels.NewBitcoinClientLabelsDetector(b.configuredChain.Chain),
+	)
 }
 
 func (b *BitcoinChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
