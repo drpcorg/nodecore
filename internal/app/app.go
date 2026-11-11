@@ -138,9 +138,10 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 	}, nil
 }
 
-// newCompatibleClients builds the process-wide client-version rule holder: seeded from
-// the embedded rules, refreshed from the configured url. Nil when the check is disabled.
-func newCompatibleClients(ctx context.Context, cfg *config.CompatibleClientsConfig) (*utils.Reloadable[compatible_clients.Rules], error) {
+// newCompatibleClients builds the process-wide client-version registry: rules seeded
+// from the embedded file and refreshed from the configured url, plus the policy for
+// nodes whose client cannot be probed. Nil when the check is disabled.
+func newCompatibleClients(ctx context.Context, cfg *config.CompatibleClientsConfig) (*compatible_clients.Registry, error) {
 	if !cfg.IsEnabled() {
 		return nil, nil
 	}
@@ -148,7 +149,8 @@ func newCompatibleClients(ctx context.Context, cfg *config.CompatibleClientsConf
 	if err != nil {
 		return nil, fmt.Errorf("unable to load the embedded compatible clients: %w", err)
 	}
-	return utils.NewReloadable(ctx, seed, cfg.Url, utils.YAML, cfg.RefreshInterval), nil
+	rules := utils.NewReloadable(ctx, seed, cfg.Url, utils.YAML, cfg.RefreshInterval)
+	return compatible_clients.NewRegistry(rules, cfg.AllowsUndetected()), nil
 }
 
 func (a *App) Start() {

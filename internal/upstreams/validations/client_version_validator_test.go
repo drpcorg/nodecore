@@ -34,13 +34,16 @@ rules:
 
 var ethereumChain = &chains.ConfiguredChain{Chain: chains.ETHEREUM, ShortNames: []string{"ethereum"}}
 
-func rulesHolder(t *testing.T, file string) *utils.Reloadable[compatible_clients.Rules] {
+// rulesHolder is a registry over the given rules that never refreshes and that holds an
+// upstream out when its client cannot be probed.
+func rulesHolder(t *testing.T, file string) *compatible_clients.Registry {
 	t.Helper()
 	var rules compatible_clients.Rules
 	require.NoError(t, yaml.Unmarshal([]byte(file), &rules))
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	return utils.NewReloadable(ctx, &rules, filepath.Join(t.TempDir(), "missing.yaml"), utils.YAML, time.Hour)
+	holder := utils.NewReloadable(ctx, &rules, filepath.Join(t.TempDir(), "missing.yaml"), utils.YAML, time.Hour)
+	return compatible_clients.NewRegistry(holder, false)
 }
 
 // clientDetector answers web3_clientVersion with the scripted responses, in order, and
@@ -139,6 +142,21 @@ func TestClientVersionValidatorSettingsErrorOnProbeFailure(t *testing.T) {
 	connector.AssertNumberOfCalls(t, "SendRequest", 1)
 }
 
+func TestClientVersionValidatorValidOnProbeFailureWhenUndetectedAllowed(t *testing.T) {
+	var rules compatible_clients.Rules
+	require.NoError(t, yaml.Unmarshal([]byte(rethRules), &rules))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	holder := utils.NewReloadable(ctx, &rules, filepath.Join(t.TempDir(), "missing.yaml"), utils.YAML, time.Hour)
+	detector, connector := clientDetector(t, "v1.4.0", "reth", errorAnswer(), answer())
+	validator := validations.NewClientVersionValidator("upstream-1", ethereumChain, detector, compatible_clients.NewRegistry(holder, true))
+
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
+	// the next tick still checks the node for real
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
+	connector.AssertNumberOfCalls(t, "SendRequest", 2)
+}
+
 func TestClientVersionValidatorSeesUpdatedRules(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rules.yaml")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -146,7 +164,7 @@ func TestClientVersionValidatorSeesUpdatedRules(t *testing.T) {
 	holder := utils.NewReloadable(ctx, &compatible_clients.Rules{}, path, utils.YAML, 20*time.Millisecond)
 	detector, connector := clientDetector(t, "v1.4.0", "reth")
 	connector.On("SendRequest", mock.Anything, mock.Anything).Return(answer()) // unbounded: Eventually polls many times
-	validator := validations.NewClientVersionValidator("upstream-1", ethereumChain, detector, holder)
+	validator := validations.NewClientVersionValidator("upstream-1", ethereumChain, detector, compatible_clients.NewRegistry(holder, false))
 
 	require.Equal(t, validations.Valid, validator.Validate(context.Background()))
 

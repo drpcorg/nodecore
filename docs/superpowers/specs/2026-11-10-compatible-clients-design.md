@@ -180,10 +180,12 @@ behaviour. The multi-probe form exists for Starknet (§4).
 `Validate(ctx)`:
 
 1. `DetectClient(ctx)`, once, no retry (the user dropped the retry after implementation: the
-   next tick is the retry). Any error → `SettingsError` (at startup the upstream is not
-   admitted until a later tick answers; at runtime a `SettingsError` is a no-op). This is the
-   same rule every other settings validator follows: a node that does not answer its version
-   probe is not checked, and in strict mode not admitted.
+   next tick is the retry). Any error → with `allow-undetected: true` (the default, added
+   after implementation) `Valid` with a Debug log: no client, no rule, and the next tick
+   probes again; with `allow-undetected: false` → `SettingsError` (at startup the upstream is
+   not admitted until a later tick answers; at runtime a `SettingsError` is a no-op), the
+   same rule every other settings validator follows. The validator reads the policy from a
+   `compatible_clients.Registry` that bundles the rules holder and the flag.
 2. Empty client type or version → `Valid`: there is nothing to match against. The EVM
    detector's `unknown` values fall under the same rule, since no entry is written for them.
 3. `rules.Get().Check(clientType, clientVersion, chain)` (§1). `NoRule` → `Valid`.
@@ -276,12 +278,15 @@ A new section under `upstream-config`:
 upstream-config:
   compatible-clients:
     enabled: true          # default: true in strict mode, false in default mode
+    allow-undetected: true # default true
     url: https://raw.githubusercontent.com/drpcorg/public/main/compatible-clients.yaml
     refresh-interval: 10m
 ```
 
 - `enabled` follows the mode like the option it replaces: `true` in `strict`, `false` in
   `default`. `enabled: false` means no registry, no fetching and no validator on any upstream.
+- `allow-undetected` (added after implementation): whether a node whose client cannot be
+  probed passes (`true`, default in both modes) or is held out with `SettingsError` (`false`).
 - `url` defaults to the raw file on `main`; any value accepted by `Reloadable` (an `http(s)`
   URL or a local path). Validation: non-empty when enabled.
 - `refresh-interval` defaults to `10m`; must be greater than zero.

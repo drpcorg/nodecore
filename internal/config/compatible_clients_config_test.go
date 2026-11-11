@@ -18,6 +18,7 @@ func TestCompatibleClientsStrictModeEnabledByDefault(t *testing.T) {
 	section := appConfig.UpstreamConfig.CompatibleClients
 
 	assert.True(t, section.IsEnabled())
+	assert.True(t, section.AllowsUndetected())
 	assert.Equal(t, compatible_clients.DefaultUrl, section.Url)
 	assert.Equal(t, 10*time.Minute, section.RefreshInterval)
 }
@@ -30,8 +31,17 @@ func TestCompatibleClientsDefaultModeDisabledByDefault(t *testing.T) {
 	section := appConfig.UpstreamConfig.CompatibleClients
 
 	assert.False(t, section.IsEnabled())
+	assert.True(t, section.AllowsUndetected())
 	assert.Equal(t, compatible_clients.DefaultUrl, section.Url)
 	assert.Equal(t, 10*time.Minute, section.RefreshInterval)
+}
+
+func TestCompatibleClientsAllowUndetectedCanBeDisabled(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/compatible-clients-require-detection.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.False(t, appConfig.UpstreamConfig.CompatibleClients.AllowsUndetected())
 }
 
 func TestCompatibleClientsExplicitValues(t *testing.T) {

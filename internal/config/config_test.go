@@ -175,6 +175,7 @@ func TestReadFullConfig(t *testing.T) {
 			IntegrityConfig:   &config.IntegrityConfig{},
 			CompatibleClients: &config.CompatibleClientsConfig{
 				Enabled:         new(false),
+				AllowUndetected: new(true),
 				Url:             compatible_clients.DefaultUrl,
 				RefreshInterval: 10 * time.Minute,
 			},

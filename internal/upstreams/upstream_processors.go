@@ -12,7 +12,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/event_processors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/utils"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 )
@@ -60,7 +59,7 @@ func CreateSettingsEventProcessor(
 	conf *config.Upstream,
 	configuredChain *chains.ConfiguredChain,
 	chainSpecific chains_specific.ChainSpecific,
-	compatibleClients *utils.Reloadable[compatible_clients.Rules],
+	compatibleClients *compatible_clients.Registry,
 ) event_processors.UpstreamStateEventProcessor {
 	validator := createSettingValidationProcessor(chainSpecific, conf, configuredChain, compatibleClients)
 	if validator == nil {

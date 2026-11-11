@@ -35,16 +35,16 @@ func clientVersionOnlyOptions() *chains.Options {
 	}
 }
 
-func embeddedRulesHolder(t *testing.T) *utils.Reloadable[compatible_clients.Rules] {
+func embeddedRulesHolder(t *testing.T) *compatible_clients.Registry {
 	t.Helper()
 	seed, err := compatible_clients.Embedded()
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	return utils.NewReloadable(ctx, seed, "", utils.YAML, time.Hour)
+	return compatible_clients.NewRegistry(utils.NewReloadable(ctx, seed, "", utils.YAML, time.Hour), true)
 }
 
-func evmSettingsProcessor(t *testing.T, holder *utils.Reloadable[compatible_clients.Rules], clientVersion string) (event_processors.UpstreamStateEventProcessor, *mocks.ConnectorMock) {
+func evmSettingsProcessor(t *testing.T, holder *compatible_clients.Registry, clientVersion string) (event_processors.UpstreamStateEventProcessor, *mocks.ConnectorMock) {
 	t.Helper()
 	conf := &config.Upstream{Id: "upstream-id", Options: clientVersionOnlyOptions()}
 	configuredChain := chains.GetChain("ethereum")

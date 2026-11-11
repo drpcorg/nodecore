@@ -84,7 +84,7 @@ func NewGenericUpstreamSupervisor(
 	statsService UpstreamStatsService,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
-	compatibleClients *utils.Reloadable[compatible_clients.Rules],
+	compatibleClients *compatible_clients.Registry,
 ) UpstreamSupervisor {
 	supervisor := &GenericUpstreamSupervisor{
 		ctx:                       ctx,

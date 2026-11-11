@@ -37,7 +37,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/internal/upstreams/ws"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -54,7 +53,7 @@ type upstreamCreationData struct {
 	autoTune               *ratelimiter.UpstreamAutoTune
 	// compatibleClients is the process-wide client-version rule holder, nil when the
 	// compatible-clients check is disabled
-	compatibleClients *utils.Reloadable[compatible_clients.Rules]
+	compatibleClients *compatible_clients.Registry
 }
 
 func CreateUpstream(
@@ -66,7 +65,7 @@ func CreateUpstream(
 	upstreamIndex int,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
-	compatibleClients *utils.Reloadable[compatible_clients.Rules],
+	compatibleClients *compatible_clients.Registry,
 ) (Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
@@ -215,7 +214,7 @@ func createSettingValidationProcessor(
 	chainSpecific chains_specific.ChainSpecific,
 	conf *config.Upstream,
 	configuredChain *chains.ConfiguredChain,
-	compatibleClients *utils.Reloadable[compatible_clients.Rules],
+	compatibleClients *compatible_clients.Registry,
 ) *validations.ValidationProcessor[validations.ValidationSettingResult] {
 	if *conf.Options.DisableValidation || *conf.Options.DisableSettingsValidation {
 		return nil
