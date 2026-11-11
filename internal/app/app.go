@@ -74,14 +74,18 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 	if err != nil {
 		return nil, err
 	}
-	upstreamSupervisor := upstreams.NewGenericUpstreamSupervisor(
-		ctx,
-		appConfig.UpstreamConfig,
+	upstreamFactory := upstreams.NewGenericUpstreamFactory(
 		dimensionTracker,
 		statsService,
 		rateLimitBudgetRegistry,
 		appConfig.ServerConfig.TorUrl,
 		compatibleClients,
+	)
+	upstreamSupervisor := upstreams.NewGenericUpstreamSupervisor(
+		ctx,
+		appConfig.UpstreamConfig,
+		dimensionTracker,
+		upstreamFactory,
 	)
 	configReloader := reload.NewReloader(config.ConfigPath(), appConfig, upstreamSupervisor)
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)

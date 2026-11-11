@@ -56,21 +56,56 @@ type upstreamCreationData struct {
 	compatibleClients *compatible_clients.Registry
 }
 
-func CreateUpstream(
-	ctx context.Context,
-	conf *config.Upstream,
+// UpstreamFactory builds an upstream from its effective config. The arguments are what
+// differs from one upstream to another; everything shared by all of them belongs to the
+// implementation.
+type UpstreamFactory interface {
+	Create(
+		ctx context.Context,
+		conf *config.Upstream,
+		executor failsafe.Executor[protocol.ResponseHolder],
+		upstreamIndex int,
+	) (Upstream, error)
+}
+
+// GenericUpstreamFactory holds the process-wide collaborators every upstream is built with.
+type GenericUpstreamFactory struct {
+	tracker                 dimensions.DimensionTracker
+	statsService            UpstreamStatsService
+	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry
+	torProxyUrl             string
+	// compatibleClients is nil when the compatible-clients check is disabled
+	compatibleClients *compatible_clients.Registry
+}
+
+var _ UpstreamFactory = (*GenericUpstreamFactory)(nil)
+
+func NewGenericUpstreamFactory(
 	tracker dimensions.DimensionTracker,
 	statsService UpstreamStatsService,
-	executor failsafe.Executor[protocol.ResponseHolder],
-	upstreamIndex int,
 	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 	torProxyUrl string,
 	compatibleClients *compatible_clients.Registry,
+) *GenericUpstreamFactory {
+	return &GenericUpstreamFactory{
+		tracker:                 tracker,
+		statsService:            statsService,
+		rateLimitBudgetRegistry: rateLimitBudgetRegistry,
+		torProxyUrl:             torProxyUrl,
+		compatibleClients:       compatibleClients,
+	}
+}
+
+func (f *GenericUpstreamFactory) Create(
+	ctx context.Context,
+	conf *config.Upstream,
+	executor failsafe.Executor[protocol.ResponseHolder],
+	upstreamIndex int,
 ) (Upstream, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	configuredChain := chains.GetChain(conf.ChainName)
 
-	upstreamConnectorsInfo, err := createUpstreamConnectors(ctx, conf, configuredChain, tracker, statsService, executor, torProxyUrl)
+	upstreamConnectorsInfo, err := f.createUpstreamConnectors(ctx, conf, configuredChain, executor)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -82,14 +117,14 @@ func CreateUpstream(
 		return nil, err
 	}
 
-	rt, autoTune := createRateLimiter(ctx, conf, rateLimitBudgetRegistry)
+	rt, autoTune := f.createRateLimiter(ctx, conf)
 
 	creationData := &upstreamCreationData{
 		upstreamConnectorsInfo: upstreamConnectorsInfo,
 		upstreamMethods:        upstreamMethods,
 		rt:                     rt,
 		autoTune:               autoTune,
-		compatibleClients:      compatibleClients,
+		compatibleClients:      f.compatibleClients,
 	}
 
 	up, err := NewGenericUpstream(ctx, cancel, conf, configuredChain, upstreamIndex, creationData)
@@ -102,10 +137,9 @@ func CreateUpstream(
 	return up, nil
 }
 
-func createRateLimiter(
+func (f *GenericUpstreamFactory) createRateLimiter(
 	ctx context.Context,
 	conf *config.Upstream,
-	rateLimitBudgetRegistry *ratelimiter.RateLimitBudgetRegistry,
 ) (*ratelimiter.RateLimitBudget, *ratelimiter.UpstreamAutoTune) {
 	var rt *ratelimiter.RateLimitBudget
 	if conf.RateLimit != nil {
@@ -114,7 +148,7 @@ func createRateLimiter(
 			Config: conf.RateLimit,
 		}, ratelimiter.NewRateLimitMemoryEngine())
 	} else if conf.RateLimitBudget != "" {
-		rateLimitBudget, ok := rateLimitBudgetRegistry.Get(conf.RateLimitBudget)
+		rateLimitBudget, ok := f.rateLimitBudgetRegistry.Get(conf.RateLimitBudget)
 		if !ok {
 			log.Panic().Msgf("rate limit budget %s not found", conf.RateLimitBudget)
 		}
@@ -125,6 +159,81 @@ func createRateLimiter(
 		autoTuneRateLimiter = ratelimiter.NewUpstreamAutoTune(ctx, conf.Id, conf.RateLimitAutoTune)
 	}
 	return rt, autoTuneRateLimiter
+}
+
+func (f *GenericUpstreamFactory) createUpstreamConnectors(
+	ctx context.Context,
+	conf *config.Upstream,
+	configuredChain *chains.ConfiguredChain,
+	executor failsafe.Executor[protocol.ResponseHolder],
+) (*connectorsInfo, error) {
+	apiConnectors := make([]connectors.ApiConnector, 0)
+	var headConnector connectors.ApiConnector
+	var internalRequestConnector connectors.ApiConnector
+
+	for _, connectorConfig := range conf.Connectors {
+		apiConnector, err := f.createConnector(ctx, conf.Id, configuredChain, connectorConfig)
+		if err != nil {
+			return nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
+		}
+		hooks := []protocol.ResponseReceivedHook{
+			dimensions.NewDimensionHook(f.tracker),
+			hook.NewStatsHook(f.statsService),
+		}
+		apiConnector = connectors.NewObserverConnector(configuredChain.Chain, conf.Id, apiConnector, hooks, executor)
+		if connectorConfig.GetApiConnectorType() == conf.GetHeadApiConnectorType() {
+			headConnector = apiConnector
+		}
+		if connectorConfig.GetApiConnectorType() == conf.GetBestConnector(config.DefaultMode) {
+			internalRequestConnector = apiConnector
+		}
+		apiConnectors = append(apiConnectors, apiConnector)
+	}
+
+	return newConnectorInfo(headConnector, internalRequestConnector, apiConnectors), nil
+}
+
+func (f *GenericUpstreamFactory) createConnector(
+	ctx context.Context,
+	upId string,
+	configuredChain *chains.ConfiguredChain,
+	connectorConfig *config.ApiConnectorConfig,
+) (connectors.ApiConnector, error) {
+	switch connectorConfig.GetApiConnectorType() {
+	case specs.JsonRpcConnector:
+		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, f.torProxyUrl, upId)
+	case specs.WebsocketConnector:
+		wsProtocol := newWsProtocol(upId, configuredChain)
+		dialWsService := ws.NewDefaultDialWsService(connectorConfig, f.torProxyUrl)
+		reqRegistry := ws.NewGenericRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
+		wsProcessor, err := ws.NewGenericWsProcessor(
+			ctx,
+			upId,
+			connectorConfig.Url,
+			dialWsService,
+			reqRegistry,
+			ws.NewWebsocketSession(),
+			wsProtocol,
+		)
+		if err != nil {
+			return nil, err
+		}
+		return connectors.NewWsConnector(wsProcessor), nil
+	case specs.TendermintConnector:
+		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, f.torProxyUrl, upId)
+	case specs.RestConnector:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, f.torProxyUrl, upId)
+	case specs.RestIndexer:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, f.torProxyUrl, upId)
+	case specs.RestAdditional:
+		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, f.torProxyUrl, upId)
+	case specs.GrpcConnector:
+		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcConnector, upId)
+	case specs.GrpcAdditional:
+		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcAdditional, upId)
+	default:
+		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
+	}
 }
 
 func createLowerBoundsProcessor(
@@ -161,50 +270,6 @@ func manualLowerBounds(bounds config.UpstreamLowerBounds) map[protocol.LowerBoun
 		manual[boundType] = bound
 	}
 	return manual
-}
-
-func createConnector(
-	ctx context.Context,
-	upId string,
-	configuredChain *chains.ConfiguredChain,
-	connectorConfig *config.ApiConnectorConfig,
-	torProxyUrl string,
-) (connectors.ApiConnector, error) {
-	switch connectorConfig.GetApiConnectorType() {
-	case specs.JsonRpcConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.JsonRpcConnector, torProxyUrl, upId)
-	case specs.WebsocketConnector:
-		wsProtocol := newWsProtocol(upId, configuredChain)
-		dialWsService := ws.NewDefaultDialWsService(connectorConfig, torProxyUrl)
-		reqRegistry := ws.NewGenericRequestRegistry(ctx, configuredChain.Chain, upId, configuredChain.MethodSpec)
-		wsProcessor, err := ws.NewGenericWsProcessor(
-			ctx,
-			upId,
-			connectorConfig.Url,
-			dialWsService,
-			reqRegistry,
-			ws.NewWebsocketSession(),
-			wsProtocol,
-		)
-		if err != nil {
-			return nil, err
-		}
-		return connectors.NewWsConnector(wsProcessor), nil
-	case specs.TendermintConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.TendermintConnector, torProxyUrl, upId)
-	case specs.RestConnector:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestConnector, torProxyUrl, upId)
-	case specs.RestIndexer:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestIndexer, torProxyUrl, upId)
-	case specs.RestAdditional:
-		return connectors.NewHttpConnector(connectorConfig, specs.RestAdditional, torProxyUrl, upId)
-	case specs.GrpcConnector:
-		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcConnector, upId)
-	case specs.GrpcAdditional:
-		return connectors.NewGrpcConnector(connectorConfig, specs.GrpcAdditional, upId)
-	default:
-		panic(fmt.Sprintf("unknown connector type - %s", connectorConfig.Type))
-	}
 }
 
 // createSettingValidationProcessor combines the family's own settings validators with
@@ -465,41 +530,6 @@ func getUpstreamVendor(connectors []*config.ApiConnectorConfig) UpstreamVendor {
 		return item.Url
 	})
 	return DetectUpstreamVendor(urls)
-}
-
-func createUpstreamConnectors(
-	ctx context.Context,
-	conf *config.Upstream,
-	configuredChain *chains.ConfiguredChain,
-	tracker dimensions.DimensionTracker,
-	statsService UpstreamStatsService,
-	executor failsafe.Executor[protocol.ResponseHolder],
-	torProxyUrl string,
-) (*connectorsInfo, error) {
-	apiConnectors := make([]connectors.ApiConnector, 0)
-	var headConnector connectors.ApiConnector
-	var internalRequestConnector connectors.ApiConnector
-
-	for _, connectorConfig := range conf.Connectors {
-		apiConnector, err := createConnector(ctx, conf.Id, configuredChain, connectorConfig, torProxyUrl)
-		if err != nil {
-			return nil, fmt.Errorf("couldn't create api connector of %s: %v", conf.Id, err)
-		}
-		hooks := []protocol.ResponseReceivedHook{
-			dimensions.NewDimensionHook(tracker),
-			hook.NewStatsHook(statsService),
-		}
-		apiConnector = connectors.NewObserverConnector(configuredChain.Chain, conf.Id, apiConnector, hooks, executor)
-		if connectorConfig.GetApiConnectorType() == conf.GetHeadApiConnectorType() {
-			headConnector = apiConnector
-		}
-		if connectorConfig.GetApiConnectorType() == conf.GetBestConnector(config.DefaultMode) {
-			internalRequestConnector = apiConnector
-		}
-		apiConnectors = append(apiConnectors, apiConnector)
-	}
-
-	return newConnectorInfo(headConnector, internalRequestConnector, apiConnectors), nil
 }
 
 type connectorsInfo struct {
