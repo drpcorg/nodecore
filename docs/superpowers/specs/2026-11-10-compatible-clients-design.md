@@ -180,12 +180,17 @@ behaviour. The multi-probe form exists for Starknet (§4).
 `Validate(ctx)`:
 
 1. `DetectClient(ctx)`, once, no retry (the user dropped the retry after implementation: the
-   next tick is the retry). Any error → with `allow-undetected: true` (the default, added
-   after implementation) `Valid` with a Debug log: no client, no rule, and the next tick
-   probes again; with `allow-undetected: false` → `SettingsError` (at startup the upstream is
-   not admitted until a later tick answers; at runtime a `SettingsError` is a no-op), the
-   same rule every other settings validator follows. The validator reads the policy from a
-   `compatible_clients.Registry` that bundles the rules holder and the flag.
+   next tick is the retry). A success is remembered (type and version). An error on a node
+   that answered before → the remembered client is judged against the **current** rules
+   (added after review: a failed probe must not re-admit a node removed for a blacklisted
+   version, and a rules change must still apply; remembering the detection rather than the
+   verdict gives both). An error on a node that never answered → with `allow-undetected:
+   true` (the default, added after implementation) `Valid` with a Debug log: no client, no
+   rule, and the next tick probes again; with `allow-undetected: false` → `SettingsError` (at
+   startup the upstream is not admitted until a later tick answers; at runtime a
+   `SettingsError` is a no-op), the same rule every other settings validator follows. The
+   validator reads the policy from a `compatible_clients.Registry` that bundles the rules
+   holder and the flag.
 2. Empty client type or version → `Valid`: there is nothing to match against. The EVM
    detector's `unknown` values fall under the same rule, since no entry is written for them.
 3. `rules.Get().Check(clientType, clientVersion, chain)` (§1). `NoRule` → `Valid`.

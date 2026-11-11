@@ -142,6 +142,45 @@ func TestClientVersionValidatorSettingsErrorOnProbeFailure(t *testing.T) {
 	connector.AssertNumberOfCalls(t, "SendRequest", 1)
 }
 
+func TestClientVersionValidatorKeepsLastDetectionWhenProbeFails(t *testing.T) {
+	for _, allowUndetected := range []bool{true, false} {
+		var rules compatible_clients.Rules
+		require.NoError(t, yaml.Unmarshal([]byte(rethRules), &rules))
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		holder := utils.NewReloadable(ctx, &rules, filepath.Join(t.TempDir(), "missing.yaml"), utils.YAML, time.Hour)
+		detector, connector := clientDetector(t, "v1.4.0", "reth", answer(), errorAnswer(), errorAnswer())
+		validator := validations.NewClientVersionValidator("upstream-1", ethereumChain, detector, compatible_clients.NewRegistry(holder, allowUndetected))
+
+		require.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()), "allowUndetected=%v", allowUndetected)
+		// the blacklisted node stays out while its probe fails, whatever the policy says
+		assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()), "allowUndetected=%v", allowUndetected)
+		assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()), "allowUndetected=%v", allowUndetected)
+		connector.AssertNumberOfCalls(t, "SendRequest", 3)
+	}
+}
+
+func TestClientVersionValidatorRejudgesLastDetectionAgainstCurrentRules(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rules.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(rethRules), 0o644))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	holder := utils.NewReloadable(ctx, &compatible_clients.Rules{}, path, utils.YAML, 20*time.Millisecond)
+	detector, connector := clientDetector(t, "v1.4.0", "reth", answer())
+	connector.On("SendRequest", mock.Anything, mock.Anything).Return(errorAnswer()) // every later probe fails
+	validator := validations.NewClientVersionValidator("upstream-1", ethereumChain, detector, compatible_clients.NewRegistry(holder, false))
+
+	require.Eventually(t, func() bool {
+		return validator.Validate(context.Background()) == validations.FatalSettingError
+	}, 2*time.Second, 50*time.Millisecond)
+
+	// the rules stop forbidding 1.4.0: the remembered client is re-judged without a new probe
+	require.NoError(t, os.WriteFile(path, []byte("rules: []"), 0o644))
+	assert.Eventually(t, func() bool {
+		return validator.Validate(context.Background()) == validations.Valid
+	}, 2*time.Second, 50*time.Millisecond)
+}
+
 func TestClientVersionValidatorValidOnProbeFailureWhenUndetectedAllowed(t *testing.T) {
 	var rules compatible_clients.Rules
 	require.NoError(t, yaml.Unmarshal([]byte(rethRules), &rules))
