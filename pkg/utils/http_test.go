@@ -56,7 +56,7 @@ func TestDefaultHttpTransportReplacesSilentHttp2Connection(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		_, err = io.ReadAll(resp.Body)
 		return err
 	}
