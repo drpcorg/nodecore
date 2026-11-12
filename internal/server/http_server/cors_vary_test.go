@@ -5,13 +5,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 )
 
 // corsContext builds a context whose response already carries the
 // Vary: Accept-Encoding the compression middleware adds on the way in.
-func corsContext(origin string) echo.Context {
+func corsContext(origin string) *echo.Context {
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.Header.Set("Origin", origin)
 	c := echo.New().NewContext(req, httptest.NewRecorder())

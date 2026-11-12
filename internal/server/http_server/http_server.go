@@ -18,7 +18,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/quorum"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -44,7 +44,7 @@ type Response struct {
 
 type FastJSONSerializer struct{}
 
-func (FastJSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
+func (FastJSONSerializer) Serialize(c *echo.Context, i any, indent string) error {
 	enc := encoder.NewStreamEncoder(c.Response())
 	if indent != "" {
 		enc.SetIndent("", indent)
@@ -52,24 +52,46 @@ func (FastJSONSerializer) Serialize(c echo.Context, i interface{}, indent string
 	return enc.Encode(i)
 }
 
-func (FastJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+func (FastJSONSerializer) Deserialize(c *echo.Context, i any) error {
 	return decoder.NewStreamDecoder(c.Request().Body).Decode(i)
 }
 
-func configureServer(ctx context.Context, server *http.Server) {
-	server.BaseContext = func(listener net.Listener) context.Context {
-		return ctx
-	}
-	server.IdleTimeout = 1 * time.Minute // TODO: pass it to the config
-	server.ReadTimeout = 1 * time.Minute
-	server.WriteTimeout = 2 * time.Minute
+// routedMethods are the verbs the client routes answer; anything else gets a
+// 405 from the router. The set is spelled out rather than registered with
+// echo's Any, which matches every verb there is, known or not: a REST request
+// forwards its verb to the upstream as is.
+var routedMethods = []string{
+	http.MethodConnect,
+	http.MethodDelete,
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodOptions,
+	http.MethodPatch,
+	http.MethodPost,
+	echo.PROPFIND,
+	http.MethodPut,
+	http.MethodTrace,
+	echo.REPORT,
 }
 
-func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
+// WithClientLimits is the EchoServer option for the server that takes client
+// traffic: every request context descends from ctx, and the connection
+// deadlines are set.
+func WithClientLimits(ctx context.Context) func(*http.Server) {
+	return func(server *http.Server) {
+		server.BaseContext = func(listener net.Listener) context.Context {
+			return ctx
+		}
+		server.IdleTimeout = 1 * time.Minute // TODO: pass it to the config
+		server.ReadTimeout = 1 * time.Minute
+		server.WriteTimeout = 2 * time.Minute
+	}
+}
+
+// NewHttpServer builds the handler for client traffic. It is served by an
+// EchoServer created with WithClientLimits.
+func NewHttpServer(appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
 	httpServer := echo.New()
-	httpServer.HideBanner = true
-	configureServer(ctx, httpServer.Server)
-	configureServer(ctx, httpServer.TLSServer)
 	httpServer.JSONSerializer = &FastJSONSerializer{}
 	httpServer.Use(Decompress())
 	httpServer.Use(Compress())
@@ -80,7 +102,7 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 	// parsed and validated once at config load time.
 	trustedProxies := trustedProxiesFromConfig(appCtx)
 
-	requestHandler := func(c echo.Context) error {
+	requestHandler := func(c *echo.Context) error {
 		if c.Request().Method == http.MethodOptions {
 			return handleCorsOptions(c)
 		}
@@ -136,7 +158,7 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		}
 
 		if isWsUpgrade {
-			conn, err := upgrader.Upgrade(c.Response().Writer, c.Request(), nil)
+			conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 			if err != nil {
 				log.Error().Err(err).Msg("couldn't upgrade http to ws")
 				return err
@@ -149,10 +171,10 @@ func NewHttpServer(ctx context.Context, appCtx *server_ctx.ApplicationServerCont
 		return err
 	}
 
-	httpGroup.Any("/api-key/:key/*", requestHandler)
-	httpGroup.Any("/api-key/:key", requestHandler)
-	httpGroup.Any("/*", requestHandler)
-	httpGroup.Any("", requestHandler)
+	httpGroup.Match(routedMethods, "/api-key/:key/*", requestHandler)
+	httpGroup.Match(routedMethods, "/api-key/:key", requestHandler)
+	httpGroup.Match(routedMethods, "/*", requestHandler)
+	httpGroup.Match(routedMethods, "", requestHandler)
 
 	return httpServer
 }
@@ -172,7 +194,7 @@ var corsHeaders = []lo.Tuple2[string, string]{
 	lo.T2("Access-Control-Request-Method", "Access-Control-Allow-Methods"),
 }
 
-func handleCorsOptions(c echo.Context) error {
+func handleCorsOptions(c *echo.Context) error {
 	for _, header := range corsHeaders {
 		if requestHeaderValue := c.Request().Header.Get(header.A); requestHeaderValue != "" {
 			c.Response().Header().Set(header.B, requestHeaderValue)
@@ -183,7 +205,7 @@ func handleCorsOptions(c echo.Context) error {
 
 func handleHttp(
 	ctx context.Context,
-	reqCtx echo.Context,
+	reqCtx *echo.Context,
 	chain string,
 	restPath string,
 	reqType protocol.RequestType,
@@ -221,7 +243,7 @@ func handleHttp(
 func handleResponse(
 	ctx context.Context,
 	requestHandler RequestHandler,
-	reqCtx echo.Context,
+	reqCtx *echo.Context,
 	handleResp *server_ctx.HandleResponse,
 ) error {
 	var responseReader io.Reader
@@ -274,7 +296,7 @@ func copyUpstreamResponseHeaders(dst http.Header, response protocol.ResponseHold
 	}
 }
 
-func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
+func setCorsHeaders(reqCtx *echo.Context, corsOrigins []string) {
 	if len(corsOrigins) > 0 {
 		origin := reqCtx.Request().Header.Get("Origin")
 		for _, item := range corsOrigins {
@@ -292,7 +314,7 @@ func setCorsHeaders(reqCtx echo.Context, corsOrigins []string) {
 	}
 }
 
-func writeResponse(httpResponse *echo.Response, code int, responseReader io.Reader) error {
+func writeResponse(httpResponse http.ResponseWriter, code int, responseReader io.Reader) error {
 	if httpResponse.Header().Get(echo.HeaderContentType) == "" {
 		httpResponse.Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	}

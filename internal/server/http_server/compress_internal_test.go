@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,9 +18,9 @@ func compressedRequest(t *testing.T, acceptEncoding string, handle echo.HandlerF
 	var crw *compressResponseWriter
 	e := echo.New()
 	e.Use(Compress())
-	e.GET("/", func(c echo.Context) error {
+	e.GET("/", func(c *echo.Context) error {
 		var ok bool
-		crw, ok = c.Response().Writer.(*compressResponseWriter)
+		crw, ok = c.Response().(*compressResponseWriter)
 		require.True(t, ok, "the middleware did not wrap the response writer")
 		return handle(c)
 	})
@@ -39,10 +39,10 @@ func compressedRequest(t *testing.T, acceptEncoding string, handle echo.HandlerF
 // life of the connection. A pooled zstd encoder is over a megabyte of that.
 func TestCompressTakesNoEncoderUntilTheFirstBodyByte(t *testing.T) {
 	var duringHandler, afterFirstWrite any
-	crw, rec := compressedRequest(t, "zstd", func(c echo.Context) error {
-		duringHandler = c.Response().Writer.(*compressResponseWriter).writer
+	crw, rec := compressedRequest(t, "zstd", func(c *echo.Context) error {
+		duringHandler = c.Response().(*compressResponseWriter).writer
 		_, err := c.Response().Write([]byte(`{"jsonrpc":"2.0","id":1,"result":"0x1"}`))
-		afterFirstWrite = c.Response().Writer.(*compressResponseWriter).writer
+		afterFirstWrite = c.Response().(*compressResponseWriter).writer
 		return err
 	})
 
@@ -55,7 +55,7 @@ func TestCompressTakesNoEncoderUntilTheFirstBodyByte(t *testing.T) {
 // A response with no body never needs an encoder at all - a 204, a 304, and a
 // WebSocket upgrade that hijacks the connection out from under this writer.
 func TestCompressTakesNoEncoderForABodylessResponse(t *testing.T) {
-	crw, rec := compressedRequest(t, "zstd", func(c echo.Context) error {
+	crw, rec := compressedRequest(t, "zstd", func(c *echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
 	})
 

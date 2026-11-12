@@ -2,7 +2,6 @@ package http_server_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -17,6 +16,35 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+// A verb outside the routed set is turned away by the router and never
+// reaches the handler - which, with no app context behind it here, would
+// panic if it did. A REST request forwards its verb to the upstream as is.
+func TestHttpServerRejectsUnroutedVerbs(t *testing.T) {
+	paths := []string{
+		"/queries/optimism",
+		"/queries/optimism/eth/v1",
+		"/queries/optimism/api-key/123",
+		"/queries/optimism/api-key/123/eth/v1",
+	}
+	server := http_server.NewHttpServer(nil)
+
+	for _, path := range paths {
+		for _, verb := range []string{"FOO", "QUERY"} {
+			t.Run(verb+" "+path, func(te *testing.T) {
+				rec := httptest.NewRecorder()
+
+				server.ServeHTTP(rec, httptest.NewRequest(verb, path, nil))
+
+				assert.Equal(te, http.StatusMethodNotAllowed, rec.Code)
+				assert.Equal(te,
+					"OPTIONS, CONNECT, DELETE, GET, HEAD, PATCH, POST, PROPFIND, PUT, TRACE, REPORT",
+					rec.Header().Get("Allow"),
+				)
+			})
+		}
+	}
+}
 
 func TestHttpServerOptionsRequest(t *testing.T) {
 	tests := []struct {
@@ -74,7 +102,7 @@ func TestHttpServerOptionsRequest(t *testing.T) {
 		},
 	}
 
-	server := http_server.NewHttpServer(context.Background(), nil)
+	server := http_server.NewHttpServer(nil)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -128,7 +156,7 @@ func TestHttpServerCantAuthenticate(t *testing.T) {
 
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -157,7 +185,7 @@ func TestHttpServerCantAuthenticate(t *testing.T) {
 func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -189,7 +217,7 @@ func TestHttServerCantParseJsonRpcThenErr(t *testing.T) {
 func TestHttpServerNonUtf8ChainThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -213,7 +241,7 @@ func TestHttpServerNonUtf8ChainThenErr(t *testing.T) {
 func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -240,7 +268,7 @@ func TestHttpServerPreKeyValidateWithErr(t *testing.T) {
 func TestHttpServerNotSupportedChainThenErr(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -268,7 +296,7 @@ func TestHttpServerChainSupervisorIsNilThenErr(t *testing.T) {
 	upSup := mocks.NewUpstreamSupervisorMock()
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -298,7 +326,7 @@ func TestHttpServerPostKeyValidateWithErr(t *testing.T) {
 	upSup := mocks.NewUpstreamSupervisorMock()
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(upSup, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 	client := http.DefaultClient
@@ -333,7 +361,7 @@ func TestHttpServerPostKeyValidateWithErr(t *testing.T) {
 func TestHttpServerRoutesEmptyPathGetAsRest(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 
@@ -357,7 +385,7 @@ func TestHttpServerRoutesEmptyPathGetAsRest(t *testing.T) {
 func TestHttpServerKeepsEmptyPathPostAsJsonRpc(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 
@@ -386,7 +414,7 @@ func TestHttpServerKeepsEmptyPathPostAsJsonRpc(t *testing.T) {
 func TestHttpServerWsHandshakeAuthErrorKeepsJsonRpcShape(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 
@@ -412,7 +440,7 @@ func TestHttpServerWsHandshakeAuthErrorKeepsJsonRpcShape(t *testing.T) {
 func TestHttpServerPlainGetWithoutUpgradeStaysRest(t *testing.T) {
 	authProc := mocks.NewMockAuthProcessor()
 	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, nil, nil, nil, nil, nil, nil)
-	server := http_server.NewHttpServer(context.Background(), appCtx)
+	server := http_server.NewHttpServer(appCtx)
 	ts := httptest.NewServer(server)
 	defer ts.Close()
 

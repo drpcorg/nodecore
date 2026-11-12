@@ -6,13 +6,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +24,7 @@ func serveCompressed(t *testing.T, acceptEncoding string) *httptest.ResponseReco
 	t.Helper()
 	e := echo.New()
 	e.Use(http_server.Compress())
-	e.GET("/", func(c echo.Context) error {
+	e.GET("/", func(c *echo.Context) error {
 		return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, compressBody)
 	})
 
@@ -87,7 +88,7 @@ func TestCompressAlwaysVariesOnAcceptEncoding(t *testing.T) {
 func TestCompressLeavesEmptyResponsesUnencoded(t *testing.T) {
 	e := echo.New()
 	e.Use(http_server.Compress())
-	e.GET("/", func(c echo.Context) error {
+	e.GET("/", func(c *echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
 	})
 
@@ -101,6 +102,30 @@ func TestCompressLeavesEmptyResponsesUnencoded(t *testing.T) {
 	assert.Empty(t, rec.Body.Bytes())
 }
 
+// A handler may write a body without ever setting a status. Whatever
+// Content-Length it announced described the plain body, so it must not go out
+// in front of the encoded one.
+func TestCompressDropsAContentLengthSetBeforeAnImplicitStatus(t *testing.T) {
+	e := echo.New()
+	e.Use(http_server.Compress())
+	e.GET("/", func(c *echo.Context) error {
+		c.Response().Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		c.Response().Header().Set(echo.HeaderContentLength, strconv.Itoa(len(compressBody)))
+		_, err := c.Response().Write(compressBody)
+		return err
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(echo.HeaderAcceptEncoding, "zstd")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "zstd", rec.Header().Get(echo.HeaderContentEncoding))
+	assert.Empty(t, rec.Header().Get(echo.HeaderContentLength))
+	assert.Equal(t, compressBody, decodeBody(t, "zstd", rec.Body.Bytes()))
+}
+
 // A handler that writes and then fails hands echo an error after this
 // middleware has already closed the body and returned the codec to the pool.
 // Nothing may be written through that codec afterwards: it belongs to
@@ -110,7 +135,7 @@ func TestCompressRefusesWritesAfterTheBodyIsFinished(t *testing.T) {
 	var lateErr error
 
 	e := echo.New()
-	e.HTTPErrorHandler = func(err error, c echo.Context) {
+	e.HTTPErrorHandler = func(c *echo.Context, err error) {
 		// Stand in for a concurrent response acquiring the encoder that the
 		// middleware has just released.
 		writer, acquireErr := compression.AcquireWriter(compression.Zstd, &stolen)
@@ -120,7 +145,7 @@ func TestCompressRefusesWritesAfterTheBodyIsFinished(t *testing.T) {
 		require.NoError(t, writer.Close())
 	}
 	e.Use(http_server.Compress())
-	e.GET("/", func(c echo.Context) error {
+	e.GET("/", func(c *echo.Context) error {
 		if _, err := c.Response().Write([]byte("partial")); err != nil {
 			return err
 		}
@@ -160,7 +185,7 @@ func TestCompressRefusesWritesAfterTheBodyIsFinished(t *testing.T) {
 func TestCompressServesAnErrorRaisedBeforeAnyWrite(t *testing.T) {
 	e := echo.New()
 	e.Use(http_server.Compress())
-	e.GET("/", func(c echo.Context) error {
+	e.GET("/", func(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadGateway, "upstream is unhappy")
 	})
 
@@ -174,32 +199,30 @@ func TestCompressServesAnErrorRaisedBeforeAnyWrite(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "upstream is unhappy")
 }
 
-// A WebSocket handshake that gorilla rejects writes its own response through
-// c.Response().Writer, which never sets echo's Committed flag - so echo's
-// default error handler runs afterwards and writes again, through a writer
-// whose encoder this middleware has already returned to the pool. The client
-// gets gorilla's rejection, decodable and complete, and nothing reaches the
-// pooled encoder.
+// A WebSocket handshake that gorilla rejects writes its own response and the
+// handler then returns the error, so echo's error handler runs afterwards -
+// holding a writer whose encoder this middleware has already returned to the
+// pool. The client gets gorilla's rejection, decodable and complete, with no
+// second body appended, and nothing reaches the pooled encoder.
 func TestCompressSurvivesARejectedWebsocketUpgrade(t *testing.T) {
 	upgrader := websocket.Upgrader{}
 	var stolen bytes.Buffer
 
 	e := echo.New()
 	defaultErrorHandler := e.HTTPErrorHandler
-	e.HTTPErrorHandler = func(err error, c echo.Context) {
-		// Echo's own handler is what writes here, and it does so because
-		// gorilla wrote through c.Response().Writer and left Committed false.
-		// Standing in for a concurrent response that acquired the encoder this
-		// middleware has just released is what makes the write observable.
+	e.HTTPErrorHandler = func(c *echo.Context, err error) {
+		// Echo's own handler is what would write here. Standing in for a
+		// concurrent response that acquired the encoder this middleware has
+		// just released is what makes such a write observable.
 		writer, acquireErr := compression.AcquireWriter(compression.Zstd, &stolen)
 		require.NoError(t, acquireErr)
 		defer compression.ReleaseWriter(writer)
-		defaultErrorHandler(err, c)
+		defaultErrorHandler(c, err)
 		require.NoError(t, writer.Close())
 	}
 	e.Use(http_server.Compress())
-	e.GET("/", func(c echo.Context) error {
-		conn, err := upgrader.Upgrade(c.Response().Writer, c.Request(), nil)
+	e.GET("/", func(c *echo.Context) error {
+		conn, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 		if err != nil {
 			return err
 		}
@@ -266,7 +289,7 @@ func TestCompressReadsEveryAcceptEncodingFieldLine(t *testing.T) {
 		t.Run(tt.name, func(te *testing.T) {
 			e := echo.New()
 			e.Use(http_server.Compress())
-			e.GET("/", func(c echo.Context) error {
+			e.GET("/", func(c *echo.Context) error {
 				return c.Blob(http.StatusOK, echo.MIMEApplicationJSON, compressBody)
 			})
 
@@ -307,13 +330,15 @@ func TestCompressStreamsFlushedChunksToTheClient(t *testing.T) {
 			firstDecoded := make(chan struct{})
 			e := echo.New()
 			e.Use(http_server.Compress())
-			e.GET("/", func(c echo.Context) error {
+			e.GET("/", func(c *echo.Context) error {
 				c.Response().Header().Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 				c.Response().WriteHeader(http.StatusOK)
 				if _, err := c.Response().Write(first); err != nil {
 					return err
 				}
-				c.Response().Flush()
+				if err := http.NewResponseController(c.Response()).Flush(); err != nil {
+					return err
+				}
 				select {
 				case <-firstDecoded:
 				case <-time.After(5 * time.Second):
