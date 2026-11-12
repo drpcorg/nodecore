@@ -35,5 +35,10 @@ func DefaultHttpTransport() *http.Transport {
 		ResponseHeaderTimeout: 60 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 5 * time.Second,
+		// ping silent HTTP/2 connections so a dead one is replaced instead of reused forever
+		HTTP2: &http.HTTP2Config{
+			SendPingTimeout: 30 * time.Second,
+			PingTimeout:     15 * time.Second,
+		},
 	}
 }
