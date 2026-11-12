@@ -10,7 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/compression"
 	"github.com/drpcorg/nodecore/internal/server/http_server"
 	"github.com/klauspost/compress/zstd"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +22,7 @@ func postCompressed(t *testing.T, contentEncoding string, body []byte) (*httptes
 	var seen []byte
 	e := echo.New()
 	e.Use(http_server.Decompress())
-	e.POST("/", func(c echo.Context) error {
+	e.POST("/", func(c *echo.Context) error {
 		read, err := io.ReadAll(c.Request().Body)
 		if err != nil {
 			return err
@@ -86,7 +86,7 @@ func TestDecompressDropsTheContentEncodingHeader(t *testing.T) {
 	var seen string
 	e := echo.New()
 	e.Use(http_server.Decompress())
-	e.POST("/", func(c echo.Context) error {
+	e.POST("/", func(c *echo.Context) error {
 		seen = c.Request().Header.Get(echo.HeaderContentEncoding)
 		return c.NoContent(http.StatusOK)
 	})
@@ -248,7 +248,7 @@ func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, *ht
 	var readErr error
 	e := echo.New()
 	e.Use(http_server.Decompress())
-	e.POST("/", func(c echo.Context) error {
+	e.POST("/", func(c *echo.Context) error {
 		read, readErr = io.Copy(io.Discard, c.Request().Body)
 		if readErr != nil {
 			return readErr
@@ -271,7 +271,7 @@ func TestDecompressDropsTheBrotliContentEncodingHeader(t *testing.T) {
 	var seenBody []byte
 	e := echo.New()
 	e.Use(http_server.Decompress())
-	e.POST("/", func(c echo.Context) error {
+	e.POST("/", func(c *echo.Context) error {
 		seenHeader = c.Request().Header.Get(echo.HeaderContentEncoding)
 		body, err := io.ReadAll(c.Request().Body)
 		seenBody = body

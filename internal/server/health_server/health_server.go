@@ -5,7 +5,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type chainStatus struct {
@@ -20,15 +20,14 @@ type statusResponse struct {
 
 func NewHealthServer(supervisor upstreams.UpstreamSupervisor) *echo.Echo {
 	e := echo.New()
-	e.HideBanner = true
-	e.GET("/health", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
-	e.GET("/ready", func(c echo.Context) error {
+	e.GET("/health", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.GET("/ready", func(c *echo.Context) error {
 		if isReady(supervisor) {
 			return c.NoContent(http.StatusOK)
 		}
 		return c.NoContent(http.StatusServiceUnavailable)
 	})
-	e.GET("/status", func(c echo.Context) error { return c.JSON(http.StatusOK, buildStatus(supervisor)) })
+	e.GET("/status", func(c *echo.Context) error { return c.JSON(http.StatusOK, buildStatus(supervisor)) })
 	return e
 }
 
