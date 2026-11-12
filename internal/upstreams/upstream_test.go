@@ -23,6 +23,7 @@ import (
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -636,7 +637,7 @@ func TestGenericUpstreamUpdateHead_DelegatesToBlockProcessor(t *testing.T) {
 // upstream context goes with them, so a second Start cannot bring the connectors back.
 func TestGenericUpstreamStart_WithFatalSettingsValidation_ReleasesConnectors(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
-	validator.On("Validate").Return(validations.FatalSettingError)
+	validator.On("Validate", mock.Anything).Return(validations.FatalSettingError)
 	connector := mocks.NewConnectorMock()
 	connector.On("Start").Return()
 	connector.On("Stop").Return()
@@ -663,7 +664,7 @@ func TestGenericUpstreamStart_WithFatalSettingsValidation_ReleasesConnectors(t *
 
 func TestGenericUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
-	validator.On("Validate").Return(validations.FatalSettingError).Once()
+	validator.On("Validate", mock.Anything).Return(validations.FatalSettingError).Once()
 
 	upConfig := newUpstreamConfig(&config.MethodsConfig{BanDuration: 20 * time.Millisecond})
 	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
@@ -683,7 +684,7 @@ func TestGenericUpstreamStart_WithFatalSettingsValidation_DoesNotRun(t *testing.
 
 func TestGenericUpstreamStart_WithSettingsError_KeepsRunningWithoutPublishingState(t *testing.T) {
 	validator := mocks.NewSettingsValidatorMock()
-	validator.On("Validate").Return(validations.SettingsError)
+	validator.On("Validate", mock.Anything).Return(validations.SettingsError)
 
 	settingsProcessor := event_processors.NewGenericSettingsEventProcessor(
 		context.Background(),

@@ -15,7 +15,7 @@ import (
 type ValidationEventProcessor[R any] interface {
 	UpstreamStateEventProcessor
 
-	Validate() R
+	Validate(ctx context.Context) R
 }
 
 type SettingsEventProcessor interface {
@@ -28,8 +28,6 @@ type GenericSettingsEventProcessor struct {
 	validationInterval time.Duration
 	validator          *validations.ValidationProcessor[validations.ValidationSettingResult]
 	emitter            Emitter
-
-	currentValidationState *utils.Atomic[validations.ValidationSettingResult]
 }
 
 func (b *GenericSettingsEventProcessor) Type() EventProcessorType {
@@ -49,19 +47,21 @@ func (b *GenericSettingsEventProcessor) Start() {
 					log.Info().Msgf("stopping settings validations events of upstream '%s'", b.upstreamId)
 					return
 				case <-time.After(b.validationInterval):
-					currentValidationState := b.currentValidationState.Load()
-					validationResult := b.Validate()
-					switch validationResult {
+					// The verdict is reported every tick. GenericUpstream.processStateEvents owns
+					// the valid/invalid state and ignores repeats, which is what lets a Valid tick
+					// re-admit an upstream that something else (the head guard) removed.
+					result := b.Validate(ctx)
+					if ctx.Err() != nil {
+						// a cancelled probe has no verdict; the next select sees ctx.Done()
+						continue
+					}
+					switch result {
 					case validations.FatalSettingError:
-						if currentValidationState == validations.SettingsError || currentValidationState == validations.Valid {
-							b.emitter(&protocol.FatalErrorUpstreamStateEvent{})
-						}
+						b.emitter(&protocol.FatalErrorUpstreamStateEvent{})
 					case validations.SettingsError:
 						log.Debug().Msg("keep validating...")
 					case validations.Valid:
-						if currentValidationState == validations.SettingsError || currentValidationState == validations.FatalSettingError {
-							b.emitter(&protocol.ValidUpstreamStateEvent{})
-						}
+						b.emitter(&protocol.ValidUpstreamStateEvent{})
 					case validations.UnknownResult:
 						// skip
 					}
@@ -80,11 +80,8 @@ func (b *GenericSettingsEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *GenericSettingsEventProcessor) Validate() validations.ValidationSettingResult {
-	result := b.validator.Validate()
-	b.currentValidationState.Store(result)
-
-	return result
+func (b *GenericSettingsEventProcessor) Validate(ctx context.Context) validations.ValidationSettingResult {
+	return b.validator.Validate(ctx)
 }
 
 func NewGenericSettingsEventProcessor(
@@ -97,15 +94,11 @@ func NewGenericSettingsEventProcessor(
 		return nil
 	}
 
-	currentValidationState := utils.NewAtomic[validations.ValidationSettingResult]()
-	currentValidationState.Store(validations.UnknownResult)
-
 	return &GenericSettingsEventProcessor{
-		lifecycle:              utils.NewGenericLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
-		validationInterval:     options.ValidationInterval,
-		validator:              validator,
-		upstreamId:             upstreamId,
-		currentValidationState: currentValidationState,
+		lifecycle:          utils.NewGenericLifecycle(fmt.Sprintf("%s_settings_event_processor", upstreamId), ctx),
+		validationInterval: options.ValidationInterval,
+		validator:          validator,
+		upstreamId:         upstreamId,
 	}
 }
 
@@ -132,14 +125,14 @@ func (b *GenericHealthEventProcessor) SetEmitter(emitter Emitter) {
 func (b *GenericHealthEventProcessor) Start() {
 	b.lifecycle.Start(func(ctx context.Context) (func(), error) {
 		go func() {
-			b.validateHealth()
+			b.validateHealth(ctx)
 			for {
 				select {
 				case <-ctx.Done():
 					log.Info().Msgf("stopping health validations events of upstream '%s'", b.upstreamId)
 					return
 				case <-time.After(b.validationInterval):
-					b.validateHealth()
+					b.validateHealth(ctx)
 				}
 			}
 		}()
@@ -156,12 +149,16 @@ func (b *GenericHealthEventProcessor) Running() bool {
 	return b.lifecycle.Running()
 }
 
-func (b *GenericHealthEventProcessor) Validate() protocol.AvailabilityStatus {
-	return b.validator.Validate()
+func (b *GenericHealthEventProcessor) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	return b.validator.Validate(ctx)
 }
 
-func (b *GenericHealthEventProcessor) validateHealth() {
-	availabilityStatus := b.Validate()
+func (b *GenericHealthEventProcessor) validateHealth(ctx context.Context) {
+	availabilityStatus := b.Validate(ctx)
+	if ctx.Err() != nil {
+		// a cancelled probe reads as Unavailable, which is not a verdict about the node
+		return
+	}
 	log.Debug().Msgf("availability status of upstream '%s' - %s", b.upstreamId, availabilityStatus)
 
 	b.emitter(&protocol.StatusUpstreamStateEvent{Status: availabilityStatus})

@@ -1,86 +1,44 @@
 package starknet_labels
 
 import (
-	"context"
 	"strings"
-	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
-	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
 )
 
-// The client-identity probe pair mirrors dshackle: pathfinder answers
-// `pathfinder_version`, juno answers `juno_version`, each returns -32601
-// for the other's method.
-var versionProbes = []struct {
+// StarknetClientLabelsDetector probes one Starknet client: pathfinder answers
+// `pathfinder_version`, juno answers `juno_version`, each returns -32601 for the
+// other's method, so the two detectors are chained as fallbacks in one handler.
+type StarknetClientLabelsDetector struct {
+	chain      chains.Chain
 	method     string
 	clientType string
-}{
-	{method: "pathfinder_version", clientType: "pathfinder"},
-	{method: "juno_version", clientType: "juno"},
 }
 
-// StarknetClientLabelsDetector implements labels.LabelsDetector directly
-// because the single-request labels.ClientLabelsDetector interface cannot
-// express the two-probe pathfinder/juno fallback chain.
-type StarknetClientLabelsDetector struct {
-	upstreamId      string
-	connector       connectors.ApiConnector
-	chain           chains.Chain
-	internalTimeout time.Duration
+func NewPathfinderClientLabelsDetector(chain chains.Chain) *StarknetClientLabelsDetector {
+	return &StarknetClientLabelsDetector{chain: chain, method: "pathfinder_version", clientType: "pathfinder"}
 }
 
-func NewStarknetLabelsDetector(
-	upstreamId string,
-	connector connectors.ApiConnector,
-	chain chains.Chain,
-	internalTimeout time.Duration,
-) *StarknetClientLabelsDetector {
-	return &StarknetClientLabelsDetector{
-		upstreamId:      upstreamId,
-		connector:       connector,
-		chain:           chain,
-		internalTimeout: internalTimeout,
+func NewJunoClientLabelsDetector(chain chains.Chain) *StarknetClientLabelsDetector {
+	return &StarknetClientLabelsDetector{chain: chain, method: "juno_version", clientType: "juno"}
+}
+
+func (s *StarknetClientLabelsDetector) NodeTypeRequest() (protocol.RequestHolder, error) {
+	return protocol.NewInternalUpstreamJsonRpcRequest(s.method, []any{}, s.chain)
+}
+
+// ClientVersionAndType reads the quoted bare version (`"v0.16.4"`); any other result
+// keeps the client type and drops the version, never an error: a node that answered the
+// probe is this client, whatever it put in the result.
+func (s *StarknetClientLabelsDetector) ClientVersionAndType(data []byte) (string, string, error) {
+	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
+		log.Warn().Msgf("unexpected '%s' result '%s', skipping client_version", s.method, data)
+		return "", s.clientType, nil
 	}
+	return strings.TrimPrefix(protocol.ResultAsString(data), "v"), s.clientType, nil
 }
 
-func (s *StarknetClientLabelsDetector) DetectLabels() map[string]string {
-	for _, probe := range versionProbes {
-		request, err := protocol.NewInternalUpstreamJsonRpcRequest(probe.method, []any{}, s.chain)
-		if err != nil {
-			log.Error().Err(err).Msgf("failed to create a '%s' client labels request of '%s'", probe.method, s.upstreamId)
-			return nil
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
-		response := s.connector.SendRequest(ctx, request)
-		cancel()
-
-		if response.HasError() {
-			// -32601 on the wrong client, fall through to the next probe
-			log.Debug().Err(response.GetError()).Msgf("'%s' client labels probe of '%s' failed", probe.method, s.upstreamId)
-			continue
-		}
-
-		clientLabels := map[string]string{"client_type": probe.clientType}
-		// version is a quoted bare string like "v0.16.4"
-		result := response.ResponseResult()
-		if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' {
-			clientVersion := strings.TrimPrefix(protocol.ResultAsString(result), "v")
-			if clientVersion != "" {
-				clientLabels["client_version"] = clientVersion
-			}
-		} else {
-			log.Warn().Msgf("unexpected '%s' result '%s' of '%s', skipping client_version", probe.method, result, s.upstreamId)
-		}
-		return clientLabels
-	}
-
-	log.Warn().Msgf("unable to detect a starknet client of '%s', neither pathfinder_version nor juno_version answered", s.upstreamId)
-	return nil
-}
-
-var _ labels.LabelsDetector = (*StarknetClientLabelsDetector)(nil)
+var _ labels.ClientLabelsDetector = (*StarknetClientLabelsDetector)(nil)

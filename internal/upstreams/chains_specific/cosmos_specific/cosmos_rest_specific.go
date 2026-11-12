@@ -88,7 +88,7 @@ func (c *CosmosRestSpecific) ParseBlock(blockBytes []byte) (protocol.Block, erro
 	), nil
 }
 
-func (c *CosmosRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (c *CosmosRestSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -132,15 +132,17 @@ func (c *CosmosRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProces
 }
 
 func (c *CosmosRestSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			c.upstreamId,
-			c.connector,
-			cosmos_labels.NewCosmosClientLabelsDetector(c.chain.Chain),
-			c.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{c.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(c.ctx, c.upstreamId, labelsDetectors, c.options.ValidationInterval*5)
+}
+
+func (c *CosmosRestSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		c.upstreamId,
+		c.connector,
+		c.options.InternalTimeout,
+		cosmos_labels.NewCosmosClientLabelsDetector(c.chain.Chain),
+	)
 }
 
 func (c *CosmosRestSpecific) BlockProcessor() blocks.BlockProcessor {
@@ -161,6 +163,11 @@ var _ chains_specific.ChainSpecific = (*CosmosRestSpecific)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (c *CosmosRestSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (c *CosmosRestSpecific) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

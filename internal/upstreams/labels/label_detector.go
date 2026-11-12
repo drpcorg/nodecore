@@ -12,7 +12,7 @@ import (
 type EthClientLabelMapping func(data []byte) (string, error)
 
 type LabelsDetector interface {
-	DetectLabels() map[string]string
+	DetectLabels(ctx context.Context) map[string]string
 }
 
 type ClientLabelsDetector interface {
@@ -20,36 +20,46 @@ type ClientLabelsDetector interface {
 	ClientVersionAndType(data []byte) (string, string, error)
 }
 
-type ClientLabelsDetectorHandler struct {
-	upstreamId          string
-	connector           connectors.ApiConnector
-	clientLabelDetector ClientLabelsDetector
-	internalTimeout     time.Duration
+// ClientDetector asks a node which client it runs: as labels for the labels processor,
+// and as a typed answer for the client version validator.
+type ClientDetector interface {
+	LabelsDetector
+	DetectClient(ctx context.Context) (clientType, clientVersion string, err error)
 }
 
-func (c *ClientLabelsDetectorHandler) DetectLabels() map[string]string {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
-	defer cancel()
+// ClientLabelsDetectorHandler asks a node which client it runs through one or more
+// probes, tried in order: a probe whose request is answered with an error falls through
+// to the next one. Every family has a single probe except the ones whose clients each
+// answer a method of their own.
+type ClientLabelsDetectorHandler struct {
+	upstreamId      string
+	connector       connectors.ApiConnector
+	probes          []ClientLabelsDetector
+	internalTimeout time.Duration
+}
 
-	request, err := c.clientLabelDetector.NodeTypeRequest()
+// DetectClient returns the client type and version reported by the first probe that
+// answers, or the last probe's error when none does. Note the (type, version) order,
+// the opposite of ClientLabelsDetector.ClientVersionAndType.
+func (c *ClientLabelsDetectorHandler) DetectClient(ctx context.Context) (clientType, clientVersion string, err error) {
+	for _, probe := range c.probes {
+		clientVersion, clientType, err = c.detectWith(ctx, probe)
+		if err == nil {
+			return clientType, clientVersion, nil
+		}
+		log.Debug().Err(err).Msgf("client labels probe of '%s' failed", c.upstreamId)
+	}
+	return "", "", err
+}
+
+func (c *ClientLabelsDetectorHandler) DetectLabels(ctx context.Context) map[string]string {
+	clientType, clientVersion, err := c.DetectClient(ctx)
 	if err != nil {
-		log.Error().Err(err).Msgf("failed to get a client labels request of '%s'", c.upstreamId)
+		log.Error().Err(err).Msgf("unable to detect client labels of '%s'", c.upstreamId)
 		return nil
 	}
 
-	response := c.connector.SendRequest(ctx, request)
-	if response.HasError() {
-		log.Error().Err(response.GetError()).Msgf("unable to perform a client labels request of '%s'", c.upstreamId)
-		return nil
-	}
 	clientLabels := make(map[string]string, 2)
-
-	clientVersion, clientType, err := c.clientLabelDetector.ClientVersionAndType(response.ResponseResult())
-	if err != nil {
-		log.Error().Err(err).Msgf("unable to parse client labels of '%s'", c.upstreamId)
-		return nil
-	}
-
 	if clientVersion != "" {
 		clientLabels["client_version"] = clientVersion
 	}
@@ -60,18 +70,37 @@ func (c *ClientLabelsDetectorHandler) DetectLabels() map[string]string {
 	return clientLabels
 }
 
+// NewClientLabelDetectorHandler builds a handler over one or more probes, tried in the
+// given order.
 func NewClientLabelDetectorHandler(
 	upstreamId string,
 	connector connectors.ApiConnector,
-	clientLabelDetector ClientLabelsDetector,
 	internalTimeout time.Duration,
+	probes ...ClientLabelsDetector,
 ) *ClientLabelsDetectorHandler {
 	return &ClientLabelsDetectorHandler{
-		upstreamId:          upstreamId,
-		connector:           connector,
-		clientLabelDetector: clientLabelDetector,
-		internalTimeout:     internalTimeout,
+		upstreamId:      upstreamId,
+		connector:       connector,
+		probes:          probes,
+		internalTimeout: internalTimeout,
 	}
 }
 
-var _ LabelsDetector = (*ClientLabelsDetectorHandler)(nil)
+func (c *ClientLabelsDetectorHandler) detectWith(ctx context.Context, probe ClientLabelsDetector) (clientVersion, clientType string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
+	defer cancel()
+
+	request, err := probe.NodeTypeRequest()
+	if err != nil {
+		return "", "", err
+	}
+
+	response := c.connector.SendRequest(ctx, request)
+	if response.HasError() {
+		return "", "", response.GetError()
+	}
+
+	return probe.ClientVersionAndType(response.ResponseResult())
+}
+
+var _ ClientDetector = (*ClientLabelsDetectorHandler)(nil)

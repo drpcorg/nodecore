@@ -38,8 +38,8 @@ func NewStellarChainValidator(
 	}
 }
 
-func (s *StellarChainValidator) Validate() validations.ValidationSettingResult {
-	passphrase, err := s.fetchPassphrase()
+func (s *StellarChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	passphrase, err := s.fetchPassphrase(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch the stellar network for upstream '%s'", s.upstreamId)
 		return validations.SettingsError
@@ -61,8 +61,8 @@ func (s *StellarChainValidator) Validate() validations.ValidationSettingResult {
 	return validations.FatalSettingError
 }
 
-func (s *StellarChainValidator) fetchPassphrase() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *StellarChainValidator) fetchPassphrase(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("getNetwork", map[string]any{}, s.chain.Chain)

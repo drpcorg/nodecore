@@ -30,6 +30,7 @@ type UpstreamConfig struct {
 	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing"`
 	BalancingStrategy BalancingStrategy         `yaml:"balancing-strategy"`
 	Mode              UpstreamMode              `yaml:"mode"`
+	CompatibleClients *CompatibleClientsConfig  `yaml:"compatible-clients"`
 }
 
 // BalancingStrategy selects how the generic (non-special-cased) request is
@@ -531,6 +532,10 @@ func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torPr
 	}
 
 	if err := u.BalancingStrategy.validate(); err != nil {
+		return err
+	}
+
+	if err := u.CompatibleClients.validate(); err != nil {
 		return err
 	}
 

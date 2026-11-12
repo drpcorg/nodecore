@@ -41,8 +41,8 @@ func NewEthChainValidator(
 	}
 }
 
-func (c *EthChainValidator) Validate() validations.ValidationSettingResult {
-	ctx, cancel := context.WithTimeout(context.Background(), c.internalTimeout)
+func (c *EthChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	ctx, cancel := context.WithTimeout(ctx, c.internalTimeout)
 	defer cancel()
 
 	group, ctx := errgroup.WithContext(ctx)
@@ -78,9 +78,10 @@ func (c *EthChainValidator) Validate() validations.ValidationSettingResult {
 	if !isValidChain {
 		actualChain := chains.GetChainByChainIdAndVersion(chains.Ethereum, chainId, netVersion)
 		log.Error().Msgf(
-			"'%s' is specified for upstream '%s' with chainId '%s' and netVersion '%s', but actually it's '%s' with chainId '%s' and netVersion '%s'",
+			"'%s' is specified for upstream '%s' (connector %s) with chainId '%s' and netVersion '%s', but actually it's '%s' with chainId '%s' and netVersion '%s'",
 			c.chain.Chain.String(),
 			c.upstreamId,
+			c.connector.GetType(),
 			c.chain.ChainIdFor(chains.Ethereum),
 			c.chain.NetVersion,
 			actualChain.Chain.String(),
@@ -100,10 +101,14 @@ func (c *EthChainValidator) getChainId(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	response, _ := c.executor.
+	response, err := c.executor.
+		WithContext(ctx).
 		Get(func() (protocol.ResponseHolder, error) {
 			return c.connector.SendRequest(ctx, request), nil
 		})
+	if err != nil {
+		return "", err
+	}
 
 	if response.HasError() {
 		return "", response.GetError()
@@ -118,10 +123,14 @@ func (c *EthChainValidator) getNetVersion(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	response, _ := c.executor.
+	response, err := c.executor.
+		WithContext(ctx).
 		Get(func() (protocol.ResponseHolder, error) {
 			return c.connector.SendRequest(ctx, request), nil
 		})
+	if err != nil {
+		return "", err
+	}
 
 	if response.HasError() {
 		return "", response.GetError()

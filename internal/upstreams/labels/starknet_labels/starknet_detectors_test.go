@@ -32,65 +32,41 @@ func methodNotFoundResponse() protocol.ResponseHolder {
 	)
 }
 
-func TestStarknetLabelsDetectorImplementsLabelsDetector(t *testing.T) {
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", mocks.NewConnectorMock(), chains.STARKNET, time.Second)
-
-	require.NotNil(t, detector)
-
-	var labelsDetector labels.LabelsDetector = detector
-	assert.NotNil(t, labelsDetector)
+func starknetHandler(connector *mocks.ConnectorMock) *labels.ClientLabelsDetectorHandler {
+	return labels.NewClientLabelDetectorHandler(
+		"upstream-id",
+		connector,
+		time.Second,
+		starknet_labels.NewPathfinderClientLabelsDetector(chains.STARKNET),
+		starknet_labels.NewJunoClientLabelsDetector(chains.STARKNET),
+	)
 }
 
-func TestStarknetLabelsDetectorPathfinderAnswers(t *testing.T) {
-	pathfinderRequest := versionRequest(t, "pathfinder_version")
+func TestStarknetDetectorsImplementClientLabelsDetector(t *testing.T) {
+	var pathfinder labels.ClientLabelsDetector = starknet_labels.NewPathfinderClientLabelsDetector(chains.STARKNET)
+	var juno labels.ClientLabelsDetector = starknet_labels.NewJunoClientLabelsDetector(chains.STARKNET)
 
+	assert.NotNil(t, pathfinder)
+	assert.NotNil(t, juno)
+}
+
+func TestStarknetHandlerPathfinderAnswers(t *testing.T) {
+	pathfinderRequest := versionRequest(t, "pathfinder_version")
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0.16.4"`), protocol.JsonRpc)).
-		Once()
-
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
-
-	result := detector.DetectLabels()
-
-	assert.Equal(t, map[string]string{
-		"client_type":    "pathfinder",
-		"client_version": "0.16.4",
-	}, result)
-	connector.AssertExpectations(t)
-	connector.AssertNumberOfCalls(t, "SendRequest", 1)
-}
-
-func TestStarknetLabelsDetectorFallsBackToJunoAndStripsLeadingV(t *testing.T) {
-	pathfinderRequest := versionRequest(t, "pathfinder_version")
-	junoRequest := versionRequest(t, "juno_version")
-
-	connector := mocks.NewConnectorMock()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
-		Return(methodNotFoundResponse()).
-		Once()
-	connector.
-		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(junoRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"v0.16.4"`), protocol.JsonRpc)).
 		Once()
 
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
+	result := starknetHandler(connector).DetectLabels(context.Background())
 
-	result := detector.DetectLabels()
-
-	assert.Equal(t, map[string]string{
-		"client_type":    "juno",
-		"client_version": "0.16.4",
-	}, result)
-	connector.AssertExpectations(t)
+	assert.Equal(t, map[string]string{"client_type": "pathfinder", "client_version": "0.16.4"}, result)
+	connector.AssertNumberOfCalls(t, "SendRequest", 1)
 }
 
-func TestStarknetLabelsDetectorBothProbesFail(t *testing.T) {
+func TestStarknetHandlerFallsBackToJuno(t *testing.T) {
 	pathfinderRequest := versionRequest(t, "pathfinder_version")
 	junoRequest := versionRequest(t, "juno_version")
-
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
@@ -98,76 +74,59 @@ func TestStarknetLabelsDetectorBothProbesFail(t *testing.T) {
 		Once()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(junoRequest))).
-		Return(protocol.NewReplyError("1", protocol.RequestTimeoutError(), protocol.JsonRpc, protocol.TotalFailure)).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"v0.12.0"`), protocol.JsonRpc)).
 		Once()
 
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
+	result := starknetHandler(connector).DetectLabels(context.Background())
 
-	result := detector.DetectLabels()
-
-	assert.Nil(t, result)
+	assert.Equal(t, map[string]string{"client_type": "juno", "client_version": "0.12.0"}, result)
 	connector.AssertExpectations(t)
 }
 
-func TestStarknetLabelsDetectorGarbageResultEmitsOnlyClientType(t *testing.T) {
+func TestStarknetHandlerBothProbesFail(t *testing.T) {
 	pathfinderRequest := versionRequest(t, "pathfinder_version")
-
+	junoRequest := versionRequest(t, "juno_version")
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"version":"0.16.4"}`), protocol.JsonRpc)).
+		Return(methodNotFoundResponse()).
+		Times(2)
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(junoRequest))).
+		Return(methodNotFoundResponse()).
+		Times(2)
+	handler := starknetHandler(connector)
+
+	assert.Nil(t, handler.DetectLabels(context.Background()))
+	_, _, err := handler.DetectClient(context.Background())
+	assert.Error(t, err)
+	connector.AssertExpectations(t)
+}
+
+func TestStarknetHandlerGarbageResultKeepsClientType(t *testing.T) {
+	pathfinderRequest := versionRequest(t, "pathfinder_version")
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"x":1}`), protocol.JsonRpc)).
 		Once()
 
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
-
-	result := detector.DetectLabels()
+	result := starknetHandler(connector).DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{"client_type": "pathfinder"}, result)
-	connector.AssertExpectations(t)
 	connector.AssertNumberOfCalls(t, "SendRequest", 1)
 }
 
-func TestStarknetLabelsDetectorEmptyVersionEmitsOnlyClientType(t *testing.T) {
+func TestStarknetHandlerEmptyVersionKeepsClientType(t *testing.T) {
 	pathfinderRequest := versionRequest(t, "pathfinder_version")
-
 	connector := mocks.NewConnectorMock()
 	connector.
 		On("SendRequest", mock.Anything, mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`""`), protocol.JsonRpc)).
 		Once()
 
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, time.Second)
-
-	result := detector.DetectLabels()
+	result := starknetHandler(connector).DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{"client_type": "pathfinder"}, result)
-	connector.AssertExpectations(t)
-}
-
-func TestStarknetLabelsDetectorUsesConfiguredTimeout(t *testing.T) {
-	pathfinderRequest := versionRequest(t, "pathfinder_version")
-	timeout := 50 * time.Millisecond
-
-	connector := mocks.NewConnectorMock()
-	connector.
-		On("SendRequest", mock.MatchedBy(func(ctx context.Context) bool {
-			deadline, ok := ctx.Deadline()
-			if !ok {
-				return false
-			}
-			remaining := time.Until(deadline)
-			return remaining > 0 && remaining <= timeout
-		}), mock.MatchedBy(test_utils.UpstreamJsonRpcRequestMatcher(pathfinderRequest))).
-		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0.16.4"`), protocol.JsonRpc)).
-		Once()
-
-	detector := starknet_labels.NewStarknetLabelsDetector("upstream-id", connector, chains.STARKNET, timeout)
-
-	result := detector.DetectLabels()
-
-	assert.Equal(t, map[string]string{
-		"client_type":    "pathfinder",
-		"client_version": "0.16.4",
-	}, result)
-	connector.AssertExpectations(t)
+	connector.AssertNumberOfCalls(t, "SendRequest", 1)
 }

@@ -41,8 +41,8 @@ func NewBeaconChainPeersValidator(
 	}
 }
 
-func (b *BeaconChainPeersValidator) Validate() protocol.AvailabilityStatus {
-	connected, err := b.fetchConnectedPeers()
+func (b *BeaconChainPeersValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	connected, err := b.fetchConnectedPeers(ctx)
 	if err != nil {
 		log.Error().Err(err).Msgf("beacon upstream '%s' peer-count validation failed", b.upstreamId)
 		return protocol.Unavailable
@@ -53,8 +53,8 @@ func (b *BeaconChainPeersValidator) Validate() protocol.AvailabilityStatus {
 	return protocol.Available
 }
 
-func (b *BeaconChainPeersValidator) fetchConnectedPeers() (int64, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.internalTimeout)
+func (b *BeaconChainPeersValidator) fetchConnectedPeers(ctx context.Context) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, b.internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/eth/v1/node/peer_count", nil, b.chain)

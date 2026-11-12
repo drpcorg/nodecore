@@ -1,6 +1,7 @@
 package eth_labels_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -61,7 +62,7 @@ func TestEthFlashBlockDetectorDetectLabels(t *testing.T) {
 
 			detector := eth_labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-			result := detector.DetectLabels()
+			result := detector.DetectLabels(context.Background())
 
 			assert.Equal(t, tt.expected, result)
 			connector.AssertExpectations(t)
@@ -85,7 +86,7 @@ func TestEthFlashBlockDetectorDetectLabelsReturnsNilWhenConnectorReturnsError(t 
 
 	detector := eth_labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	connector.AssertExpectations(t)
@@ -107,7 +108,7 @@ func TestEthFlashBlockDetectorDetectLabelsReturnsNilWhenResponseIsInvalidJson(t 
 
 	detector := eth_labels.NewEthFlashBlockDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Nil(t, result)
 	connector.AssertExpectations(t)

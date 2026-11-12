@@ -1,6 +1,7 @@
 package beacon_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func TestBeaconHealthAvailable(t *testing.T) {
 	expectRestCall(connector, "GET#/eth/v1/node/health", restOk(""))
 
 	validator := beacon_validations.NewBeaconChainHealthValidator("id", connector, beaconChain(), 5*time.Second)
-	assert.Equal(t, protocol.Available, validator.Validate())
+	assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -43,7 +44,7 @@ func TestBeaconHealthUnavailableOn503(t *testing.T) {
 	expectRestCall(connector, "GET#/eth/v1/node/health", protocol.NewHttpUpstreamResponse("1", []byte(""), 503, protocol.Rest))
 
 	validator := beacon_validations.NewBeaconChainHealthValidator("id", connector, beaconChain(), 5*time.Second)
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -57,7 +58,7 @@ func TestBeaconSyncingAvailable(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/syncing", restOk(`{"data":{"is_syncing":false,"el_offline":false}}`))
 
-	assert.Equal(t, protocol.Available, newSyncing(connector).Validate())
+	assert.Equal(t, protocol.Available, newSyncing(connector).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -65,7 +66,7 @@ func TestBeaconSyncingSyncing(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/syncing", restOk(`{"data":{"is_syncing":true,"el_offline":false}}`))
 
-	assert.Equal(t, protocol.Syncing, newSyncing(connector).Validate())
+	assert.Equal(t, protocol.Syncing, newSyncing(connector).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -73,7 +74,7 @@ func TestBeaconSyncingElOfflineUnavailable(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/syncing", restOk(`{"data":{"is_syncing":false,"el_offline":true}}`))
 
-	assert.Equal(t, protocol.Unavailable, newSyncing(connector).Validate())
+	assert.Equal(t, protocol.Unavailable, newSyncing(connector).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -81,7 +82,7 @@ func TestBeaconSyncingRequestErrorUnavailable(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/syncing", protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 
-	assert.Equal(t, protocol.Unavailable, newSyncing(connector).Validate())
+	assert.Equal(t, protocol.Unavailable, newSyncing(connector).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -95,7 +96,7 @@ func TestBeaconPeersAvailable(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/peer_count", restOk(`{"data":{"connected":"64","disconnected":"3"}}`))
 
-	assert.Equal(t, protocol.Available, newPeers(connector, 8).Validate())
+	assert.Equal(t, protocol.Available, newPeers(connector, 8).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -103,7 +104,7 @@ func TestBeaconPeersImmatureBelowMin(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/peer_count", restOk(`{"data":{"connected":"3"}}`))
 
-	assert.Equal(t, protocol.Immature, newPeers(connector, 8).Validate())
+	assert.Equal(t, protocol.Immature, newPeers(connector, 8).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -111,6 +112,6 @@ func TestBeaconPeersUnparseableUnavailable(t *testing.T) {
 	connector := mocks.NewConnectorMock()
 	expectRestCall(connector, "GET#/eth/v1/node/peer_count", restOk(`{"data":{"connected":"abc"}}`))
 
-	assert.Equal(t, protocol.Unavailable, newPeers(connector, 8).Validate())
+	assert.Equal(t, protocol.Unavailable, newPeers(connector, 8).Validate(context.Background()))
 	connector.AssertExpectations(t)
 }

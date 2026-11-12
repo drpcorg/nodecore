@@ -307,3 +307,37 @@ func TestHeadEventProcessorRestartsBackToBack(t *testing.T) {
 		}
 	}, time.Second, 10*time.Millisecond)
 }
+
+func TestHeadEventProcessorEmitsFatalOnHeadFatalEvent(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	headProcessor := mocks.NewHeadProcessorMock()
+	processor := event_processors.NewHeadEventProcessor(ctx, "upstream-1", chains.ETHEREUM, headProcessor)
+	events := make(chan protocol.AbstractUpstreamStateEvent, 1)
+
+	headProcessor.On("Start").Return()
+	headProcessor.On("Subscribe", headUpdatesSubscription())
+	headProcessor.On("Stop").Return()
+
+	processor.SetEmitter(func(event protocol.AbstractUpstreamStateEvent) {
+		events <- event
+	})
+
+	processor.Start()
+
+	require.Eventually(t, func() bool {
+		headProcessor.Publish(blocks.HeadFatalEvent{})
+
+		select {
+		case event := <-events:
+			_, ok := event.(*protocol.FatalErrorUpstreamStateEvent)
+			return ok
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+
+	processor.Stop()
+	headProcessor.AssertExpectations(t)
+}

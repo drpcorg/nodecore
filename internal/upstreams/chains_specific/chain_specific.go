@@ -17,12 +17,17 @@ type ChainSpecific interface {
 	GetFinalizedBlock(context.Context) (protocol.Block, error)
 
 	ParseBlock([]byte) (protocol.Block, error)
-	ParseSubscriptionBlock(data []byte) (protocol.Block, error)
+	ParseSubscriptionBlock(ctx context.Context, data []byte) (protocol.Block, error)
 
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 
 	HealthValidators() []validations.Validator[protocol.AvailabilityStatus]
 	SettingsValidators() []validations.Validator[validations.ValidationSettingResult]
+
+	// ChainValidator returns the chain-identity validator bound to this specific's
+	// connector, or nil when the family has none or chain validation is disabled. The
+	// head processor runs it on a head whose height jumped (see blocks.headJumpThreshold).
+	ChainValidator() validations.SettingsValidator
 
 	// CapDetectors returns the chain's capability detectors, given the connectors and
 	// methods discovered at the upstream level. The detectors are aggregated by a
@@ -31,6 +36,13 @@ type ChainSpecific interface {
 
 	LowerBoundProcessor() lower_bounds.LowerBoundProcessor
 	LabelsProcessor() labels.LabelsProcessor
+
+	// ClientLabelsDetector returns the detector that probes the node's client type and
+	// version, or nil for a family that cannot ask. The factory builds the client-version
+	// validator on it. "nil" means a literal nil: returning a nil *handler through this
+	// interface would read as a detector and be probed.
+	ClientLabelsDetector() labels.ClientDetector
+
 	BlockProcessor() blocks.BlockProcessor
 
 	// MethodsProcessor returns the chain's method-detection processor, or nil when the

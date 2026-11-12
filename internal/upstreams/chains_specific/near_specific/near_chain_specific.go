@@ -67,15 +67,17 @@ func (n *NearChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (n *NearChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			n.upstreamId,
-			n.connector,
-			near_labels.NewNearClientLabelsDetector(n.configuredChain.Chain),
-			n.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{n.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(n.ctx, n.upstreamId, labelsDetectors, n.labelsDelay)
+}
+
+func (n *NearChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		n.upstreamId,
+		n.connector,
+		n.internalTimeout,
+		near_labels.NewNearClientLabelsDetector(n.configuredChain.Chain),
+	)
 }
 
 func (n *NearChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
@@ -188,7 +190,7 @@ func (n *NearChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block,
 	), nil
 }
 
-func (n *NearChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (n *NearChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -211,6 +213,11 @@ var _ chains_specific.ChainSpecific = (*NearChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (n *NearChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (n *NearChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

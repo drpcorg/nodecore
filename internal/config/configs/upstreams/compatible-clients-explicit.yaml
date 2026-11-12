@@ -1,0 +1,12 @@
+upstream-config:
+  mode: default
+  compatible-clients:
+    enabled: true
+    url: file:///tmp/x.yaml
+    refresh-interval: 1m
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

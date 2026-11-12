@@ -33,13 +33,13 @@ func NewTendermintChainValidator(
 	}
 }
 
-func (t *TendermintChainValidator) Validate() validations.ValidationSettingResult {
+func (t *TendermintChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	expected := strings.TrimSpace(t.chain.ChainIdFor(chains.Cosmos))
 	if expected == "" {
 		return validations.Valid
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), t.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, t.internalTimeout)
 	defer cancel()
 
 	status, err := specific_helpers.FetchTendermintStatus(ctx, t.connector, t.chain.Chain)

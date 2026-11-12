@@ -50,15 +50,17 @@ func (s *StellarHorizonChainSpecificObject) BlockProcessor() blocks.BlockProcess
 }
 
 func (s *StellarHorizonChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			s.upstreamId,
-			s.connector,
-			stellar_labels.NewStellarHorizonClientLabelsDetector(s.configuredChain.Chain),
-			s.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+}
+
+func (s *StellarHorizonChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		s.upstreamId,
+		s.connector,
+		s.internalTimeout,
+		stellar_labels.NewStellarHorizonClientLabelsDetector(s.configuredChain.Chain),
+	)
 }
 
 func (s *StellarHorizonChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

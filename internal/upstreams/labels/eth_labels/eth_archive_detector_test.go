@@ -1,6 +1,7 @@
 package eth_labels_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -80,7 +81,7 @@ func TestEthArchiveLabelsDetectorDetectLabelsReturnsArchiveLabel(t *testing.T) {
 
 			detector := eth_labels.NewEthArchiveLabelsDetector("upstream-id", tt.chain, time.Second, connector)
 
-			result := detector.DetectLabels()
+			result := detector.DetectLabels(context.Background())
 
 			assert.Equal(t, map[string]string{
 				"archive": "true",
@@ -106,7 +107,7 @@ func TestEthArchiveLabelsDetectorDetectLabelsReturnsFalseWhenConnectorReturnsErr
 
 	detector := eth_labels.NewEthArchiveLabelsDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
 
-	result := detector.DetectLabels()
+	result := detector.DetectLabels(context.Background())
 
 	assert.Equal(t, map[string]string{
 		"archive": "false",

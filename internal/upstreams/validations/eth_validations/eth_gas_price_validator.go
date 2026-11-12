@@ -49,12 +49,12 @@ func NewEthGasPriceValidator(
 	}
 }
 
-func (v *EthGasPriceValidator) Validate() validations.ValidationSettingResult {
+func (v *EthGasPriceValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	if len(v.rules) == 0 {
 		return validations.Valid
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), v.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, v.internalTimeout)
 	defer cancel()
 
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_gasPrice", nil, v.chain.Chain)
@@ -63,9 +63,13 @@ func (v *EthGasPriceValidator) Validate() validations.ValidationSettingResult {
 		return validations.SettingsError
 	}
 
-	response, _ := v.executor.Get(func() (protocol.ResponseHolder, error) {
+	response, err := v.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
 		return v.connector.SendRequest(ctx, request), nil
 	})
+	if err != nil {
+		log.Warn().Err(err).Msgf("failed to execute gas price validation request for upstream '%s'", v.upstreamId)
+		return validations.SettingsError
+	}
 	if response.HasError() {
 		log.Warn().Err(response.GetError()).Msgf("failed to read gas price for upstream '%s'", v.upstreamId)
 		return validations.SettingsError
@@ -76,7 +80,7 @@ func (v *EthGasPriceValidator) Validate() validations.ValidationSettingResult {
 		log.Warn().Err(err).Msgf("failed to read gas price result for upstream '%s'", v.upstreamId)
 		return validations.SettingsError
 	}
-	gasPrice, err := parseHexUint64(strings.TrimSpace(gasPriceRaw))
+	gasPrice, err := protocol.ParseHexUint64(strings.TrimSpace(gasPriceRaw))
 	if err != nil {
 		log.Warn().Err(err).Msgf("failed to parse gas price for upstream '%s'", v.upstreamId)
 		return validations.SettingsError
@@ -142,9 +146,4 @@ func (r gasPriceRule) matches(actual uint64) bool {
 	default:
 		return true
 	}
-}
-
-func parseHexUint64(raw string) (uint64, error) {
-	trimmed := strings.Trim(raw, "\"")
-	return strconv.ParseUint(trimmed, 0, 64)
 }

@@ -93,7 +93,7 @@ func (s *SuiChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block, 
 // to the delivered checkpoint's sequence number - so the checkpoint payload is
 // never inspected and progress-only frames (filtered streams only) need no
 // special handling. Hashes stay synthetic, matching the polled head.
-func (s *SuiChainSpecificObject) ParseSubscriptionBlock(data []byte) (protocol.Block, error) {
+func (s *SuiChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, data []byte) (protocol.Block, error) {
 	var frame sui.SubscribeCheckpointsResponse
 	if err := proto.Unmarshal(data, &frame); err != nil {
 		return protocol.ZeroBlock{}, fmt.Errorf("couldn't parse the sui SubscribeCheckpoints frame, reason - %s", err.Error())
@@ -155,15 +155,17 @@ func (s *SuiChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundPr
 }
 
 func (s *SuiChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			s.upstreamId,
-			s.connector,
-			sui_labels.NewSuiClientLabelsDetector(s.configuredChain.Chain),
-			s.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+}
+
+func (s *SuiChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		s.upstreamId,
+		s.connector,
+		s.internalTimeout,
+		sui_labels.NewSuiClientLabelsDetector(s.configuredChain.Chain),
+	)
 }
 
 // BlockProcessor is the standard block processor (the head itself is chosen
@@ -186,6 +188,11 @@ func (s *SuiChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 // MethodsProcessor returns nil: no introspection in v1 (the server-reflection
 // idea is parked).
 func (s *SuiChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *SuiChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

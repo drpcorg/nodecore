@@ -1,6 +1,7 @@
 package stellar_validations_test
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestStellarChainValidatorValidOnPassphraseMatch(t *testing.T) {
 			protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 // The registry lowercases every chain-id, so the compare has to be case-insensitive.
@@ -46,7 +47,7 @@ func TestStellarChainValidatorValidOnTestnetPassphrase(t *testing.T) {
 			[]byte(`{"passphrase":"Test SDF Network ; September 2015"}`), protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarChainValidator("id", conn, chains.GetChain("stellar-testnet"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestStellarChainValidatorFatalOnMismatch(t *testing.T) {
@@ -57,7 +58,7 @@ func TestStellarChainValidatorFatalOnMismatch(t *testing.T) {
 			[]byte(`{"passphrase":"Test SDF Network ; September 2015"}`), protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestStellarChainValidatorFatalOnEmptyPassphrase(t *testing.T) {
@@ -66,7 +67,7 @@ func TestStellarChainValidatorFatalOnEmptyPassphrase(t *testing.T) {
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`{"protocolVersion":27}`), protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestStellarChainValidatorSettingsErrorOnFetchFailure(t *testing.T) {
@@ -75,7 +76,7 @@ func TestStellarChainValidatorSettingsErrorOnFetchFailure(t *testing.T) {
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(-32603, "boom", nil)))
 
 	v := stellar_validations.NewStellarChainValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }
 
 func TestStellarSyncingValidatorAvailableOnHealthy(t *testing.T) {
@@ -84,7 +85,7 @@ func TestStellarSyncingValidatorAvailableOnHealthy(t *testing.T) {
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", healthyBody("healthy", 63525714, 63404755), protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 // While its data stores bootstrap, stellar-rpc rejects getHealth with -32603
@@ -96,7 +97,7 @@ func TestStellarSyncingValidatorSyncingWhileDataStoresNotInitialized(t *testing.
 			protocol.ResponseErrorWithData(-32603, "data stores are not initialized", nil)))
 
 	v := stellar_validations.NewStellarSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Syncing, v.Validate())
+	assert.Equal(t, protocol.Syncing, v.Validate(context.Background()))
 }
 
 // The node polices its own staleness and rejects getHealth once the head is
@@ -108,7 +109,7 @@ func TestStellarSyncingValidatorUnavailableOnStalenessRejection(t *testing.T) {
 			-32603, "latency (42s) since last known ledger closed is too high (>30s)", nil)))
 
 	v := stellar_validations.NewStellarSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestStellarSyncingValidatorUnavailableOnNonHealthyStatus(t *testing.T) {
@@ -117,7 +118,7 @@ func TestStellarSyncingValidatorUnavailableOnNonHealthyStatus(t *testing.T) {
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", healthyBody("degraded", 1, 1), protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestStellarSyncingValidatorUnavailableOnUnparseableBody(t *testing.T) {
@@ -126,5 +127,5 @@ func TestStellarSyncingValidatorUnavailableOnUnparseableBody(t *testing.T) {
 		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`not json`), protocol.JsonRpc))
 
 	v := stellar_validations.NewStellarSyncingValidator("id", conn, chains.GetChain("stellar"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }

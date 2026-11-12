@@ -1,6 +1,7 @@
 package ton_validations
 
 import (
+	"context"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
@@ -48,7 +49,7 @@ func NewTonChainValidator(
 	}
 }
 
-func (t *TonChainValidator) Validate() validations.ValidationSettingResult {
+func (t *TonChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	expected, hasMapping := expectedZerostates[t.chain.Chain]
 	if !hasMapping {
 		// without a zerostate we can't tell what network the upstream is on
@@ -59,7 +60,7 @@ func (t *TonChainValidator) Validate() validations.ValidationSettingResult {
 		)
 		return validations.FatalSettingError
 	}
-	info, err := fetchMasterchainInfo(t.connector, t.chain.Chain, t.internalTimeout)
+	info, err := fetchMasterchainInfo(ctx, t.connector, t.chain.Chain, t.internalTimeout)
 	if err != nil {
 		log.Error().Err(err).Msgf("failed to fetch ton masterchain info for upstream '%s'", t.upstreamId)
 		return validations.SettingsError

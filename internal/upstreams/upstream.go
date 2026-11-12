@@ -123,7 +123,7 @@ func NewGenericUpstream(
 			CreateHeadEventProcessor(ctx, conf, configuredChain.Chain, headProcessor),
 			CreateLowerBoundsEventProcessor(ctx, conf, specifics.probe),
 			CreateHealthEventProcessor(ctx, conf, specifics.probe),
-			CreateSettingsEventProcessor(ctx, conf, specifics.probe),
+			CreateSettingsEventProcessor(ctx, conf, configuredChain, specifics.probe, creationData.compatibleClients),
 			CreateLabelsEventProcessor(ctx, conf, specifics.probe),
 			CreateMethodsEventProcessor(ctx, conf, specifics.probe),
 			CreateCapEventProcessor(ctx, conf, specifics.probe, creationData.upstreamConnectorsInfo, creationData.upstreamMethods, headProcessor),
@@ -215,10 +215,6 @@ func (u *GenericUpstream) GetGroupLabels() mapset.Set[string] {
 	return u.groupLabels
 }
 
-// Start activates the connectors, validates the settings and, if they allow it, the state
-// processors. The teardown it returns releases all of that, whether the start succeeded or
-// failed on fatal settings; the upstream context goes first, so no nested lifecycle can be
-// started again once the upstream is stopped.
 func (u *GenericUpstream) Start() {
 	u.upstreamCtx.mainLifecycle.Start(func(ctx context.Context) (func(), error) {
 		u.startConnectors(ctx)
@@ -232,7 +228,7 @@ func (u *GenericUpstream) Start() {
 			}
 		}
 
-		result, ok := u.processorAggregator.ValidateSettings()
+		result, ok := u.processorAggregator.ValidateSettings(ctx)
 		initialValid := true
 		if !ok {
 			u.processorAggregator.StartProcessor(event_processors.SettingsValidatorProcessorType)

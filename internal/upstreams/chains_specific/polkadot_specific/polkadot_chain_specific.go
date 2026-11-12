@@ -82,7 +82,7 @@ func (p *PolkadotChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 	return blockFromHeader(header)
 }
 
-func (p *PolkadotChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (p *PolkadotChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	header, err := specific_helpers.ParsePolkadotHeader(blockBytes)
 	if err != nil {
 		return protocol.ZeroBlock{}, err
@@ -92,7 +92,7 @@ func (p *PolkadotChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) 
 		return protocol.ZeroBlock{}, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), p.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, p.internalTimeout)
 	defer cancel()
 
 	hash, err := specific_helpers.FetchPolkadotBlockHash(ctx, p.connector, p.configuredChain.Chain, header.Number)
@@ -170,6 +170,10 @@ func (p *PolkadotChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return nil
 }
 
+func (p *PolkadotChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return nil
+}
+
 func (p *PolkadotChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 	return nil
 }
@@ -191,6 +195,11 @@ var _ chains_specific.ChainSpecific = (*PolkadotChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (p *PolkadotChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (p *PolkadotChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

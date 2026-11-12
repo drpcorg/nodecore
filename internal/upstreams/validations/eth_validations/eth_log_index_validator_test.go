@@ -1,6 +1,7 @@
 package eth_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestEthLogIndexValidatorReturnsValidForGlobalIndexes(t *testing.T) {
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -35,7 +36,7 @@ func TestEthLogIndexValidatorReturnsFatalForPerTransactionReset(t *testing.T) {
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -48,8 +49,8 @@ func TestEthLogIndexValidatorReturnsCachedResultBetweenChecks(t *testing.T) {
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -59,7 +60,7 @@ func TestEthLogIndexValidatorKeepsLastResultOnReadError(t *testing.T) {
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -72,7 +73,7 @@ func TestEthLogIndexValidatorReturnsFatalForSingleLogTransactionReset(t *testing
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -85,7 +86,7 @@ func TestEthLogIndexValidatorReturnsValidWhenTransactionsHaveNoLogs(t *testing.T
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -99,7 +100,7 @@ func TestEthLogIndexValidatorSearchesPreviousBlockWhenInsufficientTransactions(t
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -112,7 +113,7 @@ func TestEthLogIndexValidatorReturnsFatalForNonContinuousIndexes(t *testing.T) {
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -125,7 +126,7 @@ func TestEthLogIndexValidatorReturnsFatalForIncorrectFirstLogIndex(t *testing.T)
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.FatalSettingError, validator.Validate())
+	assert.Equal(t, validations.FatalSettingError, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -142,11 +143,11 @@ func TestEthLogIndexValidatorValidatesAgainOnEleventhCall(t *testing.T) {
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	for i := 0; i < 9; i++ {
-		assert.Equal(t, validations.Valid, validator.Validate())
+		assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	}
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -161,7 +162,7 @@ func TestEthLogIndexValidatorReturnsLastResultWhenCannotFindSuitableBlock(t *tes
 	})
 	validator := newLogIndexValidator(connector)
 
-	assert.Equal(t, validations.Valid, validator.Validate())
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 

@@ -48,15 +48,17 @@ func (s *StellarRpcChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (s *StellarRpcChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			s.upstreamId,
-			s.connector,
-			stellar_labels.NewStellarClientLabelsDetector(s.configuredChain.Chain),
-			s.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+}
+
+func (s *StellarRpcChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		s.upstreamId,
+		s.connector,
+		s.internalTimeout,
+		stellar_labels.NewStellarClientLabelsDetector(s.configuredChain.Chain),
+	)
 }
 
 func (s *StellarRpcChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {

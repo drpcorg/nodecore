@@ -74,19 +74,19 @@ func NewEthLogIndexValidator(
 	return validator
 }
 
-func (v *EthLogIndexValidator) Validate() validations.ValidationSettingResult {
+func (v *EthLogIndexValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
 	currentCount := v.callCount.Add(1)
 	if (currentCount-1)%logIndexCheckFrequency != 0 {
 		return validations.ValidationSettingResult(v.lastResult.Load())
 	}
 
-	result := v.validateNow()
+	result := v.validateNow(ctx)
 	v.lastResult.Store(int32(result))
 	return result
 }
 
-func (v *EthLogIndexValidator) validateNow() validations.ValidationSettingResult {
-	latest, err := v.getLatestBlockNumber()
+func (v *EthLogIndexValidator) validateNow(ctx context.Context) validations.ValidationSettingResult {
+	latest, err := v.getLatestBlockNumber(ctx)
 	if err != nil || latest == 0 {
 		if err != nil {
 			log.Warn().Err(err).Msgf("failed to read latest block for logIndex validation of upstream '%s'", v.upstreamId)
@@ -96,7 +96,7 @@ func (v *EthLogIndexValidator) validateNow() validations.ValidationSettingResult
 
 	for attempt := uint64(0); attempt < logIndexMaxBlockSearchAttempts && latest > attempt; attempt++ {
 		blockHex := "0x" + strconv.FormatUint(latest-attempt, 16)
-		result, ok := v.validateBlock(blockHex)
+		result, ok := v.validateBlock(ctx, blockHex)
 		if ok {
 			return result
 		}
@@ -105,8 +105,8 @@ func (v *EthLogIndexValidator) validateNow() validations.ValidationSettingResult
 	return validations.ValidationSettingResult(v.lastResult.Load())
 }
 
-func (v *EthLogIndexValidator) validateBlock(blockHex string) (validations.ValidationSettingResult, bool) {
-	block, err := v.getBlock(blockHex)
+func (v *EthLogIndexValidator) validateBlock(ctx context.Context, blockHex string) (validations.ValidationSettingResult, bool) {
+	block, err := v.getBlock(ctx, blockHex)
 	if err != nil || len(block.Transactions) < 2 {
 		return validations.Valid, false
 	}
@@ -119,7 +119,7 @@ func (v *EthLogIndexValidator) validateBlock(blockHex string) (validations.Valid
 			log.Warn().Msgf("transaction at index %d has no hash during logIndex validation of upstream '%s'", i, v.upstreamId)
 			return validations.ValidationSettingResult(v.lastResult.Load()), true
 		}
-		receipt, err := v.getTransactionReceipt(txHash)
+		receipt, err := v.getTransactionReceipt(ctx, txHash)
 		if err != nil {
 			log.Warn().Err(err).Msgf("failed to read receipt '%s' during logIndex validation of upstream '%s'", txHash, v.upstreamId)
 			return validations.ValidationSettingResult(v.lastResult.Load()), true
@@ -161,8 +161,8 @@ func (v *EthLogIndexValidator) validateLogIndices(first, second logIndexTxData) 
 	return validations.Valid
 }
 
-func (v *EthLogIndexValidator) getLatestBlockNumber() (uint64, error) {
-	response, err := v.sendJsonRpc("eth_blockNumber", nil)
+func (v *EthLogIndexValidator) getLatestBlockNumber(ctx context.Context) (uint64, error) {
+	response, err := v.sendJsonRpc(ctx, "eth_blockNumber", nil)
 	if err != nil || response.HasError() {
 		if err != nil {
 			return 0, err
@@ -173,11 +173,11 @@ func (v *EthLogIndexValidator) getLatestBlockNumber() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return parseHexUint64(strings.TrimSpace(raw))
+	return protocol.ParseHexUint64(strings.TrimSpace(raw))
 }
 
-func (v *EthLogIndexValidator) getBlock(blockHex string) (logIndexBlock, error) {
-	response, err := v.sendJsonRpc("eth_getBlockByNumber", []any{blockHex, true})
+func (v *EthLogIndexValidator) getBlock(ctx context.Context, blockHex string) (logIndexBlock, error) {
+	response, err := v.sendJsonRpc(ctx, "eth_getBlockByNumber", []any{blockHex, true})
 	if err != nil || response.HasError() {
 		if err != nil {
 			return logIndexBlock{}, err
@@ -191,8 +191,8 @@ func (v *EthLogIndexValidator) getBlock(blockHex string) (logIndexBlock, error) 
 	return block, nil
 }
 
-func (v *EthLogIndexValidator) getTransactionReceipt(txHash string) (logIndexReceipt, error) {
-	response, err := v.sendJsonRpc("eth_getTransactionReceipt", []any{txHash})
+func (v *EthLogIndexValidator) getTransactionReceipt(ctx context.Context, txHash string) (logIndexReceipt, error) {
+	response, err := v.sendJsonRpc(ctx, "eth_getTransactionReceipt", []any{txHash})
 	if err != nil || response.HasError() {
 		if err != nil {
 			return logIndexReceipt{}, err
@@ -206,14 +206,14 @@ func (v *EthLogIndexValidator) getTransactionReceipt(txHash string) (logIndexRec
 	return receipt, nil
 }
 
-func (v *EthLogIndexValidator) sendJsonRpc(method string, params any) (protocol.ResponseHolder, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), v.internalTimeout)
+func (v *EthLogIndexValidator) sendJsonRpc(ctx context.Context, method string, params any) (protocol.ResponseHolder, error) {
+	ctx, cancel := context.WithTimeout(ctx, v.internalTimeout)
 	defer cancel()
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(method, params, v.chain.Chain)
 	if err != nil {
 		return nil, err
 	}
-	return v.executor.Get(func() (protocol.ResponseHolder, error) {
+	return v.executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
 		return v.connector.SendRequest(ctx, request), nil
 	})
 }
@@ -222,7 +222,7 @@ func parseLogIndexValue(raw string) (uint64, bool) {
 	if strings.TrimSpace(raw) == "" {
 		return 0, false
 	}
-	value, err := parseHexUint64(raw)
+	value, err := protocol.ParseHexUint64(raw)
 	return value, err == nil
 }
 

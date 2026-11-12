@@ -26,8 +26,10 @@ import (
 	"github.com/drpcorg/nodecore/internal/stats"
 	"github.com/drpcorg/nodecore/internal/storages"
 	"github.com/drpcorg/nodecore/internal/upstreams"
+	"github.com/drpcorg/nodecore/internal/upstreams/compatible_clients"
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/pyroscope"
+	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
@@ -68,13 +70,22 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 	if err != nil {
 		return nil, fmt.Errorf("unable to create the rate limit budget registry: %w", err)
 	}
-	upstreamSupervisor := upstreams.NewGenericUpstreamSupervisor(
-		ctx,
-		appConfig.UpstreamConfig,
+	compatibleClients, err := newCompatibleClients(ctx, appConfig.UpstreamConfig.CompatibleClients)
+	if err != nil {
+		return nil, err
+	}
+	upstreamFactory := upstreams.NewGenericUpstreamFactory(
 		dimensionTracker,
 		statsService,
 		rateLimitBudgetRegistry,
 		appConfig.ServerConfig.TorUrl,
+		compatibleClients,
+	)
+	upstreamSupervisor := upstreams.NewGenericUpstreamSupervisor(
+		ctx,
+		appConfig.UpstreamConfig,
+		dimensionTracker,
+		upstreamFactory,
 	)
 	configReloader := reload.NewReloader(config.ConfigPath(), appConfig, upstreamSupervisor)
 	ratingRegistry := rating.NewRatingRegistry(upstreamSupervisor, dimensionTracker, appConfig.UpstreamConfig.ScorePolicyConfig)
@@ -129,6 +140,21 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 		grpcServer:         grpcServer,
 		outboxStorage:      outboxStorage,
 	}, nil
+}
+
+// newCompatibleClients builds the process-wide client-version registry: rules seeded
+// from the embedded file and refreshed from the configured url, plus the policy for
+// nodes whose client cannot be probed. Nil when the check is disabled.
+func newCompatibleClients(ctx context.Context, cfg *config.CompatibleClientsConfig) (*compatible_clients.Registry, error) {
+	if !cfg.IsEnabled() {
+		return nil, nil
+	}
+	seed, err := compatible_clients.Embedded()
+	if err != nil {
+		return nil, fmt.Errorf("unable to load the embedded compatible clients: %w", err)
+	}
+	rules := utils.NewReloadable(ctx, seed, cfg.Url, utils.YAML, cfg.RefreshInterval)
+	return compatible_clients.NewRegistry(rules, cfg.AllowsUndetected()), nil
 }
 
 func (a *App) Start() {

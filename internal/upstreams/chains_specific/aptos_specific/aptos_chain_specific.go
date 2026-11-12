@@ -92,7 +92,7 @@ func (a *AptosChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 	return protocol.NewBlock(height, 0, blockchain.EmptyHash, blockchain.EmptyHash), nil
 }
 
-func (a *AptosChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (a *AptosChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -133,15 +133,17 @@ func (a *AptosChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBound
 }
 
 func (a *AptosChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			a.upstreamId,
-			a.connector,
-			aptos_labels.NewAptosClientLabelsDetector(a.configuredChain.Chain),
-			a.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{a.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+}
+
+func (a *AptosChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		a.upstreamId,
+		a.connector,
+		a.internalTimeout,
+		aptos_labels.NewAptosClientLabelsDetector(a.configuredChain.Chain),
+	)
 }
 
 func (a *AptosChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
@@ -163,6 +165,11 @@ var _ chains_specific.ChainSpecific = (*AptosChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (a *AptosChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (a *AptosChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

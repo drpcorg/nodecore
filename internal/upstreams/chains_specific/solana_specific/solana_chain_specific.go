@@ -47,11 +47,13 @@ func (s *SolanaChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (s *SolanaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, solana_labels.NewSolanaClientLabelsDetector(), s.options.InternalTimeout),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.options.ValidationInterval*5)
+}
+
+func (s *SolanaChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(s.upstreamId, s.connector, s.options.InternalTimeout, solana_labels.NewSolanaClientLabelsDetector())
 }
 
 func (s *SolanaChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -94,7 +96,7 @@ func (s *SolanaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bloc
 	return createNewSolanaBlock(epochInfo.BlockHeight, epochInfo.AbsoluteSlot), nil
 }
 
-func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	slotEvent := SolanaSlotEvent{}
 	err := sonic.Unmarshal(blockBytes, &slotEvent)
 	if err != nil {
@@ -106,7 +108,7 @@ func (s *SolanaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (p
 	estimatedHeight := lo.Ternary(lastHeight != 0 && lastSlot != 0, lastHeight+(slotEvent.Slot-lastSlot), 0)
 
 	if shouldCheck || estimatedHeight == 0 {
-		block, err := s.getEpochInfo(context.Background())
+		block, err := s.getEpochInfo(ctx)
 		if err != nil {
 			if estimatedHeight == 0 {
 				// a slot is not a height: without a known height there is nothing to publish
@@ -193,6 +195,11 @@ var _ chains_specific.ChainSpecific = (*SolanaChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (s *SolanaChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *SolanaChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

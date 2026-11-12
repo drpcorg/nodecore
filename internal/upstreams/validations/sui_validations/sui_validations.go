@@ -39,8 +39,8 @@ func NewSuiChainValidator(
 	}
 }
 
-func (s *SuiChainValidator) Validate() validations.ValidationSettingResult {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *SuiChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	serviceInfo, _, err := specific_helpers.FetchSuiServiceInfo(ctx, s.connector, s.chain.Chain)
@@ -91,8 +91,8 @@ func NewSuiHealthValidator(
 	}
 }
 
-func (s *SuiHealthValidator) Validate() protocol.AvailabilityStatus {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *SuiHealthValidator) Validate(ctx context.Context) protocol.AvailabilityStatus {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	if _, _, err := specific_helpers.FetchSuiServiceInfo(ctx, s.connector, s.chain.Chain); err != nil {

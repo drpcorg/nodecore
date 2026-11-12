@@ -94,7 +94,7 @@ func (c *CosmosGrpcSpecific) ParseBlock(blockBytes []byte) (protocol.Block, erro
 	), nil
 }
 
-func (c *CosmosGrpcSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (c *CosmosGrpcSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -138,15 +138,17 @@ func (c *CosmosGrpcSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProces
 }
 
 func (c *CosmosGrpcSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			c.upstreamId,
-			c.connector,
-			cosmos_labels.NewCosmosGrpcClientLabelsDetector(c.chain.Chain),
-			c.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{c.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(c.ctx, c.upstreamId, labelsDetectors, c.options.ValidationInterval*5)
+}
+
+func (c *CosmosGrpcSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		c.upstreamId,
+		c.connector,
+		c.options.InternalTimeout,
+		cosmos_labels.NewCosmosGrpcClientLabelsDetector(c.chain.Chain),
+	)
 }
 
 func (c *CosmosGrpcSpecific) BlockProcessor() blocks.BlockProcessor {
@@ -165,6 +167,11 @@ func (c *CosmosGrpcSpecific) BlockProcessor() blocks.BlockProcessor {
 // MethodsProcessor returns nil: no introspection (the reflection-based
 // detection idea stays parked, as for sui).
 func (c *CosmosGrpcSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (c *CosmosGrpcSpecific) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

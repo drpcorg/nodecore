@@ -60,15 +60,17 @@ func NewAztecChainSpecificObject(
 }
 
 func (a *AztecChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			a.upstreamId,
-			a.connector,
-			aztec_labels.NewAztecClientLabelsDetector(a.configuredChain.Chain),
-			a.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{a.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(a.ctx, a.upstreamId, labelsDetectors, a.labelsDelay)
+}
+
+func (a *AztecChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		a.upstreamId,
+		a.connector,
+		a.internalTimeout,
+		aztec_labels.NewAztecClientLabelsDetector(a.configuredChain.Chain),
+	)
 }
 
 func (a *AztecChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -185,7 +187,7 @@ func (a *AztecChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Block
 	), nil
 }
 
-func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (a *AztecChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -198,6 +200,11 @@ var _ chains_specific.ChainSpecific = (*AztecChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (a *AztecChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (a *AztecChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

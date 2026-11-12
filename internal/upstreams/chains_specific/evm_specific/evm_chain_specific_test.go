@@ -9,6 +9,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	specific "github.com/drpcorg/nodecore/internal/upstreams/chains_specific/evm_specific"
+	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels/eth_labels"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
@@ -19,6 +20,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/test_utils"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/drpcorg/nodecore/pkg/test_utils/specs_utils"
+	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -32,16 +34,17 @@ func TestChainValidator(t *testing.T) {
 		ValidateCallLimit:         new(false),
 	}
 	connector := mocks.NewConnectorMock()
+	allConnectors := []connectors.ApiConnector{connector}
 	chain := chains.GetChain("ethereum")
 
-	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options, nil).SettingsValidators()
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, allConnectors, chain, 1*time.Second, options, nil).SettingsValidators()
 
 	assert.Len(t, validators, 0)
 
 	options.DisableChainValidation = new(false)
 	options.ValidateCallLimit = new(true)
 
-	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, 1*time.Second, options, nil).SettingsValidators()
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, allConnectors, chain, 1*time.Second, options, nil).SettingsValidators()
 
 	assert.Len(t, validators, 2)
 	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
@@ -52,6 +55,62 @@ func TestChainValidator(t *testing.T) {
 		_, ok := item.(*eth_validations.EthCallLimitValidator)
 		return ok
 	}))
+
+	options.DisableErigonBugValidation = new(false)
+
+	validators = specific.NewEvmChainSpecific(context.Background(), "id", connector, allConnectors, chain, 1*time.Second, options, nil).SettingsValidators()
+
+	assert.Len(t, validators, 3)
+	assert.True(t, lo.SomeBy(validators, func(item validations.Validator[validations.ValidationSettingResult]) bool {
+		_, ok := item.(*eth_validations.EthErigonBugValidator)
+		return ok
+	}))
+}
+
+func TestChainValidatorPerJsonRpcSpeakingConnector(t *testing.T) {
+	jsonRpc := mocks.NewConnectorMock()
+	ws := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
+	restAdditional := mocks.NewConnectorMockWithType(specs.RestAdditional)
+	options := &chains.Options{
+		DisableChainValidation:    new(false),
+		DisableLogIndexValidation: new(true),
+		ValidateCallLimit:         new(false),
+	}
+	all := []connectors.ApiConnector{jsonRpc, ws, restAdditional}
+
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", jsonRpc, all, chains.GetChain("ethereum"), time.Second, options, nil).SettingsValidators()
+
+	assert.Len(t, validators, 2)
+	for _, validator := range validators {
+		_, ok := validator.(*eth_validations.EthChainValidator)
+		assert.True(t, ok)
+	}
+
+	options.DisableChainValidation = new(true)
+	assert.Empty(t, specific.NewEvmChainSpecific(context.Background(), "id", jsonRpc, all, chains.GetChain("ethereum"), time.Second, options, nil).SettingsValidators())
+}
+
+func TestChainValidatorsOneWrongConnectorMakesTheUpstreamFatal(t *testing.T) {
+	// configured ethereum: json-rpc answers ethereum, websocket answers bsc, so the reduced verdict is Fatal
+	jsonRpc := mocks.NewConnectorMock()
+	ws := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
+	chainIdRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("eth_chainId", nil, chains.ETHEREUM)
+	netVersionRequest, _ := protocol.NewInternalUpstreamJsonRpcRequest("net_version", nil, chains.ETHEREUM)
+	test_utils.ExpectEthValidationRequest(jsonRpc, chainIdRequest, protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x1"`), protocol.JsonRpc))
+	test_utils.ExpectEthValidationRequest(jsonRpc, netVersionRequest, protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"1"`), protocol.JsonRpc))
+	test_utils.ExpectEthValidationRequest(ws, chainIdRequest, protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x38"`), protocol.JsonRpc))
+	test_utils.ExpectEthValidationRequest(ws, netVersionRequest, protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"56"`), protocol.JsonRpc))
+	options := &chains.Options{
+		DisableChainValidation:    new(false),
+		DisableLogIndexValidation: new(true),
+		ValidateCallLimit:         new(false),
+		InternalTimeout:           time.Second,
+	}
+
+	validators := specific.NewEvmChainSpecific(context.Background(), "id", jsonRpc, []connectors.ApiConnector{jsonRpc, ws}, chains.GetChain("ethereum"), time.Second, options, nil).SettingsValidators()
+	result := validations.NewSettingsValidationProcessor(validators).Validate(context.Background())
+
+	assert.Equal(t, validations.FatalSettingError, result)
 }
 
 func TestEvmSubscribeHeadRequest(t *testing.T) {
@@ -74,7 +133,7 @@ func TestEvmParseSubBLock(t *testing.T) {
 	  "parentHash": "0x1eeaae5f33e2a990aab15d48c26118fd8875f1a2aaac376047268d80f2486d11"
     }`)
 
-	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(body)
+	block, err := test_utils.NewEvmChainSpecific(nil).ParseSubscriptionBlock(context.Background(), body)
 	assert.Nil(t, err)
 
 	expected := protocol.Block{
@@ -249,4 +308,36 @@ func TestEvmGetSafeBlockUsesSafeTag(t *testing.T) {
 	assert.NoError(t, err)
 	connector.AssertExpectations(t)
 	assert.Equal(t, uint64(90), block.Height)
+}
+
+func TestChainValidatorForTheHeadGuard(t *testing.T) {
+	connector := mocks.NewConnectorMockWithType(specs.WebsocketConnector)
+	chain := chains.GetChain("ethereum")
+	newValidator := func(options *chains.Options) validations.SettingsValidator {
+		return specific.NewEvmChainSpecific(context.Background(), "id", connector, nil, chain, time.Second, options, nil).ChainValidator()
+	}
+	enabled := func() *chains.Options {
+		return &chains.Options{
+			DisableValidation:         new(false),
+			DisableSettingsValidation: new(false),
+			DisableChainValidation:    new(false),
+		}
+	}
+
+	_, ok := newValidator(enabled()).(*eth_validations.EthChainValidator)
+	assert.True(t, ok)
+
+	// the guard exists only when the settings pipeline that can undo its verdict exists:
+	// any of the three flags that silence that pipeline silences the guard too
+	options := enabled()
+	options.DisableChainValidation = new(true)
+	assert.Nil(t, newValidator(options))
+
+	options = enabled()
+	options.DisableSettingsValidation = new(true)
+	assert.Nil(t, newValidator(options))
+
+	options = enabled()
+	options.DisableValidation = new(true)
+	assert.Nil(t, newValidator(options))
 }

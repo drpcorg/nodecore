@@ -1,6 +1,7 @@
 package eth_validations_test
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -31,7 +32,7 @@ func TestEthCallLimitValidatorReturnsFatalSettingErrorWhenReturnDataLimitIsTooLo
 	)
 
 	validator := eth_validations.NewEthCallLimitValidator("upstream-1", connector, chain, options)
-	result := validator.Validate()
+	result := validator.Validate(context.Background())
 
 	assert.Equal(t, validations.FatalSettingError, result)
 	connector.AssertExpectations(t)
@@ -48,7 +49,7 @@ func TestEthCallLimitValidatorReturnsSettingsErrorOnOtherConnectorError(t *testi
 	)
 
 	validator := eth_validations.NewEthCallLimitValidator("upstream-1", connector, chain, options)
-	result := validator.Validate()
+	result := validator.Validate(context.Background())
 
 	assert.Equal(t, validations.SettingsError, result)
 	connector.AssertExpectations(t)
@@ -65,7 +66,7 @@ func TestEthCallLimitValidatorReturnsValidOnSuccessfulResponse(t *testing.T) {
 	)
 
 	validator := eth_validations.NewEthCallLimitValidator("upstream-1", connector, chain, options)
-	result := validator.Validate()
+	result := validator.Validate(context.Background())
 
 	assert.Equal(t, validations.Valid, result)
 	connector.AssertExpectations(t)

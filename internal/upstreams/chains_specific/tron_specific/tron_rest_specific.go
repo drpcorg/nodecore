@@ -99,7 +99,7 @@ func (t *TronRestSpecific) ParseBlock(bytes []byte) (protocol.Block, error) {
 	), nil
 }
 
-func (t *TronRestSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *TronRestSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -139,15 +139,17 @@ func (t *TronRestSpecific) LowerBoundProcessor() lower_bounds.LowerBoundProcesso
 }
 
 func (t *TronRestSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			t.upstreamId,
-			t.connector,
-			tron_labels.NewTronClientLabelsDetector(t.chain.Chain),
-			t.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{t.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+}
+
+func (t *TronRestSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		t.upstreamId,
+		t.connector,
+		t.options.InternalTimeout,
+		tron_labels.NewTronClientLabelsDetector(t.chain.Chain),
+	)
 }
 
 type TronRestBlock struct {
@@ -217,6 +219,11 @@ var _ chains_specific.ChainSpecific = (*TronRestSpecific)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (t *TronRestSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (t *TronRestSpecific) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

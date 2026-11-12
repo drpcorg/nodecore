@@ -1,6 +1,7 @@
 package tron_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -69,7 +70,7 @@ func TestTronGrpcPeersValidatorUnavailableOnError(t *testing.T) {
 		tronGrpcError("/protocol.Wallet/GetNodeInfo", codes.Unavailable))
 	validator := tron_validations.NewTronGrpcPeersValidator("up", chains.TRON, connector, grpcPeersOptions())
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }
 
@@ -78,7 +79,7 @@ func TestTronGrpcPeersValidatorImmatureBelowMinPeers(t *testing.T) {
 		protocol.NewGrpcUpstreamResponse("1", tronGrpcNodeInfoBytes(t, 1)))
 	validator := tron_validations.NewTronGrpcPeersValidator("up", chains.TRON, connector, grpcPeersOptions())
 
-	assert.Equal(t, protocol.Immature, validator.Validate())
+	assert.Equal(t, protocol.Immature, validator.Validate(context.Background()))
 }
 
 func TestTronGrpcPeersValidatorImmatureOnEmptyReply(t *testing.T) {
@@ -86,7 +87,7 @@ func TestTronGrpcPeersValidatorImmatureOnEmptyReply(t *testing.T) {
 		protocol.NewGrpcUpstreamResponse("1", nil))
 	validator := tron_validations.NewTronGrpcPeersValidator("up", chains.TRON, connector, grpcPeersOptions())
 
-	assert.Equal(t, protocol.Immature, validator.Validate())
+	assert.Equal(t, protocol.Immature, validator.Validate(context.Background()))
 }
 
 func TestTronGrpcPeersValidatorAvailableAtMinPeers(t *testing.T) {
@@ -94,7 +95,7 @@ func TestTronGrpcPeersValidatorAvailableAtMinPeers(t *testing.T) {
 		protocol.NewGrpcUpstreamResponse("1", tronGrpcNodeInfoBytes(t, 2)))
 	validator := tron_validations.NewTronGrpcPeersValidator("up", chains.TRON, connector, grpcPeersOptions())
 
-	assert.Equal(t, protocol.Available, validator.Validate())
+	assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 }
 
 // ---------- TronGrpcSyncingValidator ----------
@@ -104,7 +105,7 @@ func TestTronGrpcSyncingValidatorUnavailableOnError(t *testing.T) {
 		tronGrpcError("/protocol.Wallet/GetBlock", codes.Unavailable))
 	validator := tron_validations.NewTronGrpcSyncingValidator("up", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 }
 
 func TestTronGrpcSyncingValidatorUnavailableOnHeaderlessBlock(t *testing.T) {
@@ -112,7 +113,7 @@ func TestTronGrpcSyncingValidatorUnavailableOnHeaderlessBlock(t *testing.T) {
 		protocol.NewGrpcUpstreamResponse("1", nil))
 	validator := tron_validations.NewTronGrpcSyncingValidator("up", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 }
 
 func TestTronGrpcSyncingValidatorAvailableForFreshBlock(t *testing.T) {
@@ -120,7 +121,7 @@ func TestTronGrpcSyncingValidatorAvailableForFreshBlock(t *testing.T) {
 		protocol.NewGrpcUpstreamResponse("1", tronGrpcHeadBytes(t, 100, time.Now().UnixMilli())))
 	validator := tron_validations.NewTronGrpcSyncingValidator("up", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Available, validator.Validate())
+	assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 }
 
 func TestTronGrpcSyncingValidatorSyncingWhenProjectedLagExceedsThreshold(t *testing.T) {
@@ -129,7 +130,7 @@ func TestTronGrpcSyncingValidatorSyncingWhenProjectedLagExceedsThreshold(t *test
 		protocol.NewGrpcUpstreamResponse("1", tronGrpcHeadBytes(t, 100, time.Now().UnixMilli()-18_000)))
 	validator := tron_validations.NewTronGrpcSyncingValidator("up", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Syncing, validator.Validate())
+	assert.Equal(t, protocol.Syncing, validator.Validate(context.Background()))
 }
 
 func TestTronGrpcSyncingValidatorAvailableForFutureTimestamp(t *testing.T) {
@@ -137,5 +138,5 @@ func TestTronGrpcSyncingValidatorAvailableForFutureTimestamp(t *testing.T) {
 		protocol.NewGrpcUpstreamResponse("1", tronGrpcHeadBytes(t, 100, time.Now().UnixMilli()+60_000)))
 	validator := tron_validations.NewTronGrpcSyncingValidator("up", testConfiguredChain(5), connector, time.Second)
 
-	assert.Equal(t, protocol.Available, validator.Validate())
+	assert.Equal(t, protocol.Available, validator.Validate(context.Background()))
 }

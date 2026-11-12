@@ -60,7 +60,7 @@ func TestTonSubscribeHeadRequest(t *testing.T) {
 }
 
 func TestTonParseSubscriptionBlock(t *testing.T) {
-	block, err := newV3(nil).ParseSubscriptionBlock([]byte(`{}`))
+	block, err := newV3(nil).ParseSubscriptionBlock(context.Background(), []byte(`{}`))
 	assert.True(t, block.IsFullEmpty())
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }

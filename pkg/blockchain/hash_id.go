@@ -32,9 +32,9 @@ func NewHashIdFromString(value string) HashId {
 		clean = "0" + clean
 	}
 
-	bytes, err := hex.DecodeString(clean)
+	decodedBytes, err := hex.DecodeString(clean)
 	if err == nil {
-		return bytes
+		return decodedBytes
 	}
 
 	// Non-hex block ids (ton's base64, near's base58) are decoded as base64,

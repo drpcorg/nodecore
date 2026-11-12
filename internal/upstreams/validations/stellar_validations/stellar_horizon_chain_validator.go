@@ -33,8 +33,8 @@ func NewStellarHorizonChainValidator(
 	}
 }
 
-func (s *StellarHorizonChainValidator) Validate() validations.ValidationSettingResult {
-	ctx, cancel := context.WithTimeout(context.Background(), s.internalTimeout)
+func (s *StellarHorizonChainValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
+	ctx, cancel := context.WithTimeout(ctx, s.internalTimeout)
 	defer cancel()
 
 	root, err := specific_helpers.FetchStellarHorizonRoot(ctx, s.connector, s.chain.Chain)

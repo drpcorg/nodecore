@@ -1,6 +1,7 @@
 package cosmos_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -37,7 +38,7 @@ func TestCosmosGrpcSyncingValidator(t *testing.T) {
 		validator := cosmos_validations.NewCosmosGrpcSyncingValidator(
 			"id", chains.GetChain("cosmos-hub").Chain, connector, time.Second,
 		)
-		assert.Equal(t, c.want, validator.Validate())
+		assert.Equal(t, c.want, validator.Validate(context.Background()))
 		connector.AssertExpectations(t)
 	}
 }
@@ -55,6 +56,6 @@ func TestCosmosGrpcSyncingValidatorUnavailableOnError(t *testing.T) {
 	validator := cosmos_validations.NewCosmosGrpcSyncingValidator(
 		"id", chains.GetChain("cosmos-hub").Chain, connector, time.Second,
 	)
-	assert.Equal(t, protocol.Unavailable, validator.Validate())
+	assert.Equal(t, protocol.Unavailable, validator.Validate(context.Background()))
 	connector.AssertExpectations(t)
 }

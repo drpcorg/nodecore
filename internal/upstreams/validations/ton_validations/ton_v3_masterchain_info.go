@@ -28,11 +28,12 @@ type TonV3MasterchainInfo struct {
 }
 
 func FetchV3MasterchainInfo(
+	ctx context.Context,
 	connector connectors.ApiConnector,
 	chain chains.Chain,
 	internalTimeout time.Duration,
 ) (*TonV3MasterchainInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, internalTimeout)
 	defer cancel()
 
 	request := protocol.NewInternalUpstreamRestRequest("GET#/api/v3/masterchainInfo", nil, chain)

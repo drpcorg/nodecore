@@ -67,15 +67,18 @@ func (s *StarknetChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (s *StarknetChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		starknet_labels.NewStarknetLabelsDetector(
-			s.upstreamId,
-			s.connector,
-			s.configuredChain.Chain,
-			s.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{s.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(s.ctx, s.upstreamId, labelsDetectors, s.labelsDelay)
+}
+
+func (s *StarknetChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		s.upstreamId,
+		s.connector,
+		s.internalTimeout,
+		starknet_labels.NewPathfinderClientLabelsDetector(s.configuredChain.Chain),
+		starknet_labels.NewJunoClientLabelsDetector(s.configuredChain.Chain),
+	)
 }
 
 func (s *StarknetChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.CapDetector {
@@ -180,7 +183,7 @@ func (s *StarknetChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 	), nil
 }
 
-func (s *StarknetChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (s *StarknetChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -199,6 +202,11 @@ var _ chains_specific.ChainSpecific = (*StarknetChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (s *StarknetChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *StarknetChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

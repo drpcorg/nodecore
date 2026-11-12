@@ -179,7 +179,7 @@ func TestCosmosGrpcHeadSubscriptionsUnsupported(t *testing.T) {
 	assert.Nil(t, req)
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
-	block, err := cs.ParseSubscriptionBlock([]byte{})
+	block, err := cs.ParseSubscriptionBlock(context.Background(), []byte{})
 	assert.True(t, block.IsFullEmpty())
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }

@@ -71,7 +71,7 @@ func TestSuiParseSubscriptionBlockUsesTheCursor(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	block, err := specific.ParseSubscriptionBlock(frame)
+	block, err := specific.ParseSubscriptionBlock(context.Background(), frame)
 	require.NoError(t, err)
 
 	hash, parentHash := specific_helpers.SyntheticHashes(120000000, 119999999)
@@ -86,7 +86,7 @@ func TestSuiParseSubscriptionBlockWithoutCursorIsAnError(t *testing.T) {
 	frame, err := proto.Marshal(&sui.SubscribeCheckpointsResponse{})
 	require.NoError(t, err)
 
-	block, err := specific.ParseSubscriptionBlock(frame)
+	block, err := specific.ParseSubscriptionBlock(context.Background(), frame)
 	assert.Equal(t, protocol.ZeroBlock{}, block)
 	assert.EqualError(t, err, "sui SubscribeCheckpoints frame carries no cursor")
 }
@@ -94,7 +94,7 @@ func TestSuiParseSubscriptionBlockWithoutCursorIsAnError(t *testing.T) {
 func TestSuiParseSubscriptionBlockGarbageIsAnError(t *testing.T) {
 	specific := test_utils.NewSuiChainSpecific(context.Background(), nil)
 
-	_, err := specific.ParseSubscriptionBlock([]byte{0xff, 0xff, 0xff})
+	_, err := specific.ParseSubscriptionBlock(context.Background(), []byte{0xff, 0xff, 0xff})
 	assert.ErrorContains(t, err, "couldn't parse the sui SubscribeCheckpoints frame")
 }
 
@@ -164,11 +164,11 @@ func TestSuiHealthValidator(t *testing.T) {
 
 	validators := test_utils.NewSuiChainSpecific(ctx, conn).HealthValidators()
 	require.Len(t, validators, 1)
-	assert.Equal(t, protocol.Available, validators[0].Validate())
+	assert.Equal(t, protocol.Available, validators[0].Validate(context.Background()))
 
 	conn.On("SendRequest", mock.Anything, mock.Anything).
 		Return(protocol.NewTotalFailure(protocol.NewUpstreamGrpcRequest("1", "/pkg.S/M", nil, nil, ""), protocol.ServerError())).Once()
-	assert.Equal(t, protocol.Unavailable, validators[0].Validate())
+	assert.Equal(t, protocol.Unavailable, validators[0].Validate(context.Background()))
 }
 
 func TestSuiChainValidator(t *testing.T) {
@@ -180,12 +180,12 @@ func TestSuiChainValidator(t *testing.T) {
 
 	// the digest matches case-insensitively - the registry lowercases chain-ids
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(serviceInfoResponse(t, fullServiceInfo())).Once()
-	assert.Equal(t, validations.Valid, validators[0].Validate())
+	assert.Equal(t, validations.Valid, validators[0].Validate(context.Background()))
 
 	wrongChain := fullServiceInfo()
 	wrongChain.ChainId = new("69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD")
 	conn.On("SendRequest", mock.Anything, mock.Anything).Return(serviceInfoResponse(t, wrongChain)).Once()
-	assert.Equal(t, validations.FatalSettingError, validators[0].Validate())
+	assert.Equal(t, validations.FatalSettingError, validators[0].Validate(context.Background()))
 }
 
 func TestSuiLowerBoundDetector(t *testing.T) {

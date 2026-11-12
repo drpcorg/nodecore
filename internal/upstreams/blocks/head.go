@@ -24,7 +24,7 @@ type BlockChainSpecific interface {
 	GetFinalizedBlock(context.Context) (protocol.Block, error)
 
 	ParseBlock([]byte) (protocol.Block, error)
-	ParseSubscriptionBlock(data []byte) (protocol.Block, error)
+	ParseSubscriptionBlock(ctx context.Context, data []byte) (protocol.Block, error)
 
 	SubscribeHeadRequest() (protocol.RequestHolder, error)
 }
@@ -58,6 +58,7 @@ func (r *RpcHead) Running() bool {
 func (r *RpcHead) Stop() {
 	log.Info().Msgf("stopping an rpc head of upstream '%s'", r.upstreamId)
 	r.lifecycle.Stop()
+	r.block.Store(protocol.ZeroBlock{})
 }
 
 func (r *RpcHead) UpdateHead(newHead protocol.Block) {
@@ -125,7 +126,7 @@ func (r *RpcHead) poll(runCtx context.Context) {
 		r.pollInProgress.Store(true)
 		defer r.pollInProgress.Store(false)
 
-		ctx, cancel := context.WithTimeout(r.lifecycle.GetParentContext(), r.internalTimeout)
+		ctx, cancel := context.WithTimeout(runCtx, r.internalTimeout)
 		defer cancel()
 
 		block, err := r.chainSpecific.GetLatestBlock(ctx)
@@ -161,6 +162,7 @@ func (w *SubscriptionHead) Running() bool {
 func (w *SubscriptionHead) Stop() {
 	log.Info().Msgf("stopping subscription head of upstream '%s'", w.upstreamId)
 	w.lifecycle.Stop()
+	w.block.Store(protocol.ZeroBlock{})
 }
 
 func (w *SubscriptionHead) UpdateHead(newHead protocol.Block) {
@@ -233,7 +235,6 @@ func (w *SubscriptionHead) serveSubscription(ctx context.Context) error {
 		return err
 	}
 	defer w.headConnector.Unsubscribe(subResponse.OpId())
-
 	// get the latest block in order not to wait for the sub event
 	w.getLatestBlock(ctx)
 	for {
@@ -248,7 +249,7 @@ func (w *SubscriptionHead) serveSubscription(ctx context.Context) error {
 			if message.IsEnd() {
 				return errors.New("heads subscription ended")
 			}
-			block, err := w.chainSpecific.ParseSubscriptionBlock(message.GetMessage())
+			block, err := w.chainSpecific.ParseSubscriptionBlock(ctx, message.GetMessage())
 			if err != nil {
 				return err
 			}
@@ -269,7 +270,7 @@ func (w *SubscriptionHead) serveSubscription(ctx context.Context) error {
 }
 
 func (w *SubscriptionHead) getLatestBlock(runCtx context.Context) {
-	ctx, cancel := context.WithTimeout(w.lifecycle.GetParentContext(), w.internalTimeout)
+	ctx, cancel := context.WithTimeout(runCtx, w.internalTimeout)
 	defer cancel()
 	block, err := w.chainSpecific.GetLatestBlock(ctx)
 	if err != nil {

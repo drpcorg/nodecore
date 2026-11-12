@@ -53,22 +53,21 @@ func newApplyFixtureWithoutEventProcessing(t *testing.T) *applyFixture {
 	specs_utils.LoadMethodSpecs()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	supervisor := NewGenericUpstreamSupervisor(ctx, &config.UpstreamConfig{FailsafeConfig: &config.FailsafeConfig{}}, nil, nil, nil, "").(*GenericUpstreamSupervisor)
 	f := &applyFixture{
-		t:          t,
-		supervisor: supervisor,
-		cancel:     cancel,
-		created:    make(map[string]int),
-		emitters:   make(map[string]func(protocol.AbstractUpstreamStateEvent)),
-		failing:    mapset.NewSet[string](),
+		t:        t,
+		cancel:   cancel,
+		created:  make(map[string]int),
+		emitters: make(map[string]func(protocol.AbstractUpstreamStateEvent)),
+		failing:  mapset.NewSet[string](),
 	}
-	supervisor.removalGrace = 0
-	supervisor.createUpstream = f.create
+	// the fixture is the supervisor's upstream factory
+	f.supervisor = NewGenericUpstreamSupervisor(ctx, &config.UpstreamConfig{FailsafeConfig: &config.FailsafeConfig{}}, nil, f).(*GenericUpstreamSupervisor)
+	f.supervisor.removalGrace = 0
 	t.Cleanup(cancel)
 	return f
 }
 
-func (f *applyFixture) create(_ context.Context, conf *config.Upstream, _ failsafe.Executor[protocol.ResponseHolder], index int) (Upstream, error) {
+func (f *applyFixture) Create(_ context.Context, conf *config.Upstream, _ failsafe.Executor[protocol.ResponseHolder], index int) (Upstream, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created[conf.Id]++

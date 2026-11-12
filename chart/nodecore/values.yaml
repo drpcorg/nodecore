@@ -19,9 +19,18 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext: {}
+# The image runs as the distroless nonroot user (uid/gid 65532).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
 
-securityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
 
 service:
   type: "ClusterIP"

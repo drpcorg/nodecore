@@ -28,7 +28,7 @@ func TestStellarRpcSubscriptionsUnsupported(t *testing.T) {
 	assert.Nil(t, req)
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 
-	block, err := specific.ParseSubscriptionBlock([]byte(`{}`))
+	block, err := specific.ParseSubscriptionBlock(context.Background(), []byte(`{}`))
 	assert.Equal(t, protocol.ZeroBlock{}, block)
 	assert.ErrorIs(t, err, blocks.ErrUnsupportedHeadSubscriptions)
 }

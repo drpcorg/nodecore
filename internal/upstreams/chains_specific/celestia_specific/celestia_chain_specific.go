@@ -78,12 +78,21 @@ func (c *CelestiaChainSpecificObject) MethodsProcessor() methods.MethodsProcesso
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (c *CelestiaChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (c *CelestiaChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }
 
 // node.Info requires an admin token, so client labels can't be detected.
 func (c *CelestiaChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	return nil
+}
+
+func (c *CelestiaChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
 	return nil
 }
 
@@ -173,7 +182,7 @@ func (c *CelestiaChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bl
 // ParseSubscriptionBlock parses a header.Subscribe value: an ExtendedHeader,
 // the same shape header.LocalHead returns. The raw header stays on the block,
 // as the EVM head keeps its block JSON.
-func (c *CelestiaChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (c *CelestiaChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	block, err := c.ParseBlock(blockBytes)
 	if err != nil {
 		return block, err

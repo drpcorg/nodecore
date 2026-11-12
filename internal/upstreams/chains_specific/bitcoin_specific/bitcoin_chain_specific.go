@@ -55,15 +55,17 @@ func (b *BitcoinChainSpecificObject) BlockProcessor() blocks.BlockProcessor {
 }
 
 func (b *BitcoinChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			b.upstreamId,
-			b.connector,
-			bitcoin_labels.NewBitcoinClientLabelsDetector(b.configuredChain.Chain),
-			b.internalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{b.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+}
+
+func (b *BitcoinChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		b.upstreamId,
+		b.connector,
+		b.internalTimeout,
+		bitcoin_labels.NewBitcoinClientLabelsDetector(b.configuredChain.Chain),
+	)
 }
 
 func (b *BitcoinChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -176,7 +178,7 @@ func (b *BitcoinChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Blo
 	), nil
 }
 
-func (b *BitcoinChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (b *BitcoinChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -195,6 +197,11 @@ var _ chains_specific.ChainSpecific = (*BitcoinChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (b *BitcoinChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (b *BitcoinChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

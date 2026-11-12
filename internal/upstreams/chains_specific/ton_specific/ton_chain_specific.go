@@ -11,6 +11,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/blockchain"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
@@ -114,7 +115,7 @@ func (t *tonBaseChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBou
 	return nil
 }
 
-func (t *tonBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *tonBaseChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -143,6 +144,11 @@ func tonBlockFromIdExt(last tonBlockIdExt) protocol.Block {
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (t *tonBaseChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (t *tonBaseChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

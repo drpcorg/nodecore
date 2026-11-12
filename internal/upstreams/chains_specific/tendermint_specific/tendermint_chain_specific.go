@@ -91,7 +91,7 @@ func (t *TendermintChainSpecific) ParseBlock(blockBytes []byte) (protocol.Block,
 	), nil
 }
 
-func (t *TendermintChainSpecific) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (t *TendermintChainSpecific) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -140,15 +140,17 @@ func (t *TendermintChainSpecific) LowerBoundProcessor() lower_bounds.LowerBoundP
 }
 
 func (t *TendermintChainSpecific) LabelsProcessor() labels.LabelsProcessor {
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			t.upstreamId,
-			t.connector,
-			tendermint_labels.NewTendermintClientLabelsDetector(t.chain.Chain),
-			t.options.InternalTimeout,
-		),
-	}
+	labelsDetectors := []labels.LabelsDetector{t.ClientLabelsDetector()}
 	return labels.NewGenericLabelsProcessor(t.ctx, t.upstreamId, labelsDetectors, t.options.ValidationInterval*5)
+}
+
+func (t *TendermintChainSpecific) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		t.upstreamId,
+		t.connector,
+		t.options.InternalTimeout,
+		tendermint_labels.NewTendermintClientLabelsDetector(t.chain.Chain),
+	)
 }
 
 func (t *TendermintChainSpecific) BlockProcessor() blocks.BlockProcessor {
@@ -188,6 +190,11 @@ var _ chains_specific.ChainSpecific = (*TendermintChainSpecific)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (t *TendermintChainSpecific) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (t *TendermintChainSpecific) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

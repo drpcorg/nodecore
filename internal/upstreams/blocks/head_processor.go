@@ -9,6 +9,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/config"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/drpcorg/public/pkg/methods"
@@ -47,9 +48,19 @@ type HeadStateEvent struct {
 	Running bool
 }
 
+// HeadFatalEvent reports that the head guard found the node on another chain: the head
+// that revealed it was dropped, and the upstream must be removed.
+type HeadFatalEvent struct{}
+
 func (HeadBlockEvent) headEvent() {}
 
 func (HeadStateEvent) headEvent() {}
+
+func (HeadFatalEvent) headEvent() {}
+
+// headJumpThreshold is the height distance from the last published head past which a
+// head is suspicious and is checked against the chain before it is published.
+const headJumpThreshold = 10000
 
 type GenericHeadProcessor struct {
 	upstreamId           string
@@ -59,6 +70,13 @@ type GenericHeadProcessor struct {
 	headNoUpdatesTimeout time.Duration
 	subManager           *utils.SubscriptionManager[HeadEvent]
 	manualHeadChan       chan protocol.Block
+	// chainValidator vets a suspicious head; nil turns the guard off.
+	chainValidator validations.SettingsValidator
+	// lastPublished is the last block this run published, head or manual; it is the
+	// reference for the jump guard and for manual heads. The head's own current block is
+	// not, because the head stores a block before sending it, so a dropped one would sit
+	// there. Cleared on every Start.
+	lastPublished *utils.Atomic[protocol.Block]
 }
 
 func NewGenericHeadProcessor(
@@ -66,6 +84,7 @@ func NewGenericHeadProcessor(
 	upConfig *config.Upstream,
 	headConnector connectors.ApiConnector,
 	specific BlockChainSpecific,
+	chainValidator validations.SettingsValidator,
 ) *GenericHeadProcessor {
 	configuredChain := chains.GetChain(upConfig.ChainName)
 	head := createHead(ctx, upConfig.Id, upConfig.PollInterval, upConfig.HeadMode, headConnector, specific, upConfig.Options)
@@ -90,7 +109,9 @@ func NewGenericHeadProcessor(
 		lifecycle:            utils.NewGenericLifecycle(name, ctx),
 		headNoUpdatesTimeout: headNoUpdatesTimeout,
 		lastUpdate:           utils.NewAtomic[time.Time](),
+		lastPublished:        utils.NewAtomic[protocol.Block](),
 		subManager:           utils.NewSubscriptionManager[HeadEvent](name),
+		chainValidator:       chainValidator,
 	}
 }
 
@@ -115,10 +136,13 @@ func (h *GenericHeadProcessor) Running() bool {
 // published after HeadStateEvent{Running: false}: a late subscriber's replay then reports a
 // paused head exactly when the head is paused.
 //
-// The wait is short: the drain goroutine never blocks in network I/O, since a silence nudge
-// (Head.OnNoHeadUpdates) is a non-blocking signal to the head.
+// The wait is short. A silence nudge (Head.OnNoHeadUpdates) is a non-blocking signal to the
+// head, and the one network call the drain makes, the chain check of a suspicious head, is
+// abandoned as soon as the run context ends: the drain selects on it and discards the
+// verdict, so Stop never waits for a validator.
 func (h *GenericHeadProcessor) Start() {
 	h.lifecycle.Start(func(ctx context.Context) (func(), error) {
+		h.lastPublished.Store(protocol.ZeroBlock{})
 		h.head.Start()
 		h.lastUpdate.Store(time.Now())
 		h.subManager.Publish(HeadStateEvent{Running: true})
@@ -138,15 +162,18 @@ func (h *GenericHeadProcessor) Start() {
 				case block, ok := <-h.head.HeadsChan():
 					if ok {
 						log.Debug().Msgf("got a new head of upstream %s - %d", h.upstreamId, block.Height)
+						// a dropped block still counts as life: the node is up, it is just wrong
 						h.lastUpdate.Store(time.Now())
-						h.subManager.Publish(HeadBlockEvent{HeadData: block})
+						if h.admit(ctx, block) {
+							h.publish(block)
+						}
 					}
 				case manualBlock := <-h.manualHeadChan:
-					if manualBlock.Height > h.head.GetCurrentBlock().Height {
+					if manualBlock.Height > h.lastPublished.Load().Height {
 						log.Debug().Msgf("got a new manual head of upstream %s - %d", h.upstreamId, manualBlock.Height)
 						h.lastUpdate.Store(time.Now())
 						h.head.UpdateHead(manualBlock)
-						h.subManager.Publish(HeadBlockEvent{HeadData: manualBlock})
+						h.publish(manualBlock)
 					}
 				}
 				timeout.Reset(h.headNoUpdatesTimeout)
@@ -172,6 +199,66 @@ func (h *GenericHeadProcessor) UpdateHead(height, slot uint64) {
 		// costs nothing, the next real head supersedes it
 		log.Debug().Msgf("dropped a manual head %d of upstream %s: the head processor is not draining", height, h.upstreamId)
 	}
+}
+
+func (h *GenericHeadProcessor) publish(block protocol.Block) {
+	h.lastPublished.Store(block)
+	h.subManager.Publish(HeadBlockEvent{HeadData: block})
+}
+
+// admit decides whether a head block may be published. A block whose height jumped past
+// headJumpThreshold from the last published one is checked against the chain first: a
+// node that silently switched chains, or an endpoint that started answering for another
+// network, is caught here rather than fed into the chain state.
+func (h *GenericHeadProcessor) admit(ctx context.Context, block protocol.Block) bool {
+	if !h.isSuspicious(block) {
+		return true
+	}
+	log.Warn().Msgf(
+		"suspicious head %d of upstream %s is far from the last published head %d, checking the chain",
+		block.Height, h.upstreamId, h.lastPublished.Load().Height,
+	)
+	result, ok := h.checkChain(ctx)
+	if !ok {
+		return false
+	}
+	switch result {
+	case validations.Valid:
+		log.Info().Msgf("head %d of upstream %s comes from the configured chain, accepting it", block.Height, h.upstreamId)
+		return true
+	case validations.FatalSettingError:
+		log.Error().Msgf("head %d of upstream %s comes from another chain, dropping it and removing the upstream", block.Height, h.upstreamId)
+		h.subManager.Publish(HeadFatalEvent{})
+		return false
+	default:
+		log.Warn().Msgf("chain check of upstream %s is inconclusive, dropping head %d", h.upstreamId, block.Height)
+		return false
+	}
+}
+
+func (h *GenericHeadProcessor) isSuspicious(block protocol.Block) bool {
+	if h.chainValidator == nil {
+		return false
+	}
+	last := h.lastPublished.Load()
+	if last.IsFullEmpty() {
+		return false
+	}
+	distance := block.Height - last.Height
+	if last.Height > block.Height {
+		distance = last.Height - block.Height
+	}
+	return distance > headJumpThreshold
+}
+
+// checkChain runs the chain validator under the run context. A cancelled run cancels the
+// probe, and its verdict is discarded: the second value is false then.
+func (h *GenericHeadProcessor) checkChain(ctx context.Context) (validations.ValidationSettingResult, bool) {
+	result := h.chainValidator.Validate(ctx)
+	if ctx.Err() != nil {
+		return validations.UnknownResult, false
+	}
+	return result, true
 }
 
 func createHead(

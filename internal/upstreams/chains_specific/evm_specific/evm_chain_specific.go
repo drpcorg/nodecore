@@ -56,20 +56,24 @@ func (e *EvmChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 	return labels.NewGenericLabelsProcessor(e.ctx, e.upstreamId, e.labelsDetectors(), e.options.ValidationInterval*5)
 }
 
+func (e *EvmChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
+	return labels.NewClientLabelDetectorHandler(
+		e.upstreamId,
+		e.connector,
+		e.options.InternalTimeout,
+		eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
+			return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain.Chain)
+		}),
+	)
+}
+
 func (e *EvmChainSpecificObject) labelsDetectors() []labels.LabelsDetector {
 	restAdditional, _ := lo.Find(e.allConnectors, func(c connectors.ApiConnector) bool {
 		return c.GetType() == specs.RestAdditional
 	})
 
 	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(
-			e.upstreamId,
-			e.connector,
-			eth_labels.NewEthClientLabelsDetector(e.upstreamId, e.chain.Chain, eth_labels.EthMappingFunc, func() (protocol.RequestHolder, error) {
-				return protocol.NewInternalUpstreamJsonRpcRequest("web3_clientVersion", nil, e.chain.Chain)
-			}),
-			e.options.InternalTimeout,
-		),
+		e.ClientLabelsDetector(),
 		eth_labels.NewEthGasLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthFlashBlockDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout, e.connector),
 		eth_labels.NewEthHLTxLabelsDetector(e.upstreamId, e.chain.Chain, e.options.InternalTimeout*2, e.connector),
@@ -133,10 +137,16 @@ func detectableConnectorTypes(apiConnectors []connectors.ApiConnector) []specs.A
 	})
 
 	return lo.Filter(types, func(connectorType specs.ApiConnectorType, index int) bool {
-		// Websocket counts: its methods (eth_subscribe and friends) are JSON-RPC in shape and
-		// carry a real module prefix, so module attribution holds for them too.
-		return connectorType == specs.JsonRpcConnector || connectorType == specs.WebsocketConnector
+		return speaksJsonRpc(connectorType)
 	})
+}
+
+// speaksJsonRpc reports whether a connector carries JSON-RPC calls. The methods detectors
+// and the chain validator both reason only over these. Websocket counts: its methods
+// (eth_subscribe and friends) are JSON-RPC in shape and carry a real module prefix, and it
+// answers eth_chainId like any other JSON-RPC endpoint.
+func speaksJsonRpc(connectorType specs.ApiConnectorType) bool {
+	return connectorType == specs.JsonRpcConnector || connectorType == specs.WebsocketConnector
 }
 
 // archiveDetectionSuppressed reports whether the upstream's manual 'archive' label
@@ -191,13 +201,16 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	settingsValidators := make([]validations.Validator[validations.ValidationSettingResult], 0)
 
 	if !*e.options.DisableChainValidation {
-		settingsValidators = append(settingsValidators, eth_validations.NewEthChainValidator(e.upstreamId, e.connector, e.chain, e.options))
+		// one validator per connector, so a wrong-chain websocket next to a right-chain
+		// json-rpc is caught; the internal connector is in the slice
+		for _, connector := range e.allConnectors {
+			if speaksJsonRpc(connector.GetType()) {
+				settingsValidators = append(settingsValidators, eth_validations.NewEthChainValidator(e.upstreamId, connector, e.chain, e.options))
+			}
+		}
 	}
 	if *e.options.ValidateCallLimit && e.chain.CallValidateContract != "" {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthCallLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
-	}
-	if e.options.ValidateClientVersion != nil && *e.options.ValidateClientVersion {
-		settingsValidators = append(settingsValidators, eth_validations.NewEthClientVersionValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
 	if len(e.chain.GasPriceCondition) > 0 {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthGasPriceValidator(e.upstreamId, e.connector, e.chain, e.options))
@@ -205,8 +218,21 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	if e.options.DisableLogIndexValidation == nil || !*e.options.DisableLogIndexValidation {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthLogIndexValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
+	if e.options.DisableErigonBugValidation != nil && !*e.options.DisableErigonBugValidation {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthErigonBugValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
 
 	return settingsValidators
+}
+
+func (e *EvmChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	// The head guard removes an upstream, and only a Valid tick of the settings processor
+	// re-admits it. So the guard exists exactly when that processor exists: the two broader
+	// flags that silence the settings pipeline silence the guard as well.
+	if *e.options.DisableValidation || *e.options.DisableSettingsValidation || *e.options.DisableChainValidation {
+		return nil
+	}
+	return eth_validations.NewEthChainValidator(e.upstreamId, e.connector, e.chain, e.options)
 }
 
 func (e *EvmChainSpecificObject) CapDetectors(input caps.DetectorInput) []caps.CapDetector {
@@ -261,7 +287,7 @@ func (e *EvmChainSpecificObject) GetSafeBlock(ctx context.Context) (protocol.Blo
 	return e.getBlockByTag(ctx, e.connector, rpc.SafeBlockNumber)
 }
 
-func (e *EvmChainSpecificObject) ParseSubscriptionBlock(blockBytes []byte) (protocol.Block, error) {
+func (e *EvmChainSpecificObject) ParseSubscriptionBlock(ctx context.Context, blockBytes []byte) (protocol.Block, error) {
 	block, err := e.ParseBlock(blockBytes)
 	if err != nil {
 		return block, err

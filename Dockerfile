@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -30,7 +30,7 @@ RUN go run cmd/chains/init_chains.go && \
 # distroless/static ships CA certificates, tzdata and a built-in nonroot user (uid 65532).
 # debian13: its ca-certificates (20250419+deb13u1) distrusts the compromised eMudhra
 # intermediates; static-debian12 still ships 20250419~deb12u1, which trusts them.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 WORKDIR /app
 
 # Copy binary from builder stage

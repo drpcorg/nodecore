@@ -163,6 +163,13 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode == StrictMode, false, true),
 		)
 	}
+	if upstreamOptions.DisableErigonBugValidation == nil {
+		upstreamOptions.DisableErigonBugValidation = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableErigonBugValidation }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableErigonBugValidation }),
+			lo.Ternary(upstreamMode == StrictMode, false, true),
+		)
+	}
 	if upstreamOptions.DisableLivenessSubscriptionValidation == nil {
 		upstreamOptions.DisableLivenessSubscriptionValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
@@ -195,13 +202,6 @@ func setOptionsDefaults(
 		upstreamOptions.ValidateCallLimit = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
-			lo.Ternary(upstreamMode == StrictMode, true, false),
-		)
-	}
-	if upstreamOptions.ValidateClientVersion == nil {
-		upstreamOptions.ValidateClientVersion = resolveBool(
-			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateClientVersion }),
-			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateClientVersion }),
 			lo.Ternary(upstreamMode == StrictMode, true, false),
 		)
 	}

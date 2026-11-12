@@ -10,6 +10,7 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/chains_specific"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/methods"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
 )
@@ -88,11 +89,16 @@ func (s *stellarBaseChainSpecificObject) MethodsProcessor() methods.MethodsProce
 	return nil
 }
 
+// ChainValidator: no chain-identity validator for the head guard.
+func (s *stellarBaseChainSpecificObject) ChainValidator() validations.SettingsValidator {
+	return nil
+}
+
 func (s *stellarBaseChainSpecificObject) PauseHeadWhileSyncing() bool {
 	return false
 }
 
-func (s *stellarBaseChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (s *stellarBaseChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 

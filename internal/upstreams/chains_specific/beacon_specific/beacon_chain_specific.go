@@ -84,6 +84,11 @@ func (b *BeaconChainSpecificObject) CapDetectors(_ caps.DetectorInput) []caps.Ca
 }
 
 func (b *BeaconChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
+	labelsDetectors := []labels.LabelsDetector{b.ClientLabelsDetector()}
+	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+}
+
+func (b *BeaconChainSpecificObject) ClientLabelsDetector() labels.ClientDetector {
 	clientDetector := eth_labels.NewEthClientLabelsDetector(
 		b.upstreamId,
 		b.configuredChain.Chain,
@@ -92,10 +97,7 @@ func (b *BeaconChainSpecificObject) LabelsProcessor() labels.LabelsProcessor {
 			return protocol.NewInternalUpstreamRestRequest("GET#/eth/v1/node/version", nil, b.configuredChain.Chain), nil
 		},
 	)
-	labelsDetectors := []labels.LabelsDetector{
-		labels.NewClientLabelDetectorHandler(b.upstreamId, b.connector, clientDetector, b.internalTimeout),
-	}
-	return labels.NewGenericLabelsProcessor(b.ctx, b.upstreamId, labelsDetectors, b.labelsDelay)
+	return labels.NewClientLabelDetectorHandler(b.upstreamId, b.connector, b.internalTimeout, clientDetector)
 }
 
 func (b *BeaconChainSpecificObject) LowerBoundProcessor() lower_bounds.LowerBoundProcessor {
@@ -186,7 +188,7 @@ func (b *BeaconChainSpecificObject) ParseBlock(blockBytes []byte) (protocol.Bloc
 	), nil
 }
 
-func (b *BeaconChainSpecificObject) ParseSubscriptionBlock(_ []byte) (protocol.Block, error) {
+func (b *BeaconChainSpecificObject) ParseSubscriptionBlock(_ context.Context, _ []byte) (protocol.Block, error) {
 	return protocol.ZeroBlock{}, blocks.ErrUnsupportedHeadSubscriptions
 }
 
@@ -218,6 +220,11 @@ var _ chains_specific.ChainSpecific = (*BeaconChainSpecificObject)(nil)
 // MethodsProcessor returns nil: this chain exposes no way to ask a node which methods it
 // implements, so its upstreams keep the full method set their spec declares.
 func (b *BeaconChainSpecificObject) MethodsProcessor() methods.MethodsProcessor {
+	return nil
+}
+
+// ChainValidator: no chain-identity validator for the head guard.
+func (b *BeaconChainSpecificObject) ChainValidator() validations.SettingsValidator {
 	return nil
 }
 

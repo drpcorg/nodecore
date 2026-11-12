@@ -1,0 +1,10 @@
+upstream-config:
+  mode: strict
+  compatible-clients:
+    allow-undetected: false
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

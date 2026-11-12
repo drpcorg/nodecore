@@ -1,6 +1,7 @@
 package eth_validations_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -22,7 +23,7 @@ func TestEthPeersValidatorReturnsUnavailableOnConnectorError(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -37,7 +38,7 @@ func TestEthPeersValidatorReturnsUnavailableOnInvalidJSON(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -54,7 +55,7 @@ func TestEthPeersValidatorAcceptsANumericPeerCount(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Available, status)
 	connector.AssertExpectations(t)
@@ -69,7 +70,7 @@ func TestEthPeersValidatorReturnsUnavailableOnInvalidPeerCount(t *testing.T) {
 		MinPeers:        1,
 	})
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -84,7 +85,7 @@ func TestEthPeersValidatorReturnsImmatureWhenBelowMinPeers(t *testing.T) {
 		MinPeers:        2,
 	})
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Immature, status)
 	connector.AssertExpectations(t)
@@ -118,7 +119,7 @@ func TestEthPeersValidatorReturnsAvailableWhenPeerCountIsEqualOrGreaterThanMinPe
 				MinPeers:        test.minPeers,
 			})
 
-			status := validator.Validate()
+			status := validator.Validate(context.Background())
 
 			assert.Equal(t, protocol.Available, status)
 			connector.AssertExpectations(t)
@@ -132,7 +133,7 @@ func TestEthSyncingValidatorReturnsUnavailableOnConnectorError(t *testing.T) {
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -144,7 +145,7 @@ func TestEthSyncingValidatorReturnsUnavailableOnInvalidJSON(t *testing.T) {
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Unavailable, status)
 	connector.AssertExpectations(t)
@@ -156,7 +157,7 @@ func TestEthSyncingValidatorReturnsSyncingForBooleanTrue(t *testing.T) {
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Syncing, status)
 	connector.AssertExpectations(t)
@@ -168,7 +169,7 @@ func TestEthSyncingValidatorReturnsAvailableForBooleanFalse(t *testing.T) {
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Available, status)
 	connector.AssertExpectations(t)
@@ -180,7 +181,7 @@ func TestEthSyncingValidatorReturnsSyncingWhenLagExceedsThreshold(t *testing.T) 
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Syncing, status)
 	connector.AssertExpectations(t)
@@ -192,7 +193,7 @@ func TestEthSyncingValidatorReturnsAvailableWhenLagEqualsThreshold(t *testing.T)
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Available, status)
 	connector.AssertExpectations(t)
@@ -204,7 +205,7 @@ func TestEthSyncingValidatorReturnsAvailableOnInvalidHexLagPayload(t *testing.T)
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Available, status)
 	connector.AssertExpectations(t)
@@ -216,7 +217,7 @@ func TestEthSyncingValidatorReturnsSyncingForOpNodeStylePayload(t *testing.T) {
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Syncing, status)
 	connector.AssertExpectations(t)
@@ -228,7 +229,7 @@ func TestEthSyncingValidatorReturnsSyncingForNitroExecutionSyncTargetPayload(t *
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Syncing, status)
 	connector.AssertExpectations(t)
@@ -240,7 +241,7 @@ func TestEthSyncingValidatorReturnsAvailableWhenStructuredPayloadHasNoKnownSyncF
 	)
 	validator := eth_validations.NewEthSyncingValidator("upstream-1", testConfiguredChain(5), connector, time.Second)
 
-	status := validator.Validate()
+	status := validator.Validate(context.Background())
 
 	assert.Equal(t, protocol.Available, status)
 	connector.AssertExpectations(t)

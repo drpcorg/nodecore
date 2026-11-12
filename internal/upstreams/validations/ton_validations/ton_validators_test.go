@@ -1,6 +1,7 @@
 package ton_validations_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ func TestTonChainValidatorValidOnMainnetZerostate(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", masterchainInfoBody(80352632, mainnetZerostateRoot, mainnetZerostateFile), 200, protocol.Rest))
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestTonChainValidatorValidOnTestnetZerostate(t *testing.T) {
@@ -53,7 +54,7 @@ func TestTonChainValidatorValidOnTestnetZerostate(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", masterchainInfoBody(72210566, testnetZerostateRoot, testnetZerostateFile), 200, protocol.Rest))
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("ton-testnet"), time.Second)
-	assert.Equal(t, validations.Valid, v.Validate())
+	assert.Equal(t, validations.Valid, v.Validate(context.Background()))
 }
 
 func TestTonChainValidatorFatalOnTestnetZerostateBehindMainnetConfig(t *testing.T) {
@@ -62,13 +63,13 @@ func TestTonChainValidatorFatalOnTestnetZerostateBehindMainnetConfig(t *testing.
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", masterchainInfoBody(72210566, testnetZerostateRoot, testnetZerostateFile), 200, protocol.Rest))
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 }
 
 func TestTonChainValidatorFatalOnUnmappedChain(t *testing.T) {
 	conn := mocks.NewConnectorMock()
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("aptos-mainnet"), time.Second)
-	assert.Equal(t, validations.FatalSettingError, v.Validate())
+	assert.Equal(t, validations.FatalSettingError, v.Validate(context.Background()))
 	conn.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
 }
 
@@ -77,7 +78,7 @@ func TestTonChainValidatorRetriesOnNotOk(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(notOkBody), 200, protocol.Rest))
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }
 
 func TestTonChainValidatorRetriesOnFetchError(t *testing.T) {
@@ -85,7 +86,7 @@ func TestTonChainValidatorRetriesOnFetchError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := ton_validations.NewTonChainValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, validations.SettingsError, v.Validate())
+	assert.Equal(t, validations.SettingsError, v.Validate(context.Background()))
 }
 
 func TestTonHealthAvailable(t *testing.T) {
@@ -93,7 +94,7 @@ func TestTonHealthAvailable(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", masterchainInfoBody(80352632, mainnetZerostateRoot, mainnetZerostateFile), 200, protocol.Rest))
 	v := ton_validations.NewTonHealthValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, protocol.Available, v.Validate())
+	assert.Equal(t, protocol.Available, v.Validate(context.Background()))
 }
 
 func TestTonHealthUnavailableOnNotOk(t *testing.T) {
@@ -101,7 +102,7 @@ func TestTonHealthUnavailableOnNotOk(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", []byte(notOkBody), 200, protocol.Rest))
 	v := ton_validations.NewTonHealthValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestTonHealthUnavailableOnZeroSeqno(t *testing.T) {
@@ -109,7 +110,7 @@ func TestTonHealthUnavailableOnZeroSeqno(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponse("1", masterchainInfoBody(0, mainnetZerostateRoot, mainnetZerostateFile), 200, protocol.Rest))
 	v := ton_validations.NewTonHealthValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }
 
 func TestTonHealthUnavailableOnFetchError(t *testing.T) {
@@ -117,5 +118,5 @@ func TestTonHealthUnavailableOnFetchError(t *testing.T) {
 	conn.On("SendRequest", mock.Anything, mock.MatchedBy(isMasterchainInfo)).
 		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithData(1, "boom", nil)))
 	v := ton_validations.NewTonHealthValidator("id", conn, chains.GetChain("ton"), time.Second)
-	assert.Equal(t, protocol.Unavailable, v.Validate())
+	assert.Equal(t, protocol.Unavailable, v.Validate(context.Background()))
 }

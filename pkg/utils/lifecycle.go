@@ -103,7 +103,3 @@ func (l *GenericLifecycle) Running() bool {
 	defer l.mu.Unlock()
 	return l.running
 }
-
-func (l *GenericLifecycle) GetParentContext() context.Context {
-	return l.parentCtx
-}

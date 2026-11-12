@@ -19,14 +19,14 @@ type EthFlashBlockDetector struct {
 	internalTimeout time.Duration
 }
 
-func (e *EthFlashBlockDetector) DetectLabels() map[string]string {
+func (e *EthFlashBlockDetector) DetectLabels(ctx context.Context) map[string]string {
 	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_getBlockByNumber", []any{"pending", false}, e.chain)
 	if err != nil {
 		log.Error().Err(err).Msgf("unable to create a request to detect flashblocks of upstream '%s'", e.upstreamId)
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.internalTimeout)
+	ctx, cancel := context.WithTimeout(ctx, e.internalTimeout)
 	defer cancel()
 
 	resp := e.connector.SendRequest(ctx, req)
