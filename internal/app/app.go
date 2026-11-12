@@ -30,8 +30,8 @@ import (
 	"github.com/drpcorg/nodecore/internal/upstreams/flow/subengine"
 	"github.com/drpcorg/nodecore/pkg/pyroscope"
 	"github.com/drpcorg/nodecore/pkg/utils"
-	"github.com/labstack/echo-contrib/echoprometheus"
-	"github.com/labstack/echo/v4"
+	echoprometheus "github.com/labstack/echo-prometheus"
+	"github.com/labstack/echo/v5"
 	"github.com/rs/zerolog/log"
 )
 
@@ -48,8 +48,8 @@ type App struct {
 	reloader           *reload.Reloader
 	hups               <-chan os.Signal
 
-	httpServer   *echo.Echo
-	healthServer *echo.Echo
+	httpServer   *http_server.EchoServer
+	healthServer *http_server.EchoServer
 	grpcServer   *grpc_server.GrpcServer
 }
 
@@ -118,8 +118,8 @@ func NewApp(ctx context.Context, appConfig *config.AppConfig, hups <-chan os.Sig
 	if err != nil {
 		return nil, fmt.Errorf("unable to create grpc server: %w", err)
 	}
-	httpServer := http_server.NewHttpServer(ctx, appCtx)
-	healthServer := health_server.NewHealthServer(upstreamSupervisor)
+	httpServer := http_server.NewEchoServer(http_server.NewHttpServer(appCtx), http_server.WithClientLimits(ctx))
+	healthServer := http_server.NewEchoServer(health_server.NewHealthServer(upstreamSupervisor))
 
 	outboxStorage, err := outbox.NewOutboxStorage(appConfig.StatsConfig, storageRegistry)
 	if err != nil {
@@ -193,12 +193,13 @@ func (a *App) Start() {
 
 	go func() {
 		if a.appConfig.ServerConfig.MetricsPort != 0 {
-			metricsServer := echo.New()
-			metricsServer.HideBanner = true
-			metricsServer.Use(echoprometheus.NewMiddleware(config.AppName))
-			metricsServer.GET("/metrics", echoprometheus.NewHandler())
+			metricsEcho := echo.New()
+			metricsEcho.Use(echoprometheus.NewMiddleware(config.AppName))
+			metricsEcho.GET("/metrics", echoprometheus.NewHandler())
 
-			if metricsServerErr := http_server.StartEcho(metricsServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.MetricsPort), nil); metricsServerErr != nil {
+			metricsServer := http_server.NewEchoServer(metricsEcho)
+			log.Info().Msgf("starting metrics server on port %d", a.appConfig.ServerConfig.MetricsPort)
+			if metricsServerErr := metricsServer.Start(fmt.Sprintf(":%d", a.appConfig.ServerConfig.MetricsPort), nil); metricsServerErr != nil {
 				log.Panic().Err(metricsServerErr).Msg("metrics server couldn't start")
 			}
 		} else {
@@ -208,7 +209,8 @@ func (a *App) Start() {
 
 	go func() {
 		if a.appConfig.ServerConfig.HealthPort != 0 {
-			if healthServerErr := http_server.StartEcho(a.healthServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.HealthPort), nil); healthServerErr != nil {
+			log.Info().Msgf("starting health server on port %d", a.appConfig.ServerConfig.HealthPort)
+			if healthServerErr := a.healthServer.Start(fmt.Sprintf(":%d", a.appConfig.ServerConfig.HealthPort), nil); healthServerErr != nil {
 				if !shuttingDown.Load() {
 					log.Panic().Err(healthServerErr).Msg("health server couldn't start")
 				}
@@ -219,7 +221,8 @@ func (a *App) Start() {
 	}()
 
 	go func() {
-		if httpServerErr := http_server.StartEcho(a.httpServer, fmt.Sprintf(":%d", a.appConfig.ServerConfig.Port), a.appConfig.ServerConfig.TlsConfig); httpServerErr != nil {
+		log.Info().Msgf("starting http server on port %d", a.appConfig.ServerConfig.Port)
+		if httpServerErr := a.httpServer.Start(fmt.Sprintf(":%d", a.appConfig.ServerConfig.Port), a.appConfig.ServerConfig.TlsConfig); httpServerErr != nil {
 			if !shuttingDown.Load() {
 				log.Panic().Err(httpServerErr).Msg("http server couldn't start")
 			}

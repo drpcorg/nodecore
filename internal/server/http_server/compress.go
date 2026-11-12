@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/compression"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/rs/zerolog/log"
 )
 
@@ -47,7 +47,7 @@ var errResponseFinished = errors.New("the response body is already finished")
 // A client that asks for neither is served plain bytes.
 func Compress() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			res := c.Response()
 			// Announced even when nothing is compressed: a cache that skips
 			// this key hands a zstd body to a gzip-only client.
@@ -65,17 +65,20 @@ func Compress() echo.MiddlewareFunc {
 				return next(c)
 			}
 
-			rw := res.Writer
-			crw := &compressResponseWriter{ResponseWriter: rw, scheme: scheme}
+			// The writer wraps echo's Response instead of sitting inside it,
+			// so the Response is committed only once a status is actually
+			// released to it - which is what echo's error handler looks at
+			// to decide whether it may still write.
+			crw := &compressResponseWriter{ResponseWriter: res, scheme: scheme}
 			defer func() {
 				if !crw.committed {
 					// Nothing was ever written, so no encoder was ever taken
 					// and no Content-Encoding went out. The status still has
 					// to reach the client.
 					if crw.wroteHeader {
-						rw.WriteHeader(crw.code)
+						res.WriteHeader(crw.code)
 					}
-					res.Writer = rw
+					c.SetResponse(res)
 				}
 				if crw.writer != nil {
 					if closeErr := crw.writer.Close(); closeErr != nil {
@@ -89,7 +92,7 @@ func Compress() echo.MiddlewareFunc {
 				// rather than allowed to write through it.
 				crw.released = true
 			}()
-			res.Writer = crw
+			c.SetResponse(crw)
 
 			return next(c)
 		}
@@ -136,6 +139,12 @@ func (w *compressResponseWriter) Write(b []byte) (int, error) {
 	if w.released {
 		return 0, errResponseFinished
 	}
+	if !w.wroteHeader {
+		// A body written without a status is a 200. Taking it through
+		// WriteHeader, not leaving it to the writer underneath, drops a
+		// Content-Length that no longer describes the encoded body.
+		w.WriteHeader(http.StatusOK)
+	}
 	if w.Header().Get(echo.HeaderContentType) == "" {
 		w.Header().Set(echo.HeaderContentType, http.DetectContentType(b))
 	}
@@ -164,7 +173,7 @@ func (w *compressResponseWriter) Flush() {
 }
 
 func (w *compressResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return w.ResponseWriter.(http.Hijacker).Hijack()
+	return http.NewResponseController(w.ResponseWriter).Hijack()
 }
 
 func (w *compressResponseWriter) Push(target string, opts *http.PushOptions) error {
@@ -174,7 +183,9 @@ func (w *compressResponseWriter) Push(target string, opts *http.PushOptions) err
 	return http.ErrNotSupported
 }
 
-// Unwrap exposes the underlying writer to http.ResponseController.
+// Unwrap exposes the underlying writer to http.ResponseController, and to
+// echo, which unwraps its way down to its own Response to learn whether the
+// response is committed.
 func (w *compressResponseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }

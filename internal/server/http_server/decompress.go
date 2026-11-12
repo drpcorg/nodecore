@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/drpcorg/nodecore/internal/compression"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/rs/zerolog"
 )
 
@@ -67,7 +67,7 @@ func (l *limitedReader) Read(p []byte) (int, error) {
 // client had to send in full, which is its own limit.
 func Decompress() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			req := c.Request()
 			encoding := strings.TrimSpace(req.Header.Get(echo.HeaderContentEncoding))
 			if encoding == "" || strings.EqualFold(encoding, "identity") {
