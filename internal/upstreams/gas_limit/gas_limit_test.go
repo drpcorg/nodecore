@@ -10,6 +10,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/gas_limit"
+	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/drpcorg/nodecore/pkg/test_utils/mocks"
 	"github.com/stretchr/testify/assert"
@@ -86,6 +87,52 @@ func TestMeasureSendsCreationCall(t *testing.T) {
 
 	require.NoError(t, err)
 	connector.AssertExpectations(t)
+}
+
+func TestMeasureWithRetries(t *testing.T) {
+	reading := protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x23c2767c"`), protocol.JsonRpc)
+	failure := protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())
+	measure := func(connector *mocks.ConnectorMock) (*big.Int, error) {
+		executor := validations.ValidatorExecutor("upstream-1", "gasLimitTest", nil)
+		return gas_limit.MeasureWithRetries(context.Background(), executor, connector, chains.ETHEREUM, 5*time.Second)
+	}
+
+	t.Run("a failed call is retried until the node answers", func(t *testing.T) {
+		connector := mocks.NewConnectorMock()
+		connector.On("SendRequest", mock.Anything, mock.Anything).Return(failure).Twice()
+		connector.On("SendRequest", mock.Anything, mock.Anything).Return(reading).Once()
+
+		granted, err := measure(connector)
+
+		require.NoError(t, err)
+		assert.Equal(t, "600000000", granted.String())
+		connector.AssertExpectations(t)
+	})
+
+	t.Run("gives up with the last error when every attempt fails", func(t *testing.T) {
+		connector := mocks.NewConnectorMock()
+		connector.On("SendRequest", mock.Anything, mock.Anything).Return(failure).Times(validations.RetryMaxAttempts)
+
+		granted, err := measure(connector)
+
+		require.Error(t, err)
+		assert.Nil(t, granted)
+		connector.AssertExpectations(t)
+	})
+
+	t.Run("an answer that is not a reading is not retried", func(t *testing.T) {
+		connector := mocks.NewConnectorMock()
+		connector.
+			On("SendRequest", mock.Anything, mock.Anything).
+			Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x"`), protocol.JsonRpc)).
+			Once()
+
+		granted, err := measure(connector)
+
+		require.Error(t, err)
+		assert.Nil(t, granted)
+		connector.AssertExpectations(t)
+	})
 }
 
 func TestGrantsExtraGas(t *testing.T) {

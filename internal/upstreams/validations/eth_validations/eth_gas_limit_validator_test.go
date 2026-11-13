@@ -22,6 +22,7 @@ func TestEthGasLimitValidator(t *testing.T) {
 	tests := []struct {
 		name     string
 		response protocol.ResponseHolder
+		attempts int
 		expected validations.ValidationSettingResult
 	}{
 		{name: "valid when the node grants the requested budget", response: result("0x23c2767c"), expected: validations.Valid},
@@ -35,11 +36,13 @@ func TestEthGasLimitValidator(t *testing.T) {
 			response: protocol.NewHttpUpstreamResponseWithError(
 				protocol.ResponseErrorWithData(-32000, "gas limit too high", nil),
 			),
+			attempts: validations.RetryMaxAttempts,
 			expected: validations.SettingsError,
 		},
 		{
 			name:     "settings error on a transport failure",
 			response: protocol.NewHttpUpstreamResponseWithError(protocol.ServerError()),
+			attempts: validations.RetryMaxAttempts,
 			expected: validations.SettingsError,
 		},
 	}
@@ -47,18 +50,40 @@ func TestEthGasLimitValidator(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			connector := mocks.NewConnectorMock()
-			// Once: a retry would be a second, unexpected call
-			connector.On("SendRequest", mock.Anything, mock.Anything).Return(test.response).Once()
+			// an error response is retried, any other answer is final after one call
+			connector.On("SendRequest", mock.Anything, mock.Anything).Return(test.response).Times(max(test.attempts, 1))
 
 			validator := eth_validations.NewEthGasLimitValidator(
 				"upstream-1",
 				connector,
 				chains.GetChain("ethereum"),
-				&chains.Options{InternalTimeout: time.Second},
+				&chains.Options{InternalTimeout: 5 * time.Second},
 			)
 
 			assert.Equal(t, test.expected, validator.Validate(context.Background()))
 			connector.AssertExpectations(t)
 		})
 	}
+}
+
+func TestEthGasLimitValidatorRetriesAFailedCall(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewHttpUpstreamResponseWithError(protocol.ServerError())).
+		Once()
+	connector.
+		On("SendRequest", mock.Anything, mock.Anything).
+		Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x23c2767c"`), protocol.JsonRpc)).
+		Once()
+
+	validator := eth_validations.NewEthGasLimitValidator(
+		"upstream-1",
+		connector,
+		chains.GetChain("ethereum"),
+		&chains.Options{InternalTimeout: 5 * time.Second},
+	)
+
+	assert.Equal(t, validations.Valid, validator.Validate(context.Background()))
+	connector.AssertExpectations(t)
 }

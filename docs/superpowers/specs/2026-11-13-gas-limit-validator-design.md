@@ -54,7 +54,7 @@ Non-goals:
 | 7 | Exempt chains carry `disable-gas-limit-validation: true` at protocol level in `chains.yaml` (21 protocols, shipped in `drpcorg/public` PR #298) | agreed |
 | 8 | `strict-provider` is `strict` in every other respect | agreed |
 | 9 | One probe function used by both the detector and the validator; each sends its own request | my call |
-| 10 | The validator runs on every validation tick, one request, no retries | my call |
+| 10 | The validator runs on every validation tick and retries a failed call through the standard `ValidatorExecutor`; the label detector sends the request once | agreed |
 | 11 | The probe lives in a new package `internal/upstreams/gas_limit` | my call |
 
 ### Approaches considered for sharing the check
@@ -83,9 +83,17 @@ there is no reading:
 // An error means the node gave no usable reading; it says nothing about the node's cap.
 func Measure(ctx context.Context, connector connectors.ApiConnector, chain chains.Chain, timeout time.Duration) (*big.Int, error)
 
+// MeasureWithRetries is Measure with the request sent through the executor.
+// All attempts share the timeout.
+func MeasureWithRetries(ctx context.Context, executor failsafe.Executor[protocol.ResponseHolder], connector connectors.ApiConnector, chain chains.Chain, timeout time.Duration) (*big.Int, error)
+
 // GrantsExtraGas reports whether a granted budget counts as extra gas.
 func GrantsExtraGas(granted *big.Int) bool
 ```
+
+`Measure` sends the request once and is what the label detector uses: it runs on every chain,
+including the ones whose client always rejects the call, and it runs again on the next cycle
+anyway. `MeasureWithRetries` is what the validator uses.
 
 `Measure` returns an error when:
 
@@ -133,8 +141,11 @@ implementing `validations.SettingsValidator`:
 | reading below the threshold | `FatalSettingError` | upstream refused at start, removed at runtime |
 | error | `SettingsError` | at start the upstream is not admitted until a later tick is `Valid`; at runtime its state is kept |
 
-It sends one request per validation tick, bounded by `internal-timeout`, without the retrying
-`ValidatorExecutor`: a failed call is a `SettingsError` and the next tick asks again.
+It runs on every validation tick through `validations.ValidatorExecutor`, like the chain,
+call-limit, gas-price and log-index validators: an error response is retried up to three times,
+all attempts within one `internal-timeout`. An answer that is not a reading (`0x`, an echo) is
+final and is not retried. At startup this keeps one failed call from holding the upstream out
+for a whole `validation-interval`.
 
 A fatal verdict logs an error that names the upstream, the granted amount and the required
 600M, so the operator knows to raise the node's RPC gas cap.
