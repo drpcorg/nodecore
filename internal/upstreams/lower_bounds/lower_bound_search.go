@@ -146,6 +146,18 @@ func (c *LowerBoundSearchCalculator) DetectContiguousLowerBound(
 	fetchLatestHeight LowerBoundLatestHeightFetcher,
 	probe ContiguousLowerBoundProbe,
 ) ([]protocol.LowerBoundData, error) {
+	return c.DetectContiguousLowerBoundWithOffset(ctx, fetchLatestHeight, probe, c.maxOffset)
+}
+
+// DetectContiguousLowerBoundWithOffset is DetectContiguousLowerBound with the caller's maxOffset
+// instead of the calculator's. It serves a detector built with maxOffset 0, which selects the
+// plain search in DetectLowerBound, while its contiguous probe returns ProbeEmpty.
+func (c *LowerBoundSearchCalculator) DetectContiguousLowerBoundWithOffset(
+	ctx context.Context,
+	fetchLatestHeight LowerBoundLatestHeightFetcher,
+	probe ContiguousLowerBoundProbe,
+	maxOffset int,
+) ([]protocol.LowerBoundData, error) {
 	latest, err := c.withRetryLatestHeight(ctx, fetchLatestHeight)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch latest height for upstream '%s': %w", c.UpstreamId, err)
@@ -156,7 +168,7 @@ func (c *LowerBoundSearchCalculator) DetectContiguousLowerBound(
 
 	// hitNear is the block at or just left of height where data was found
 	hitNear := func(height int64) (int64, bool) {
-		for block, left := height, c.maxOffset; block >= 1; block, left = block-1, left-1 {
+		for block, left := height, maxOffset; block >= 1; block, left = block-1, left-1 {
 			result, err := c.withRetryContiguousProbe(ctx, block, probe)
 			if err != nil || result == ProbeMiss {
 				return 0, false
