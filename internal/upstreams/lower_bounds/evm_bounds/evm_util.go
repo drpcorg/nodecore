@@ -57,20 +57,24 @@ func (e *EvmLowerBoundDetector) lastTxHash(ctx context.Context, height int64) (h
 }
 
 type evmBlockEnvelope struct {
-	Number           string            `json:"number"`
-	Hash             string            `json:"hash"`
-	TransactionsRoot string            `json:"transactionsRoot"`
+	Number string `json:"number"`
+	Hash   string `json:"hash"`
+	// TransactionsRoot stays raw: only isBareHeader reads it, and a root of an unusual shape
+	// must not fail the tx and receipts probes
+	TransactionsRoot json.RawMessage   `json:"transactionsRoot"`
 	Transactions     []json.RawMessage `json:"transactions"`
 }
 
-// bodyPruned reports a bare header: the block carries no transactions although its header
-// commits to some. A missing or zero root commits to nothing, so it proves nothing.
-func (b evmBlockEnvelope) bodyPruned() bool {
+// isBareHeader reports a block that carries no transactions although its header commits to
+// some. Only a 32-byte hash commits: a missing root, the zero hash and the empty trie root
+// commit to nothing, so they prove nothing.
+func (b evmBlockEnvelope) isBareHeader() bool {
 	if len(b.Transactions) > 0 {
 		return false
 	}
-	root := strings.ToLower(strings.TrimSpace(b.TransactionsRoot))
-	return root != "" && root != evmEmptyTxRoot && root != evmZeroHash
+	root := strings.ToLower(strings.Trim(strings.TrimSpace(string(b.TransactionsRoot)), `"`))
+	isHash := len(root) == len(evmZeroHash) && strings.HasPrefix(root, "0x")
+	return isHash && root != evmEmptyTxRoot && root != evmZeroHash
 }
 
 type evmTxRef struct {

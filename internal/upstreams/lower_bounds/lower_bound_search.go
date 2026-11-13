@@ -149,8 +149,9 @@ func (c *LowerBoundSearchCalculator) DetectContiguousLowerBound(
 	return c.DetectContiguousLowerBoundWithOffset(ctx, fetchLatestHeight, probe, c.maxOffset)
 }
 
-// DetectContiguousLowerBoundWithOffset is DetectContiguousLowerBound with its own ProbeEmpty
-// tolerance, for a detector whose other search runs with a different offset.
+// DetectContiguousLowerBoundWithOffset is DetectContiguousLowerBound with the caller's maxOffset
+// instead of the calculator's. It serves a detector built with maxOffset 0, which selects the
+// plain search in DetectLowerBound, while its contiguous probe returns ProbeEmpty.
 func (c *LowerBoundSearchCalculator) DetectContiguousLowerBoundWithOffset(
 	ctx context.Context,
 	fetchLatestHeight LowerBoundLatestHeightFetcher,
