@@ -29,7 +29,7 @@ func (c *CompatibleClientsConfig) AllowsUndetected() bool {
 
 func (c *CompatibleClientsConfig) setDefaults(upstreamMode UpstreamMode) {
 	if c.Enabled == nil {
-		c.Enabled = new(upstreamMode == StrictMode)
+		c.Enabled = new(upstreamMode.IsStrict())
 	}
 	if c.AllowUndetected == nil {
 		c.AllowUndetected = new(true)

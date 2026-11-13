@@ -236,6 +236,7 @@ func TestSetOptionsDefaultsUsesHardcodedFallbacksInDefaultMode(t *testing.T) {
 	assert.False(t, *options.ValidateCallLimit)
 	assert.True(t, *options.DisableLivenessSubscriptionValidation)
 	assert.True(t, *options.DisableErigonBugValidation)
+	assert.True(t, *options.DisableGasLimitValidation)
 	assert.Equal(t, int64(1), options.MinPeers)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
@@ -254,6 +255,7 @@ func TestSetOptionsDefaultsUsesStrictModeFallbacksForDetectionAndValidationFlags
 	assert.True(t, *options.ValidateCallLimit)
 	assert.False(t, *options.DisableLivenessSubscriptionValidation)
 	assert.False(t, *options.DisableErigonBugValidation)
+	assert.True(t, *options.DisableGasLimitValidation)
 	assert.Equal(t, int64(1000000), options.CallLimitSize)
 }
 
@@ -331,4 +333,39 @@ func TestSetOptionsDefaultsMethodsDetectionUpstreamValueWins(t *testing.T) {
 	setOptionsDefaults(options, chainDefaults, chainSettings(nil), StrictMode)
 
 	assert.True(t, *options.DisableMethodsDetection, "an explicit per-upstream value must be left alone")
+}
+
+func TestSetOptionsDefaultsGasLimitValidationStrictProviderFallback(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chainSettings(nil), StrictProviderMode)
+
+	assert.False(t, *options.DisableGasLimitValidation, "strict-provider runs the gas-limit validation by default")
+}
+
+func TestSetOptionsDefaultsGasLimitValidationChainSettingsBeatFallback(t *testing.T) {
+	options := &chains.Options{}
+
+	setOptionsDefaults(options, nil, chainSettings(&chains.Options{DisableGasLimitValidation: new(true)}), StrictProviderMode)
+
+	assert.True(t, *options.DisableGasLimitValidation, "a chain exempt in chains.yaml stays exempt in strict-provider")
+}
+
+func TestSetOptionsDefaultsGasLimitValidationChainDefaultsBeatChainSettings(t *testing.T) {
+	options := &chains.Options{}
+	chainDefaults := &ChainDefaults{Options: &chains.Options{DisableGasLimitValidation: new(false)}}
+
+	setOptionsDefaults(options, chainDefaults, chainSettings(&chains.Options{DisableGasLimitValidation: new(true)}), StrictProviderMode)
+
+	assert.False(t, *options.DisableGasLimitValidation, "chain defaults must beat the chains.yaml value")
+}
+
+func TestSetOptionsDefaultsGasLimitValidationUpstreamValueWins(t *testing.T) {
+	enabled := &chains.Options{DisableGasLimitValidation: new(false)}
+	setOptionsDefaults(enabled, nil, chainSettings(nil), DefaultMode)
+	assert.False(t, *enabled.DisableGasLimitValidation, "an explicit per-upstream value switches the check on in default mode")
+
+	disabled := &chains.Options{DisableGasLimitValidation: new(true)}
+	setOptionsDefaults(disabled, nil, chainSettings(nil), StrictProviderMode)
+	assert.True(t, *disabled.DisableGasLimitValidation, "an explicit per-upstream value switches the check off in strict-provider")
 }

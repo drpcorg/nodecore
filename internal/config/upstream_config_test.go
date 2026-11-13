@@ -110,6 +110,7 @@ func TestSetDefaultPollInterval(t *testing.T) {
 			DisableMethodsDetection:               new(true),
 			DisableLogIndexValidation:             new(true),
 			DisableErigonBugValidation:            new(true),
+			DisableGasLimitValidation:             new(true),
 			DisableLivenessSubscriptionValidation: new(true),
 			ValidateSyncing:                       new(false),
 			ValidatePeers:                         new(false),
@@ -161,6 +162,7 @@ func TestSetDefaultJsonRpcHeadConnector(t *testing.T) {
 			DisableMethodsDetection:               new(true),
 			DisableLogIndexValidation:             new(true),
 			DisableErigonBugValidation:            new(true),
+			DisableGasLimitValidation:             new(true),
 			DisableLivenessSubscriptionValidation: new(true),
 			ValidateSyncing:                       new(false),
 			ValidatePeers:                         new(false),
@@ -212,6 +214,7 @@ func TestSetDefaultRestHeadConnector(t *testing.T) {
 			DisableMethodsDetection:               new(true),
 			DisableLogIndexValidation:             new(true),
 			DisableErigonBugValidation:            new(true),
+			DisableGasLimitValidation:             new(true),
 			DisableLivenessSubscriptionValidation: new(true),
 			ValidateSyncing:                       new(false),
 			ValidatePeers:                         new(false),
@@ -243,6 +246,7 @@ func TestSetStrictMode(t *testing.T) {
 		DisableMethodsDetection:               new(false),
 		DisableLogIndexValidation:             new(false),
 		DisableErigonBugValidation:            new(false),
+		DisableGasLimitValidation:             new(true),
 		DisableLivenessSubscriptionValidation: new(false),
 		ValidateSyncing:                       new(true),
 		ValidatePeers:                         new(true),
@@ -414,6 +418,7 @@ func TestDefaultMode(t *testing.T) {
 		DisableMethodsDetection:               new(true),
 		DisableLogIndexValidation:             new(true),
 		DisableErigonBugValidation:            new(true),
+		DisableGasLimitValidation:             new(true),
 		DisableLivenessSubscriptionValidation: new(true),
 		ValidateSyncing:                       new(false),
 		ValidatePeers:                         new(false),
@@ -447,6 +452,17 @@ func TestStrictModeDisablesIntegrity(t *testing.T) {
 	require.NotNil(t, appConfig.UpstreamConfig.IntegrityConfig)
 	assert.Equal(t, config.StrictMode, appConfig.UpstreamConfig.Mode)
 	assert.False(t, appConfig.UpstreamConfig.IntegrityConfig.Enabled)
+}
+
+func TestStrictProviderModeFromConfig(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/upstreams/strict-provider-mode.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, config.StrictProviderMode, appConfig.UpstreamConfig.Mode)
+	require.NotNil(t, appConfig.UpstreamConfig.IntegrityConfig)
+	assert.False(t, appConfig.UpstreamConfig.IntegrityConfig.Enabled)
+	assert.True(t, appConfig.UpstreamConfig.CompatibleClients.IsEnabled())
 }
 
 func TestInvalidUpstreamModeThenError(t *testing.T) {
@@ -499,6 +515,7 @@ func TestSetChainsDefault(t *testing.T) {
 						DisableMethodsDetection:               new(true),
 						DisableLogIndexValidation:             new(true),
 						DisableErigonBugValidation:            new(true),
+						DisableGasLimitValidation:             new(true),
 						DisableLivenessSubscriptionValidation: new(true),
 						ValidateSyncing:                       new(false),
 						ValidatePeers:                         new(false),
