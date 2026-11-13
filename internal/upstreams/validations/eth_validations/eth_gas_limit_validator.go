@@ -4,10 +4,12 @@ import (
 	"context"
 	"time"
 
+	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/gas_limit"
 	"github.com/drpcorg/nodecore/internal/upstreams/validations"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/failsafe-go/failsafe-go"
 	"github.com/rs/zerolog/log"
 )
 
@@ -20,6 +22,8 @@ type EthGasLimitValidator struct {
 	connector       connectors.ApiConnector
 	chain           *chains.ConfiguredChain
 	internalTimeout time.Duration
+
+	executor failsafe.Executor[protocol.ResponseHolder]
 }
 
 func NewEthGasLimitValidator(
@@ -33,13 +37,14 @@ func NewEthGasLimitValidator(
 		connector:       connector,
 		chain:           chain,
 		internalTimeout: options.InternalTimeout,
+		executor:        validations.ValidatorExecutor(upstreamId, "ethGasLimitValidation", nil),
 	}
 }
 
-// Validate sends a single request and never retries: a failed call is a non-fatal settings
-// error and the next validation asks again.
+// Validate retries a failed call like the other settings validators do, all attempts within
+// the internal timeout. An answer that is not a reading is final and is not retried.
 func (v *EthGasLimitValidator) Validate(ctx context.Context) validations.ValidationSettingResult {
-	granted, err := gas_limit.Measure(ctx, v.connector, v.chain.Chain, v.internalTimeout)
+	granted, err := gas_limit.MeasureWithRetries(ctx, v.executor, v.connector, v.chain.Chain, v.internalTimeout)
 	if err != nil {
 		log.Warn().Err(err).Msgf("unable to measure the eth_call gas limit of upstream '%s'", v.upstreamId)
 		return validations.SettingsError
