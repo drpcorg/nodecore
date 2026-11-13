@@ -38,6 +38,7 @@ func evmOK(body string) protocol.ResponseHolder {
 // fastEvm shrinks retry backoff so error-path tests stay quick.
 func fastEvm(d *evm_bounds.EvmLowerBoundDetector) *evm_bounds.EvmLowerBoundDetector {
 	d.SetSearchRetryPolicy(3, time.Millisecond, time.Millisecond)
+	d.SetGoldBlockRetryDelay(time.Millisecond)
 	return d
 }
 

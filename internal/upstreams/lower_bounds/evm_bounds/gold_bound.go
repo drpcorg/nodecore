@@ -7,6 +7,19 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
+// goldTxBlock is the height of the chain's gold transaction, a block known to hold a
+// transaction.
+func (e *EvmLowerBoundDetector) goldTxBlock() (int64, bool) {
+	if e.chain == nil || e.chain.LowerBounds == nil {
+		return 0, false
+	}
+	gold := e.chain.LowerBounds.Tx
+	if gold == nil || gold.Block == 0 {
+		return 0, false
+	}
+	return int64(gold.Block), true
+}
+
 // detectFromGoldBound ports dshackle's GoldLowerBounds short-circuit for tx and
 // receipts: if the chain has a configured gold hash for this bound type, a single
 // RPC probe for that ancient tx/receipt tells us whether the upstream is fully

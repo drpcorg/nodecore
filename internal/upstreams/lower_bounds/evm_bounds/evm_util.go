@@ -10,35 +10,44 @@ import (
 	"github.com/bytedance/sonic"
 )
 
+const (
+	// evmEmptyTxRoot is the transactionsRoot of a block without transactions (the empty trie root)
+	evmEmptyTxRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
+	evmZeroHash    = "0x0000000000000000000000000000000000000000000000000000000000000000"
+)
+
+// blockAt fetches a block with its transaction hashes. available is false for a null result
+// and for a no-data error.
+func (e *EvmLowerBoundDetector) blockAt(ctx context.Context, height int64) (evmBlockEnvelope, bool, error) {
+	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
+	if err != nil || !available {
+		return evmBlockEnvelope{}, false, err
+	}
+	block := evmBlockEnvelope{}
+	if err := sonic.Unmarshal(raw, &block); err != nil {
+		return evmBlockEnvelope{}, false, fmt.Errorf("EVM upstream '%s' block %d unparseable: %w", e.UpstreamId, height, err)
+	}
+	return block, true, nil
+}
+
 // firstTxHash fetches a block and returns its first transaction hash, used by the
 // tx probe. It handles both eth_getBlockByNumber transaction shapes
 // (array of hash strings, or array of tx objects).
 func (e *EvmLowerBoundDetector) firstTxHash(ctx context.Context, height int64) (string, bool, error) {
-	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
-	if err != nil || !available || isEvmNullResult(raw) {
-		return "", available && !isEvmNullResult(raw), err
-	}
-	block := evmBlockEnvelope{}
-	if err := sonic.Unmarshal(raw, &block); err != nil {
-		return "", false, fmt.Errorf("EVM upstream '%s' block %d unparseable: %w", e.UpstreamId, height, err)
+	block, available, err := e.blockAt(ctx, height)
+	if err != nil || !available {
+		return "", false, err
 	}
 	tx, ok := block.firstTxHash()
-	if !ok {
-		return "", false, nil
-	}
-	return tx, true, nil
+	return tx, ok, nil
 }
 
 // lastTxHash fetches a block and returns its last transaction hash, used by the receipts
 // probe. empty reports a block that exists but has no transactions to probe.
 func (e *EvmLowerBoundDetector) lastTxHash(ctx context.Context, height int64) (hash string, available, empty bool, err error) {
-	raw, available, err := e.call(ctx, "eth_getBlockByNumber", []any{evmBlockTag(height), false})
-	if err != nil || !available || isEvmNullResult(raw) {
+	block, available, err := e.blockAt(ctx, height)
+	if err != nil || !available {
 		return "", false, false, err
-	}
-	block := evmBlockEnvelope{}
-	if err := sonic.Unmarshal(raw, &block); err != nil {
-		return "", false, false, fmt.Errorf("EVM upstream '%s' block %d unparseable: %w", e.UpstreamId, height, err)
 	}
 	if len(block.Transactions) == 0 {
 		return "", false, true, nil
@@ -48,9 +57,24 @@ func (e *EvmLowerBoundDetector) lastTxHash(ctx context.Context, height int64) (h
 }
 
 type evmBlockEnvelope struct {
-	Number       string            `json:"number"`
-	Hash         string            `json:"hash"`
-	Transactions []json.RawMessage `json:"transactions"`
+	Number string `json:"number"`
+	Hash   string `json:"hash"`
+	// TransactionsRoot stays raw: only isBareHeader reads it, and a root of an unusual shape
+	// must not fail the tx and receipts probes
+	TransactionsRoot json.RawMessage   `json:"transactionsRoot"`
+	Transactions     []json.RawMessage `json:"transactions"`
+}
+
+// isBareHeader reports a block that carries no transactions although its header commits to
+// some. Only a 32-byte hash commits: a missing root, the zero hash and the empty trie root
+// commit to nothing, so they prove nothing.
+func (b evmBlockEnvelope) isBareHeader() bool {
+	if len(b.Transactions) > 0 {
+		return false
+	}
+	root := strings.ToLower(strings.Trim(strings.TrimSpace(string(b.TransactionsRoot)), `"`))
+	isHash := len(root) == len(evmZeroHash) && strings.HasPrefix(root, "0x")
+	return isHash && root != evmEmptyTxRoot && root != evmZeroHash
 }
 
 type evmTxRef struct {
