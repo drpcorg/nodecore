@@ -17,6 +17,9 @@ const (
 
 	evmLowerBoundMaxOffset = 20
 
+	evmGoldBlockAttempts   = 3
+	evmGoldBlockRetryDelay = time.Second
+
 	evmZeroAddress = "0x0000000000000000000000000000000000000000"
 )
 
@@ -33,6 +36,11 @@ type EvmLowerBoundDetector struct {
 	capabilities *EvmCapabilities
 
 	stateOverrideSupport atomic.Int32
+
+	// bareHeadersProven is the block detector's servesBareHeaders verdict, kept between
+	// cycles for the answers of the gold block that decide nothing
+	bareHeadersProven   atomic.Bool
+	goldBlockRetryDelay time.Duration
 }
 
 // WithCapabilities attaches the upstream-shared eth_capabilities cache. Detectors
@@ -65,6 +73,7 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 	return &EvmLowerBoundDetector{
 		LowerBoundSearchCalculator: lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, boundType, supportedTypes, evmLowerBoundPeriod, maxOffset),
 		evmRpcClient:               evmRpcClient{connector: connector, chain: chain, internalTimeout: internalTimeout},
+		goldBlockRetryDelay:        evmGoldBlockRetryDelay,
 	}
 }
 
@@ -77,6 +86,9 @@ func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 	}
 	if e.MainBoundType == protocol.ReceiptsBound {
 		return e.DetectContiguousLowerBound(ctx, e.fetchLatestHeight, e.probeReceipts)
+	}
+	if e.MainBoundType == protocol.BlockBound && e.servesBareHeaders(ctx) {
+		return e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, e.probeBlockBody, evmLowerBoundMaxOffset)
 	}
 	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
 }
