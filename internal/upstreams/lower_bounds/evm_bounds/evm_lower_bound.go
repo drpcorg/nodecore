@@ -25,7 +25,9 @@ const (
 // logic lives in the sibling *_bound.go files; this file holds the shared wiring:
 // construction, the probe dispatcher, and the JSON-RPC call helper. Reported answers
 // are preferred over probing: eth_capabilities (see capabilities.go) first, then the
-// gold bound and the binary search. Proofs have their own detector in proof_bound.go.
+// gold bound and the binary search. The block bound of an upstream that keeps bare headers
+// of pruned blocks is the start of its bodies (see block_bound.go). Proofs have their own
+// detector in proof_bound.go.
 type EvmLowerBoundDetector struct {
 	*lower_bounds.LowerBoundSearchCalculator
 	evmRpcClient
@@ -33,6 +35,8 @@ type EvmLowerBoundDetector struct {
 	capabilities *EvmCapabilities
 
 	stateOverrideSupport atomic.Int32
+	// bareHeaders is the block detector's last verdict of keepsBareHeaders
+	bareHeaders atomic.Bool
 }
 
 // WithCapabilities attaches the upstream-shared eth_capabilities cache. Detectors
@@ -77,6 +81,9 @@ func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 	}
 	if e.MainBoundType == protocol.ReceiptsBound {
 		return e.DetectContiguousLowerBound(ctx, e.fetchLatestHeight, e.probeReceipts)
+	}
+	if e.MainBoundType == protocol.BlockBound && e.keepsBareHeaders(ctx) {
+		return e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, e.probeBlockBody, evmLowerBoundMaxOffset)
 	}
 	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
 }
