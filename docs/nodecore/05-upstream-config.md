@@ -38,6 +38,7 @@ upstream-config:
         call-limit-size: 131072
         disable-log-index-validation: true
         disable-erigon-bug-validation: true
+        disable-gas-limit-validation: true
         disable-liveness-subscription-validation: false
       dispatch:
         broadcast: false
@@ -109,7 +110,7 @@ upstream-config:
 
 It brings together:
 
-1. Mode (`mode`) - Picks the overall operating profile. `default` is the cost-conscious profile: heads are polled lazily over HTTP, most periodic validators are off, and the [integrity](#integrity) feature is the recommended opt-in to compensate for stale reads. `strict` is the high-fidelity profile: heads are tracked over WebSocket when configured (or polled at the chain's block time when only HTTP is available), every validator runs, and `integrity` is forcibly off because real-time tracking makes it redundant. See [mode](#mode) below.
+1. Mode (`mode`) - Picks the overall operating profile. `default` is the cost-conscious profile: heads are polled lazily over HTTP, most periodic validators are off, and the [integrity](#integrity) feature is the recommended opt-in to compensate for stale reads. `strict` is the high-fidelity profile: heads are tracked over WebSocket when configured (or polled at the chain's block time when only HTTP is available), every validator runs, and `integrity` is forcibly off because real-time tracking makes it redundant. `strict-provider` is `strict` plus the gas-limit validator. See [mode](#mode) below.
 2. Integrity (`integrity`) - Guarantees that methods like `eth_blockNumber` and `eth_getBlockByNumber` never return stale data. When enabled, nodecore validates responses against the current head and retries with the highest-synced upstream if needed.
 3. Failsafe configuration (`failsafe-config`) - Global resilience settings: retries (attempts, backoff, max delay, jitter), hedging (duplicate a slow request after a delay, with a cap on parallel hedges), and a per-request `timeout` budget.
 4. Chain defaults (`chain-defaults`) - Per-chain operational defaults: poll interval, validation toggles, and detector toggles. See [Validators and labels](#validators-and-labels) below.
@@ -149,24 +150,29 @@ The high-fidelity profile. nodecore tracks upstream state as aggressively as it 
 
 This mode is the right choice when upstreams are self-hosted or unmetered, when you need accurate label-based routing (e.g. archive vs. full nodes), or when always-current data matters more than minimising upstream traffic.
 
+### `mode: strict-provider`
+
+The profile for an operator who runs their own nodes and wants them held to the full set of requirements. It is `strict` in every respect - every default listed for `strict` in this document applies - and additionally runs the EVM gas-limit validator by default (see `disable-gas-limit-validation` under [Validators and labels](#validators-and-labels)): an upstream whose node does not grant a 600M `eth_call` gas budget is refused at startup or removed at runtime.
+
 ### Per-mode defaults at a glance
 
-| Field | `default` mode fallback | `strict` mode fallback |
-|---|---|---|
-| `head-connector` (when unset) | simplest connector type | most capable connector type |
-| `poll-interval` (when unset) | `1m` | chain's `expected-block-time` |
-| `disable-lower-bounds-detection` | `true` (off) | `false` (on) |
-| `disable-labels-detection` | `true` (off) | `false` (on) |
-| `disable-methods-detection` | `true` (off) | `false` (on) |
-| `validate-syncing` | `false` (off) | `true` (on) |
-| `validate-lag` | `false` (off) | `true` (on) |
-| `validate-peers` | `false` (off) | `true` (on) |
-| `validate-call-limit` | `false` (off) | `true` (on) |
-| `integrity.enabled` | as configured (default `false`) | forced to `false` |
-| `disable-log-index-validation` | `true` (off) | `false` (on) |
-| `disable-erigon-bug-validation` | `true` (off) | `false` (on) |
-| `compatible-clients.enabled` | `false` (off) | `true` (on) |
-| `chain-defaults.<chain>.dispatch.*` | `false` (off) | `true` (on) |
+| Field | `default` mode fallback | `strict` mode fallback | `strict-provider` mode fallback |
+|---|---|---|---|
+| `head-connector` (when unset) | simplest connector type | most capable connector type | most capable connector type |
+| `poll-interval` (when unset) | `1m` | chain's `expected-block-time` | chain's `expected-block-time` |
+| `disable-lower-bounds-detection` | `true` (off) | `false` (on) | `false` (on) |
+| `disable-labels-detection` | `true` (off) | `false` (on) | `false` (on) |
+| `disable-methods-detection` | `true` (off) | `false` (on) | `false` (on) |
+| `validate-syncing` | `false` (off) | `true` (on) | `true` (on) |
+| `validate-lag` | `false` (off) | `true` (on) | `true` (on) |
+| `validate-peers` | `false` (off) | `true` (on) | `true` (on) |
+| `validate-call-limit` | `false` (off) | `true` (on) | `true` (on) |
+| `integrity.enabled` | as configured (default `false`) | forced to `false` | forced to `false` |
+| `disable-log-index-validation` | `true` (off) | `false` (on) | `false` (on) |
+| `disable-erigon-bug-validation` | `true` (off) | `false` (on) | `false` (on) |
+| `disable-gas-limit-validation` | `true` (off) | `true` (off) | `false` (on) |
+| `compatible-clients.enabled` | `false` (off) | `true` (on) | `true` (on) |
+| `chain-defaults.<chain>.dispatch.*` | `false` (off) | `true` (on) | `true` (on) |
 
 ## compatible-clients
 
@@ -418,6 +424,7 @@ The `chain-defaults` section defines per-chain baseline settings. `<chain>.optio
   * `call-limit-size` - Threshold (in bytes) of the smallest acceptable `eth_call` return-data limit. **_Default_**: `1000000` (1 MB)
   * `disable-log-index-validation` - Disables the EVM receipt log-index validator. The validator detects upstreams whose `logIndex` resets per transaction instead of increasing globally through the block. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
   * `disable-erigon-bug-validation` - Disables the EVM Erigon balance-bug validator. Every 10th settings validation the validator checks `web3_clientVersion`; on an Erigon node it then binary-searches `[1, latest]` with an `eth_call` whose state override installs a contract returning its own balance. A block where the node answers `0x` instead of data means the historical state is broken and the upstream is removed (fatal settings error) until a later check is clean. Each probe is a single call bounded by `internal-timeout`. A check that cannot reach a verdict (client version or latest block unreadable, or no probe answered with data) is a non-fatal settings error: at startup the upstream is not admitted until a later check passes, afterwards its state is kept. Mode-dependent default: `true` in `default` mode, `false` in `strict` mode
+  * `disable-gas-limit-validation` - Disables the EVM gas-limit validator. On every settings validation it sends a contract-creation `eth_call` that asks for a 600M gas budget; a failed call is retried up to three times, all within `internal-timeout`. A node that grants more than 590M is valid. A node that grants less is a fatal settings error: at startup the upstream is refused and stays out until nodecore restarts or the upstream's config changes; at runtime it is removed until a later check passes. A node that gives no usable answer (an error, an empty result, or a value that is not a gas reading) is a non-fatal settings error: at startup the upstream is not admitted until a later check passes, afterwards its state is kept. Chains whose client cannot be checked this way set the option to `true` in [chains.yaml](https://github.com/drpcorg/public/blob/main/chains.yaml). Mode-dependent default: `false` in `strict-provider` mode, `true` in `default` and `strict` mode
   * `disable-safe-block-detection` - Disables periodic safe-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("safe", …)` calls. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
   * `disable-finalized-block-detection` - Disables periodic finalized-block polling on EVM upstreams. When `true`, nodecore skips `eth_getBlockByNumber("finalized", …)` calls, does not cache with `finalization-type: finalized`, and skips finalization-lag tracking. Set to `true` for chains like Viction (PoSV) that lack Ethereum's finalized-block concept. **_Default_**: `false`
   * `disable-liveness-subscription-validation` - Controls whether an EVM upstream whose head is driven by a WebSocket must prove its head is *live* before it advertises the WebSocket subscription capability (`WsCap`) and can back client subscriptions. When the validation is enabled, such an upstream gains `WsCap` only once its head has advanced **consecutively** — 3 blocks in a row (2 consecutive height increments) — and loses it on a forward gap of skipped blocks, a stall (no head progress within an adaptive timeout derived from the chain's expected block time), or a WebSocket disconnect, pulling the upstream out of subscription serving until it recovers; after a gap it stays out for a short cooldown before it can go live again (duplicate heights and backward reorgs are tolerated, and regular RPC routing is unaffected throughout). Set to `true` to skip the check and keep the historical "connected WebSocket ⇒ `WsCap`" behavior. Only affects EVM upstreams with a WebSocket head connector; poll-head upstreams and non-EVM chains are never gated. **_Default_**: mode-dependent — `true` in `default` mode, `false` in `strict` mode
@@ -865,6 +872,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | `net_peerCount` validator | EVM | `validate-peers` / `min-peers` or `disable-settings-validation` | Marks the upstream as unhealthy when peer count drops below `min-peers`. Accepts the count as a hex string (Ethereum nodes) or a plain number (Cosmos chains with an EVM module) |
 | `eth_call` return-data limit | EVM | `validate-call-limit` or `disable-settings-validation` | Probes the upstream's maximum `eth_call` return-data size and marks it unhealthy if it is below `call-limit-size` |
 | Erigon balance-bug validator | EVM | `disable-erigon-bug-validation` or `disable-settings-validation` | On Erigon nodes only (by `web3_clientVersion`), binary-searches historical blocks with a state-override `eth_call`; a `0x` answer where data is expected is fatal and removes the upstream until a later check is clean |
+| Gas-limit validator | EVM | `disable-gas-limit-validation` or `disable-settings-validation` | Asks the node for a 600M `eth_call` gas budget with a contract-creation call; a node that grants less is fatal: the upstream is refused at startup, or removed at runtime until a later check passes; a node that gives no usable answer is a non-fatal settings error |
 | Client version validator | every family with a client label detector: EVM, Beacon Chain, Solana, Bitcoin, NEAR, Aztec, Aptos, Sui, Algorand, Stellar, TON, Cosmos, Celestia (`tendermint`, `rest`, `grpc`), TRON, Starknet | [`compatible-clients.enabled: false`](#compatible-clients) or `disable-settings-validation` | Probes the node's client type and version with the family's client label detector on every settings tick and checks them against the [compatible-clients](#compatible-clients) rules; a version outside a whitelist or inside a blacklist is fatal and removes the upstream until a later check is clean |
 | Health validator (EVM) | EVM | `disable-health-validation` | Generic liveness check appropriate to the chain family |
 | Health validator (Solana) | Solana | `disable-health-validation` | Calls the Solana `getHealth` RPC and propagates the result |
@@ -901,7 +909,7 @@ Validators and label detectors run periodically (every `validation-interval`) ag
 | Lower-bound detector (TRON) | TRON (`rest`, `grpc`) | `disable-lower-bounds-detection`; per type: [`lower-bounds`](#fields) | Binary-searches the earliest retained block every 3 minutes, probing `POST /wallet/getblock {"id_or_num": "<n>", "detail": false}` over `rest` and `protocol.Wallet/GetBlock` with the same fields over `grpc`. A pruned height answers an empty block (`{}`, or an empty `BlockExtention`); any error is retried. The height found is published as the `block`, `state`, `tx` and `receipts` bounds, which a TRON node prunes together |
 | Lower-bound detector (Sui) | Sui | `disable-lower-bounds-detection`; per type: [`lower-bounds`](#fields) | Two bounds. `block` is read from `LedgerService/GetServiceInfo` → `lowest_available_checkpoint` every 2 minutes — the floor every checkpoint-addressed read (`GetCheckpoint`, `ListCheckpoints`, `ListTransactions`, `ListEvents`) is checked against. An unpruned node reports an explicit `0`, published as `1` (archive); only an absent field leaves the previous bound in place. `lowest_available_checkpoint_objects` is ignored: since sui-node v1.66 it echoes the same number and is deprecated, and no Sui gRPC read addresses state by checkpoint. `epoch` routes `GetEpoch` alone and is binary-searched hourly over `GetEpoch` (an epoch below the node's index floor answers `NOT_FOUND`), because epoch metadata lives in the node's rpc-store index, whose floor is unrelated to either checkpoint watermark and is reported nowhere |
 | Method detector (EVM) | EVM | `disable-methods-detection` | Narrows the upstream's method set to what the node actually serves. Two independent detectors: `rpc_modules` attributes every spec method to a module and strips those whose module the node does not report, while a short list of methods that module membership does not guarantee (`trace_callMany`, `eth_simulateV1`, `debug_storageRangeAt`, …) is confirmed with a direct read-only call. Runs at upstream start and hourly thereafter - the answer only changes when a node is restarted with different `--http.api` flags. A detector that cannot reach the node keeps its previous answer rather than reporting that everything is supported. Only ever removes methods - see [How method detection interacts with `methods`](#how-method-detection-interacts-with-methods) |
-| Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities. The archive probe is skipped when the upstream sets the manual label `archive: false` (see [`labels`](#fields)), which leaves the configured value in place |
+| Label detectors (EVM) | EVM | `disable-labels-detection` | Populates upstream labels - client name & version, archive vs. full, gas limit, flashblock support, high-latency-tx capability. Labels are exposed via the [gRPC API](12-grpc-server.md) so external consumers can target upstreams with specific capabilities. The archive probe is skipped when the upstream sets the manual label `archive: false` (see [`labels`](#fields)), which leaves the configured value in place. The gas labels come from a contract-creation `eth_call` that asks for a 600M gas budget: `gas-limit` is the budget the node granted, `extra_gas_limit` is `600000000` when that budget is above 590M and the granted value otherwise; no gas label is set when the node gives no usable answer (Monad upstreams are then judged by their own probe) |
 | Label detectors (Aptos) | Aptos | `disable-labels-detection` | Populates client name & version labels from the ledger-info endpoint (`GET /v1`) |
 | Client label detector (Beacon) | Beacon Chain | `disable-labels-detection` | Reads `GET /eth/v1/node/version` and publishes the consensus-client type and version labels (Lighthouse, Prysm, Teku, Nimbus, etc.) |
 | Client label detector (Bitcoin) | Bitcoin | `disable-labels-detection` | Parses `getnetworkinfo.subversion` (`/Satoshi:26.1.0/`) into client type and version labels |

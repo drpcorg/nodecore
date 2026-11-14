@@ -2,12 +2,12 @@ package eth_labels
 
 import (
 	"context"
-	"math/big"
 	"strings"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/gas_limit"
 	"github.com/drpcorg/nodecore/internal/upstreams/labels"
 	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/rs/zerolog/log"
@@ -87,53 +87,23 @@ func (e *EthGasLabelsDetector) monadGasDetect(ctx context.Context) map[string]st
 }
 
 func (e *EthGasLabelsDetector) basicGasDetect(ctx context.Context) map[string]string {
-	params := []any{
-		map[string]any{
-			"to":   gasProbeContract,
-			"data": "0x51be4eaa",
-		},
-		"latest",
-		map[string]any{
-			gasProbeContract: map[string]any{
-				"code": gasProbeBytecode,
-			},
-		},
-	}
-	req, err := protocol.NewInternalUpstreamJsonRpcRequest("eth_call", params, e.chain)
+	granted, err := gas_limit.Measure(ctx, e.connector, e.chain, e.internalTimeout)
 	if err != nil {
-		log.Error().Err(err).Msgf("unable to create a eth_call request of upstream '%s' to detect gas labels", e.upstreamId)
+		// an expected outcome on clients that reject the call or cannot run it, so not an error
+		log.Debug().Err(err).Msgf("unable to measure the eth_call gas limit of upstream '%s' to detect gas labels", e.upstreamId)
 		return nil
 	}
 
-	resp := e.sendGasRequest(ctx, req)
-	if resp.HasError() {
-		log.Error().Err(resp.GetError()).Msgf("unable to get eth_call response of upstream '%s' to detect gas labels", e.upstreamId)
-		return nil
+	nodeGasLimit := granted.String()
+	gasLabels := map[string]string{
+		"gas-limit":       nodeGasLimit,
+		"extra_gas_limit": nodeGasLimit,
 	}
-	respStr, err := resp.ResponseResultString()
-	if err != nil {
-		log.Error().Err(err).Msgf("unable to get eth_call response as a string of upstream '%s' to detect gas labels", e.upstreamId)
-		return nil
-	}
-	hexStr := strings.TrimPrefix(strings.ToLower(respStr), "0x")
-
-	gas, ok := new(big.Int).SetString(hexStr, 16)
-	if !ok {
-		return nil
-	}
-	gas.Add(gas, big.NewInt(21182))
-
-	nodeGasLimit := gas.String()
-	labels := make(map[string]string)
-	labels["gas-limit"] = nodeGasLimit
-
-	if gas.Cmp(big.NewInt(590_000_000)) > 0 {
-		labels["extra_gas_limit"] = "600000000"
-	} else {
-		labels["extra_gas_limit"] = nodeGasLimit
+	if gas_limit.GrantsExtraGas(granted) {
+		gasLabels["extra_gas_limit"] = "600000000"
 	}
 
-	return labels
+	return gasLabels
 }
 
 func (e *EthGasLabelsDetector) sendGasRequest(ctx context.Context, request protocol.RequestHolder) protocol.ResponseHolder {

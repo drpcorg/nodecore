@@ -221,6 +221,9 @@ func (e *EvmChainSpecificObject) SettingsValidators() []validations.Validator[va
 	if e.options.DisableErigonBugValidation != nil && !*e.options.DisableErigonBugValidation {
 		settingsValidators = append(settingsValidators, eth_validations.NewEthErigonBugValidator(e.upstreamId, e.connector, e.chain, e.options))
 	}
+	if e.options.DisableGasLimitValidation != nil && !*e.options.DisableGasLimitValidation {
+		settingsValidators = append(settingsValidators, eth_validations.NewEthGasLimitValidator(e.upstreamId, e.connector, e.chain, e.options))
+	}
 
 	return settingsValidators
 }

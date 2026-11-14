@@ -79,21 +79,28 @@ func (u *UpstreamConfig) LabelBalancingFor(chain string) *LabelBalancingConfig {
 type UpstreamMode string
 
 const (
-	DefaultMode UpstreamMode = "default"
-	StrictMode  UpstreamMode = "strict"
+	DefaultMode        UpstreamMode = "default"
+	StrictMode         UpstreamMode = "strict"
+	StrictProviderMode UpstreamMode = "strict-provider"
 )
 
 func (u UpstreamMode) Validate() error {
 	switch u {
-	case DefaultMode, StrictMode:
+	case DefaultMode, StrictMode, StrictProviderMode:
 	default:
 		return fmt.Errorf("invalid upstream mode: %s", u)
 	}
 	return nil
 }
 
+// IsStrict reports whether the mode is one of the strict profiles. strict-provider is
+// strict in every respect; it only changes the default of the gas-limit validation.
+func (u UpstreamMode) IsStrict() bool {
+	return u == StrictMode || u == StrictProviderMode
+}
+
 func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
-	defaultEnabled := u != nil && u.Mode == StrictMode
+	defaultEnabled := u != nil && u.Mode.IsStrict()
 	options := DispatchOptions{
 		Broadcast:    new(defaultEnabled),
 		MaximumValue: new(defaultEnabled),
@@ -210,16 +217,9 @@ func (u *Upstream) GetHeadApiConnectorType() specs.ApiConnectorType {
 type sortConnectorFunc func([]*ApiConnectorConfig) specs.ApiConnectorType
 
 var sortConnectorsFunc = map[UpstreamMode]sortConnectorFunc{
-	DefaultMode: func(configs []*ApiConnectorConfig) specs.ApiConnectorType {
-		return lo.MinBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
-			return a.GetApiConnectorType() < b.GetApiConnectorType()
-		}).GetApiConnectorType()
-	},
-	StrictMode: func(configs []*ApiConnectorConfig) specs.ApiConnectorType {
-		return lo.MaxBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
-			return a.GetApiConnectorType() > b.GetApiConnectorType()
-		}).GetApiConnectorType()
-	},
+	DefaultMode:        simplestConnector,
+	StrictMode:         mostCapableConnector,
+	StrictProviderMode: mostCapableConnector,
 }
 
 func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnectorType {
@@ -258,7 +258,7 @@ func (u *UpstreamConfig) ValidateLagFor(chainName string) bool {
 			return *defaults.ValidateLag
 		}
 	}
-	return u.Mode == StrictMode
+	return u.Mode.IsStrict()
 }
 
 // LocalSubscriptionsConfig controls per-chain local subscription synthesis
@@ -841,4 +841,16 @@ func (a *ApiConnectorConfig) validate(torProxyUrl string) error {
 	}
 
 	return nil
+}
+
+func simplestConnector(configs []*ApiConnectorConfig) specs.ApiConnectorType {
+	return lo.MinBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
+		return a.GetApiConnectorType() < b.GetApiConnectorType()
+	}).GetApiConnectorType()
+}
+
+func mostCapableConnector(configs []*ApiConnectorConfig) specs.ApiConnectorType {
+	return lo.MaxBy(configs, func(a *ApiConnectorConfig, b *ApiConnectorConfig) bool {
+		return a.GetApiConnectorType() > b.GetApiConnectorType()
+	}).GetApiConnectorType()
 }

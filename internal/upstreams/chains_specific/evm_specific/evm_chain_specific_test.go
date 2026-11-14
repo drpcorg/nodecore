@@ -341,3 +341,30 @@ func TestChainValidatorForTheHeadGuard(t *testing.T) {
 	options.DisableValidation = new(true)
 	assert.Nil(t, newValidator(options))
 }
+
+func TestGasLimitValidatorWiring(t *testing.T) {
+	options := &chains.Options{
+		DisableChainValidation:    new(true),
+		DisableLogIndexValidation: new(true),
+		ValidateCallLimit:         new(false),
+	}
+	connector := mocks.NewConnectorMock()
+	allConnectors := []connectors.ApiConnector{connector}
+	chain := chains.GetChain("ethereum")
+	gasLimitValidators := func() []validations.Validator[validations.ValidationSettingResult] {
+		validators := specific.NewEvmChainSpecific(context.Background(), "id", connector, allConnectors, chain, 1*time.Second, options, nil).SettingsValidators()
+		return lo.Filter(validators, func(item validations.Validator[validations.ValidationSettingResult], _ int) bool {
+			_, ok := item.(*eth_validations.EthGasLimitValidator)
+			return ok
+		})
+	}
+
+	assert.Empty(t, gasLimitValidators(), "an unresolved option must not enable the validator")
+
+	options.DisableGasLimitValidation = new(true)
+	assert.Empty(t, gasLimitValidators())
+
+	options.DisableGasLimitValidation = new(false)
+	assert.Len(t, gasLimitValidators(), 1)
+	assert.Len(t, specific.NewEvmChainSpecific(context.Background(), "id", connector, allConnectors, chain, 1*time.Second, options, nil).SettingsValidators(), 1)
+}
