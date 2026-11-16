@@ -13,27 +13,27 @@ import (
 )
 
 type ServerConfig struct {
-	Port            int              `yaml:"port"`
-	GrpcPort        int              `yaml:"grpc-port"`
-	MetricsPort     int              `yaml:"metrics-port"`
-	PprofPort       int              `yaml:"pprof-port"`
-	HealthPort      int              `yaml:"health-port"`
-	TlsConfig       *TlsConfig       `yaml:"tls"`
-	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config"`
-	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth"`
-	TorUrl          string           `yaml:"tor-url"`
+	Port            int              `yaml:"port,omitempty"`
+	GrpcPort        int              `yaml:"grpc-port,omitempty"`
+	MetricsPort     int              `yaml:"metrics-port,omitempty"`
+	PprofPort       int              `yaml:"pprof-port,omitempty"`
+	HealthPort      int              `yaml:"health-port,omitempty"`
+	TlsConfig       *TlsConfig       `yaml:"tls,omitempty"`
+	PyroscopeConfig *PyroscopeConfig `yaml:"pyroscope-config,omitempty"`
+	GrpcAuthConfig  *GrpcAuthConfig  `yaml:"grpc-auth,omitempty"`
+	TorUrl          string           `yaml:"tor-url,omitempty"`
 	// GrpcIngressPort runs the chain-ingress gRPC server: native gRPC clients
 	// call chain methods ("/sui.rpc.v2.../GetObject") directly, with the chain
 	// and api key in the x-nodecore-chain / x-nodecore-key metadata. It is a separate
 	// server from the dshackle one on grpc-port (different clients, auth and
 	// codec), reusing the same tls config. 0 (the default) disables it.
-	GrpcIngressPort int `yaml:"grpc-ingress-port"`
+	GrpcIngressPort int `yaml:"grpc-ingress-port,omitempty"`
 	// TrustedProxies lists CIDRs (or bare IPs) of reverse proxies in front of
 	// nodecore. X-Forwarded-For is only honored when the direct peer matches one
 	// of these; otherwise the direct peer is used as the client IP. Empty (the
 	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
 	// as a client IP.
-	TrustedProxies []string `yaml:"trusted-proxies"`
+	TrustedProxies []string `yaml:"trusted-proxies,omitempty"`
 
 	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
 	trustedProxyPrefixes []netip.Prefix
@@ -52,10 +52,10 @@ const SecureSignedLabel = "secure-signed"
 
 type GrpcAuthConfig struct {
 	Enabled                bool          `yaml:"enabled"`
-	PublicKeyOwner         string        `yaml:"public-key-owner"`
-	ProviderPrivateKeyPath string        `yaml:"provider-private-key-path"`
-	ExternalPublicKeyPath  string        `yaml:"external-public-key-path"`
-	SessionTTL             time.Duration `yaml:"session-ttl"`
+	PublicKeyOwner         string        `yaml:"public-key-owner,omitempty"`
+	ProviderPrivateKeyPath string        `yaml:"provider-private-key-path,omitempty"`
+	ExternalPublicKeyPath  string        `yaml:"external-public-key-path,omitempty"`
+	SessionTTL             time.Duration `yaml:"session-ttl,omitempty"`
 }
 
 func (g *GrpcAuthConfig) Disabled() bool {
@@ -88,9 +88,9 @@ func (p *PyroscopeConfig) GetAdditionalTags() map[string]string {
 
 type TlsConfig struct {
 	Enabled     bool   `yaml:"enabled"`
-	Certificate string `yaml:"certificate"`
-	Key         string `yaml:"key"`
-	Ca          string `yaml:"ca"`
+	Certificate string `yaml:"certificate,omitempty"`
+	Key         string `yaml:"key,omitempty"`
+	Ca          string `yaml:"ca,omitempty"`
 }
 
 func (s *ServerConfig) validate() error {

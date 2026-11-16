@@ -26,6 +26,13 @@ provider-keys:
 	sops -d --extract '["rsaKeys"]' $(INFRA)/configs/provider-config/secrets.yaml | \
 		go run ./cmd/genproviderkeys -values $(INFRA)/configs/provider-config/values.yaml -keys -
 
+# Converts a dshackle config into a nodecore one; the report of what was not carried over
+# goes to stderr. FORCE=1 overwrites an existing OUT file.
+#   make convert-dshackle IN=/path/dshackle.yaml OUT=/path/nodecore.yml
+.PHONY: convert-dshackle
+convert-dshackle: generate-networks
+	@go run ./cmd/dshackle-convert -in "$(IN)" -out "$(OUT)" $(if $(FORCE),-force)
+
 .PHONY: lint
 lint:
 	golangci-lint run ./...

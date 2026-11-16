@@ -1,0 +1,51 @@
+server:
+  grpc-port: 2449
+  metrics-port: 8081
+  health-port: 8082
+  tls:
+    enabled: true
+    certificate: /etc/dshackle/tls/server.crt
+    key: /etc/dshackle/tls/server.p8.key
+  grpc-auth:
+    enabled: true
+    public-key-owner: drpc
+    provider-private-key-path: /etc/dshackle/auth/private.pem
+    external-public-key-path: /etc/dshackle/auth/drpc.pem
+upstream-config:
+  upstreams:
+    - id: eth-1
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: http://localhost:8545
+          headers:
+            Authorization: Basic YWxpY2U6czNjcmV0
+        - type: websocket
+          url: ws://localhost:8546
+          headers:
+            Origin: http://localhost
+      methods:
+        enable:
+          - parity_trace
+        disable:
+          - admin_shutdown
+      options:
+        disable-chain-validation: true
+      labels:
+        archive: "true"
+    - id: eth-2
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://lb.example.org/eth?dkey=${DRPC_KEY}
+    - id: sol-1
+      chain: solana
+      connectors:
+        - type: json-rpc
+          url: ${SOLANA_NODE_RPC_URL}
+  chain-defaults:
+    ethereum:
+      options:
+        min-peers: 10
+  balancing-strategy: base
+  mode: strict-provider

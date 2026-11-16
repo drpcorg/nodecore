@@ -22,15 +22,15 @@ import (
 )
 
 type UpstreamConfig struct {
-	Upstreams         []*Upstream               `yaml:"upstreams"`
-	ChainDefaults     map[string]*ChainDefaults `yaml:"chain-defaults"`
-	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config"`
-	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config"`
-	IntegrityConfig   *IntegrityConfig          `yaml:"integrity"`
-	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing"`
-	BalancingStrategy BalancingStrategy         `yaml:"balancing-strategy"`
-	Mode              UpstreamMode              `yaml:"mode"`
-	CompatibleClients *CompatibleClientsConfig  `yaml:"compatible-clients"`
+	Upstreams         []*Upstream               `yaml:"upstreams,omitempty"`
+	ChainDefaults     map[string]*ChainDefaults `yaml:"chain-defaults,omitempty"`
+	FailsafeConfig    *FailsafeConfig           `yaml:"failsafe-config,omitempty"`
+	ScorePolicyConfig *ScorePolicyConfig        `yaml:"score-policy-config,omitempty"`
+	IntegrityConfig   *IntegrityConfig          `yaml:"integrity,omitempty"`
+	LabelBalancing    *LabelBalancingConfig     `yaml:"label-balancing,omitempty"`
+	BalancingStrategy BalancingStrategy         `yaml:"balancing-strategy,omitempty"`
+	Mode              UpstreamMode              `yaml:"mode,omitempty"`
+	CompatibleClients *CompatibleClientsConfig  `yaml:"compatible-clients,omitempty"`
 }
 
 // BalancingStrategy selects how the generic (non-special-cased) request is
@@ -135,21 +135,21 @@ const (
 )
 
 type Upstream struct {
-	Id                string                   `yaml:"id"`
-	ChainName         string                   `yaml:"chain"`
-	Connectors        []*ApiConnectorConfig    `yaml:"connectors"`
-	HeadConnector     string                   `yaml:"head-connector"`
-	HeadMode          HeadMode                 `yaml:"head-mode"`
-	PollInterval      time.Duration            `yaml:"poll-interval"`
-	Methods           *MethodsConfig           `yaml:"methods"`
-	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config"`
-	Options           *chains.Options          `yaml:"options"`
-	RateLimitBudget   string                   `yaml:"rate-limit-budget"`
-	RateLimit         *RateLimiterConfig       `yaml:"rate-limit"`
-	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune"`
-	GroupLabels       []string                 `yaml:"group-labels"`
-	Labels            UpstreamLabels           `yaml:"labels"`
-	LowerBounds       UpstreamLowerBounds      `yaml:"lower-bounds"`
+	Id                string                   `yaml:"id,omitempty"`
+	ChainName         string                   `yaml:"chain,omitempty"`
+	Connectors        []*ApiConnectorConfig    `yaml:"connectors,omitempty"`
+	HeadConnector     string                   `yaml:"head-connector,omitempty"`
+	HeadMode          HeadMode                 `yaml:"head-mode,omitempty"`
+	PollInterval      time.Duration            `yaml:"poll-interval,omitempty"`
+	Methods           *MethodsConfig           `yaml:"methods,omitempty"`
+	FailsafeConfig    *FailsafeConfig          `yaml:"failsafe-config,omitempty"`
+	Options           *chains.Options          `yaml:"options,omitempty"`
+	RateLimitBudget   string                   `yaml:"rate-limit-budget,omitempty"`
+	RateLimit         *RateLimiterConfig       `yaml:"rate-limit,omitempty"`
+	RateLimitAutoTune *RateLimitAutoTuneConfig `yaml:"rate-limit-auto-tune,omitempty"`
+	GroupLabels       []string                 `yaml:"group-labels,omitempty"`
+	Labels            UpstreamLabels           `yaml:"labels,omitempty"`
+	LowerBounds       UpstreamLowerBounds      `yaml:"lower-bounds,omitempty"`
 }
 
 // hasGrpcLabel is published on every upstream configured with a gRPC-family connector
@@ -233,13 +233,13 @@ func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnecto
 }
 
 type ChainDefaults struct {
-	PollInterval       time.Duration             `yaml:"poll-interval"`
-	Options            *chains.Options           `yaml:"options"`
-	LabelBalancing     *LabelBalancingConfig     `yaml:"label-balancing"`
-	Dispatch           *DispatchOptions          `yaml:"dispatch"`
-	LocalSubscriptions *LocalSubscriptionsConfig `yaml:"local-subscriptions"`
-	ValidateLag        *bool                     `yaml:"validate-lag"`
-	BalancingStrategy  BalancingStrategy         `yaml:"balancing-strategy"`
+	PollInterval       time.Duration             `yaml:"poll-interval,omitempty"`
+	Options            *chains.Options           `yaml:"options,omitempty"`
+	LabelBalancing     *LabelBalancingConfig     `yaml:"label-balancing,omitempty"`
+	Dispatch           *DispatchOptions          `yaml:"dispatch,omitempty"`
+	LocalSubscriptions *LocalSubscriptionsConfig `yaml:"local-subscriptions,omitempty"`
+	ValidateLag        *bool                     `yaml:"validate-lag,omitempty"`
+	BalancingStrategy  BalancingStrategy         `yaml:"balancing-strategy,omitempty"`
 }
 
 // ValidateLagFor resolves whether the chain supervisor should derive upstream
@@ -361,10 +361,10 @@ type IntegrityConfig struct {
 }
 
 type ApiConnectorConfig struct {
-	Type    string            `yaml:"type"`
-	Url     string            `yaml:"url"`
+	Type    string            `yaml:"type,omitempty"`
+	Url     string            `yaml:"url,omitempty"`
 	Headers map[string]string `yaml:"headers,omitempty"`
-	Ca      string            `yaml:"ca"`
+	Ca      string            `yaml:"ca,omitempty"`
 	// ResponseHeaderDeny lists upstream response-header names that must
 	// NOT be forwarded to the client, in addition to the connector's
 	// hard-coded defaults (hop-by-hop per RFC 7230 plus Set-Cookie /
@@ -509,9 +509,9 @@ type TimeoutConfig struct {
 }
 
 type MethodsConfig struct {
-	BanDuration    time.Duration `yaml:"ban-duration"`
-	EnableMethods  []string      `yaml:"enable"`
-	DisableMethods []string      `yaml:"disable"`
+	BanDuration    time.Duration `yaml:"ban-duration,omitempty"`
+	EnableMethods  []string      `yaml:"enable,omitempty"`
+	DisableMethods []string      `yaml:"disable,omitempty"`
 }
 
 func (u *UpstreamConfig) validate(rateLimitBudgetNames mapset.Set[string], torProxyUrl string) error {

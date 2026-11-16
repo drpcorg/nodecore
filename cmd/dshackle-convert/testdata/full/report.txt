@@ -1,0 +1,19 @@
+converted 3 of 6 upstreams -> nodecore.yml
+
+skipped upstreams:
+  near-1: rejected by nodecore validation: error during upstream 'near-1' validation, cause: connector 'websocket' is not supported by the 'near' method spec of chain 'near'
+  xrp-1: chain 'ripple' is not served by nodecore
+  remote-eu: dshackle-to-dshackle upstreams (connection.grpc) are not supported
+
+needs manual action:
+  tls.client: nodecore does not verify client certificates; the setting was not carried over
+  connection.ethereum-pos.execution.rpc.url (eth-2): contains a ${VAR} placeholder; nodecore does not substitute environment variables, replace it with the value
+  connection.generic.rpc.url (sol-1): contains a ${VAR} placeholder; nodecore does not substitute environment variables, replace it with the value (nodecore will not start until it is replaced)
+
+not carried over:
+  health.blockchains: per-chain availability requirements are not supported; use /ready
+  proxy: nodecore has no route-id HTTP proxy; its HTTP endpoint is /queries/<chain> on server.port
+  cluster.include: only this file is converted; not read: upstreams-extra.yaml
+  node-id (eth-1, eth-2): not used by nodecore
+  role (eth-2): roles are not supported; the upstream is treated as primary
+  unknown-section: not converted (unknown key or unusable value)

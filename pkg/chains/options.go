@@ -28,12 +28,12 @@ type Options struct {
 	// ArchiveCapability is deprecated: set the 'archive' upstream label instead. It is
 	// still honoured - Upstream.setDefaults translates it into that label and warns -
 	// so existing configs keep working rather than silently losing the override.
-	ArchiveCapability *bool `yaml:"archive"`
-	ValidateSyncing   *bool `yaml:"validate-syncing"`
-	ValidatePeers     *bool `yaml:"validate-peers"`
-	MinPeers          int64 `yaml:"min-peers"`
-	ValidateCallLimit *bool `yaml:"validate-call-limit"`
-	CallLimitSize     int64 `yaml:"call-limit-size"`
+	ArchiveCapability *bool `yaml:"archive,omitempty"`
+	ValidateSyncing   *bool `yaml:"validate-syncing,omitempty"`
+	ValidatePeers     *bool `yaml:"validate-peers,omitempty"`
+	MinPeers          int64 `yaml:"min-peers,omitempty"`
+	ValidateCallLimit *bool `yaml:"validate-call-limit,omitempty"`
+	CallLimitSize     int64 `yaml:"call-limit-size,omitempty"`
 }
 
 func boolValue(v *bool, fallback bool) bool {

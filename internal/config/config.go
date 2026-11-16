@@ -15,15 +15,15 @@ const (
 )
 
 type AppConfig struct {
-	ServerConfig      *ServerConfig            `yaml:"server"`
-	UpstreamConfig    *UpstreamConfig          `yaml:"upstream-config"`
-	CacheConfig       *CacheConfig             `yaml:"cache"`
-	AuthConfig        *AuthConfig              `yaml:"auth"`
-	RateLimit         []RateLimitBudgetsConfig `yaml:"rate-limit"`
-	AppStorages       []AppStorageConfig       `yaml:"app-storages"`
-	IntegrationConfig *IntegrationConfig       `yaml:"integration"`
-	StatsConfig       *StatsConfig             `yaml:"stats"`
-	ConfigReload      *ConfigReloadConfig      `yaml:"config-reload"`
+	ServerConfig      *ServerConfig            `yaml:"server,omitempty"`
+	UpstreamConfig    *UpstreamConfig          `yaml:"upstream-config,omitempty"`
+	CacheConfig       *CacheConfig             `yaml:"cache,omitempty"`
+	AuthConfig        *AuthConfig              `yaml:"auth,omitempty"`
+	RateLimit         []RateLimitBudgetsConfig `yaml:"rate-limit,omitempty"`
+	AppStorages       []AppStorageConfig       `yaml:"app-storages,omitempty"`
+	IntegrationConfig *IntegrationConfig       `yaml:"integration,omitempty"`
+	StatsConfig       *StatsConfig             `yaml:"stats,omitempty"`
+	ConfigReload      *ConfigReloadConfig      `yaml:"config-reload,omitempty"`
 
 	// source is the file content this config was parsed from; see Source.
 	source []byte

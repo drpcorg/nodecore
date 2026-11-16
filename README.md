@@ -95,6 +95,43 @@ curl --location 'http://localhost:9090/queries/ethereum' \
 
    **Note**: `make run` does not regenerate chain data — run `make generate-networks` first if you haven't built. `nodecore-local.yml` is a gitignored file for your personal config.
 
+## Migrating from dshackle
+
+A dshackle config can be converted into a nodecore one. The converter carries over what has a
+counterpart in nodecore and prints a report of everything it left out:
+
+```bash
+make convert-dshackle IN=/path/to/dshackle.yaml OUT=/path/to/nodecore.yml
+```
+
+```yaml
+# dshackle.yaml                       # nodecore.yml
+port: 2449                            server:
+cluster:                                grpc-port: 2449
+  upstreams:                            metrics-port: 8081
+    - id: eth-1                       upstream-config:
+      chain: ethereum                   upstreams:
+      role: fallback                      - id: eth-1
+      connection:                           chain: ethereum
+        generic:                            connectors:
+          rpc:                                - type: json-rpc
+            url: http://node:8545               url: http://node:8545
+          ws:                                 - type: websocket
+            url: ws://node:8546                 url: ws://node:8546
+                                        balancing-strategy: base
+                                        mode: strict-provider
+```
+
+```
+converted 1 of 1 upstreams -> nodecore.yml
+
+not carried over:
+  role (eth-1): roles are not supported; the upstream is treated as primary
+```
+
+See [Migrating from dshackle](docs/nodecore/16-dshackle-migration.md) for what is converted, what is
+not, and what to check by hand.
+
 ## Documentation
 
 Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical configuration schema and entry point is [01-config.md](docs/nodecore/01-config.md).
@@ -117,6 +154,7 @@ Full documentation lives in [`docs/nodecore`](docs/nodecore). The canonical conf
 | [Subscriptions](docs/nodecore/13-subscriptions.md) | Subscription aggregation and local synthesis |
 | [gRPC chain ingress](docs/nodecore/14-grpc-ingress.md) | Native gRPC chain traffic: metadata contract, auth, reflection |
 | [Compression](docs/nodecore/15-compression.md) | gzip/zstd/brotli on the client and upstream hops |
+| [Migrating from dshackle](docs/nodecore/16-dshackle-migration.md) | Converting a dshackle config into a nodecore one |
 
 ## Integrations
 
