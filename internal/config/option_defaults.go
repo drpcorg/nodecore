@@ -117,11 +117,11 @@ func setOptionsDefaults(
 		upstreamOptions.DisableLowerBoundsDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLowerBoundsDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLowerBoundsDetection }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			lo.Ternary(upstreamMode.IsStrict(), false, true),
 		)
 	}
 	if upstreamOptions.DisableSafeBlockDetection == nil {
-		fallback := lo.Ternary(upstreamMode == StrictMode, false, true)
+		fallback := lo.Ternary(upstreamMode.IsStrict(), false, true)
 		if chainSettings.SupportSafeBlockTag != nil && !*chainSettings.SupportSafeBlockTag {
 			fallback = true
 		}
@@ -146,49 +146,56 @@ func setOptionsDefaults(
 		upstreamOptions.DisableLabelsDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLabelsDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLabelsDetection }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			lo.Ternary(upstreamMode.IsStrict(), false, true),
 		)
 	}
 	if upstreamOptions.DisableMethodsDetection == nil {
 		upstreamOptions.DisableMethodsDetection = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableMethodsDetection }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableMethodsDetection }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			lo.Ternary(upstreamMode.IsStrict(), false, true),
 		)
 	}
 	if upstreamOptions.DisableLogIndexValidation == nil {
 		upstreamOptions.DisableLogIndexValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLogIndexValidation }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			lo.Ternary(upstreamMode.IsStrict(), false, true),
 		)
 	}
 	if upstreamOptions.DisableErigonBugValidation == nil {
 		upstreamOptions.DisableErigonBugValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableErigonBugValidation }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableErigonBugValidation }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			lo.Ternary(upstreamMode.IsStrict(), false, true),
+		)
+	}
+	if upstreamOptions.DisableGasLimitValidation == nil {
+		upstreamOptions.DisableGasLimitValidation = resolveBool(
+			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableGasLimitValidation }),
+			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableGasLimitValidation }),
+			upstreamMode != StrictProviderMode,
 		)
 	}
 	if upstreamOptions.DisableLivenessSubscriptionValidation == nil {
 		upstreamOptions.DisableLivenessSubscriptionValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
-			lo.Ternary(upstreamMode == StrictMode, false, true),
+			lo.Ternary(upstreamMode.IsStrict(), false, true),
 		)
 	}
 	if upstreamOptions.ValidateSyncing == nil {
 		upstreamOptions.ValidateSyncing = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateSyncing }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateSyncing }),
-			lo.Ternary(upstreamMode == StrictMode, true, false),
+			lo.Ternary(upstreamMode.IsStrict(), true, false),
 		)
 	}
 	if upstreamOptions.ValidatePeers == nil {
 		upstreamOptions.ValidatePeers = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidatePeers }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidatePeers }),
-			lo.Ternary(upstreamMode == StrictMode, true, false),
+			lo.Ternary(upstreamMode.IsStrict(), true, false),
 		)
 	}
 	if upstreamOptions.MinPeers == 0 {
@@ -202,7 +209,7 @@ func setOptionsDefaults(
 		upstreamOptions.ValidateCallLimit = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
 			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.ValidateCallLimit }),
-			lo.Ternary(upstreamMode == StrictMode, true, false),
+			lo.Ternary(upstreamMode.IsStrict(), true, false),
 		)
 	}
 	if upstreamOptions.CallLimitSize == 0 {

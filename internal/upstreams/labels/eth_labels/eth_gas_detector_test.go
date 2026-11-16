@@ -52,41 +52,21 @@ func gasRequestMatcher(expected protocol.RequestHolder) func(protocol.RequestHol
 }
 
 func TestEthGasLabelsDetectorDetectLabels(t *testing.T) {
-	basicEthRequest, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"eth_call",
-		[]any{
-			map[string]any{
-				"to":   "0x53Daa71B04d589429f6d3DF52db123913B818F22",
-				"data": "0x51be4eaa",
-			},
-			"latest",
-			map[string]any{
-				"0x53Daa71B04d589429f6d3DF52db123913B818F22": map[string]any{
-					"code": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c806351be4eaa14602d575b600080fd5b60336047565b604051603e91906066565b60405180910390f35b60005a905090565b6000819050919050565b606081604f565b82525050565b6000602082019050607960008301846059565b9291505056fea26469706673582212201c0202887c1afe66974b06ee355dee07542bbc424cf4d1659c91f56c08c3dcc064736f6c63430008130033",
+	creationCall := func(chain chains.Chain) protocol.RequestHolder {
+		request, err := protocol.NewInternalUpstreamJsonRpcRequest(
+			"eth_call",
+			[]any{
+				map[string]any{
+					"data": "0x5a60005260206000f3",
+					"gas":  "0x23C34600",
 				},
+				"latest",
 			},
-		},
-		chains.ETHEREUM,
-	)
-	require.NoError(t, err)
-
-	basicMonadRequest, err := protocol.NewInternalUpstreamJsonRpcRequest(
-		"eth_call",
-		[]any{
-			map[string]any{
-				"to":   "0x53Daa71B04d589429f6d3DF52db123913B818F22",
-				"data": "0x51be4eaa",
-			},
-			"latest",
-			map[string]any{
-				"0x53Daa71B04d589429f6d3DF52db123913B818F22": map[string]any{
-					"code": "0x6080604052348015600f57600080fd5b506004361060285760003560e01c806351be4eaa14602d575b600080fd5b60336047565b604051603e91906066565b60405180910390f35b60005a905090565b6000819050919050565b606081604f565b82525050565b6000602082019050607960008301846059565b9291505056fea26469706673582212201c0202887c1afe66974b06ee355dee07542bbc424cf4d1659c91f56c08c3dcc064736f6c63430008130033",
-				},
-			},
-		},
-		chains.MONAD_MAINNET,
-	)
-	require.NoError(t, err)
+			chain,
+		)
+		require.NoError(t, err)
+		return request
+	}
 
 	monadProbeRequest, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"eth_call",
@@ -107,61 +87,101 @@ func TestEthGasLabelsDetectorDetectLabels(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Run("uses basic gas detection on non-monad chains", func(t *testing.T) {
-		connector := mocks.NewConnectorMock()
-		connector.
-			On("SendRequest", mock.Anything, mock.MatchedBy(gasRequestMatcher(basicEthRequest))).
-			Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x5208"`), protocol.JsonRpc)).
-			Once()
+	result := func(hex string) protocol.ResponseHolder {
+		return protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"`+hex+`"`), protocol.JsonRpc)
+	}
+	rpcError := func(message string) protocol.ResponseHolder {
+		return protocol.NewReplyError("1", protocol.ResponseErrorWithData(-32000, message, nil), protocol.JsonRpc, protocol.TotalFailure)
+	}
+	extraGasLabels := map[string]string{
+		"gas-limit":       "600000000",
+		"extra_gas_limit": "600000000",
+	}
 
-		detector := eth_labels.NewEthGasLabelsDetector("upstream-id", chains.ETHEREUM, time.Second, connector)
+	tests := []struct {
+		name          string
+		chain         chains.Chain
+		basicResponse protocol.ResponseHolder
+		monadResponse protocol.ResponseHolder
+		expected      map[string]string
+	}{
+		{
+			name:          "extra gas when the node grants the requested budget",
+			chain:         chains.ETHEREUM,
+			basicResponse: result("0x23c2767c"),
+			expected:      extraGasLabels,
+		},
+		{
+			name:          "the granted budget when the node has a lower cap",
+			chain:         chains.ETHEREUM,
+			basicResponse: result("0x2fa20fc"),
+			expected: map[string]string{
+				"gas-limit":       "50000000",
+				"extra_gas_limit": "50000000",
+			},
+		},
+		{
+			name:          "no labels when the node returns an empty result",
+			chain:         chains.ETHEREUM,
+			basicResponse: result("0x"),
+		},
+		{
+			name:          "no labels when the node echoes the request",
+			chain:         chains.ETHEREUM,
+			basicResponse: result("0x23c34600"),
+		},
+		{
+			name:          "keeps the basic result on monad when it is already extra gas",
+			chain:         chains.MONAD_MAINNET,
+			basicResponse: result("0x23c2767c"),
+			expected:      extraGasLabels,
+		},
+		{
+			name:          "falls back to the monad probe when the basic result is below the threshold",
+			chain:         chains.MONAD_MAINNET,
+			basicResponse: result("0x2fa20fc"),
+			monadResponse: rpcError("gas limit too high"),
+			expected:      extraGasLabels,
+		},
+		{
+			name:          "falls back to the monad probe when the basic call is rejected",
+			chain:         chains.MONAD_MAINNET,
+			basicResponse: rpcError("user-specified gas exceeds provider limit"),
+			monadResponse: rpcError("gas limit too high"),
+			expected:      extraGasLabels,
+		},
+		{
+			name:          "no labels on monad when the provider limit is not raised",
+			chain:         chains.MONAD_MAINNET,
+			basicResponse: rpcError("user-specified gas exceeds provider limit"),
+			monadResponse: rpcError("user-specified gas exceeds provider limit"),
+		},
+	}
 
-		result := detector.DetectLabels(context.Background())
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			connector := mocks.NewConnectorMock()
+			connector.
+				On("SendRequest", mock.Anything, mock.MatchedBy(gasRequestMatcher(creationCall(test.chain)))).
+				Return(test.basicResponse).
+				Once()
+			if test.monadResponse != nil {
+				connector.
+					On("SendRequest", mock.Anything, mock.MatchedBy(gasRequestMatcher(monadProbeRequest))).
+					Return(test.monadResponse).
+					Once()
+			}
 
-		assert.Equal(t, map[string]string{
-			"gas-limit":       "42182",
-			"extra_gas_limit": "42182",
-		}, result)
-		connector.AssertExpectations(t)
-	})
+			detector := eth_labels.NewEthGasLabelsDetector("upstream-id", test.chain, time.Second, connector)
 
-	t.Run("keeps basic result on monad when extra gas limit is already capped", func(t *testing.T) {
-		connector := mocks.NewConnectorMock()
-		connector.
-			On("SendRequest", mock.Anything, mock.MatchedBy(gasRequestMatcher(basicMonadRequest))).
-			Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x232a5cc3"`), protocol.JsonRpc)).
-			Once()
+			labels := detector.DetectLabels(context.Background())
 
-		detector := eth_labels.NewEthGasLabelsDetector("upstream-id", chains.MONAD_MAINNET, time.Second, connector)
-
-		result := detector.DetectLabels(context.Background())
-
-		assert.Equal(t, map[string]string{
-			"gas-limit":       "590000001",
-			"extra_gas_limit": "600000000",
-		}, result)
-		connector.AssertExpectations(t)
-	})
-
-	t.Run("falls back to monad probe when basic result is below threshold", func(t *testing.T) {
-		connector := mocks.NewConnectorMock()
-		connector.
-			On("SendRequest", mock.Anything, mock.MatchedBy(gasRequestMatcher(basicMonadRequest))).
-			Return(protocol.NewSimpleHttpUpstreamResponse("1", []byte(`"0x5208"`), protocol.JsonRpc)).
-			Once()
-		connector.
-			On("SendRequest", mock.Anything, mock.MatchedBy(gasRequestMatcher(monadProbeRequest))).
-			Return(protocol.NewReplyError("1", protocol.ResponseErrorWithData(-32000, "gas limit too high", nil), protocol.JsonRpc, protocol.TotalFailure)).
-			Once()
-
-		detector := eth_labels.NewEthGasLabelsDetector("upstream-id", chains.MONAD_MAINNET, time.Second, connector)
-
-		result := detector.DetectLabels(context.Background())
-
-		assert.Equal(t, map[string]string{
-			"gas-limit":       "600000000",
-			"extra_gas_limit": "600000000",
-		}, result)
-		connector.AssertExpectations(t)
-	})
+			if test.expected == nil {
+				assert.Nil(t, labels)
+			} else {
+				assert.Equal(t, test.expected, labels)
+			}
+			connector.AssertExpectations(t)
+		})
+	}
 }

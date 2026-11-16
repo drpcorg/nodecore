@@ -274,7 +274,7 @@ func (u *UpstreamConfig) setDefaults(grpcAuth *GrpcAuthConfig) {
 }
 
 func (i *IntegrityConfig) setDefaults(upstreamMode UpstreamMode) {
-	if upstreamMode == StrictMode {
+	if upstreamMode.IsStrict() {
 		if i.Enabled {
 			log.Warn().Msgf("integrity feature is disabled if %s mode is active", upstreamMode)
 		}
