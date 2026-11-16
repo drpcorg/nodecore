@@ -29,12 +29,13 @@ func convert(input []byte) (*conversion, error) {
 	}
 
 	cluster := root.sub("cluster")
+	chainDefaults, defaultPeers := convertDefaults(cluster, converted.report)
 	cfg := &config.AppConfig{
 		ServerConfig: convertServer(root, converted.report),
 		UpstreamConfig: &config.UpstreamConfig{
 			Mode:              config.StrictProviderMode,
 			BalancingStrategy: config.BaseBalancingStrategy,
-			ChainDefaults:     convertDefaults(cluster, converted.report),
+			ChainDefaults:     chainDefaults,
 			Upstreams:         make([]*config.Upstream, 0),
 		},
 	}
@@ -45,7 +46,12 @@ func convert(input []byte) (*conversion, error) {
 	converted.total = len(entries)
 	for index, entry := range entries {
 		kept := false
+		ownPeers := readPeerCheck(entry.sub("options"))
 		for _, upstream := range convertUpstream(entry, index, converted.report) {
+			// only defaults that made it into the output are below the upstream
+			if _, inherited := cfg.UpstreamConfig.ChainDefaults[upstream.ChainName]; inherited && upstream.Options != nil {
+				ownPeers.writeOver(defaultPeers[upstream.ChainName], upstream.Options)
+			}
 			if err := validateUpstream(cfg, upstream); err != nil {
 				converted.report.skip(upstream.Id, "rejected by nodecore validation: "+err.Error())
 				continue

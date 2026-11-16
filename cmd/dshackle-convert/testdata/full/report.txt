@@ -7,6 +7,7 @@ skipped upstreams:
 
 needs manual action:
   tls.client: nodecore does not verify client certificates; the setting was not carried over
+  auth.server.keys: nodecore does not start unless both key files exist; make them available at these paths where nodecore runs
   connection.ethereum-pos.execution.rpc.url (eth-2): contains a ${VAR} placeholder; nodecore does not substitute environment variables, replace it with the value
   connection.generic.rpc.url (sol-1): contains a ${VAR} placeholder; nodecore does not substitute environment variables, replace it with the value (nodecore will not start until it is replaced)
 

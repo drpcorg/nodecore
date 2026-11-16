@@ -96,6 +96,11 @@ func convertAuth(root *section, r *report) *config.GrpcAuthConfig {
 	reportPlaceholder(privateKey, "", "auth.server.keys.provider-private-key", r)
 	reportPlaceholder(publicKey, "", "auth.server.keys.external-public-key", r)
 	reportPlaceholder(owner, "", "auth.publicKeyOwner", r)
+	if enabled {
+		// the one check of nodecore's validation the converter cannot run: the key files
+		// rarely exist where the conversion runs
+		r.manual("", "auth.server.keys", "nodecore does not start unless both key files exist; make them available at these paths where nodecore runs")
+	}
 	return &config.GrpcAuthConfig{
 		Enabled:                enabled,
 		PublicKeyOwner:         owner,

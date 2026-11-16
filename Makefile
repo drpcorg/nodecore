@@ -27,11 +27,11 @@ provider-keys:
 		go run ./cmd/genproviderkeys -values $(INFRA)/configs/provider-config/values.yaml -keys -
 
 # Converts a dshackle config into a nodecore one; the report of what was not carried over
-# goes to stderr. FORCE=1 overwrites an existing OUT file.
+# goes to stderr. FORCE=1 overwrites an existing OUT file; any other value does not.
 #   make convert-dshackle IN=/path/dshackle.yaml OUT=/path/nodecore.yml
 .PHONY: convert-dshackle
 convert-dshackle: generate-networks
-	@go run ./cmd/dshackle-convert -in "$(IN)" -out "$(OUT)" $(if $(FORCE),-force)
+	@go run ./cmd/dshackle-convert -in "$(IN)" -out "$(OUT)" $(if $(filter 1,$(FORCE)),-force)
 
 .PHONY: lint
 lint:

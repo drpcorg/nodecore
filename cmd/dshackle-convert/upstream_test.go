@@ -586,6 +586,10 @@ func TestConvertUpstreamMethodGroups(t *testing.T) {
 			&config.MethodsConfig{DisableMethods: []string{"trace"}}, []string{
 				scopedLine("method-groups.enabled[trace]", "a", "also listed in disabled; disabled wins, as in dshackle"),
 			}},
+		// dshackle adds methods.enabled after it removes the disabled groups, and nodecore
+		// applies enable last, so the method is on in both and there is nothing to report
+		{"enabled method inside a disabled group", build("ethereum", "method-groups: {disabled: [trace]}\nmethods:\n  enabled: [{name: trace_transaction}]\n"),
+			&config.MethodsConfig{EnableMethods: []string{"trace_transaction"}, DisableMethods: []string{"trace"}}, nil},
 		{"disabled method inside an enabled group", build("ethereum", "method-groups: {enabled: [trace]}\nmethods:\n  disabled: [{name: trace_call}, {name: admin_shutdown}]\n"),
 			&config.MethodsConfig{EnableMethods: []string{"trace"}, DisableMethods: []string{"admin_shutdown"}}, []string{
 				scopedLine("methods.disabled[trace_call]", "a", "part of the enabled group 'trace'; nodecore's enable wins, so the method stays on"),

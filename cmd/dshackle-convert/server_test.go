@@ -37,8 +37,26 @@ chain-settings:
 		TlsConfig:      &config.TlsConfig{Enabled: true, Certificate: "/c.crt", Key: "/k.key"},
 		GrpcAuthConfig: &config.GrpcAuthConfig{Enabled: true, PublicKeyOwner: "drpc", ProviderPrivateKeyPath: "/priv.pem", ExternalPublicKeyPath: "/pub.pem"},
 	}, convertServer(root, r))
-	assert.Equal(t, "converted 0 of 0 upstreams -> out.yml\n", reportText(t, r))
+	assert.Equal(t, "converted 0 of 0 upstreams -> out.yml\n\nneeds manual action:\n"+authKeysLine, reportText(t, r))
 	assert.Empty(t, root.unread())
+}
+
+const authKeysLine = "  auth.server.keys: nodecore does not start unless both key files exist; make them available at these paths where nodecore runs\n"
+
+// The converter cannot check the key files: they rarely exist where the conversion runs. An
+// enabled grpc-auth section is therefore always reported, and a disabled one never is.
+func TestConvertServerEnabledAuthAsksForTheKeyFiles(t *testing.T) {
+	build := func(enabled string) string {
+		return "host: 0.0.0.0\nmonitoring: {enabled: false}\nauth:\n  enabled: " + enabled +
+			"\n  publicKeyOwner: drpc\n  server:\n    keys: {provider-private-key: /priv.pem, external-public-key: /pub.pem}\n"
+	}
+	enabled := new(report)
+	require.True(t, convertServer(mustSection(t, build("true")), enabled).GrpcAuthConfig.Enabled)
+	assert.Contains(t, reportText(t, enabled), authKeysLine)
+
+	disabled := new(report)
+	require.False(t, convertServer(mustSection(t, build("false")), disabled).GrpcAuthConfig.Enabled)
+	assert.Equal(t, "converted 0 of 0 upstreams -> out.yml\n", reportText(t, disabled))
 }
 
 func TestConvertServerDefaults(t *testing.T) {

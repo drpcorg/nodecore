@@ -16,7 +16,8 @@ make convert-dshackle IN=/path/to/dshackle.yaml OUT=/path/to/nodecore.yml
 ```
 
 - `IN` is the dshackle config, `OUT` is the nodecore config to write.
-- The converter refuses to overwrite an existing `OUT` file. Add `FORCE=1` to allow it.
+- The converter refuses to overwrite an existing `OUT` file. Add `FORCE=1` to allow it; any other
+  value, `FORCE=0` included, does not.
 - The report goes to stderr. To keep it, redirect it: `make convert-dshackle IN=... OUT=... 2> report.txt`.
 - The exit code is `0` when a file was written and `1` otherwise. On failure nothing is written.
 - The output file is created with mode `0600`, because it can hold credentials copied from the
@@ -26,8 +27,13 @@ make convert-dshackle IN=/path/to/dshackle.yaml OUT=/path/to/nodecore.yml
 The same program can be run directly: `go run ./cmd/dshackle-convert -in <file> -out <file> [-force]`.
 
 Every converted upstream, and then the whole output, is checked with nodecore's own config
-validation before the file is written. A file the converter produced is therefore one nodecore
-accepts at startup, with one exception: [`${VAR}` placeholders](#var-placeholders) in URLs.
+validation before the file is written, so the keys, values and connector types of the output are
+ones nodecore accepts. Two things the converter cannot check, and nodecore will not start until
+they are right:
+
+- [`${VAR}` placeholders](#var-placeholders) in URLs.
+- [Files referenced by path](#files-referenced-by-path), such as the gRPC auth keys, which have to
+  exist where nodecore runs.
 
 ## What the output always contains
 
@@ -150,6 +156,10 @@ Only options present in the input are written; everything else falls back to the
 | `disable-bound-validation` | `disable-lower-bounds-detection` |
 | `min-peers: 0` | `validate-peers: false` (nodecore reads a zero `min-peers` as "not set") |
 
+`min-peers` and `validate-peers` are converted as a pair across `cluster.defaults` and the
+upstream. An upstream that raises `min-peers` above a zero default also gets `validate-peers: true`,
+so that peers are checked again as they are in dshackle.
+
 ## What is not converted
 
 | dshackle | What happens |
@@ -185,6 +195,16 @@ with the real value in the output file.
   The upstream is still written, and the report says nodecore will not start until it is replaced.
 - A placeholder inside `basic-auth` cannot be encoded into a header. The `Authorization` header is
   not written, and the report tells you to add `Authorization: Basic <base64(username:password)>`.
+
+### Files referenced by path
+
+The converter copies paths, not files: the TLS certificate and key, the gRPC auth keys, and a
+connector's `ca`. The same files work with nodecore, but they have to exist at the written paths on
+the host or in the container where nodecore runs.
+
+nodecore checks the two gRPC auth key files at startup and refuses to start when one is missing.
+The converter cannot run that check, so an enabled `grpc-auth` section is always listed under
+`needs manual action`.
 
 ### Listen addresses
 

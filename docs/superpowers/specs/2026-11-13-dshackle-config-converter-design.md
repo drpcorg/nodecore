@@ -83,7 +83,8 @@ make convert-dshackle IN=/path/dshackle.yaml OUT=/path/nodecore.yml
 
 The target depends on `generate-networks` (the chain registry file `pkg/chains/chains_data.go`
 is generated and gitignored) and runs
-`go run ./cmd/dshackle-convert -in $(IN) -out $(OUT)`.
+`go run ./cmd/dshackle-convert -in $(IN) -out $(OUT)`. `FORCE=1` adds `-force`; any other value
+of `FORCE`, `0` included, does not.
 
 Flags: `-in` (required), `-out` (required), `-force` (overwrite an existing `-out` file;
 without it an existing file is an error, because the repo root holds a checked-in
@@ -118,6 +119,7 @@ without `-force`, or the final validation failed.
 | `auth.publicKeyOwner` | `server.grpc-auth.public-key-owner` | |
 | `auth.server.keys.provider-private-key` | `server.grpc-auth.provider-private-key-path` | same key file works (PEM RSA) |
 | `auth.server.keys.external-public-key` | `server.grpc-auth.external-public-key-path` | same key file works |
+| an enabled `auth` section | "needs manual action" line | nodecore refuses to start unless both key files exist at the written paths, and this is the one check the converter cannot run (5.8) |
 | `auth.client` | none | warning |
 | `monitoring` | `server.metrics-port` | emitted unless `monitoring.enabled` or `prometheus.enabled` is `false`, also when the section is absent (dshackle serves metrics by default); value is `prometheus.port`, or `8081` |
 | `monitoring.prometheus.path` other than `/metrics` | none | warning: the path is fixed to `/metrics` |
@@ -198,13 +200,16 @@ method-groups:                  methods:
   disabled: [default]             disable: [default]
 ```
 
-Three cases need care:
+dshackle builds the set of allowed methods in this order: the chain's default methods, plus
+the enabled groups, minus the disabled groups, plus `methods.enabled`, minus
+`methods.disabled`. Three of the four overlaps between the lists need care:
 
 | Case | What the converter does |
 |---|---|
 | The group is not in the method spec of this chain for the upstream's connectors (`trace` on Solana) | Not written, warning. nodecore would otherwise take the name for a method called `trace` and enable it |
 | A group listed as both enabled and disabled | Kept in `disable` only, warning. dshackle lets disabled win; nodecore's validation refuses the same name in both lists |
 | A method in `methods.disabled` that belongs to an enabled group | Taken out of `disable`, warning that it stays on. In dshackle a per-method disable wins over an enabled group; in nodecore `enable` is applied last |
+| A method in `methods.enabled` that belongs to a disabled group | Carried over as it is, no warning: the group goes to `disable`, the method to `enable`. The method is on in both systems, because dshackle adds `methods.enabled` after it removes the disabled groups and nodecore applies `enable` last |
 
 One difference is left alone on purpose. In dshackle `trace` and `debug` are off unless their
 group is enabled. nodecore starts from every method of the spec, and under `strict-provider`
@@ -330,7 +335,7 @@ in the input are emitted; everything else falls back to the defaults of `strict-
 
 | dshackle option | nodecore |
 |---|---|
-| `min-peers: 0` | `validate-peers: false`. nodecore reads a zero `min-peers` as "not set" and uses 1, while in dshackle it means "do not check peers" |
+| `min-peers: 0` | `validate-peers: false`. nodecore reads a zero `min-peers` as "not set" and uses 1, while in dshackle it means "do not check peers". See "Peer options across layers" below |
 | `call-limit-size: 0` | none; warning: nodecore reads a zero as "not set" |
 | `validate-syncing`, `validate-peers`, `min-peers`, `validate-call-limit`, `call-limit-size`, `disable-validation`, `disable-log-index-validation`, `disable-liveness-subscription-validation` | same name, same value |
 | `validation-interval: <n>` (seconds) | `validation-interval` as a duration, printed in Go's form (`45s`; 60 seconds prints as `1m0s`) |
@@ -341,13 +346,30 @@ in the input are emitted; everything else falls back to the defaults of `strict-
 | `disable-pending-tx-validation`, `balance` | none; warning |
 | `timeout` | none; warning (dshackle parses this option but never uses it) |
 
+**Peer options across layers.** dshackle checks peers when `validate-peers` is on (its
+default) and `min-peers` is above zero (its default is 1). It merges the two options one by
+one across the entries of `cluster.defaults` and the upstream, a later layer winning. nodecore
+resolves `validate-peers` and `min-peers` one by one too, so a `validate-peers: false` that
+stands for a zero `min-peers` would outlive a later layer that raises `min-peers` again. The
+two options are therefore converted as a pair:
+
+| Case | Result |
+|---|---|
+| Several `cluster.defaults` entries for one chain | The pair is written from the merged dshackle values. `min-peers: 0` followed by `min-peers: 5` gives `min-peers: 5` and no `validate-peers: false` |
+| An upstream with a positive `min-peers` over chain defaults with `min-peers: 0` | The upstream also gets `validate-peers: true`, unless the defaults say `validate-peers: false` themselves |
+| An upstream with `validate-peers: true` and no `min-peers` over chain defaults with `min-peers: 0` | The upstream gets `validate-peers: false`: dshackle still sees a zero `min-peers` and does not check |
+| An upstream that sets neither option | Nothing is written; it inherits the chain defaults |
+
+Only chain defaults that made it into the output count as the layer below an upstream.
+
 ### 5.7 `cluster.defaults`
 
 Each entry is `{chains: [...], options: {...}}`. Every listed name is resolved as in 5.4; for
 a chain nodecore serves, the converted options go to
 `upstream-config.chain-defaults.<canonical name>.options`, and any other name gets a warning.
 When a chain appears in several entries (under one spelling or several), the options are
-merged in input order and a later value wins.
+merged in input order and a later value wins. The two peer options are the exception: they
+are merged as dshackle values first and written as a pair (5.6).
 
 ### 5.8 Validation
 
@@ -365,6 +387,11 @@ parse + defaults + validate, and it is the only exported entry point that takes 
   they usually do not exist where the conversion runs. This pass catches cross-upstream
   problems (duplicate ids) and server-level ones (port clashes). A failure here ends the run
   with exit code `1` and no file.
+
+What validation does not cover is whether the files behind the copied paths exist where
+nodecore will run: the gRPC auth keys (nodecore checks them at startup), the TLS certificate
+and key, and a connector's `ca`. An enabled `grpc-auth` section gets a "needs manual action"
+line for that reason (5.3).
 
 Both passes run on a copy in which connector URLs holding a `${VAR}` placeholder are replaced
 by a fixed valid URL (5.9). The file that is written keeps the placeholders.

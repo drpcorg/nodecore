@@ -75,7 +75,7 @@ cluster:
     - options:
         min-peers: 1
 `)
-	out := convertDefaults(root.sub("cluster"), r)
+	out, _ := convertDefaults(root.sub("cluster"), r)
 	require.Len(t, out, 1)
 	assert.Equal(t, &chains.Options{MinPeers: 10, ValidatePeers: new(true)}, out["ethereum"].Options)
 	text := reportText(t, r)
@@ -93,6 +93,36 @@ func TestConvertOptionsZeroMinPeersTurnsThePeerCheckOff(t *testing.T) {
 	assert.Equal(t, &chains.Options{ValidatePeers: new(false)}, out)
 	assert.Equal(t, "converted 0 of 0 upstreams -> out.yml\n", reportText(t, r))
 	assert.Empty(t, opts.unread())
+}
+
+// In dshackle the two peer options are merged one by one and a later entry wins, so a later
+// positive min-peers brings the peer check back. nodecore resolves validate-peers and min-peers
+// separately, so the merged entries must be converted as one pair.
+func TestConvertDefaultsMergeThePeerOptionsAsOnePair(t *testing.T) {
+	cases := []struct {
+		name, first, second string
+		want                *chains.Options
+	}{
+		{"zero then positive", "{min-peers: 0}", "{min-peers: 5}", &chains.Options{MinPeers: 5}},
+		{"positive then zero", "{min-peers: 5}", "{min-peers: 0}", &chains.Options{ValidatePeers: new(false)}},
+		{"switched off by the flag, then positive", "{min-peers: 0, validate-peers: false}", "{min-peers: 5}",
+			&chains.Options{ValidatePeers: new(false), MinPeers: 5}},
+		{"zero with the flag on, then positive", "{min-peers: 0, validate-peers: true}", "{min-peers: 5}",
+			&chains.Options{ValidatePeers: new(true), MinPeers: 5}},
+		{"another option survives the merge", "{min-peers: 0, validate-syncing: false}", "{min-peers: 5}",
+			&chains.Options{ValidateSyncing: new(false), MinPeers: 5}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			r := new(report)
+			root := mustSection(t, "cluster:\n  defaults:\n    - chains: [ethereum]\n      options: "+test.first+
+				"\n    - chains: [eth]\n      options: "+test.second+"\n")
+			out, _ := convertDefaults(root.sub("cluster"), r)
+			require.Len(t, out, 1)
+			assert.Equal(t, test.want, out["ethereum"].Options)
+			assert.Equal(t, "converted 0 of 0 upstreams -> out.yml\n", reportText(t, r))
+		})
+	}
 }
 
 func TestConvertOptionsZeroCallLimitSizeIsReported(t *testing.T) {

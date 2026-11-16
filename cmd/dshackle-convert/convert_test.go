@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/drpcorg/nodecore/internal/config"
+	"github.com/drpcorg/nodecore/pkg/chains"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -124,6 +125,48 @@ cluster:
 	bitcoin := res.config.UpstreamConfig.Upstreams[6]
 	assert.Equal(t, []string{"json-rpc", "rest-additional"}, connectorTypes(bitcoin))
 	assert.NotContains(t, reportText(t, res.report), "skipped upstreams")
+}
+
+// An upstream's peer options sit on top of the chain defaults. dshackle merges min-peers and
+// validate-peers one by one, nodecore resolves them separately, so the upstream must say
+// validate-peers itself whenever inheriting the default would give another result.
+func TestConvertUpstreamPeerOptionsOverChainDefaults(t *testing.T) {
+	cases := []struct {
+		name, defaults, upstream string
+		want                     *chains.Options
+	}{
+		{"positive min-peers over a zero default", "{min-peers: 0}", "{min-peers: 5}",
+			&chains.Options{MinPeers: 5, ValidatePeers: new(true)}},
+		{"positive min-peers over a zero default with the flag on", "{min-peers: 0, validate-peers: true}", "{min-peers: 5}",
+			&chains.Options{MinPeers: 5, ValidatePeers: new(true)}},
+		{"the default switched the check off by the flag", "{min-peers: 0, validate-peers: false}", "{min-peers: 5}",
+			&chains.Options{MinPeers: 5}},
+		{"the flag alone does not undo a zero default", "{min-peers: 0}", "{validate-peers: true}",
+			&chains.Options{ValidatePeers: new(false)}},
+		{"no peer option on the upstream", "{min-peers: 0}", "{validate-syncing: false}",
+			&chains.Options{ValidateSyncing: new(false)}},
+		{"a positive default", "{min-peers: 3}", "{min-peers: 5}", &chains.Options{MinPeers: 5}},
+		{"zero on the upstream", "{min-peers: 3}", "{min-peers: 0}", &chains.Options{ValidatePeers: new(false)}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			res, err := convert([]byte("host: 0.0.0.0\nmonitoring: {enabled: false}\ncluster:\n  defaults:\n    - chains: [ethereum]\n      options: " +
+				test.defaults + "\n  upstreams:\n    - id: eth-1\n      chain: ethereum\n      options: " + test.upstream +
+				"\n      connection: {generic: {rpc: {url: \"http://n:8545\"}}}\n"))
+			require.NoError(t, err)
+			require.Len(t, res.config.UpstreamConfig.Upstreams, 1)
+			assert.Equal(t, test.want, res.config.UpstreamConfig.Upstreams[0].Options)
+			assert.Equal(t, "converted 0 of 0 upstreams -> out.yml\n", reportText(t, res.report))
+		})
+	}
+}
+
+// Without chain defaults for its chain an upstream's peer options are converted on their own.
+func TestConvertUpstreamPeerOptionsWithoutChainDefaults(t *testing.T) {
+	res, err := convert([]byte("host: 0.0.0.0\nmonitoring: {enabled: false}\ncluster:\n  defaults:\n    - chains: [solana]\n      options: {min-peers: 0}\n" +
+		"  upstreams:\n    - id: eth-1\n      chain: ethereum\n      options: {min-peers: 5}\n      connection: {generic: {rpc: {url: \"http://n:8545\"}}}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, &chains.Options{MinPeers: 5}, res.config.UpstreamConfig.Upstreams[0].Options)
 }
 
 func TestConvertDropsDefaultsNodecoreRejects(t *testing.T) {
