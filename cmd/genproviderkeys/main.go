@@ -98,7 +98,8 @@ func run(valuesPath, keysPath, outPath string, check bool) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	changed := printDiff(os.Stdout, current, entries)
+	report, changed := diffReport(current, entries)
+	fmt.Print(report)
 	if check {
 		if changed || !bytes.Equal(current, out) {
 			return fmt.Errorf("%s is out of date", outPath)
@@ -209,9 +210,9 @@ func render(entries []entry) ([]byte, error) {
 	return out, nil
 }
 
-// printDiff reports provider ids added, removed and with a new key against the
+// diffReport lists provider ids added, removed and with a new key against the
 // current file and tells whether anything changed.
-func printDiff(w io.Writer, current []byte, entries []entry) bool {
+func diffReport(current []byte, entries []entry) (string, bool) {
 	var file struct {
 		Keys []entry `yaml:"keys"`
 	}
@@ -239,14 +240,15 @@ func printDiff(w io.Writer, current []byte, entries []entry) bool {
 	}
 	sort.Strings(removed)
 
-	fmt.Fprintf(w, "%d keys: %d added, %d new key, %d removed\n", len(entries), len(added), len(rekeyed), len(removed))
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d keys: %d added, %d new key, %d removed\n", len(entries), len(added), len(rekeyed), len(removed))
 	for _, group := range []struct {
 		sign string
 		ids  []string
 	}{{"+", added}, {"~", rekeyed}, {"-", removed}} {
 		for _, id := range group.ids {
-			fmt.Fprintf(w, "  %s %s\n", group.sign, id)
+			fmt.Fprintf(&b, "  %s %s\n", group.sign, id)
 		}
 	}
-	return len(added)+len(rekeyed)+len(removed) > 0
+	return b.String(), len(added)+len(rekeyed)+len(removed) > 0
 }
