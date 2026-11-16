@@ -37,8 +37,8 @@ type EvmLowerBoundDetector struct {
 
 	stateOverrideSupport atomic.Int32
 
-	// bareHeadersProven is the block detector's servesBareHeaders verdict, kept between
-	// cycles for the answers of the gold block that decide nothing
+	// bareHeadersProven is the block detector's verdict that the upstream answers pruned
+	// blocks with bare headers, kept between cycles for those that prove nothing
 	bareHeadersProven   atomic.Bool
 	goldBlockRetryDelay time.Duration
 }
@@ -87,8 +87,8 @@ func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 	if e.MainBoundType == protocol.ReceiptsBound {
 		return e.DetectContiguousLowerBound(ctx, e.fetchLatestHeight, e.probeReceipts)
 	}
-	if e.MainBoundType == protocol.BlockBound && e.servesBareHeaders(ctx) {
-		return e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, e.probeBlockBody, evmLowerBoundMaxOffset)
+	if e.MainBoundType == protocol.BlockBound {
+		return e.detectBlockBound(ctx)
 	}
 	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
 }
