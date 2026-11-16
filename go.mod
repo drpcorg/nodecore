@@ -19,12 +19,12 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/pyroscope-go v1.4.3
+	github.com/grafana/pyroscope-go v1.5.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jarcoal/httpmock v1.4.2
 	github.com/juju/ratelimit v1.0.2
-	github.com/klauspost/compress v1.20.3
+	github.com/klauspost/compress v1.20.4
 	github.com/labstack/echo-prometheus v0.0.1
 	github.com/labstack/echo/v5 v5.4.5
 	github.com/molecule-man/go-brrr v1.3.1
@@ -40,7 +40,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.45.0
 	go.uber.org/automaxprocs v1.6.0
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.59.0
 	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.25.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688
@@ -86,7 +86,7 @@ require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
 	github.com/google/pprof v0.0.0-20241210010833-40e02aabc2ad // indirect
-	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.12 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/itchyny/gojq v0.12.19 // indirect
@@ -132,8 +132,8 @@ require (
 	go.uber.org/atomic v1.12.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
