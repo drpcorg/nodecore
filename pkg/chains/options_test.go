@@ -19,7 +19,7 @@ func TestOptionsParseDisableGasLimitValidation(t *testing.T) {
 }
 
 func TestGasLimitValidationExemptChains(t *testing.T) {
-	for _, name := range []string{"avalanche", "avalanche-fuji", "monad-mainnet", "zksync"} {
+	for _, name := range []string{"avalanche", "avalanche-fuji", "monad-mainnet", "zksync", "injective", "injective-testnet"} {
 		options := chains.GetChain(name).Settings.Options
 		require.NotNil(t, options, name)
 		require.NotNil(t, options.DisableGasLimitValidation, name)

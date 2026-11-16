@@ -51,7 +51,7 @@ Non-goals:
 | 4 | A raw result of 600,000,000 or more is not a gas reading | agreed |
 | 5 | Validator verdicts: extra gas is `Valid`; a clean reading below the threshold is `FatalSettingError`; no reading is `SettingsError` | agreed |
 | 6 | Option `disable-gas-limit-validation`. Default `false` only in `strict-provider`, `true` in `strict` and `default` | agreed |
-| 7 | Exempt chains carry `disable-gas-limit-validation: true` at protocol level in `chains.yaml` (21 protocols, shipped in `drpcorg/public` PR #298) | agreed |
+| 7 | Exempt chains carry `disable-gas-limit-validation: true` at protocol level in `chains.yaml` (22 protocols, shipped in `drpcorg/public` v1.4.17) | agreed |
 | 8 | `strict-provider` is `strict` in every other respect | agreed |
 | 9 | One probe function used by both the detector and the validator; each sends its own request | my call |
 | 10 | The validator runs on every validation tick and retries a failed call through the standard `ValidatorExecutor`; the label detector sends the request once | agreed |
@@ -185,10 +185,9 @@ The only place that tells the two modes apart is the fallback of
 
 ### 4.6 `drpcorg/public` dependency
 
-PR #298 adds `disable-gas-limit-validation: true` under `settings.options` of 21 protocols and
-the key to the schema. Pin its head commit (`c0804863c87e`) with
-`go get github.com/drpcorg/public@<commit>`, then `go mod tidy` and `make generate-networks`.
-Once the PR is merged and tagged, the pin moves to the tag.
+PR #298 adds `disable-gas-limit-validation: true` under `settings.options` of 22 protocols and
+the key to the schema. It is released as `v1.4.17`: pin it with
+`go get github.com/drpcorg/public@v1.4.17`, then `go mod tidy` and `make generate-networks`.
 
 ### 4.7 Docs
 
