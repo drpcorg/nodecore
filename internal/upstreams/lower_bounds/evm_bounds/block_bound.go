@@ -2,12 +2,14 @@ package evm_bounds
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
+	"github.com/rs/zerolog/log"
 )
 
 // NewEvmBlockLowerBoundDetector detects the earliest available block. On an upstream that
@@ -39,83 +41,268 @@ func (e *EvmLowerBoundDetector) hasBlock(ctx context.Context, height int64) (boo
 	return !isEvmNullResult(raw), nil
 }
 
-// detectBlockBound picks the search for the block bound. An upstream that answers a block
-// whose body it pruned with the bare header instead of null (reth with pruned bodies) gets
-// the body search: the plain one takes its headers for blocks. Two blocks can prove such an
-// upstream: the gold one and, when that one decides nothing, a block at the plain bound.
-// A proven verdict stays for the cycles that prove nothing, and only the gold block with its
-// transactions clears it: a proven upstream must not fall back to the plain search, while
-// the body search stays right for an upstream that turns to answering null.
+// bareHeadersVerdict says whether the upstream is proven to answer a block whose body it
+// pruned with the bare header instead of null (reth with pruned bodies), and by which proof.
+type bareHeadersVerdict int32
+
+const (
+	bareHeadersUnproven bareHeadersVerdict = iota
+	// bareHeadersByGoldBlock is the verdict of the gold block that came back as a bare header
+	bareHeadersByGoldBlock
+	// bareHeadersNearPlainBound is the verdict of a bare header near the plain bound
+	bareHeadersNearPlainBound
+)
+
+// goldBlockAnswer is what the gold block tells about the upstream in one cycle.
+type goldBlockAnswer int
+
+const (
+	// goldBlockUnknown is a chain without a gold transaction, null, a no-data error, a failed
+	// request and a block that is neither of the two below
+	goldBlockUnknown goldBlockAnswer = iota
+	goldBlockBare
+	goldBlockWithBody
+)
+
+// detectBlockBound picks the search for the block bound. An upstream that answers pruned
+// blocks with bare headers gets the body search: the plain one takes its headers for blocks.
+// The verdict stays for the cycles that prove nothing, as a proven upstream must not fall back
+// to the plain search, while the body search stays right for one that turns to answering null.
+//
+// The gold block is the first proof. Its bare header proves the upstream, and only that block
+// with its transactions clears this verdict. Those transactions also settle the cycle: the
+// upstream is seen to return an old block whole, so the plain search result stands and the
+// blocks near its bound, which may only look bare, are not asked.
+//
+// When the gold block tells nothing, a bare header near the plain bound is the second proof,
+// see proveNearPlainBound.
 func (e *EvmLowerBoundDetector) detectBlockBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
-	goldHasBody := e.judgeByGoldBlock(ctx)
-	if e.bareHeadersProven.Load() {
-		return e.detectBodyBound(ctx)
+	verdict := bareHeadersVerdict(e.bareHeaders.Load())
+	switch e.askGoldBlock(ctx) {
+	case goldBlockBare:
+		verdict = bareHeadersByGoldBlock
+		e.setBareHeadersVerdict(verdict)
+	case goldBlockWithBody:
+		e.setBareHeadersVerdict(bareHeadersUnproven)
+		return e.detectPlainBound(ctx)
 	}
-	results, err := e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
-	if err != nil || goldHasBody {
-		return results, err
+
+	switch verdict {
+	case bareHeadersByGoldBlock:
+		search, err := e.searchBodies(ctx)
+		return search.bound, err
+	case bareHeadersNearPlainBound:
+		return e.recheckNearPlainBound(ctx)
+	default:
+		plainBound, err := e.detectPlainBound(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return e.proveNearPlainBound(ctx, plainBound)
 	}
-	if e.bareHeaderAtPlainBound(ctx, results[0].Bound) {
-		e.bareHeadersProven.Store(true)
-		return e.detectBodyBound(ctx)
-	}
-	return results, nil
 }
 
-func (e *EvmLowerBoundDetector) detectBodyBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
-	return e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, e.probeBlockBody, evmLowerBoundMaxOffset)
+// proveNearPlainBound is the second proof: a bare header near the plain bound that
+// confirmBareHeaders holds up moves the upstream to the body search. A bound whose blocks
+// proved nothing is not asked again until it moves or bareHeaderRecheckInterval passes, as a
+// node gets replaced behind its URL. Blocks that could not be read settle nothing: the plain
+// bound stands for the cycle and is asked again in the next.
+func (e *EvmLowerBoundDetector) proveNearPlainBound(ctx context.Context, plainBound []protocol.LowerBoundData) ([]protocol.LowerBoundData, error) {
+	bound := plainBound[0].Bound
+	if e.checkedRecently(bound) {
+		return plainBound, nil
+	}
+	bareHeaderAt, decided := e.bareHeaderNearPlainBound(ctx, bound)
+	if bareHeaderAt == 0 {
+		if decided {
+			e.rememberChecked(bound)
+		}
+		return plainBound, nil
+	}
+	bodyBound, confirmed, err := e.confirmBareHeaders(ctx, bareHeaderAt)
+	switch {
+	case err != nil:
+		log.Debug().Err(err).Msgf("couldn't check the bare header at block %d of upstream '%s'", bareHeaderAt, e.UpstreamId)
+		return plainBound, nil
+	case !confirmed:
+		e.rememberChecked(bound)
+		return plainBound, nil
+	}
+	e.bareHeaderAt.Store(bareHeaderAt)
+	e.setBareHeadersVerdict(bareHeadersNearPlainBound)
+	return bodyBound, nil
 }
 
-// judgeByGoldBlock is the first proof, the block of the chain's gold transaction: it is known
-// to hold one, so a bare header there has lost its body. Null, a no-data error and a failed
-// request decide nothing. hasBody reports that block with its transactions: the upstream
-// serves bodies that far back, so the blocks at the plain bound are not asked.
-func (e *EvmLowerBoundDetector) judgeByGoldBlock(ctx context.Context) (hasBody bool) {
+// recheckNearPlainBound is a cycle of an upstream proven by proveNearPlainBound: the body
+// search answers while confirmBareHeaders still holds the proof up, and the plain search once
+// it does not. Blocks that could not be read fail the cycle and leave the verdict as it is.
+func (e *EvmLowerBoundDetector) recheckNearPlainBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	bodyBound, confirmed, err := e.confirmBareHeaders(ctx, e.bareHeaderAt.Load())
+	if err != nil || confirmed {
+		return bodyBound, err
+	}
+	e.setBareHeadersVerdict(bareHeadersUnproven)
+	return e.detectPlainBound(ctx)
+}
+
+// confirmBareHeaders tells a node that pruned bodies from an upstream whose blocks only look
+// bare, as on a chain whose transactionsRoot covers more than the listed transactions. The
+// node has bodies under the head, which the body search meets, and none from the bare header
+// up to the bound of that search: hasBodyBetween asks blocks spread over that stretch. It
+// fails when blocks could not be read, as such a cycle settles nothing.
+func (e *EvmLowerBoundDetector) confirmBareHeaders(ctx context.Context, bareHeaderAt int64) ([]protocol.LowerBoundData, bool, error) {
+	search, err := e.searchBodies(ctx)
+	switch {
+	case err != nil:
+		return nil, false, err
+	case !search.bodyFound && search.probeFailed:
+		return nil, false, fmt.Errorf("upstream '%s' failed block requests of the body search", e.UpstreamId)
+	case !search.bodyFound:
+		return nil, false, nil
+	}
+	bodyBelow, err := e.hasBodyBetween(ctx, bareHeaderAt, search.bound[0].Bound)
+	if err != nil || bodyBelow {
+		return nil, false, err
+	}
+	return search.bound, true, nil
+}
+
+// hasBodyBetween asks evmBareHeaderSegmentSamples blocks spread between from and to, both
+// excluded, for one with transactions. Each is shifted one block further than the one before:
+// evenly spaced, they could all fall on bare-looking blocks that come at a regular step.
+func (e *EvmLowerBoundDetector) hasBodyBetween(ctx context.Context, from, to int64) (bool, error) {
+	step := (to - from) / (evmBareHeaderSegmentSamples + 1)
+	asked := from
+	for sample := int64(1); sample <= evmBareHeaderSegmentSamples; sample++ {
+		height := from + step*sample + sample - 1
+		if height <= asked || height >= to {
+			continue
+		}
+		asked = height
+		block, available, err := e.blockAt(ctx, height)
+		if err != nil {
+			return false, err
+		}
+		if available && len(block.Transactions) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// checkedRecently reports a plain bound whose blocks proved nothing less than
+// bareHeaderRecheckInterval ago.
+func (e *EvmLowerBoundDetector) checkedRecently(bound int64) bool {
+	checkedAt := time.Unix(0, e.bareHeaderCheckedAt.Load())
+	return bound == e.bareHeaderCheckedBound.Load() && time.Since(checkedAt) < e.bareHeaderRecheckInterval
+}
+
+func (e *EvmLowerBoundDetector) rememberChecked(bound int64) {
+	e.bareHeaderCheckedBound.Store(bound)
+	e.bareHeaderCheckedAt.Store(time.Now().UnixNano())
+}
+
+// SetBareHeaderRecheckInterval overrides how long a plain bound whose blocks proved nothing
+// is left alone. Production relies on the default; tests shrink it.
+func (e *EvmLowerBoundDetector) SetBareHeaderRecheckInterval(interval time.Duration) {
+	e.bareHeaderRecheckInterval = interval
+}
+
+// setBareHeadersVerdict stores the verdict and logs it when it changes.
+func (e *EvmLowerBoundDetector) setBareHeadersVerdict(verdict bareHeadersVerdict) {
+	if bareHeadersVerdict(e.bareHeaders.Swap(int32(verdict))) == verdict {
+		return
+	}
+	switch verdict {
+	case bareHeadersByGoldBlock:
+		log.Info().Msgf("upstream '%s' answers pruned blocks with bare headers, as its gold block shows: the block lower bound is the first block with a body", e.UpstreamId)
+	case bareHeadersNearPlainBound:
+		log.Info().Msgf("upstream '%s' answers pruned blocks with bare headers, as a block near its plain lower bound shows: the block lower bound is the first block with a body", e.UpstreamId)
+	default:
+		log.Info().Msgf("upstream '%s' is no longer taken to answer pruned blocks with bare headers: the block lower bound comes from the plain search", e.UpstreamId)
+	}
+}
+
+func (e *EvmLowerBoundDetector) detectPlainBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
+}
+
+// bodySearch is the outcome of one body search.
+type bodySearch struct {
+	bound []protocol.LowerBoundData
+	// bodyFound reports a probe that met a block with its transactions
+	bodyFound bool
+	// probeFailed reports a probe request that failed: after its retries the search takes
+	// such a block for one without a body
+	probeFailed bool
+}
+
+func (e *EvmLowerBoundDetector) searchBodies(ctx context.Context) (bodySearch, error) {
+	search := bodySearch{}
+	probe := func(ctx context.Context, height int64) (lower_bounds.ContiguousProbeResult, error) {
+		result, err := e.probeBlockBody(ctx, height)
+		search.bodyFound = search.bodyFound || result == lower_bounds.ProbeHit
+		search.probeFailed = search.probeFailed || err != nil
+		return result, err
+	}
+	bound, err := e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, probe, evmLowerBoundMaxOffset)
+	search.bound = bound
+	return search, err
+}
+
+// askGoldBlock reads the block of the chain's gold transaction. It is known to hold one, so
+// a bare header there has lost its body.
+func (e *EvmLowerBoundDetector) askGoldBlock(ctx context.Context) goldBlockAnswer {
 	height, ok := e.goldTxBlock()
 	if !ok {
-		return false
+		return goldBlockUnknown
 	}
 	block, available, err := e.fetchGoldBlock(ctx, height)
 	switch {
 	case err != nil || !available:
-		// decides nothing
+		return goldBlockUnknown
 	case block.isBareHeader():
-		e.bareHeadersProven.Store(true)
+		return goldBlockBare
 	case len(block.Transactions) > 0:
-		e.bareHeadersProven.Store(false)
-		return true
+		return goldBlockWithBody
+	default:
+		return goldBlockUnknown
 	}
-	return false
 }
 
-// bareHeaderAtPlainBound is the second proof, for an upstream whose gold block decides
-// nothing. A node restored from a snapshot answers null below the snapshot, the gold block
-// included, and bare headers from it on, so the plain search stops at the first header. The
-// blocks from the plain bound up are asked, evmLowerBoundMaxOffset past it at most. A block
-// with transactions ends the proof: bodies start where the plain search says. A bare header
-// proves the upstream only when it used gas too, as a false verdict lifts the bound of an
-// archive node for good. The root alone is not enough: an empty block carries the keccak of
-// the empty string on klaytn and the root of the previous block on etherlink. Nor is gas
-// alone: on cosmos chains a block without EVM transactions reports the gas of the cosmos
-// ones, with the empty trie root.
-func (e *EvmLowerBoundDetector) bareHeaderAtPlainBound(ctx context.Context, bound int64) bool {
-	for height := bound; height <= bound+evmLowerBoundMaxOffset; height++ {
+// bareHeaderNearPlainBound asks the blocks from the plain bound up, evmBareHeaderProofWindow
+// past it at most, for a bare header and returns its height, 0 when there is none. A node
+// restored from a snapshot answers null below the snapshot, the gold block included, and bare
+// headers from it on, so the plain search stops at the first of them. A block with
+// transactions ends the search: bodies start where the plain search says. A bare header
+// counts only with gas used: neither the root nor the gas alone tells a pruned block from an
+// empty one on every chain, see TestEvmBlockLowerBoundDetectorTakesNoEmptyBlockForBareHeader.
+//
+// decided is false when the blocks told nothing and a request failed or the context ended:
+// the same bound is worth asking again. Null is an answer and leaves the blocks decided.
+func (e *EvmLowerBoundDetector) bareHeaderNearPlainBound(ctx context.Context, bound int64) (bareHeaderAt int64, decided bool) {
+	decided = true
+	for height := bound; height <= bound+evmBareHeaderProofWindow; height++ {
+		if ctx.Err() != nil {
+			return 0, false
+		}
 		block, available, err := e.blockAt(ctx, height)
 		switch {
-		case err != nil || !available:
-			// decides nothing
+		case err != nil:
+			decided = false
+		case !available:
+			// null tells nothing
 		case len(block.Transactions) > 0:
-			return false
-		case block.isBareHeader() && block.usedGas():
-			return true
+			return 0, true
+		case block.isBareHeader() && block.hasGasUsed():
+			return height, true
 		}
 	}
-	return false
+	return 0, decided
 }
 
-// fetchGoldBlock repeats a failed request: without an answer an upstream that serves bare
-// headers and is not proven yet depends on the blocks at the plain bound, and where those
-// are empty it gets the plain search and bound 1.
+// fetchGoldBlock fetches the gold block, repeating a failed request: evmGoldBlockAttempts
+// attempts in all, goldBlockRetryDelay apart.
 func (e *EvmLowerBoundDetector) fetchGoldBlock(ctx context.Context, height int64) (evmBlockEnvelope, bool, error) {
 	for attempt := 1; ; attempt++ {
 		block, available, err := e.blockAt(ctx, height)

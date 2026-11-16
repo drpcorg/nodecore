@@ -17,6 +17,16 @@ const (
 
 	evmLowerBoundMaxOffset = 20
 
+	// evmBareHeaderProofWindow is how many blocks past the plain bound the block detector
+	// asks for a bare header
+	evmBareHeaderProofWindow = 20
+	// evmBareHeaderSegmentSamples is how many blocks between a bare header and the bound of
+	// the body search the block detector asks for one with transactions
+	evmBareHeaderSegmentSamples = 5
+	// evmBareHeaderRecheckInterval is how long a plain bound whose blocks proved no bare
+	// headers is left alone: a node gets replaced behind its URL
+	evmBareHeaderRecheckInterval = time.Hour
+
 	evmGoldBlockAttempts   = 3
 	evmGoldBlockRetryDelay = time.Second
 
@@ -37,10 +47,18 @@ type EvmLowerBoundDetector struct {
 
 	stateOverrideSupport atomic.Int32
 
-	// bareHeadersProven is the block detector's verdict that the upstream answers pruned
-	// blocks with bare headers, kept between cycles for those that prove nothing
-	bareHeadersProven   atomic.Bool
-	goldBlockRetryDelay time.Duration
+	// bareHeaders is the block detector's bareHeadersVerdict, kept between cycles for those
+	// that prove nothing
+	bareHeaders atomic.Int32
+	// bareHeaderAt is the height of the bare header behind a bareHeadersNearPlainBound verdict
+	bareHeaderAt atomic.Int64
+	// bareHeaderCheckedBound is the plain bound whose blocks proved no bare headers, and
+	// bareHeaderCheckedAt the time of that check in unix nanoseconds: they are not asked again
+	// until the bound moves or bareHeaderRecheckInterval passes
+	bareHeaderCheckedBound    atomic.Int64
+	bareHeaderCheckedAt       atomic.Int64
+	bareHeaderRecheckInterval time.Duration
+	goldBlockRetryDelay       time.Duration
 }
 
 // WithCapabilities attaches the upstream-shared eth_capabilities cache. Detectors
@@ -73,6 +91,7 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 	return &EvmLowerBoundDetector{
 		LowerBoundSearchCalculator: lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, boundType, supportedTypes, evmLowerBoundPeriod, maxOffset),
 		evmRpcClient:               evmRpcClient{connector: connector, chain: chain, internalTimeout: internalTimeout},
+		bareHeaderRecheckInterval:  evmBareHeaderRecheckInterval,
 		goldBlockRetryDelay:        evmGoldBlockRetryDelay,
 	}
 }

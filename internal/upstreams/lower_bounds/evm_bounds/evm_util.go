@@ -59,7 +59,7 @@ func (e *EvmLowerBoundDetector) lastTxHash(ctx context.Context, height int64) (h
 type evmBlockEnvelope struct {
 	Number string `json:"number"`
 	Hash   string `json:"hash"`
-	// TransactionsRoot and GasUsed stay raw: only isBareHeader and usedGas read them, and a
+	// TransactionsRoot and GasUsed stay raw: only isBareHeader and hasGasUsed read them, and a
 	// value of an unusual shape must not fail the tx and receipts probes
 	TransactionsRoot json.RawMessage   `json:"transactionsRoot"`
 	GasUsed          json.RawMessage   `json:"gasUsed"`
@@ -78,9 +78,9 @@ func (b evmBlockEnvelope) isBareHeader() bool {
 	return isHash && root != evmEmptyTxRoot && root != evmZeroHash
 }
 
-// usedGas reports a header that says gas was spent in the block. A gasUsed that is absent or
-// unreadable is no gas.
-func (b evmBlockEnvelope) usedGas() bool {
+// hasGasUsed reports a header that says gas was spent in the block. A gasUsed that is absent
+// or unreadable is no gas.
+func (b evmBlockEnvelope) hasGasUsed() bool {
 	gas, err := parseHexInt(b.GasUsed)
 	return err == nil && gas > 0
 }

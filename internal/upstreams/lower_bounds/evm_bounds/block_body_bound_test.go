@@ -46,7 +46,7 @@ const (
 const liveBareHeader = `{
   "number":"0x7dccc00",
   "hash":"0x0960fb3de7bd99d1d3350f4dc37ed201ae21b6d0bae866e246c0c570201cedd5",
-  "transactionsRoot":"0x6199cc9681e6c1793ed9b28d8214ea42642b5dfd89a9b80b1cc20046714dfe0e",
+  "transactionsRoot":"` + committingTxRoot + `",
   "gasUsed":"0x8e8a5f",
   "size":"0x385",
   "transactions":[],
@@ -56,6 +56,8 @@ const liveBareHeader = `{
 const (
 	emptyTxRoot = "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"
 	zeroTxRoot  = "0x0000000000000000000000000000000000000000000000000000000000000000"
+	// committingTxRoot is the transactionsRoot of BSC block 131910656: it commits to transactions
+	committingTxRoot = "0x6199cc9681e6c1793ed9b28d8214ea42642b5dfd89a9b80b1cc20046714dfe0e"
 )
 
 // Empty blocks as live nodes answer them. Klaytn block 1 carries the keccak of the empty
@@ -71,7 +73,7 @@ const (
 
 var blockAnswers = map[blockKind]protocol.ResponseHolder{
 	blockAbsent:             evmOK(`null`),
-	blockWithTxs:            evmOK(`{"number":"0x1","transactionsRoot":"0x6199cc9681e6c1793ed9b28d8214ea42642b5dfd89a9b80b1cc20046714dfe0e","transactions":["0xaa"]}`),
+	blockWithTxs:            evmOK(`{"number":"0x1","transactionsRoot":"` + committingTxRoot + `","transactions":["0xaa"]}`),
 	blockEmpty:              evmOK(`{"number":"0x1","transactionsRoot":"` + emptyTxRoot + `","transactions":[]}`),
 	blockBareHeader:         evmOK(liveBareHeader),
 	blockUpperCaseEmptyRoot: evmOK(`{"number":"0x1","transactionsRoot":"0x` + strings.ToUpper(emptyTxRoot[2:]) + `","transactions":[]}`),
@@ -84,7 +86,7 @@ var blockAnswers = map[blockKind]protocol.ResponseHolder{
 	blockEtherlinkEmpty:     evmOK(liveEtherlinkEmpty),
 	blockKavaEmpty:          evmOK(liveKavaEmpty),
 	blockAuroraEmpty:        evmOK(liveAuroraEmpty),
-	blockBareLookingNoGas:   evmOK(`{"number":"0x1","transactionsRoot":"0x6199cc9681e6c1793ed9b28d8214ea42642b5dfd89a9b80b1cc20046714dfe0e","transactions":[]}`),
+	blockBareLookingNoGas:   evmOK(`{"number":"0x1","transactionsRoot":"` + committingTxRoot + `","transactions":[]}`),
 }
 
 // blocksByKind serves a head and, for every height, the answer kindOf picks.
@@ -133,8 +135,8 @@ func bareLookingExceptGold(goldKind blockKind) func(int64) blockKind {
 }
 
 // emptyBeforeGold is kindOf on a chain whose first transaction is the gold one, as on
-// Ethereum: the blocks before it are empty, so the blocks at the plain bound 1 prove nothing
-// and the gold block alone decides.
+// Ethereum: the blocks before it are empty, so the blocks near the plain bound 1 prove
+// nothing and the gold block alone decides.
 func emptyBeforeGold(kindOf func(int64) blockKind) func(int64) blockKind {
 	return func(h int64) blockKind {
 		if h < goldBlock {
@@ -163,8 +165,8 @@ const (
 	bodiesFrom = headBlock - 14_351
 	// headersFrom is the first block of a node restored from a snapshot, above goldBlock
 	headersFrom = int64(400_001)
-	// askedPastBound mirrors evmLowerBoundMaxOffset
-	askedPastBound = int64(20)
+	// askedPastBound is how far past the plain bound the detector asks for a bare header
+	askedPastBound = int64(evm_bounds.BareHeaderProofWindow)
 )
 
 // goldChain has its gold transaction in goldBlock.
@@ -205,10 +207,19 @@ func TestEvmBlockLowerBoundDetectorTrustsHeadersWhenGoldBlockHasItsBody(t *testi
 	assert.Equal(t, int64(1), detectBlockBound(t, detector))
 }
 
+// The gold block with its transactions settles the cycle: the blocks near the plain bound are
+// not asked. Here they look bare with their bodies in place and later blocks list their
+// transactions: asked, the first ones would pass for pruned and move the bound to listedFrom.
+func TestEvmBlockLowerBoundDetectorAsksNoBlocksNearPlainBoundWhenGoldBlockHasItsBody(t *testing.T) {
+	const listedFrom = 1_000
+	detector := blockDetector(blocksByKind(headBlock, bareHeadersBelow(listedFrom)))
+
+	assert.Equal(t, int64(1), detectBlockBound(t, detector))
+}
+
 // A gold block without transactions proves a pruned body only when its root commits to some.
 // Otherwise the upstream stays on the plain search, which here answers 1; the body search
-// would stop at the bare-looking blocks. The chain starts with empty blocks, so the blocks
-// at the plain bound prove nothing either.
+// would stop at the bare-looking blocks.
 func TestEvmBlockLowerBoundDetectorNeedsCommittingRootToProveBareHeaders(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -223,7 +234,7 @@ func TestEvmBlockLowerBoundDetectorNeedsCommittingRootToProveBareHeaders(t *test
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			detector := blockDetector(blocksByKind(headBlock, emptyBeforeGold(bareLookingExceptGold(tc.goldKind))))
+			detector := blockDetector(blocksByKind(headBlock, bareLookingExceptGold(tc.goldKind)))
 
 			assert.Equal(t, int64(1), detectBlockBound(t, detector))
 		})
@@ -246,7 +257,7 @@ func TestEvmBlockLowerBoundDetectorSkipsEmptyBlocksInBodySearch(t *testing.T) {
 
 // Once the upstream is known to serve bare headers, a gold block answer that decides nothing
 // does not send it back to the plain search, which trusts headers and answers 1. The chain
-// starts with empty blocks: the blocks at the plain bound would not prove it again.
+// starts with empty blocks: the blocks near the plain bound would not prove it again.
 func TestEvmBlockLowerBoundDetectorKeepsBareHeadersVerdictWithoutGoldBlockAnswer(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -275,14 +286,17 @@ func TestEvmBlockLowerBoundDetectorKeepsBareHeadersVerdictWithoutGoldBlockAnswer
 }
 
 // The verdict goes when the gold block shows its transactions: the plain search answers 1
-// again, where the body search would stop at the bare-looking blocks.
+// again, where the body search would stop at the bare-looking blocks. It stays gone in the
+// next cycle, which the gold block does not answer.
 func TestEvmBlockLowerBoundDetectorDropsBareHeadersVerdictWhenGoldBlockShowsItsBody(t *testing.T) {
 	kindOf := bareHeadersBelow(bodiesFrom)
 	detector := blockDetector(blocksByKind(headBlock, func(h int64) blockKind { return kindOf(h) }))
 	require.Equal(t, bodiesFrom, detectBlockBound(t, detector))
 
 	kindOf = bareLookingExceptGold(blockWithTxs)
+	assert.Equal(t, int64(1), detectBlockBound(t, detector))
 
+	kindOf = bareLookingExceptGold(blockAbsent)
 	assert.Equal(t, int64(1), detectBlockBound(t, detector))
 }
 
@@ -295,16 +309,191 @@ func TestEvmBlockLowerBoundDetectorFindsFirstBlockWithBodyOnNodeRestoredFromSnap
 	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
 }
 
-// On a chain without a gold transaction the blocks at the plain bound are the only proof.
+// On a chain without a gold transaction the blocks near the plain bound are the only proof.
 func TestEvmBlockLowerBoundDetectorProvesBareHeadersOnChainWithoutGoldTx(t *testing.T) {
 	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, bareHeadersBelow(bodiesFrom)))
 
 	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
 }
 
-// The proof asks the blocks up to evmLowerBoundMaxOffset past the plain bound and passes the
+// A bare header near the plain bound proves the upstream only if the body search then meets
+// a block with its body. Every block looks bare here, on a chain whose transactionsRoot covers
+// more than the listed transactions: nothing is pruned, and the bound stays 1 where the body
+// search would answer the head. An empty block is no body: in the last case the body search
+// passes the empty blocks under the head and stops at the first bare-looking one.
+func TestEvmBlockLowerBoundDetectorNeedsBlockWithBodyToProveBareHeaders(t *testing.T) {
+	const emptyFrom = headBlock - 2_000
+	tests := []struct {
+		name   string
+		chain  *chains.ConfiguredChain
+		kindOf func(int64) blockKind
+	}{
+		{"gold block request fails", goldChain(), bareLookingExceptGold(blockError)},
+		{"chain without a gold transaction", evmChain(), bareLookingExceptGold(blockBareHeader)},
+		{"empty blocks under the head", evmChain(), func(h int64) blockKind {
+			if h >= emptyFrom {
+				return blockEmpty
+			}
+			return blockBareHeader
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			detector := blockDetectorOn(tc.chain, blocksByKind(headBlock, tc.kindOf))
+
+			assert.Equal(t, int64(1), detectBlockBound(t, detector))
+		})
+	}
+}
+
+// A rejected proof is not tried again while the plain bound stays: the next cycle asks no
+// block of the upper quarter of the chain. Only the body search goes there on this upstream:
+// with bound 1 the plain search asks nothing above the middle of the chain, and the body
+// search starts under the head.
+func TestEvmBlockLowerBoundDetectorDoesNotRetryRejectedProofWhilePlainBoundStays(t *testing.T) {
+	const upperQuarter = headBlock * 3 / 4
+	connector := blocksByKind(headBlock, bareLookingExceptGold(blockBareHeader))
+	detector := blockDetectorOn(evmChain(), connector)
+	detectBlockBound(t, detector)
+	askedUnderHead := blockRequestsAbove(connector, upperQuarter)
+
+	detectBlockBound(t, detector)
+
+	assert.Equal(t, askedUnderHead, blockRequestsAbove(connector, upperQuarter))
+}
+
+// everyNthLooksBare is an upstream with every body in place, on a chain where one block in
+// period lists no transactions although its header commits to some: block 1 and every
+// period-th after it.
+func everyNthLooksBare(period int64) func(int64) blockKind {
+	return func(h int64) blockKind {
+		if h%period == 1 {
+			return blockBareHeader
+		}
+		return blockWithTxs
+	}
+}
+
+// lateHeadersFrom is the first block of a node restored from a late snapshot. Blocks spread
+// evenly between genesis and any block of the chain all fall below it.
+const lateHeadersFrom = int64(900_001)
+
+// Blocks with transactions between a bare header and the bound of the body search show that
+// nothing is pruned there: the bare-looking blocks stand among whole ones, and the bound
+// stays where the plain search put it. The body search stops at one of them, at 13456 with
+// every second block bare-looking and near the head with every third or fifth. With the head
+// two blocks higher it stops at 467846, and five blocks spaced evenly from block 1 to there
+// are all odd, bare-looking ones: the blocks asked are not spaced evenly.
+func TestEvmBlockLowerBoundDetectorTakesNoBareLookingBlocksAmongWholeOnesForPruned(t *testing.T) {
+	tests := []struct {
+		name   string
+		head   int64
+		kindOf func(int64) blockKind
+		bound  int64
+	}{
+		{"every second block looks bare", headBlock, everyNthLooksBare(2), 1},
+		{"every third block looks bare", headBlock, everyNthLooksBare(3), 1},
+		{"every fifth block looks bare", headBlock, everyNthLooksBare(5), 1},
+		{"pruned node, every third block looks bare", headBlock, nullBelow(lateHeadersFrom, everyNthLooksBare(3)), lateHeadersFrom},
+		{"every second block looks bare, evenly spaced blocks all do", headBlock + 2, everyNthLooksBare(2), 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			detector := blockDetectorOn(evmChain(), blocksByKind(tc.head, tc.kindOf))
+
+			assert.Equal(t, tc.bound, detectBlockBound(t, detector))
+		})
+	}
+}
+
+// The bare header of the gold block needs no block with a body to count: that block is known
+// to hold a transaction. An upstream that shows no body at all gets the head for a bound.
+// This is not a goal but the risk the gold proof takes, kept as it is on main.
+func TestEvmBlockLowerBoundDetectorKeepsGoldBlockVerdictWhenNoBlockHasBody(t *testing.T) {
+	detector := blockDetector(blocksByKind(headBlock, bareLookingExceptGold(blockBareHeader)))
+
+	assert.Equal(t, headBlock, detectBlockBound(t, detector))
+}
+
+// A body search that cannot read the head settles nothing: the plain bound stands for the
+// cycle, and the next one asks the blocks near it again and proves the upstream. The head is
+// read once for the plain search, then the three attempts of the body search fail.
+func TestEvmBlockLowerBoundDetectorAsksBlocksNearPlainBoundAgainAfterFailedBodySearch(t *testing.T) {
+	connector := mocks.NewConnectorMock()
+	expectLatest(connector, fmt.Sprintf("0x%x", headBlock))
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(matchEvmRequest("eth_blockNumber"))).
+		Return(blockAnswers[blockError]).
+		Times(3)
+	detector := blockDetector(serveBlocksByKind(connector, headBlock, nullBelow(headersFrom, bareHeadersBelow(bodiesFrom))))
+	require.Equal(t, headersFrom, detectBlockBound(t, detector))
+
+	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+}
+
+// failingBetween is kindOf on a node whose requests for the blocks above from, up to to, fail
+// while failing is set.
+func failingBetween(from, to int64, failing *bool, kindOf func(int64) blockKind) func(int64) blockKind {
+	return func(h int64) blockKind {
+		if *failing && h > from && h <= to {
+			return blockError
+		}
+		return kindOf(h)
+	}
+}
+
+// Blocks that could not be read settle nothing: the plain bound stands for the cycle, and the
+// next one proves the node restored from a snapshot. In the first cycle its block requests
+// fail in a part of the chain that only one step of the proof reads: the probes of the body
+// search under the head, or the blocks asked between the bare header and the body bound.
+func TestEvmBlockLowerBoundDetectorAsksBlocksNearPlainBoundAgainAfterUnreadBlocks(t *testing.T) {
+	tests := []struct {
+		name            string
+		failingFrom, to int64
+	}{
+		{"body probes fail", 900_000, headBlock},
+		{"blocks below the body bound fail", 600_000, 800_000},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			failing := true
+			node := nullBelow(headersFrom, bareHeadersBelow(bodiesFrom))
+			detector := blockDetector(blocksByKind(headBlock, failingBetween(tc.failingFrom, tc.to, &failing, node)))
+			require.Equal(t, headersFrom, detectBlockBound(t, detector))
+
+			failing = false
+
+			assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+		})
+	}
+}
+
+// For an upstream proven near its plain bound, body probes that fail do not clear the verdict:
+// the cycle fails where a cleared verdict would answer the plain bound.
+func TestEvmBlockLowerBoundDetectorFailsCycleOfProvenUpstreamWhenBodyProbesFail(t *testing.T) {
+	failing := false
+	node := nullBelow(headersFrom, bareHeadersBelow(bodiesFrom))
+	detector := blockDetector(blocksByKind(headBlock, failingBetween(900_000, headBlock, &failing, node)))
+	require.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+
+	failing = true
+	_, err := detector.DetectLowerBound(context.Background())
+
+	assert.Error(t, err)
+}
+
+// The first header of a node restored from a snapshot may be the only one without a body, as
+// on a live ronin-saigon node: the bound is the next block. No block lies between that header
+// and the body bound, and none past the bound is asked for transactions.
+func TestEvmBlockLowerBoundDetectorFindsFirstBlockWithBodyAfterSingleBareHeader(t *testing.T) {
+	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, nullBelow(headersFrom, bareHeadersBelow(headersFrom+1))))
+
+	assert.Equal(t, headersFrom+1, detectBlockBound(t, detector))
+}
+
+// The proof asks the blocks up to evmBareHeaderProofWindow past the plain bound and passes the
 // empty ones. A bare header further away is not reached, and the plain bound stays.
-func TestEvmBlockLowerBoundDetectorAsksBlocksUpToMaxOffsetPastPlainBound(t *testing.T) {
+func TestEvmBlockLowerBoundDetectorAsksBlocksUpToProofWindowPastPlainBound(t *testing.T) {
 	tests := []struct {
 		name        string
 		emptyBlocks int64
@@ -327,9 +516,9 @@ func TestEvmBlockLowerBoundDetectorAsksBlocksUpToMaxOffsetPastPlainBound(t *test
 	}
 }
 
-// A block at the plain bound that gives no answer decides nothing, and the next one is asked:
-// the upstream is proven in the same cycle. The plain bound is 1 here, as block 0 answers
-// with its header.
+// A block near the plain bound that gives no answer decides nothing, and the next one is
+// asked: the upstream is proven in the same cycle. The plain bound is 1 here, as block 0
+// answers with its header.
 func TestEvmBlockLowerBoundDetectorAsksNextBlockAfterOneWithoutAnswer(t *testing.T) {
 	tests := []struct {
 		name string
@@ -396,23 +585,130 @@ func TestEvmBlockLowerBoundDetectorKeepsArchiveBoundOnChainStartingWithEmptyBloc
 	assert.Equal(t, int64(1), detectBlockBound(t, detector))
 }
 
-// A block with transactions at the plain bound ends the proof: bodies start there, and the
-// bare-looking blocks above it are not taken for pruned ones.
-func TestEvmBlockLowerBoundDetectorEndsProofAtBlockWithTransactions(t *testing.T) {
-	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, nullBelow(headersFrom, func(h int64) blockKind {
-		if h == headersFrom {
-			return blockWithTxs
-		}
-		return blockBareHeader
-	})))
+// When the plain bound moves, the blocks near the new one are asked. The node is pruned at
+// headersFrom first and serves bodies from there; then its first block is laterHeadersFrom,
+// with bare headers from it on.
+func TestEvmBlockLowerBoundDetectorAsksBlocksNearPlainBoundThatMoved(t *testing.T) {
+	const laterHeadersFrom = headersFrom + 50_000
+	kindOf := nullBelow(headersFrom, func(int64) blockKind { return blockWithTxs })
+	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, func(h int64) blockKind { return kindOf(h) }))
+	require.Equal(t, headersFrom, detectBlockBound(t, detector))
 
-	assert.Equal(t, headersFrom, detectBlockBound(t, detector))
+	kindOf = nullBelow(laterHeadersFrom, bareHeadersBelow(bodiesFrom))
+
+	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
 }
 
-// Once the blocks at the plain bound have proven the upstream, a cycle in which they prove
+// A plain bound whose blocks proved nothing is asked again after the recheck interval. An
+// archive node gets replaced behind its URL by one that keeps bare headers from genesis: the
+// plain bound stays 1, and the blocks near it are bare headers now.
+func TestEvmBlockLowerBoundDetectorAsksBlocksNearUnchangedPlainBoundAgainAfterRecheckInterval(t *testing.T) {
+	const recheckInterval = 20 * time.Millisecond
+	kindOf := func(int64) blockKind { return blockWithTxs }
+	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, func(h int64) blockKind { return kindOf(h) }))
+	detector.SetBareHeaderRecheckInterval(recheckInterval)
+	require.Equal(t, int64(1), detectBlockBound(t, detector))
+
+	kindOf = bareHeadersBelow(bodiesFrom)
+	time.Sleep(2 * recheckInterval)
+
+	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+}
+
+// The tests from here to ...StopsAskingBlocksNearPlainBoundWhenContextEnds count the requests
+// of single blocks and lean on the order of the plain search probes. On a chain of 1000000
+// blocks that answers from block 0, it asks 14, 6, 2, 0 and 1 in the first cycle and 15, 7,
+// 3 and 1 in the second: the other blocks up to 21 are asked by the proof alone.
+
+// A block with transactions at the plain bound ends the proof: bodies start there, and the
+// blocks after it are not asked.
+func TestEvmBlockLowerBoundDetectorEndsProofAtBlockWithTransactions(t *testing.T) {
+	connector := blocksByKind(headBlock, func(int64) blockKind { return blockWithTxs })
+	detector := blockDetectorOn(evmChain(), connector)
+
+	detectBlockBound(t, detector)
+
+	assert.Zero(t, blockRequests(connector, 1+askedPastBound))
+}
+
+// Blocks near the plain bound that proved nothing are not asked again while the bound stays:
+// an archive node of a chain that starts with empty blocks pays for the window once. Null is
+// an answer too: a missing block among them leaves the bound checked.
+func TestEvmBlockLowerBoundDetectorAsksBlocksNearUnchangedPlainBoundOnce(t *testing.T) {
+	const firstBlockWithTxs = 1_000
+	const missingBlock = 5
+	tests := []struct {
+		name    string
+		missing bool
+	}{
+		{"empty blocks", false},
+		{"empty blocks and a missing one", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			connector := blocksByKind(headBlock, func(h int64) blockKind {
+				switch {
+				case tc.missing && h == missingBlock:
+					return blockAbsent
+				case h < firstBlockWithTxs:
+					return blockEmpty
+				default:
+					return blockWithTxs
+				}
+			})
+			detector := blockDetectorOn(evmChain(), connector)
+			detectBlockBound(t, detector)
+
+			detectBlockBound(t, detector)
+
+			assert.Equal(t, 1, blockRequests(connector, 1+askedPastBound))
+		})
+	}
+}
+
+// A failed request near the plain bound leaves the bound to be asked again. Block 3 is a
+// bare header among empty blocks, and its first request fails: that one comes from the proof.
+// The next cycle proves the upstream.
+func TestEvmBlockLowerBoundDetectorAsksBlocksNearPlainBoundAgainAfterFailedRequest(t *testing.T) {
+	const bareHeaderAt = 3
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(isBlockRequest(bareHeaderAt))).
+		Return(blockAnswers[blockError]).
+		Once()
+	detector := blockDetectorOn(evmChain(), serveBlocksByKind(connector, headBlock, func(h int64) blockKind {
+		if h <= 1+askedPastBound && h != bareHeaderAt {
+			return blockEmpty
+		}
+		return bareHeadersBelow(bodiesFrom)(h)
+	}))
+	require.Equal(t, int64(1), detectBlockBound(t, detector))
+
+	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+}
+
+// The proof stops asking when the context ends. Blocks 3 and 4 are asked by the proof alone:
+// the context ends on block 3, and block 4 is not asked.
+func TestEvmBlockLowerBoundDetectorStopsAskingBlocksNearPlainBoundWhenContextEnds(t *testing.T) {
+	const contextEndsAt = 3
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	connector := mocks.NewConnectorMock()
+	connector.
+		On("SendRequest", mock.Anything, mock.MatchedBy(isBlockRequest(contextEndsAt))).
+		Run(func(mock.Arguments) { cancel() }).
+		Return(blockAnswers[blockEmpty])
+	detector := blockDetectorOn(evmChain(), serveBlocksByKind(connector, headBlock, func(int64) blockKind { return blockEmpty }))
+
+	_, _ = detector.DetectLowerBound(ctx)
+
+	assert.Zero(t, blockRequests(connector, contextEndsAt+1))
+}
+
+// Once the blocks near the plain bound have proven the upstream, a cycle in which they prove
 // nothing keeps the verdict. The node drops its oldest headers here and the first ones left
 // are of empty blocks: the plain search would answer the first of them.
-func TestEvmBlockLowerBoundDetectorKeepsVerdictOfBlocksAtPlainBound(t *testing.T) {
+func TestEvmBlockLowerBoundDetectorKeepsVerdictOfBlocksNearPlainBound(t *testing.T) {
 	const laterHeadersFrom = headersFrom + 50_000
 	kindOf := nullBelow(headersFrom, bareHeadersBelow(bodiesFrom))
 	detector := blockDetector(blocksByKind(headBlock, func(h int64) blockKind { return kindOf(h) }))
@@ -428,25 +724,85 @@ func TestEvmBlockLowerBoundDetectorKeepsVerdictOfBlocksAtPlainBound(t *testing.T
 	assert.Equal(t, bodiesFrom, detectBlockBound(t, detector))
 }
 
-func isGoldBlockRequest(r protocol.RequestHolder) bool {
-	h, ok := evmBlockHeight(r)
-	return ok && h == goldBlock
+// The verdict of the blocks near the plain bound goes when the body search meets no block
+// with its body: the plain search decides again. Every block of the node looks bare in the
+// second cycle. In the third its first blocks are klaytn's empty ones, which the body search
+// would take for bare headers: it would answer the first block with transactions.
+func TestEvmBlockLowerBoundDetectorDropsVerdictOfBlocksNearPlainBoundWhenNoBlockHasBody(t *testing.T) {
+	const emptyBlocks = 5
+	kindOf := nullBelow(headersFrom, bareHeadersBelow(bodiesFrom))
+	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, func(h int64) blockKind { return kindOf(h) }))
+	require.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+
+	kindOf = nullBelow(headersFrom, bareLookingExceptGold(blockBareHeader))
+	assert.Equal(t, headersFrom, detectBlockBound(t, detector))
+
+	kindOf = nullBelow(headersFrom, func(h int64) blockKind {
+		if h < headersFrom+emptyBlocks {
+			return blockKlaytnEmpty
+		}
+		return blockWithTxs
+	})
+	assert.Equal(t, headersFrom, detectBlockBound(t, detector))
 }
 
-func goldBlockRequests(connector *mocks.ConnectorMock) int {
+// The verdict goes too when blocks between its bare header and the bound of the body search
+// show transactions. The node restored from a late snapshot is proven first; then its blocks
+// stand whole, every third looking bare, and the body search stops at one of those near the
+// head. The blocks are spread from the bare header up: spread from genesis, they would all
+// fall below the snapshot and show nothing.
+func TestEvmBlockLowerBoundDetectorDropsVerdictOfBlocksNearPlainBoundWhenBlocksBelowBodyBoundHaveBodies(t *testing.T) {
+	kindOf := nullBelow(lateHeadersFrom, bareHeadersBelow(bodiesFrom))
+	detector := blockDetectorOn(evmChain(), blocksByKind(headBlock, func(h int64) blockKind { return kindOf(h) }))
+	require.Equal(t, bodiesFrom, detectBlockBound(t, detector))
+
+	kindOf = nullBelow(lateHeadersFrom, everyNthLooksBare(3))
+
+	assert.Equal(t, lateHeadersFrom, detectBlockBound(t, detector))
+}
+
+func isBlockRequest(height int64) func(protocol.RequestHolder) bool {
+	return func(r protocol.RequestHolder) bool {
+		h, ok := evmBlockHeight(r)
+		return ok && h == height
+	}
+}
+
+func isGoldBlockRequest(r protocol.RequestHolder) bool {
+	return isBlockRequest(goldBlock)(r)
+}
+
+// countBlockRequests counts the requests for the blocks whose height matches.
+func countBlockRequests(connector *mocks.ConnectorMock, match func(height int64) bool) int {
 	count := 0
 	for _, call := range connector.Calls {
-		if request, ok := call.Arguments.Get(1).(protocol.RequestHolder); ok && isGoldBlockRequest(request) {
+		request, ok := call.Arguments.Get(1).(protocol.RequestHolder)
+		if !ok {
+			continue
+		}
+		if h, isBlock := evmBlockHeight(request); isBlock && match(h) {
 			count++
 		}
 	}
 	return count
 }
 
+func blockRequests(connector *mocks.ConnectorMock, height int64) int {
+	return countBlockRequests(connector, func(h int64) bool { return h == height })
+}
+
+func blockRequestsAbove(connector *mocks.ConnectorMock, height int64) int {
+	return countBlockRequests(connector, func(h int64) bool { return h > height })
+}
+
+func goldBlockRequests(connector *mocks.ConnectorMock) int {
+	return blockRequests(connector, goldBlock)
+}
+
 // A failed gold block request is repeated, three attempts in all, and the first answer ends
 // them. An upstream proven on a repeat gets its bound in the same cycle; after three failures
 // the gold block gives the cycle no verdict. The chain starts with empty blocks, so the
-// blocks at the plain bound give none either and the plain search answers 1.
+// blocks near the plain bound give none either and the plain search answers 1.
 func TestEvmBlockLowerBoundDetectorRepeatsFailedGoldBlockRequest(t *testing.T) {
 	tests := []struct {
 		name     string
