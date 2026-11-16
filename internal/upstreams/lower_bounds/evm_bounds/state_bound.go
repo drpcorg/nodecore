@@ -6,6 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
@@ -42,7 +43,43 @@ func NewEvmStateLowerBoundDetector(
 	)
 }
 
+// detectStateBound searches the state bound. Where the state anchor is trusted, the bound is
+// the start of the contiguous range of real state that ends at the head. The search from
+// genesis stops at the first old block that answers, and an upstream that serves the state of
+// a later block in the middle of its history has such blocks below the fake range.
+func (e *EvmLowerBoundDetector) detectStateBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	fetchHead := e.fetchLatestHeight
+	// one head serves both the check of the anchor and the search
+	if head, err := e.fetchLatestHeight(ctx); err == nil {
+		e.refreshStateAnchor(ctx, head)
+		fetchHead = func(context.Context) (int64, error) { return head, nil }
+	}
+	if e.stateAnchorTrusted.Load() {
+		return e.DetectContiguousLowerBound(ctx, fetchHead, e.probeStateFromHead)
+	}
+	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, fetchHead, e.probe)
+}
+
+func (e *EvmLowerBoundDetector) probeStateFromHead(ctx context.Context, height int64) (lower_bounds.ContiguousProbeResult, error) {
+	available, err := e.hasState(ctx, height)
+	if err != nil || !available {
+		return lower_bounds.ProbeMiss, err
+	}
+	return lower_bounds.ProbeHit, nil
+}
+
+// hasState asks the state anchor first, where it is trusted: it is the only probe that
+// checks what the upstream answers with. The plain probes below accept any non-empty answer
+// and decide the blocks the anchor has no verdict for.
 func (e *EvmLowerBoundDetector) hasState(ctx context.Context, height int64) (bool, error) {
+	if e.stateAnchorTrusted.Load() {
+		switch verdict, _ := e.stateAnchorAt(ctx, height); verdict {
+		case stateAnchorReal:
+			return true, nil
+		case stateAnchorFrozen:
+			return false, nil
+		}
+	}
 	if e.supportsStateOverride(ctx) {
 		available, err := e.hasStateWithOverride(ctx, height)
 		if err == nil && available {
