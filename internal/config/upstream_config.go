@@ -79,24 +79,22 @@ func (u *UpstreamConfig) LabelBalancingFor(chain string) *LabelBalancingConfig {
 type UpstreamMode string
 
 const (
-	DefaultMode        UpstreamMode = "default"
-	StrictMode         UpstreamMode = "strict"
-	StrictProviderMode UpstreamMode = "strict-provider"
+	DefaultMode UpstreamMode = "default"
+	StrictMode  UpstreamMode = "strict"
 )
 
 func (u UpstreamMode) Validate() error {
 	switch u {
-	case DefaultMode, StrictMode, StrictProviderMode:
+	case DefaultMode, StrictMode:
 	default:
 		return fmt.Errorf("invalid upstream mode: %s", u)
 	}
 	return nil
 }
 
-// IsStrict reports whether the mode is one of the strict profiles. strict-provider is
-// strict in every respect; it only changes the default of the gas-limit validation.
+// IsStrict reports whether the mode is the strict profile.
 func (u UpstreamMode) IsStrict() bool {
-	return u == StrictMode || u == StrictProviderMode
+	return u == StrictMode
 }
 
 func (u *UpstreamConfig) GetDispatchOptions(chainName string) DispatchOptions {
@@ -217,9 +215,8 @@ func (u *Upstream) GetHeadApiConnectorType() specs.ApiConnectorType {
 type sortConnectorFunc func([]*ApiConnectorConfig) specs.ApiConnectorType
 
 var sortConnectorsFunc = map[UpstreamMode]sortConnectorFunc{
-	DefaultMode:        simplestConnector,
-	StrictMode:         mostCapableConnector,
-	StrictProviderMode: mostCapableConnector,
+	DefaultMode: simplestConnector,
+	StrictMode:  mostCapableConnector,
 }
 
 func (u *Upstream) GetBestConnector(upstreamMode UpstreamMode) specs.ApiConnectorType {
