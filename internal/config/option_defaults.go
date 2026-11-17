@@ -170,13 +170,6 @@ func setOptionsDefaults(
 			lo.Ternary(upstreamMode.IsStrict(), false, true),
 		)
 	}
-	if upstreamOptions.DisableGasLimitValidation == nil {
-		upstreamOptions.DisableGasLimitValidation = resolveBool(
-			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableGasLimitValidation }),
-			getBool(globalChainOptions, func(options *chains.Options) *bool { return options.DisableGasLimitValidation }),
-			upstreamMode != StrictProviderMode,
-		)
-	}
 	if upstreamOptions.DisableLivenessSubscriptionValidation == nil {
 		upstreamOptions.DisableLivenessSubscriptionValidation = resolveBool(
 			getBool(defaultChainOptions, func(options *chains.Options) *bool { return options.DisableLivenessSubscriptionValidation }),
