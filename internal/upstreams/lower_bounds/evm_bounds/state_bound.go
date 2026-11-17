@@ -69,17 +69,36 @@ func (e *EvmLowerBoundDetector) probeStateFromHead(ctx context.Context, height i
 }
 
 // hasState asks the state anchor first, where it is trusted: it is the only probe that
-// checks what the upstream answers with. The plain probes below accept any non-empty answer
-// and decide the blocks the anchor has no verdict for.
+// checks what the upstream answers with. The plain probes accept any non-empty answer and
+// decide the blocks the anchor has no verdict for.
+//
+// A failed call of the anchor is not a missing verdict. The plain probes are asked then only
+// to rule the block out: without state there the failure changes nothing (besu fails the call
+// to the contract for a pruned block). With state there it may be the state of a later block,
+// so the failure goes to the search, which asks the block again and takes a block that keeps
+// failing for one without state.
 func (e *EvmLowerBoundDetector) hasState(ctx context.Context, height int64) (bool, error) {
+	var anchorFailure error
 	if e.stateAnchorTrusted.Load() {
-		switch verdict, _ := e.stateAnchorAt(ctx, height); verdict {
-		case stateAnchorReal:
+		verdict, _, err := e.stateAnchorAt(ctx, height)
+		switch {
+		case err != nil:
+			anchorFailure = err
+		case verdict == stateAnchorReal:
 			return true, nil
-		case stateAnchorFrozen:
+		case verdict == stateAnchorFrozen:
 			return false, nil
 		}
 	}
+	available, err := e.hasPlainState(ctx, height)
+	if available && anchorFailure != nil {
+		return false, anchorFailure
+	}
+	return available, err
+}
+
+// hasPlainState reports a block the upstream returns state for. It does not check which state.
+func (e *EvmLowerBoundDetector) hasPlainState(ctx context.Context, height int64) (bool, error) {
 	if e.supportsStateOverride(ctx) {
 		available, err := e.hasStateWithOverride(ctx, height)
 		if err == nil && available {

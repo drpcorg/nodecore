@@ -42,9 +42,47 @@ type historyChain struct {
 	foreignBelow int64
 	// contractFails: every call to the contract fails
 	contractFails bool
+	// callsFailWithoutState: asked for a block it has no state of, eth_call fails and only
+	// eth_getBalance says so (besu: "Internal error" and a null balance)
+	callsFailWithoutState bool
+	// failures is how many times the upstream fails a request before it answers it
+	failures map[upstreamRequest]int
 
 	// contractCalls counts the calls to the contract and plainProbes the plain state probes
 	contractCalls, plainProbes int
+	// failed counts the failed answers to a request
+	failed map[upstreamRequest]int
+}
+
+// upstreamRequest names a request to the history contract or for a header by the block it is
+// sent for.
+type upstreamRequest struct {
+	method string
+	block  int64
+}
+
+// everyTime is the number of failures of a request the upstream never answers.
+const everyTime = -1
+
+// fails reports a request the upstream has to fail this time.
+func (c *historyChain) fails(request upstreamRequest) bool {
+	left := c.failures[request]
+	if left > 0 {
+		c.failures[request] = left - 1
+	}
+	return left != 0
+}
+
+func (c *historyChain) fail(request upstreamRequest) protocol.ResponseHolder {
+	if c.failed == nil {
+		c.failed = map[upstreamRequest]int{}
+	}
+	c.failed[request]++
+	return failedAnswer()
+}
+
+func failedAnswer() protocol.ResponseHolder {
+	return protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom"))
 }
 
 func realState(height int64) (int64, bool) {
@@ -75,6 +113,9 @@ func (c *historyChain) SendRequest(_ context.Context, request protocol.RequestHo
 		return evmOK(fmt.Sprintf(`"0x%x"`, historyHead))
 	case "eth_getBlockByNumber":
 		height := requestBlock(body, 0)
+		if header := (upstreamRequest{method: request.Method(), block: height}); c.fails(header) {
+			return c.fail(header)
+		}
 		if height < c.firstHeader {
 			return evmOK(`null`)
 		}
@@ -87,18 +128,28 @@ func (c *historyChain) SendRequest(_ context.Context, request protocol.RequestHo
 		}
 		return evmOK(`"0x1"`)
 	case "eth_call":
-		served, ok := c.stateOf(requestBlock(body, 1))
+		height := requestBlock(body, 1)
+		contractCall := upstreamRequest{method: request.Method(), block: height}
+		toContract := strings.EqualFold(requestParam(body, 0, "to"), historyContract)
+		served, ok := c.stateOf(height)
 		if !ok {
-			return pruned
+			switch {
+			case !c.callsFailWithoutState:
+				return pruned
+			case toContract:
+				return c.fail(contractCall)
+			default:
+				return failedAnswer()
+			}
 		}
-		if !strings.EqualFold(requestParam(body, 0, "to"), historyContract) {
+		if !toContract {
 			// the state override probe
 			c.plainProbes++
 			return evmOK(`"0x0000000000000000000000000000000000000000000000000000000000000001"`)
 		}
 		c.contractCalls++
-		if c.contractFails {
-			return protocol.NewHttpUpstreamResponseWithError(protocol.ResponseErrorWithMessage("boom"))
+		if c.contractFails || c.fails(contractCall) {
+			return c.fail(contractCall)
 		}
 		asked, _ := strconv.ParseInt(strings.TrimLeft(strings.TrimPrefix(requestParam(body, 0, "data"), "0x"), "0"), 16, 64)
 		if c.callsOnTopOfBlock {
@@ -180,6 +231,72 @@ func TestEvmStateBoundIsAtTheSnapshotOfAnUpstreamServingItsStateForOlderBlocks(t
 			assert.Equal(t, stateAndTraceAt(test.bound), stateBounds(t, detector))
 			assert.Zero(t, upstream.plainProbes, "the anchor decides a block without the plain probes")
 		})
+	}
+}
+
+// firstAskedBelowSnapshot is the first block the search from the head asks below block
+// 800_000 on its way down from historyHead.
+const firstAskedBelowSnapshot = 738_880
+
+// A block whose anchor could not be asked has no verdict. The plain probes would give it
+// one: they take the state of the snapshot block for the state of the block. So a block that
+// keeps failing is a block without state.
+func TestEvmStateBoundIsAtTheSnapshotWhenACallOfTheAnchorKeepsFailingOnABlockBelowIt(t *testing.T) {
+	const fakeFrom, snapshot = 600_000, 800_000
+	failing := map[string]upstreamRequest{
+		"the history contract at the block":     {method: "eth_call", block: firstAskedBelowSnapshot},
+		"the header of the anchor block":        {method: "eth_getBlockByNumber", block: firstAskedBelowSnapshot - historyWindow + 1},
+		"the history contract one window below": {method: "eth_call", block: firstAskedBelowSnapshot - historyWindow},
+	}
+	for name, request := range failing {
+		t.Run(name, func(t *testing.T) {
+			upstream := &historyChain{
+				activation: historyActivation,
+				stateOf:    stateOfSnapshotBetween(fakeFrom, snapshot),
+				failures:   map[upstreamRequest]int{request: everyTime},
+			}
+			detector := fastEvm(evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, upstream))
+
+			assert.Equal(t, stateAndTraceAt(snapshot-1), stateBounds(t, detector))
+			assert.NotZero(t, upstream.failed[request], "the search has sent the request that fails")
+		})
+	}
+}
+
+// The block is asked again: one failed call does not cut the history of an archive at it.
+func TestEvmStateBoundOfAnArchiveReachesGenesisThroughAFailedCallToTheHistoryContract(t *testing.T) {
+	contractCall := upstreamRequest{method: "eth_call", block: firstAskedBelowSnapshot}
+	upstream := &historyChain{
+		activation: historyActivation,
+		stateOf:    realState,
+		failures:   map[upstreamRequest]int{contractCall: 1},
+	}
+	detector := fastEvm(evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, upstream))
+
+	assert.Equal(t, stateAndTraceAt(1), stateBounds(t, detector))
+	assert.NotZero(t, upstream.failed[contractCall], "the search has sent the request that fails")
+}
+
+// Besu on Linea: below its state window the node fails the call to the contract, and the
+// plain probes find no state there. Such a block is not asked again: 30 attempts with the
+// backoff of the search are 24 minutes for each of them.
+func TestEvmStateBoundOfAPrunedUpstreamDoesNotRetryBlocksWhereTheAnchorFailsAndThePlainProbesFindNoState(t *testing.T) {
+	const firstBlock = 990_000
+	upstream := &historyChain{
+		activation:            historyActivation,
+		callsFailWithoutState: true,
+		stateOf: func(height int64) (int64, bool) {
+			return height, height >= firstBlock
+		},
+	}
+	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, upstream)
+	// a block that is asked again is asked three times
+	detector.SetSearchRetryPolicy(3, time.Millisecond, time.Millisecond)
+
+	assert.Equal(t, stateAndTraceAt(firstBlock), stateBounds(t, detector))
+	require.NotEmpty(t, upstream.failed, "the search has asked blocks without state")
+	for request, times := range upstream.failed {
+		assert.Equalf(t, 1, times, "block %d is asked once", request.block)
 	}
 }
 
@@ -266,11 +383,19 @@ func TestEvmStateAnchorVerdictIsKeptForTheRecheckIntervalAndAskedAgainAfterIt(t 
 
 func TestEvmStateAnchorCheckWithoutAnAnswerIsRepeatedInTheNextCycle(t *testing.T) {
 	const fakeFrom, snapshot = 600_000, 800_000
-	upstream := &historyChain{activation: historyActivation, stateOf: stateOfSnapshotBetween(fakeFrom, snapshot), contractFails: true}
-	detector := evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, upstream)
+	unanswered := map[string]historyChain{
+		"the call to the contract fails": {contractFails: true},
+		"the anchor block has no header": {firstHeader: historyHead},
+	}
+	for name, upstream := range unanswered {
+		t.Run(name, func(t *testing.T) {
+			upstream.activation, upstream.stateOf = historyActivation, stateOfSnapshotBetween(fakeFrom, snapshot)
+			detector := fastEvm(evm_bounds.NewEvmStateLowerBoundDetector("id", evmChain(), time.Second, &upstream))
 
-	assert.Equal(t, stateAndTraceAt(1), stateBounds(t, detector))
+			assert.Equal(t, stateAndTraceAt(1), stateBounds(t, detector))
 
-	upstream.contractFails = false
-	assert.Equal(t, stateAndTraceAt(snapshot-1), stateBounds(t, detector))
+			upstream.contractFails, upstream.firstHeader = false, 0
+			assert.Equal(t, stateAndTraceAt(snapshot-1), stateBounds(t, detector))
+		})
+	}
 }

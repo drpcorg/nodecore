@@ -58,73 +58,79 @@ const (
 )
 
 // stateAnchorAt judges the state of the given block by the history contract. answered is
-// false when the upstream gave nothing to judge by: a failed call, a pruned state, a missing
-// header, a block closer to genesis than the depth of the anchor.
-func (e *EvmLowerBoundDetector) stateAnchorAt(ctx context.Context, height int64) (verdict stateAnchorVerdict, answered bool) {
+// false when the upstream has nothing to judge by: a pruned state, a missing header, a block
+// closer to genesis than the depth of the anchor. A call that failed in another way than with
+// a "no data" answer is an error: it says nothing about the block, and such a block must not
+// be left to the plain probes alone, which take the state of a later block for the real one.
+func (e *EvmLowerBoundDetector) stateAnchorAt(ctx context.Context, height int64) (verdict stateAnchorVerdict, answered bool, err error) {
 	anchor := height - evmStateAnchorDepth
 	if anchor < 0 {
-		return stateAnchorSilent, false
+		return stateAnchorSilent, false, nil
 	}
-	kept, answered := e.historyHashAt(ctx, anchor, height)
-	if !answered {
-		return stateAnchorSilent, false
+	kept, answered, err := e.historyHashAt(ctx, anchor, height)
+	if err != nil || !answered {
+		return stateAnchorSilent, false, err
 	}
 	if kept == "" {
-		return stateAnchorSilent, true
+		return stateAnchorSilent, true, nil
 	}
 	block, available, err := e.blockAt(ctx, anchor)
 	if err != nil || !available {
-		return stateAnchorSilent, false
+		return stateAnchorSilent, false, err
 	}
 	header, isHash := evmHash(block.Hash)
 	if !isHash {
-		return stateAnchorSilent, false
+		return stateAnchorSilent, false, nil
 	}
 	if kept == header {
-		return stateAnchorReal, true
+		return stateAnchorReal, true, nil
 	}
 	if anchor >= evmHistoryWindow {
-		keptBelow, _ := e.historyHashAt(ctx, anchor-evmHistoryWindow, height-evmHistoryWindow)
+		keptBelow, _, err := e.historyHashAt(ctx, anchor-evmHistoryWindow, height-evmHistoryWindow)
+		if err != nil {
+			return stateAnchorSilent, false, err
+		}
 		if keptBelow == kept {
-			return stateAnchorFrozen, true
+			return stateAnchorFrozen, true, nil
 		}
 	}
-	return stateAnchorForeign, true
+	return stateAnchorForeign, true, nil
 }
 
 // historyHashAt asks the history contract, in the state of block height, for the hash of
 // block number. The hash is empty when the contract keeps none. answered is false for a
-// failed call and for a pruned state.
-func (e *EvmLowerBoundDetector) historyHashAt(ctx context.Context, number, height int64) (hash string, answered bool) {
+// pruned state. A call that failed in another way is an error.
+func (e *EvmLowerBoundDetector) historyHashAt(ctx context.Context, number, height int64) (hash string, answered bool, err error) {
 	raw, available, err := e.call(ctx, "eth_call", []any{
 		map[string]any{"to": evmHistoryContract, "data": fmt.Sprintf("0x%064x", number)},
 		evmBlockTag(height),
 	})
 	if err != nil || !available {
-		return "", false
+		return "", false, err
 	}
 	var result string
 	if err := sonic.Unmarshal(raw, &result); err != nil {
-		return "", false
+		return "", false, nil
 	}
 	hash, isHash := evmHash(result)
 	if !isHash || hash == evmZeroHash {
-		return "", true
+		return "", true, nil
 	}
-	return hash, true
+	return hash, true, nil
 }
 
 // refreshStateAnchor lets the anchor judge the upstream only after it has confirmed the
 // state of the head block, which every upstream has. A chain whose history contract answers
 // otherwise than its headers has nothing to confirm the real state with.
-// A check without an answer keeps the previous verdict and is repeated in the next cycle.
+// A check without an answer, a failed call included, keeps the previous verdict and is
+// repeated in the next cycle.
 func (e *EvmLowerBoundDetector) refreshStateAnchor(ctx context.Context, head int64) {
 	checkedAt := e.stateAnchorCheckedAt.Load()
 	if checkedAt != 0 && time.Since(time.Unix(0, checkedAt)) < e.stateAnchorRecheckInterval {
 		return
 	}
-	verdict, answered := e.stateAnchorAt(ctx, head)
-	if !answered {
+	verdict, answered, err := e.stateAnchorAt(ctx, head)
+	if err != nil || !answered {
 		return
 	}
 	e.stateAnchorTrusted.Store(verdict == stateAnchorReal)
