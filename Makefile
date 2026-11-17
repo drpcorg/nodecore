@@ -18,6 +18,14 @@ stats-proto-gen:
 generate-networks:
 	go run cmd/chains/init_chains.go
 
+# Regenerates internal/quorum/provider_keys.yaml from the provider-config of
+# the infra repo. Needs sops access to configs/provider-config/secrets.yaml.
+.PHONY: provider-keys
+provider-keys:
+	@test -n "$(INFRA)" || { echo "set INFRA=<path to the infra repo>" >&2; exit 1; }
+	sops -d --extract '["rsaKeys"]' $(INFRA)/configs/provider-config/secrets.yaml | \
+		go run ./cmd/genproviderkeys -values $(INFRA)/configs/provider-config/values.yaml -keys -
+
 .PHONY: lint
 lint:
 	golangci-lint run ./...

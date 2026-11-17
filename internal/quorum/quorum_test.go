@@ -426,7 +426,7 @@ func TestDefaultRegistry_LoadsEmbeddedKeys(t *testing.T) {
 	require.NoError(t, err)
 	assert.Positive(t, reg.Len(), "embedded provider_keys.yaml should contain provider keys")
 
-	_, ok := reg.Lookup("p2p-validator@EU-West#0")
+	_, ok := reg.Lookup("drpc-core@US-East#0")
 	assert.True(t, ok, "Lookup should match fully-qualified <name>@<region>#<idx> provider ids")
 }
 

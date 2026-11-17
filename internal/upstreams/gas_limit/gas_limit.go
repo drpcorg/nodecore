@@ -12,7 +12,6 @@ import (
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
 	"github.com/drpcorg/nodecore/pkg/chains"
-	"github.com/failsafe-go/failsafe-go"
 )
 
 const (
@@ -36,38 +35,6 @@ func Measure(
 	chain chains.Chain,
 	timeout time.Duration,
 ) (*big.Int, error) {
-	return measure(ctx, chain, timeout, func(ctx context.Context, request protocol.RequestHolder) (protocol.ResponseHolder, error) {
-		return connector.SendRequest(ctx, request), nil
-	})
-}
-
-// MeasureWithRetries is Measure with the request sent through the executor, so a failed call
-// is retried by the executor's policy. All attempts share the timeout.
-func MeasureWithRetries(
-	ctx context.Context,
-	executor failsafe.Executor[protocol.ResponseHolder],
-	connector connectors.ApiConnector,
-	chain chains.Chain,
-	timeout time.Duration,
-) (*big.Int, error) {
-	return measure(ctx, chain, timeout, func(ctx context.Context, request protocol.RequestHolder) (protocol.ResponseHolder, error) {
-		return executor.WithContext(ctx).Get(func() (protocol.ResponseHolder, error) {
-			return connector.SendRequest(ctx, request), nil
-		})
-	})
-}
-
-// GrantsExtraGas reports whether a granted budget counts as extra gas.
-func GrantsExtraGas(granted *big.Int) bool {
-	return granted.Cmp(big.NewInt(extraGasThreshold)) > 0
-}
-
-func measure(
-	ctx context.Context,
-	chain chains.Chain,
-	timeout time.Duration,
-	send func(context.Context, protocol.RequestHolder) (protocol.ResponseHolder, error),
-) (*big.Int, error) {
 	request, err := protocol.NewInternalUpstreamJsonRpcRequest(
 		"eth_call",
 		[]any{
@@ -86,10 +53,7 @@ func measure(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	response, err := send(ctx, request)
-	if err != nil {
-		return nil, err
-	}
+	response := connector.SendRequest(ctx, request)
 	if response.HasError() {
 		return nil, response.GetError()
 	}
@@ -113,4 +77,9 @@ func measure(
 	}
 
 	return gasLeft.Add(gasLeft, big.NewInt(creationOverhead)), nil
+}
+
+// GrantsExtraGas reports whether a granted budget counts as extra gas.
+func GrantsExtraGas(granted *big.Int) bool {
+	return granted.Cmp(big.NewInt(extraGasThreshold)) > 0
 }
