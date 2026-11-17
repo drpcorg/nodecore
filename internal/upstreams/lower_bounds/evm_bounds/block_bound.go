@@ -3,6 +3,7 @@ package evm_bounds
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"github.com/drpcorg/nodecore/internal/protocol"
@@ -147,38 +148,42 @@ func (e *EvmLowerBoundDetector) recheckNearPlainBound(ctx context.Context) ([]pr
 
 // confirmBareHeaders tells a node that pruned bodies from an upstream whose blocks only look
 // bare, as on a chain whose transactionsRoot covers more than the listed transactions. The
-// node has bodies under the head, which the body search meets, and none from the bare header
-// up to the bound of that search: hasBodyBetween asks blocks spread over that stretch. It
-// fails when blocks could not be read, as such a cycle settles nothing.
+// node has bodies under the head, which the body search meets. They start above the bare
+// header, and no block between that header and the bound of the search has transactions:
+// hasBodyBetween asks blocks picked there.
+//
+// It fails when blocks could not be read, as such a cycle settles nothing. That takes in a
+// body search with a failed probe: the search reads such a block as one without a body and
+// may stop above the first body.
+//
+// The blocks asked are a sample, not a proof. Where most blocks look bare, all of them can
+// fall on such blocks and pass an upstream that prunes nothing. A later cycle drops that
+// verdict but not the bound it published: the bound processor lowers a bound only to 1, so an
+// upstream whose true bound is above 1 keeps the lifted one until it restarts.
 func (e *EvmLowerBoundDetector) confirmBareHeaders(ctx context.Context, bareHeaderAt int64) ([]protocol.LowerBoundData, bool, error) {
 	search, err := e.searchBodies(ctx)
 	switch {
 	case err != nil:
 		return nil, false, err
-	case !search.bodyFound && search.probeFailed:
+	case search.probeFailed:
 		return nil, false, fmt.Errorf("upstream '%s' failed block requests of the body search", e.UpstreamId)
 	case !search.bodyFound:
 		return nil, false, nil
+	case search.bound[0].Bound <= bareHeaderAt:
+		// bodies reach the bare header or go below it: that block is not a pruned one
+		return nil, false, nil
 	}
-	bodyBelow, err := e.hasBodyBetween(ctx, bareHeaderAt, search.bound[0].Bound)
+	bodyBelow, err := e.hasBodyBetween(ctx, bareHeaderAt, search.bound[0].Bound, search.head)
 	if err != nil || bodyBelow {
 		return nil, false, err
 	}
 	return search.bound, true, nil
 }
 
-// hasBodyBetween asks evmBareHeaderSegmentSamples blocks spread between from and to, both
-// excluded, for one with transactions. Each is shifted one block further than the one before:
-// evenly spaced, they could all fall on bare-looking blocks that come at a regular step.
-func (e *EvmLowerBoundDetector) hasBodyBetween(ctx context.Context, from, to int64) (bool, error) {
-	step := (to - from) / (evmBareHeaderSegmentSamples + 1)
-	asked := from
-	for sample := int64(1); sample <= evmBareHeaderSegmentSamples; sample++ {
-		height := from + step*sample + sample - 1
-		if height <= asked || height >= to {
-			continue
-		}
-		asked = height
+// hasBodyBetween asks the blocks sampleHeightsBetween picks between from and to for one with
+// transactions.
+func (e *EvmLowerBoundDetector) hasBodyBetween(ctx context.Context, from, to, head int64) (bool, error) {
+	for _, height := range sampleHeightsBetween(from, to, head) {
 		block, available, err := e.blockAt(ctx, height)
 		if err != nil {
 			return false, err
@@ -188,6 +193,24 @@ func (e *EvmLowerBoundDetector) hasBodyBetween(ctx context.Context, from, to int
 		}
 	}
 	return false, nil
+}
+
+// sampleHeightsBetween picks evmBareHeaderSegmentSamples heights between from and to, both
+// excluded. The stretch is cut into as many equal parts and a height is drawn at random in
+// each. The head seeds the draw, so every cycle gets other heights: spaced by a rule, they
+// could fall on bare-looking blocks that come by a rule of their own.
+func sampleHeightsBetween(from, to, head int64) []int64 {
+	random := rand.New(rand.NewPCG(uint64(head), uint64(from)))
+	first, blocks := from+1, to-from-1
+	heights := make([]int64, 0, evmBareHeaderSegmentSamples)
+	for part := int64(0); part < evmBareHeaderSegmentSamples; part++ {
+		partFrom := first + blocks*part/evmBareHeaderSegmentSamples
+		partTo := first + blocks*(part+1)/evmBareHeaderSegmentSamples
+		if partTo > partFrom {
+			heights = append(heights, partFrom+random.Int64N(partTo-partFrom))
+		}
+	}
+	return heights
 }
 
 // checkedRecently reports a plain bound whose blocks proved nothing less than
@@ -230,23 +253,37 @@ func (e *EvmLowerBoundDetector) detectPlainBound(ctx context.Context) ([]protoco
 // bodySearch is the outcome of one body search.
 type bodySearch struct {
 	bound []protocol.LowerBoundData
+	// head is the latest height the search started from
+	head int64
 	// bodyFound reports a probe that met a block with its transactions
 	bodyFound bool
-	// probeFailed reports a probe request that failed: after its retries the search takes
-	// such a block for one without a body
+	// probeFailed reports a probe that failed on the last of its attempts: the search takes
+	// such a block for one without a body. A probe that answered on a repeat is no failure
 	probeFailed bool
 }
 
 func (e *EvmLowerBoundDetector) searchBodies(ctx context.Context) (bodySearch, error) {
 	search := bodySearch{}
+	fetchHead := func(ctx context.Context) (int64, error) {
+		head, err := e.fetchLatestHeight(ctx)
+		search.head = head
+		return head, err
+	}
+	// the heights whose last attempt failed: the search repeats a failed probe
+	failed := map[int64]struct{}{}
 	probe := func(ctx context.Context, height int64) (lower_bounds.ContiguousProbeResult, error) {
 		result, err := e.probeBlockBody(ctx, height)
 		search.bodyFound = search.bodyFound || result == lower_bounds.ProbeHit
-		search.probeFailed = search.probeFailed || err != nil
+		if err != nil {
+			failed[height] = struct{}{}
+		} else {
+			delete(failed, height)
+		}
 		return result, err
 	}
-	bound, err := e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, probe, evmLowerBoundMaxOffset)
+	bound, err := e.DetectContiguousLowerBoundWithOffset(ctx, fetchHead, probe, evmLowerBoundMaxOffset)
 	search.bound = bound
+	search.probeFailed = len(failed) > 0
 	return search, err
 }
 
@@ -275,8 +312,7 @@ func (e *EvmLowerBoundDetector) askGoldBlock(ctx context.Context) goldBlockAnswe
 // restored from a snapshot answers null below the snapshot, the gold block included, and bare
 // headers from it on, so the plain search stops at the first of them. A block with
 // transactions ends the search: bodies start where the plain search says. A bare header
-// counts only with gas used: neither the root nor the gas alone tells a pruned block from an
-// empty one on every chain, see TestEvmBlockLowerBoundDetectorTakesNoEmptyBlockForBareHeader.
+// counts only with gas used, see lostBody.
 //
 // decided is false when the blocks told nothing and a request failed or the context ended:
 // the same bound is worth asking again. Null is an answer and leaves the blocks decided.
@@ -294,7 +330,7 @@ func (e *EvmLowerBoundDetector) bareHeaderNearPlainBound(ctx context.Context, bo
 			// null tells nothing
 		case len(block.Transactions) > 0:
 			return 0, true
-		case block.isBareHeader() && block.hasGasUsed():
+		case block.lostBody():
 			return height, true
 		}
 	}
@@ -324,8 +360,9 @@ func (e *EvmLowerBoundDetector) SetGoldBlockRetryDelay(delay time.Duration) {
 }
 
 // probeBlockBody is the probe of the body search on an upstream that serves bare headers: a
-// block with transactions is a hit and a bare header is a miss. A block that really has no
-// transactions is ProbeEmpty: it looks the same with and without its body.
+// block with transactions is a hit and a block that lost its body is a miss, see lostBody.
+// Any other block without transactions is ProbeEmpty: it looks the same with and without its
+// body, whatever root it carries.
 func (e *EvmLowerBoundDetector) probeBlockBody(ctx context.Context, height int64) (lower_bounds.ContiguousProbeResult, error) {
 	block, available, err := e.blockAt(ctx, height)
 	if err != nil || !available {
@@ -334,7 +371,7 @@ func (e *EvmLowerBoundDetector) probeBlockBody(ctx context.Context, height int64
 	switch {
 	case len(block.Transactions) > 0:
 		return lower_bounds.ProbeHit, nil
-	case block.isBareHeader():
+	case block.lostBody():
 		return lower_bounds.ProbeMiss, nil
 	default:
 		return lower_bounds.ProbeEmpty, nil

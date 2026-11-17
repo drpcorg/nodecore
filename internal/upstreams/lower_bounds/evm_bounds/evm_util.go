@@ -85,6 +85,14 @@ func (b evmBlockEnvelope) hasGasUsed() bool {
 	return err == nil && gas > 0
 }
 
+// lostBody reports a bare header whose gas also says the block had transactions. Neither the
+// root nor the gas alone tells a pruned block from an empty one on every chain, see
+// TestEvmBlockLowerBoundDetectorTakesNoEmptyBlockForBareHeader. The gold block needs no such
+// check: it is known to hold a transaction.
+func (b evmBlockEnvelope) lostBody() bool {
+	return b.isBareHeader() && b.hasGasUsed()
+}
+
 type evmTxRef struct {
 	Hash string `json:"hash"`
 }
