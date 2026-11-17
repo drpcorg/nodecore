@@ -1,0 +1,102 @@
+version: v2
+host: 0.0.0.0
+port: 2449
+tls:
+  enabled: true
+  server:
+    certificate: /etc/dshackle/tls/server.crt
+    key: /etc/dshackle/tls/server.p8.key
+  client:
+    require: true
+    ca: /etc/dshackle/tls/ca.crt
+auth:
+  enabled: true
+  publicKeyOwner: drpc
+  server:
+    keys:
+      provider-private-key: /etc/dshackle/auth/private.pem
+      external-public-key: /etc/dshackle/auth/drpc.pem
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    bind: 0.0.0.0
+    port: 8081
+    path: /metrics
+health:
+  port: 8082
+  host: 0.0.0.0
+  blockchains:
+    - chain: ethereum
+      min-available: 1
+proxy:
+  port: 8080
+  routes:
+    - id: eth
+      blockchain: ethereum
+unknown-section:
+  a: 1
+cluster:
+  include:
+    - upstreams-extra.yaml
+  defaults:
+    - chains: [ethereum]
+      options:
+        min-peers: 10
+  upstreams:
+    - id: eth-1
+      node-id: 1
+      chain: ethereum
+      labels:
+        archive: true
+      methods:
+        enabled:
+          - name: parity_trace
+        disabled:
+          - name: admin_shutdown
+      options:
+        validate-chain: false
+      connection:
+        generic:
+          rpc:
+            url: http://localhost:8545
+            basic-auth:
+              username: alice
+              password: s3cret
+          ws:
+            url: ws://localhost:8546
+            origin: http://localhost
+    - id: eth-2
+      node-id: 2
+      chain: eth
+      role: fallback
+      connection:
+        ethereum-pos:
+          execution:
+            rpc:
+              url: https://lb.example.org/eth?dkey=${DRPC_KEY}
+    - id: sol-1
+      chain: solana
+      connection:
+        generic:
+          rpc:
+            url: ${SOLANA_NODE_RPC_URL}
+    - id: near-1
+      chain: near
+      connection:
+        generic:
+          rpc:
+            url: http://near:3030
+          ws:
+            url: ws://near:3031
+    - id: xrp-1
+      chain: ripple
+      connection:
+        generic:
+          rpc:
+            url: http://xrp:5005
+    - id: remote-eu
+      connection:
+        grpc:
+          host: eu.example.org
+          port: 2449
