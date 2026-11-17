@@ -16,7 +16,7 @@ func TestMarshalConfigWritesOnlyWhatIsSet(t *testing.T) {
 	cfg := &config.AppConfig{
 		ServerConfig: &config.ServerConfig{GrpcPort: 2449},
 		UpstreamConfig: &config.UpstreamConfig{
-			Mode:              config.StrictProviderMode,
+			Mode:              config.StrictMode,
 			BalancingStrategy: config.BaseBalancingStrategy,
 			Upstreams: []*config.Upstream{{
 				Id:         "a",
@@ -37,7 +37,7 @@ upstream-config:
         - type: json-rpc
           url: http://n:1
   balancing-strategy: base
-  mode: strict-provider
+  mode: strict
 `, string(data))
 }
 
@@ -51,7 +51,7 @@ func TestMarshalConfigKeepsWhatIsSet(t *testing.T) {
 			GrpcAuthConfig: &config.GrpcAuthConfig{PublicKeyOwner: "drpc"},
 		},
 		UpstreamConfig: &config.UpstreamConfig{
-			Mode:              config.StrictProviderMode,
+			Mode:              config.StrictMode,
 			BalancingStrategy: config.BaseBalancingStrategy,
 			ChainDefaults: map[string]*config.ChainDefaults{
 				"ethereum": {Options: &chains.Options{MinPeers: 10}},

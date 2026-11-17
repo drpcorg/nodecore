@@ -48,4 +48,4 @@ upstream-config:
       options:
         min-peers: 10
   balancing-strategy: base
-  mode: strict-provider
+  mode: strict

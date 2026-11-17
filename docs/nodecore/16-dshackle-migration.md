@@ -41,7 +41,7 @@ These values are written regardless of the input:
 
 | Setting | Value | Why |
 | --- | --- | --- |
-| `upstream-config.mode` | `strict-provider` | The profile closest to dshackle: every validator runs and the head is tracked over WebSocket when the upstream has one. See [mode](05-upstream-config.md#mode) |
+| `upstream-config.mode` | `strict` | The profile closest to dshackle: every validator runs and the head is tracked over WebSocket when the upstream has one. See [mode](05-upstream-config.md#mode) |
 | `upstream-config.balancing-strategy` | `base` | See [balancing-strategy](05-upstream-config.md#balancing-strategy) |
 | `server.grpc-port` | dshackle's `port`, or `2449` | nodecore's gRPC server is off unless a port is set |
 | `server.metrics-port` | `monitoring.prometheus.port`, or `8081` | dshackle serves metrics by default, also without a `monitoring` section. Left out when dshackle's metrics are disabled |
@@ -138,14 +138,14 @@ connector. Labels, options and disabled methods go to both. The report says so, 
 a new upstream id.
 
 **`connector-mode`.** nodecore has no connector modes. With both `rpc.url` and `ws.url` it sends
-requests over HTTP and, in `strict-provider` mode, tracks the head over WebSocket, which matches
+requests over HTTP and, in `strict` mode, tracks the head over WebSocket, which matches
 dshackle's default `RPC_REQUESTS_WITH_WS_HEAD`. `RPC_ONLY` drops the `ws.url`. `WS_ONLY` with an
 `rpc.url`, and `RPC_REQUESTS_WITH_MIXED_HEAD`, cannot be expressed and are reported.
 
 ### Options
 
 Only options present in the input are written; everything else falls back to the defaults of
-`strict-provider`.
+`strict`.
 
 | dshackle option | nodecore option |
 | --- | --- |
@@ -234,7 +234,7 @@ See [connectors](05-upstream-config.md#connectors) for each type.
   NEAR, Starknet, TRON, the Beacon Chain, TON and Algorand) an upstream with a `ws.url` is rejected
   by validation and skipped. Remove the `ws` block from the dshackle config and convert again.
 - **Method groups.** In dshackle the `trace` and `debug` groups are off unless enabled. nodecore
-  starts from every method of the chain's spec and, in `strict-provider` mode, removes the ones the
+  starts from every method of the chain's spec and, in `strict` mode, removes the ones the
   node does not serve. The converter does not add `disable: [trace, debug]` on its own.
 - **A method group the chain does not have** (for example `trace` on Solana) is not written and is
   reported.

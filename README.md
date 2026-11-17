@@ -119,7 +119,7 @@ cluster:                                grpc-port: 2449
           ws:                                 - type: websocket
             url: ws://node:8546                 url: ws://node:8546
                                         balancing-strategy: base
-                                        mode: strict-provider
+                                        mode: strict
 ```
 
 ```

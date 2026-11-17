@@ -53,7 +53,7 @@ own config validation on what it generates.
 | # | Decision | Source |
 |---|---|---|
 | 1 | Lives in `cmd/dshackle-convert/`, run through `make convert-dshackle`; nothing added to the nodecore binary or image | user |
-| 2 | Output always sets `upstream-config.mode: strict-provider` and `upstream-config.balancing-strategy: base` | user |
+| 2 | Output always sets `upstream-config.mode: strict` and `upstream-config.balancing-strategy: base` | user |
 | 3 | Every input setting that is not carried over produces a warning | user |
 | 4 | `chain-settings` is ignored without a warning | user |
 | 5 | `cluster.include` is not followed; one warning says only the given file was converted | user |
@@ -212,7 +212,7 @@ the enabled groups, minus the disabled groups, plus `methods.enabled`, minus
 | A method in `methods.enabled` that belongs to a disabled group | Carried over as it is, no warning: the group goes to `disable`, the method to `enable`. The method is on in both systems, because dshackle adds `methods.enabled` after it removes the disabled groups and nodecore applies `enable` last |
 
 One difference is left alone on purpose. In dshackle `trace` and `debug` are off unless their
-group is enabled. nodecore starts from every method of the spec, and under `strict-provider`
+group is enabled. nodecore starts from every method of the spec, and under `strict`
 method detection removes what the node does not serve; an `enable` entry keeps a method on
 regardless of detection. The converter does not add `disable: [trace, debug]` to an upstream
 without those groups.
@@ -316,12 +316,12 @@ Other connection fields:
 
 dshackle's effective mode is the configured `connector-mode`, or its default: both URLs set
 gives `RPC_REQUESTS_WITH_WS_HEAD`, only `rpc` gives `RPC_ONLY`, only `ws` gives `WS_ONLY`.
-`head-connector` is never emitted; under `mode: strict-provider` nodecore then tracks the head over
+`head-connector` is never emitted; under `mode: strict` nodecore then tracks the head over
 `websocket` when that connector exists.
 
 | Effective mode | Connectors emitted | Notes |
 |---|---|---|
-| `RPC_REQUESTS_WITH_WS_HEAD` | `rpc` + `websocket` | matches the default of `strict-provider` |
+| `RPC_REQUESTS_WITH_WS_HEAD` | `rpc` + `websocket` | matches the default of `strict` |
 | `RPC_ONLY`, no `ws.url` | `rpc` | |
 | `RPC_ONLY`, `ws.url` set | `rpc` | warning: `ws.url` was unused by dshackle in this mode and is not carried over |
 | `WS_ONLY`, no `rpc.url` | `websocket` | |
@@ -331,7 +331,7 @@ gives `RPC_REQUESTS_WITH_WS_HEAD`, only `rpc` gives `RPC_ONLY`, only `ws` gives 
 ### 5.6 Options
 
 Applies to an upstream's `options` and to `cluster.defaults[].options`. Only options present
-in the input are emitted; everything else falls back to the defaults of `strict-provider`.
+in the input are emitted; everything else falls back to the defaults of `strict`.
 
 | dshackle option | nodecore |
 |---|---|
@@ -495,7 +495,7 @@ upstream-config:
       options:
         min-peers: 10
   balancing-strategy: base
-  mode: strict-provider
+  mode: strict
 ```
 
 Sections with nothing to say are omitted. Upstreams keep input order.

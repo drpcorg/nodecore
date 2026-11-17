@@ -33,7 +33,7 @@ func convert(input []byte) (*conversion, error) {
 	cfg := &config.AppConfig{
 		ServerConfig: convertServer(root, converted.report),
 		UpstreamConfig: &config.UpstreamConfig{
-			Mode:              config.StrictProviderMode,
+			Mode:              config.StrictMode,
 			BalancingStrategy: config.BaseBalancingStrategy,
 			ChainDefaults:     chainDefaults,
 			Upstreams:         make([]*config.Upstream, 0),

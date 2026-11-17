@@ -11,20 +11,20 @@ import (
 const ArchiveLabel = "archive"
 
 type Options struct {
-	InternalTimeout                       time.Duration `yaml:"internal-timeout"`
-	ValidationInterval                    time.Duration `yaml:"validation-interval"`
-	DisableValidation                     *bool         `yaml:"disable-validation"`
-	DisableSettingsValidation             *bool         `yaml:"disable-settings-validation"`
-	DisableChainValidation                *bool         `yaml:"disable-chain-validation"`
-	DisableHealthValidation               *bool         `yaml:"disable-health-validation"`
-	DisableLowerBoundsDetection           *bool         `yaml:"disable-lower-bounds-detection"`
-	DisableSafeBlockDetection             *bool         `yaml:"disable-safe-block-detection"`
-	DisableFinalizedBlockDetection        *bool         `yaml:"disable-finalized-block-detection"`
-	DisableLabelsDetection                *bool         `yaml:"disable-labels-detection"`
-	DisableMethodsDetection               *bool         `yaml:"disable-methods-detection"`
-	DisableLogIndexValidation             *bool         `yaml:"disable-log-index-validation"`
-	DisableErigonBugValidation            *bool         `yaml:"disable-erigon-bug-validation"`
-	DisableLivenessSubscriptionValidation *bool         `yaml:"disable-liveness-subscription-validation"`
+	InternalTimeout                       time.Duration `yaml:"internal-timeout,omitempty"`
+	ValidationInterval                    time.Duration `yaml:"validation-interval,omitempty"`
+	DisableValidation                     *bool         `yaml:"disable-validation,omitempty"`
+	DisableSettingsValidation             *bool         `yaml:"disable-settings-validation,omitempty"`
+	DisableChainValidation                *bool         `yaml:"disable-chain-validation,omitempty"`
+	DisableHealthValidation               *bool         `yaml:"disable-health-validation,omitempty"`
+	DisableLowerBoundsDetection           *bool         `yaml:"disable-lower-bounds-detection,omitempty"`
+	DisableSafeBlockDetection             *bool         `yaml:"disable-safe-block-detection,omitempty"`
+	DisableFinalizedBlockDetection        *bool         `yaml:"disable-finalized-block-detection,omitempty"`
+	DisableLabelsDetection                *bool         `yaml:"disable-labels-detection,omitempty"`
+	DisableMethodsDetection               *bool         `yaml:"disable-methods-detection,omitempty"`
+	DisableLogIndexValidation             *bool         `yaml:"disable-log-index-validation,omitempty"`
+	DisableErigonBugValidation            *bool         `yaml:"disable-erigon-bug-validation,omitempty"`
+	DisableLivenessSubscriptionValidation *bool         `yaml:"disable-liveness-subscription-validation,omitempty"`
 	// ArchiveCapability is deprecated: set the 'archive' upstream label instead. It is
 	// still honoured - Upstream.setDefaults translates it into that label and warns -
 	// so existing configs keep working rather than silently losing the override.

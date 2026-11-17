@@ -10,7 +10,7 @@ import (
 
 func validCfg(ups ...*config.Upstream) *config.AppConfig {
 	return &config.AppConfig{ServerConfig: &config.ServerConfig{GrpcPort: 2449},
-		UpstreamConfig: &config.UpstreamConfig{Mode: "strict-provider", BalancingStrategy: "base", Upstreams: ups}}
+		UpstreamConfig: &config.UpstreamConfig{Mode: "strict", BalancingStrategy: "base", Upstreams: ups}}
 }
 func jsonRpc(id, chain, url string) *config.Upstream {
 	return &config.Upstream{Id: id, ChainName: chain, Connectors: []*config.ApiConnectorConfig{{Type: "json-rpc", Url: url}}}
