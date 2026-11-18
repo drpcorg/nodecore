@@ -35,8 +35,10 @@ nodecore is **API/protocol-agnostic**: it is not tied to a single RPC shape. It 
 Run with Docker, mounting your config. Images are published to Docker Hub as [`drpcorg/nodecore`](https://hub.docker.com/r/drpcorg/nodecore):
 
 ```bash
-docker run -p 9090:9090 -v /path/to/config:/nodecore.yml drpcorg/nodecore
+docker run -p 9090:9090 -v /path/to/config:/app/nodecore.yml drpcorg/nodecore
 ```
+
+The image reads `/app/nodecore.yml`. To keep the config elsewhere in the container, set `NODECORE_CONFIG_PATH` to that path.
 
 A minimal config only needs at least one upstream; all other settings fall back to defaults:
 
