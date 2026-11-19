@@ -17,6 +17,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/chains"
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"github.com/samber/lo"
 )
 
@@ -185,6 +186,10 @@ func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*server_ctx.Request
 	// the whole batch is turned away before a single upstream request is built:
 	// every item costs a goroutine and, unless cached, an upstream call
 	if j.maxBatchSize > 0 && len(j.jsonRpcRequests) > j.maxBatchSize {
+		zerolog.Ctx(ctx).Debug().
+			Int("size", len(j.jsonRpcRequests)).
+			Int("limit", j.maxBatchSize).
+			Msg("the batch is over the size limit, the request is rejected")
 		return nil, protocol.BatchTooLargeError(len(j.jsonRpcRequests), j.maxBatchSize)
 	}
 

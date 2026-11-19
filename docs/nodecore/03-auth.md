@@ -165,9 +165,25 @@ The `local` key type is the simplest form of key management. It allows you to de
   * If the remote address cannot be parsed, the request is assumed to come from `127.0.0.1`
 * `settings.methods.allowed` - A whitelist of RPC methods that can be called with this key
 * `settings.methods.forbidden` - A blacklist of RPC methods that cannot be called with this key
-* `settings.contracts.allowed` - Restricts interaction to a specific set of contract addresses for `eth_call` and `eth_getLogs` methods
+* `settings.contracts.allowed` - Restricts interaction to a specific set of contract addresses for `eth_call` and `eth_getLogs` methods. See [Contract restriction](#contract-restriction) below
 * `settings.cors-origins` - The list of allowed CORS origins for this key. If present, nodecore will include the appropriate `Access-Control-Allow-Origin` header only for the origins explicitly listed here. If the incoming request’s Origin header does not match any entry, the request will be rejected by the CORS layer.
 * `settings.upstreams.group-labels` - Restricts which upstreams may serve this key's requests: only an upstream carrying at least one of these [`group-labels`](05-upstream-config.md#label-balancing) is used. See [Upstream restriction](#upstream-restriction) below. **_Default_**: unset, every upstream may serve the key
+
+##### Contract restriction
+
+`settings.contracts.allowed` is checked for two methods only, on the first param of the request:
+
+* `eth_call` - `to` must be a string, and one of the allowed addresses
+* `eth_getLogs` - `address` must be a string or a non-empty array of strings, each one of the allowed addresses
+
+A request of either method is rejected when the field does not name contracts the check can hold against the list:
+
+* the field is missing
+* `address` is `null` or an empty array - a node reads both as "every contract"
+* the field is of any other type (a number, an object, a boolean)
+* the field is written more than once in the object, in any letter case (`{"address": "0x…", "Address": null}`). The params are forwarded to the node as the client wrote them, and a node may take another of the repeated fields than the one that was checked
+
+Every other method passes this check untouched, including ones that reach the same data another way: `eth_subscribe` with `logs`, `eth_newFilter` with `eth_getFilterLogs` / `eth_getFilterChanges`, `debug_traceCall`, `trace_call` and the like. So `contracts.allowed` narrows what `eth_call` and `eth_getLogs` may touch, and it is not an access boundary on its own. To make it one, set `methods.allowed` next to it and list only the methods the key needs.
 
 ##### Upstream restriction
 
@@ -211,7 +227,7 @@ All key-level restrictions — IP whitelists, method filters, contract filters, 
 Supported attributes:
 * **IP whitelist** - Restrict which client IPs may use this key. Nodecore rejects requests from any IP not included.
 * **Allowed RPC methods** - Allow or deny specific RPC methods (e.g., allow only eth_call / block eth_sendRawTransaction).
-* **Allowed contract addresses** - Restrict access to smart contracts by address
+* **Allowed contract addresses** - Restrict `eth_call` and `eth_getLogs` to the listed contract addresses. The rules, and what they do not cover, are the same as for local keys - see [Contract restriction](#contract-restriction)
 * **CORS origins** - Restrict browser origins allowed to use this key.
 
 How DRPC key integration works:

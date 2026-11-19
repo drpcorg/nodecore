@@ -99,6 +99,10 @@ loop:
 					} else {
 						log.Error().Err(message.err).Msg("couldn't receive a ws message")
 					}
+				} else if errors.Is(message.err, websocket.ErrReadLimit) {
+					// not a close frame from the client: the read itself gave
+					// up on a message over server.limits.max-request-size
+					log.Debug().Msg("a ws message is over the size limit, closing the connection")
 				}
 				break loop
 			}

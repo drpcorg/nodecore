@@ -91,9 +91,10 @@ sees it, so handlers always read plain bytes.
   gzip and zstd fail on bytes after their last member or frame.
 - An **empty body** is accepted whatever coding it claims — a peer that labels an empty `204` with a
   `Content-Encoding` is not an error worth failing.
-- A decoded body is capped at **32 MiB** (`MaxDecodedRequestBytes`). Past the cap the read fails
-  rather than returning a short body, so a truncated request is rejected (`413`) instead of silently
-  parsed. See [Limits](#limits-and-safety) for why.
+- A decoded body is capped at **32 MiB** (`MaxDecodedRequestBytes`), or at
+  [`server.limits.max-request-size`](02-server-config.md#request-limits) when that is set. Past the
+  cap the read fails rather than returning a short body, so a truncated request is rejected (`413`)
+  instead of silently parsed. See [Limits](#limits-and-safety) for why.
 
 ## Upstream
 
@@ -206,6 +207,11 @@ to client request bodies only; upstream responses are bounded by the connector's
 [`response-timeout`](05-upstream-config.md#connectors) instead. Setting
 [`server.limits.max-request-size`](02-server-config.md#request-limits) replaces this cap with the
 configured value, which then bounds every request body, compressed or not.
+
+With that limit set, a compressed body is also bounded on the wire: its compressed size may not
+exceed the limit either. The decoded size alone says little about the wire, because a coding can
+carry framing that decodes to nothing — a gzip body may be any number of empty members, a zstd one
+any number of skippable frames — and megabytes of it could otherwise precede a small request.
 
 ## What is not covered
 

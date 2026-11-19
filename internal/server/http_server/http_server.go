@@ -21,6 +21,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/labstack/echo/v5"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -244,8 +245,14 @@ func handleHttp(
 		// a body cut off at its size limit is not a body that failed to parse
 		if errors.Is(err, errRequestBodyTooLarge) {
 			responseErr = protocol.RequestTooLargeError()
+			zerolog.Ctx(ctx).Debug().Msg("the request body is over the size limit, the request is rejected")
 		}
 		resp := protocol.NewTotalFailureFromErr("0", responseErr, reqType)
+		// The body is read before the key is looked at, so there are no key
+		// origins to match here. That is how every response without them is
+		// answered, and without the header a browser would hide this one and
+		// report a CORS failure in its place.
+		setCorsHeaders(reqCtx, nil)
 		return writeResponse(
 			reqCtx.Response(),
 			protocol.ToHttpCode(resp),

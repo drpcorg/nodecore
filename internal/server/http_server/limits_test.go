@@ -2,7 +2,10 @@ package http_server_test
 
 import (
 	"bytes"
+	"compress/gzip"
+	"encoding/binary"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -156,6 +159,81 @@ func TestConfiguredLimitReplacesTheBuiltInCapOnDecodedBodies(t *testing.T) {
 	})
 }
 
+// incompressible returns size bytes that no coding can shrink: compressed, they
+// take more room on the wire than they decode to.
+func incompressible(size int) []byte {
+	noise := make([]byte, size)
+	_, _ = rand.NewChaCha8([32]byte{}).Read(noise)
+	return noise
+}
+
+var decodedCodings = []struct {
+	contentEncoding string
+	scheme          compression.Scheme
+}{
+	{contentEncoding: "gzip", scheme: compression.Gzip},
+	{contentEncoding: "zstd", scheme: compression.Zstd},
+	{contentEncoding: "br", scheme: compression.Brotli},
+}
+
+// The limit bounds a compressed body twice: what it decodes to, and what it
+// takes on the wire. A body that decodes to no more than the limit is still
+// turned away when its compressed form is larger than the limit.
+func TestCompressedBodyOverTheLimitOnTheWireFailsTheRead(t *testing.T) {
+	for _, coding := range decodedCodings {
+		body := compress(t, coding.scheme, incompressible(kb))
+		require.Greater(t, len(body), kb, "the body must be larger compressed than decoded")
+
+		t.Run(coding.contentEncoding+" with a declared length is not read", func(te *testing.T) {
+			_, wireRead, rec, readErr := postWithLimit(te, kb, coding.contentEncoding, body, int64(len(body)))
+
+			require.Error(te, readErr, "the handler read a body larger than the limit on the wire")
+			assert.Zero(te, wireRead, "the body was read although its declared length already exceeded the limit")
+			assert.NotEqual(te, http.StatusOK, rec.Code)
+		})
+
+		t.Run(coding.contentEncoding+" without a declared length is read up to the limit", func(te *testing.T) {
+			_, wireRead, rec, readErr := postWithLimit(te, kb, coding.contentEncoding, body, -1)
+
+			require.Error(te, readErr, "the handler read a body larger than the limit on the wire")
+			// the limit, and the one byte that shows the body runs past it
+			assert.LessOrEqual(te, wireRead, int64(kb+1))
+			assert.NotEqual(te, http.StatusOK, rec.Code)
+		})
+	}
+}
+
+// A gzip body may be any number of members, and an empty member decodes to
+// nothing. Bounding only the decoded size would let megabytes of them through
+// in front of a small request.
+func TestGzipBodyPaddedWithEmptyMembersIsBoundOnTheWire(t *testing.T) {
+	emptyMember := compress(t, compression.Gzip, nil)
+	require.NotEmpty(t, emptyMember)
+	request := compress(t, compression.Gzip, []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`))
+	body := append(bytes.Repeat(emptyMember, 2*mb/len(emptyMember)), request...)
+
+	_, wireRead, rec, readErr := postWithLimit(t, kb, "gzip", body, -1)
+
+	require.Error(t, readErr, "the handler read 2MB off the wire under a 1KB limit")
+	assert.LessOrEqual(t, wireRead, int64(kb+1))
+	assert.NotEqual(t, http.StatusOK, rec.Code)
+}
+
+// The wire is bounded only by a configured limit: without one a compressed
+// body is capped on its decoded size alone, as before.
+func TestNoConfiguredLimitLeavesCompressedBodiesUnboundedOnTheWire(t *testing.T) {
+	emptyMember := compress(t, compression.Gzip, nil)
+	plain := []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`)
+	body := append(bytes.Repeat(emptyMember, 2*mb/len(emptyMember)), compress(t, compression.Gzip, plain)...)
+
+	read, wireRead, rec, readErr := postWithLimit(t, 0, "gzip", body, int64(len(body)))
+
+	require.NoError(t, readErr)
+	assert.Equal(t, int64(len(plain)), read)
+	assert.Equal(t, int64(len(body)), wireRead)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
 // The limit is opt-in: with none configured a plain body of any size is
 // served, including one larger than the built-in cap on decoded bodies.
 func TestNoConfiguredLimitLeavesPlainBodiesUnbounded(t *testing.T) {
@@ -171,13 +249,27 @@ func TestNoConfiguredLimitLeavesPlainBodiesUnbounded(t *testing.T) {
 // -------------------- request size: what an http client sees --------------------
 
 func serverWithLimits(limits *config.LimitsConfig) (*httptest.Server, *mocks.MockAuthProcessor) {
+	ts, authProc, _ := serverWithLimitsAndSupervisor(limits)
+	return ts, authProc
+}
+
+// serverWithLimitsAndSupervisor also hands out the upstream supervisor, the
+// first thing a request reaches once it is past decoding. A test of a request
+// that must be turned away before that asserts the supervisor was never asked.
+// It has no chains, so a request that does get through is answered with an
+// error instead of taking the test down.
+func serverWithLimitsAndSupervisor(
+	limits *config.LimitsConfig,
+) (*httptest.Server, *mocks.MockAuthProcessor, *mocks.UpstreamSupervisorMock) {
 	authProc := mocks.NewMockAuthProcessor()
+	supervisor := mocks.NewUpstreamSupervisorMock()
+	supervisor.On("GetChainSupervisor", mock.Anything).Return(nil)
 	var appConfig *config.AppConfig
 	if limits != nil {
 		appConfig = &config.AppConfig{ServerConfig: &config.ServerConfig{Limits: limits}}
 	}
-	appCtx := servernodecore.NewApplicationServerContext(nil, nil, nil, authProc, appConfig, nil, nil, nil, nil, nil)
-	return httptest.NewServer(http_server.NewHttpServer(appCtx)), authProc
+	appCtx := servernodecore.NewApplicationServerContext(supervisor, nil, nil, authProc, appConfig, nil, nil, nil, nil, nil)
+	return httptest.NewServer(http_server.NewHttpServer(appCtx)), authProc, supervisor
 }
 
 func TestHttpServerRequestBodyOverLimitThen413(t *testing.T) {
@@ -237,6 +329,181 @@ func TestHttpServerRequestBodyOverLimitThen413(t *testing.T) {
 			assert.Equal(te, test.expectedBody, string(respBody))
 		})
 	}
+}
+
+// A request turned away before it is handled is still an answer a browser
+// client has to be able to read. Without the CORS header the browser hides the
+// response and reports a CORS failure instead of the error nodecore sent.
+func TestHttpServerRequestRejectedOnItsBodyIsReadableByBrowsers(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         string
+		expectedCode int
+	}{
+		{
+			name:         "a body over the limit",
+			body:         `{"jsonrpc":"2.0","id":1,"method":"eth_call","params":["` + strings.Repeat("a", 2*kb) + `"]}`,
+			expectedCode: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name:         "a body that does not parse",
+			body:         `{"jsonrpc":`,
+			expectedCode: http.StatusBadRequest,
+		},
+	}
+
+	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxRequestSize: "1KB"})
+	defer ts.Close()
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+
+	for _, test := range tests {
+		t.Run(test.name, func(te *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/optimism", strings.NewReader(test.body))
+			require.NoError(te, err)
+			req.Header.Set("Origin", "https://dapp.example")
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(te, err)
+			defer func() { _ = resp.Body.Close() }()
+
+			assert.Equal(te, test.expectedCode, resp.StatusCode)
+			assert.Equal(te, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+		})
+	}
+}
+
+// A compressed body over the limit on the wire is answered like any other
+// oversized body, whichever decoder was reading it when the limit was hit.
+func TestHttpServerCompressedBodyOverLimitOnTheWireThen413(t *testing.T) {
+	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxRequestSize: "1KB"})
+	defer ts.Close()
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+
+	for _, coding := range decodedCodings {
+		payload := compress(t, coding.scheme, incompressible(kb))
+		require.Greater(t, len(payload), kb)
+
+		for _, declaresLength := range []bool{true, false} {
+			name := coding.contentEncoding + " without a declared length"
+			if declaresLength {
+				name = coding.contentEncoding + " with a declared length"
+			}
+			t.Run(name, func(te *testing.T) {
+				var body io.Reader = bytes.NewReader(payload)
+				if !declaresLength {
+					// hiding the concrete reader type makes the client send it chunked
+					body = io.NopCloser(body)
+				}
+				req, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/optimism", body)
+				require.NoError(te, err)
+				req.Header.Set("Content-Encoding", coding.contentEncoding)
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(te, err)
+				defer func() { _ = resp.Body.Close() }()
+				respBody, err := io.ReadAll(resp.Body)
+				require.NoError(te, err)
+
+				assert.Equal(te, http.StatusRequestEntityTooLarge, resp.StatusCode)
+				assert.Equal(te, `{"id":0,"jsonrpc":"2.0","error":{"message":"request body is too large","code":413}}`, string(respBody))
+			})
+		}
+	}
+}
+
+// A coding's own framing can carry any number of bytes that decode to nothing,
+// in front of a request that is small both compressed and decoded. A decoder
+// is free to report the cut-off read in its own words, so the answer must not
+// depend on which error comes out of it: the body was over the limit on the
+// wire, and that is what the client is told.
+func TestHttpServerCompressedBodyPaddedOverLimitThen413(t *testing.T) {
+	request := []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`)
+	emptyGzipMember := compress(t, compression.Gzip, nil)
+	// RFC 8878 3.1.2: a magic number, the size of the user data, the user data
+	skippableZstdFrame := binary.LittleEndian.AppendUint32(nil, 0x184D2A50)
+	skippableZstdFrame = binary.LittleEndian.AppendUint32(skippableZstdFrame, 2*mb)
+	skippableZstdFrame = append(skippableZstdFrame, make([]byte, 2*mb)...)
+
+	tests := []struct {
+		name            string
+		contentEncoding string
+		payload         []byte
+	}{
+		{
+			name:            "gzip, empty members",
+			contentEncoding: "gzip",
+			payload:         append(bytes.Repeat(emptyGzipMember, 2*mb/len(emptyGzipMember)), compress(t, compression.Gzip, request)...),
+		},
+		{
+			name:            "zstd, a skippable frame",
+			contentEncoding: "zstd",
+			payload:         append(skippableZstdFrame, compress(t, compression.Zstd, request)...),
+		},
+	}
+
+	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxRequestSize: "1KB"})
+	defer ts.Close()
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+
+	for _, test := range tests {
+		for _, declaresLength := range []bool{true, false} {
+			name := test.name + ", without a declared length"
+			if declaresLength {
+				name = test.name + ", with a declared length"
+			}
+			t.Run(name, func(te *testing.T) {
+				var body io.Reader = bytes.NewReader(test.payload)
+				if !declaresLength {
+					// hiding the concrete reader type makes the client send it chunked
+					body = io.NopCloser(body)
+				}
+				req, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/optimism", body)
+				require.NoError(te, err)
+				req.Header.Set("Content-Encoding", test.contentEncoding)
+
+				resp, err := http.DefaultClient.Do(req)
+				require.NoError(te, err)
+				defer func() { _ = resp.Body.Close() }()
+				respBody, err := io.ReadAll(resp.Body)
+				require.NoError(te, err)
+
+				assert.Equal(te, http.StatusRequestEntityTooLarge, resp.StatusCode)
+				assert.Equal(te, `{"id":0,"jsonrpc":"2.0","error":{"message":"request body is too large","code":413}}`, string(respBody))
+			})
+		}
+	}
+}
+
+// The decoders read the head of a body before the handler reads anything, to
+// check that it is what its coding says. A head larger than the limit hits the
+// limit right there, while the decoder is still being set up - and that is an
+// oversized body, not a malformed one. A gzip header may carry up to 64KB in
+// its extra field, which is enough to do it.
+func TestHttpServerCompressedBodyWithHeaderOverLimitThen413(t *testing.T) {
+	var payload bytes.Buffer
+	writer := gzip.NewWriter(&payload)
+	writer.Extra = make([]byte, 2*kb)
+	_, err := writer.Write([]byte(`{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}`))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxRequestSize: "1KB"})
+	defer ts.Close()
+	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
+
+	// no declared length: the limit is found by reading, not by the header
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/queries/optimism", io.NopCloser(&payload))
+	require.NoError(t, err)
+	req.Header.Set("Content-Encoding", "gzip")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	assert.Equal(t, `{"id":0,"jsonrpc":"2.0","error":{"message":"request body is too large","code":413}}`, string(respBody))
 }
 
 // With no limit configured the built-in cap on decoded bodies still applies,
@@ -315,7 +582,7 @@ func TestJsonRpcHandlerBatchWithinLimitIsDecoded(t *testing.T) {
 }
 
 func TestHttpServerBatchOverLimitThenOneError(t *testing.T) {
-	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxBatchSize: 2})
+	ts, authProc, supervisor := serverWithLimitsAndSupervisor(&config.LimitsConfig{MaxBatchSize: 2})
 	defer ts.Close()
 	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
 	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
@@ -329,6 +596,7 @@ func TestHttpServerBatchOverLimitThenOneError(t *testing.T) {
 	// a batch always answers 200 with its errors inside the array
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, `[`+batchTooLargeReply+`]`, string(respBody))
+	supervisor.AssertNotCalled(t, "GetChainSupervisor", mock.Anything)
 }
 
 // -------------------- websocket --------------------
@@ -347,7 +615,7 @@ func dialWs(t *testing.T, ts *httptest.Server) *websocket.Conn {
 // An oversized batch is a mistake in one message, not a reason to drop the
 // connection: it is answered with an error and the socket keeps serving.
 func TestWsBatchOverLimitThenErrorAndConnectionStaysOpen(t *testing.T) {
-	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxBatchSize: 2})
+	ts, authProc, supervisor := serverWithLimitsAndSupervisor(&config.LimitsConfig{MaxBatchSize: 2})
 	defer ts.Close()
 	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
 	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
@@ -361,6 +629,7 @@ func TestWsBatchOverLimitThenErrorAndConnectionStaysOpen(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, batchTooLargeReply, string(reply))
 	}
+	supervisor.AssertNotCalled(t, "GetChainSupervisor", mock.Anything)
 }
 
 func TestWsMessageOverLimitClosesConnection(t *testing.T) {
@@ -368,9 +637,12 @@ func TestWsMessageOverLimitClosesConnection(t *testing.T) {
 	defer ts.Close()
 	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
 	conn := dialWs(t, ts)
-	message := []byte(`{"jsonrpc":"2.0","id":1,"method":"eth_call","params":["` + strings.Repeat("a", kb) + `"]}`)
+	// one byte over, so that a limit that is off by any amount fails the test
+	const head, tail = `{"jsonrpc":"2.0","id":1,"method":"eth_call","params":["`, `"]}`
+	message := head + strings.Repeat("a", kb+1-len(head)-len(tail)) + tail
+	require.Len(t, message, kb+1)
 
-	require.NoError(t, conn.WriteMessage(websocket.TextMessage, message))
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage, []byte(message)))
 	_, _, err := conn.ReadMessage()
 
 	var closeErr *websocket.CloseError
@@ -381,7 +653,7 @@ func TestWsMessageOverLimitClosesConnection(t *testing.T) {
 // A message of exactly the limit is read and handled. The reply used to tell
 // is the batch error: it needs no upstream and proves the message got through.
 func TestWsMessageAtLimitIsServed(t *testing.T) {
-	ts, authProc := serverWithLimits(&config.LimitsConfig{MaxRequestSize: "1KB", MaxBatchSize: 2})
+	ts, authProc, supervisor := serverWithLimitsAndSupervisor(&config.LimitsConfig{MaxRequestSize: "1KB", MaxBatchSize: 2})
 	defer ts.Close()
 	authProc.On("Authenticate", mock.Anything, mock.Anything).Return(nil)
 	authProc.On("PreKeyValidate", mock.Anything, mock.Anything).Return(nil, nil)
@@ -394,4 +666,5 @@ func TestWsMessageAtLimitIsServed(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, batchTooLargeReply, string(reply))
+	supervisor.AssertNotCalled(t, "GetChainSupervisor", mock.Anything)
 }
