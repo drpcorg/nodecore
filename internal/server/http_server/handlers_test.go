@@ -159,6 +159,7 @@ func TestJsonRpcHandlerAcceptsMultiByteUtf8Method(t *testing.T) {
 		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
+		0,
 	)
 
 	require.NoError(t, err, "well-formed multi-byte UTF-8 must not be rejected")
@@ -174,6 +175,7 @@ func TestJsonRpcHandlerAcceptsNonUtf8Params(t *testing.T) {
 		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
+		0,
 	)
 
 	require.NoError(t, err, "invalid bytes outside the method name must not reject the request")

@@ -2,6 +2,7 @@ package http_server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/drpcorg/nodecore/pkg/utils"
 	"github.com/labstack/echo/v5"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 )
@@ -93,7 +95,8 @@ func WithClientLimits(ctx context.Context) func(*http.Server) {
 func NewHttpServer(appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
 	httpServer := echo.New()
 	httpServer.JSONSerializer = &FastJSONSerializer{}
-	httpServer.Use(Decompress())
+	limits := limitsFromConfig(appCtx)
+	httpServer.Use(Decompress(limits.MaxRequestBytes()))
 	httpServer.Use(Compress())
 
 	httpGroup := httpServer.Group("/queries/:chain")
@@ -163,10 +166,10 @@ func NewHttpServer(appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
 				log.Error().Err(err).Msg("couldn't upgrade http to ws")
 				return err
 			}
-			HandleWebsocket(reqCtx, conn, chain, authPayload, appCtx)
+			HandleWebsocket(reqCtx, conn, chain, authPayload, appCtx, limits)
 			return nil
 		}
-		err = handleHttp(reqCtx, c, chain, restPath, reqType, authPayload, appCtx)
+		err = handleHttp(reqCtx, c, chain, restPath, reqType, authPayload, appCtx, limits.MaxBatchSize)
 		requestTimeToLastByte.Observe(time.Since(start).Seconds())
 		return err
 	}
@@ -186,6 +189,15 @@ func trustedProxiesFromConfig(appCtx *server_ctx.ApplicationServerContext) []net
 		return nil
 	}
 	return appCtx.AppConfig.ServerConfig.TrustedProxyPrefixes()
+}
+
+// limitsFromConfig returns the configured request limits, tolerating a nil
+// app/server config the same way: without a config nothing is limited.
+func limitsFromConfig(appCtx *server_ctx.ApplicationServerContext) *config.LimitsConfig {
+	if appCtx == nil || appCtx.AppConfig == nil || appCtx.AppConfig.ServerConfig == nil || appCtx.AppConfig.ServerConfig.Limits == nil {
+		return &config.LimitsConfig{}
+	}
+	return appCtx.AppConfig.ServerConfig.Limits
 }
 
 var corsHeaders = []lo.Tuple2[string, string]{
@@ -211,6 +223,7 @@ func handleHttp(
 	reqType protocol.RequestType,
 	authPayload auth.AuthPayload,
 	appCtx *server_ctx.ApplicationServerContext,
+	maxBatchSize int,
 ) error {
 	preRequest := &server_ctx.Request{
 		Chain: chain,
@@ -218,7 +231,7 @@ func handleHttp(
 	var requestHandler RequestHandler
 	var err error
 	if reqType == protocol.JsonRpc {
-		requestHandler, err = NewJsonRpcHandler(preRequest, reqCtx.Request().Body, false)
+		requestHandler, err = NewJsonRpcHandler(preRequest, reqCtx.Request().Body, false, maxBatchSize)
 	} else {
 		requestHandler, err = NewRestHandler(
 			preRequest,
@@ -228,7 +241,18 @@ func handleHttp(
 	}
 
 	if err != nil {
-		resp := protocol.NewTotalFailureFromErr("0", protocol.ParseError(), reqType)
+		responseErr := protocol.ParseError()
+		// a body cut off at its size limit is not a body that failed to parse
+		if errors.Is(err, errRequestBodyTooLarge) {
+			responseErr = protocol.RequestTooLargeError()
+			zerolog.Ctx(ctx).Debug().Msg("the request body is over the size limit, the request is rejected")
+		}
+		resp := protocol.NewTotalFailureFromErr("0", responseErr, reqType)
+		// The body is read before the key is looked at, so there are no key
+		// origins to match here. That is how every response without them is
+		// answered, and without the header a browser would hide this one and
+		// report a CORS failure in its place.
+		setCorsHeaders(reqCtx, nil)
 		return writeResponse(
 			reqCtx.Response(),
 			protocol.ToHttpCode(resp),

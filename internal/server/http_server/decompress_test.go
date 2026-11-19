@@ -21,7 +21,7 @@ func postCompressed(t *testing.T, contentEncoding string, body []byte) (*httptes
 	t.Helper()
 	var seen []byte
 	e := echo.New()
-	e.Use(http_server.Decompress())
+	e.Use(http_server.Decompress(0))
 	e.POST("/", func(c *echo.Context) error {
 		read, err := io.ReadAll(c.Request().Body)
 		if err != nil {
@@ -85,7 +85,7 @@ func TestDecompressDropsTheContentEncodingHeader(t *testing.T) {
 	plain := []byte(`{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}`)
 	var seen string
 	e := echo.New()
-	e.Use(http_server.Decompress())
+	e.Use(http_server.Decompress(0))
 	e.POST("/", func(c *echo.Context) error {
 		seen = c.Request().Header.Get(echo.HeaderContentEncoding)
 		return c.NoContent(http.StatusOK)
@@ -247,7 +247,7 @@ func postAndCount(t *testing.T, contentEncoding string, body []byte) (int64, *ht
 	var read int64
 	var readErr error
 	e := echo.New()
-	e.Use(http_server.Decompress())
+	e.Use(http_server.Decompress(0))
 	e.POST("/", func(c *echo.Context) error {
 		read, readErr = io.Copy(io.Discard, c.Request().Body)
 		if readErr != nil {
@@ -270,7 +270,7 @@ func TestDecompressDropsTheBrotliContentEncodingHeader(t *testing.T) {
 	var seenHeader string
 	var seenBody []byte
 	e := echo.New()
-	e.Use(http_server.Decompress())
+	e.Use(http_server.Decompress(0))
 	e.POST("/", func(c *echo.Context) error {
 		seenHeader = c.Request().Header.Get(echo.HeaderContentEncoding)
 		body, err := io.ReadAll(c.Request().Body)

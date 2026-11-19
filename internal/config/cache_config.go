@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -189,7 +188,7 @@ func (p *CachePolicyConfig) validate(connectors mapset.Set[string]) error {
 			return err
 		}
 	}
-	if err := validateSize(p.ObjectMaxSize); err != nil {
+	if _, err := parseSize(p.ObjectMaxSize); err != nil {
 		return err
 	}
 	if p.Method == "" {
@@ -207,28 +206,6 @@ func (p *CachePolicyConfig) validate(connectors mapset.Set[string]) error {
 	if !connectors.ContainsOne(p.Connector) {
 		return fmt.Errorf("there is no such connector - '%s'", p.Connector)
 	}
-	return nil
-}
-
-func validateSize(size string) error {
-	var maxSize string
-
-	if strings.HasSuffix(size, "MB") {
-		maxSize = strings.TrimSuffix(size, "MB")
-	} else if strings.HasSuffix(size, "KB") {
-		maxSize = strings.TrimSuffix(size, "KB")
-	} else {
-		return errors.New("size must be in KB or MB")
-	}
-
-	maxSizeInt, err := strconv.ParseInt(strings.TrimSpace(maxSize), 10, 64)
-	if err != nil {
-		return fmt.Errorf("couldn't parse size - %s", err.Error())
-	}
-	if maxSizeInt <= 0 {
-		return errors.New("size must be > 0")
-	}
-
 	return nil
 }
 

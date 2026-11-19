@@ -1,0 +1,13 @@
+server:
+  port: 9095
+  limits:
+    max-request-size: 2MB
+    max-batch-size: 100
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

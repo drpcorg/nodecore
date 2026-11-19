@@ -10,6 +10,9 @@ server:
     certificate: "/path/cert"
     key: "/path/key"
     ca: "/path/ca"
+  limits:
+    max-request-size: 32MB
+    max-batch-size: 1000
 
 stats:
   enabled: true

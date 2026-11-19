@@ -72,6 +72,9 @@ server:
     provider-private-key-path: /path/to/provider.key
     external-public-key-path: /path/to/external.pub
     session-ttl: 24h
+  limits:
+    max-request-size: 32MB
+    max-batch-size: 1000
 
 config-reload:
   watch-interval: 30s

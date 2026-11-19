@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/bytedance/sonic/ast"
@@ -48,6 +49,9 @@ func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 				}
 				return err
 			}
+			if err := checkParamIsNotRepeated(body, "to"); err != nil {
+				return err
+			}
 			if toParamNode.TypeSafe() != ast.V_STRING {
 				return errors.New("'to' param must be string")
 			}
@@ -68,6 +72,9 @@ func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 				}
 				return err
 			}
+			if err := checkParamIsNotRepeated(body, "address"); err != nil {
+				return err
+			}
 			addresses := make([]string, 0)
 			switch addressParamNode.TypeSafe() {
 			case ast.V_ARRAY:
@@ -82,6 +89,12 @@ func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 			case ast.V_STRING:
 				address, _ := addressParamNode.String()
 				addresses = append(addresses, address)
+			}
+			// a node reads a null or empty 'address' as "every contract", and any
+			// other type names no contract at all - with nothing to check against
+			// the allowed list the request must not pass
+			if len(addresses) == 0 {
+				return errors.New("'address' param must be a string or a non-empty array of strings due to the contracts settings")
 			}
 			for _, logAddress := range addresses {
 				allowed := lo.Contains(contracts, logAddress)
@@ -137,3 +150,34 @@ func NewRemovedKeyEvent(removedKey Key) *RemovedKeyEvent {
 }
 
 func (e *RemovedKeyEvent) event() {}
+
+// checkParamIsNotRepeated fails a request whose first param names the field
+// more than once.
+//
+// CheckContracts reads the first key spelled exactly as name, but the params
+// are forwarded as the client wrote them, and the node decides for itself
+// which value it takes: a node that decodes with Go's encoding/json takes the
+// last of repeated keys and matches their names case-insensitively. A second
+// key is then a value that was never checked, so the request is turned away
+// rather than guessed at. EqualFold is that same match - it folds the few
+// non-ASCII letters encoding/json also reads as ASCII ones.
+func checkParamIsNotRepeated(body []byte, name string) error {
+	firstParam, err := sonic.Get(body, "params", 0)
+	if err != nil {
+		return err
+	}
+	matches := 0
+	err = firstParam.ForEach(func(path ast.Sequence, _ *ast.Node) bool {
+		if path.Key != nil && strings.EqualFold(*path.Key, name) {
+			matches++
+		}
+		return matches < 2
+	})
+	if err != nil {
+		return err
+	}
+	if matches > 1 {
+		return fmt.Errorf("'%s' param must not be repeated due to the contracts settings", name)
+	}
+	return nil
+}

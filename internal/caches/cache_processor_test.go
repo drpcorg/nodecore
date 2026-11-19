@@ -161,7 +161,11 @@ func TestCacheProcessorNoResponseFromConnectorsThenNothing(t *testing.T) {
 	connector3.On("Id").Return("id")
 	policy3 := NewCachePolicy(upSupervisor, connector3, test_utils.PolicyConfig("gnosis|polygon", "eth_call", "conn-id", "10KB", "5s", true))
 
-	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 10*time.Millisecond)
+	// The timeout must not be what ends Receive here: a complete miss returns as
+	// soon as the last connector has answered, and the assertions below need
+	// every connector to have been asked. A short timeout can fire first on a
+	// busy machine, before the policy goroutines get to their connectors.
+	cacheProcessor := createCacheProcessor([]*CachePolicy{policy2, policy3, policy1}, 1*time.Minute)
 	request, _ := protocol.NewUpstreamJsonRpcRequestWithSpecMethod("eth_call", nil, specMethod)
 
 	actual, ok := cacheProcessor.Receive(context.Background(), chains.POLYGON, request)
