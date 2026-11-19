@@ -117,6 +117,9 @@ func (s *ServerConfig) setDefaults() {
 		s.GrpcAuthConfig = &GrpcAuthConfig{}
 	}
 	s.GrpcAuthConfig.setDefaults()
+	if s.Limits == nil {
+		s.Limits = &LimitsConfig{}
+	}
 }
 
 func (g *GrpcAuthConfig) setDefaults() {

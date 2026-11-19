@@ -34,6 +34,9 @@ type ServerConfig struct {
 	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
 	// as a client IP.
 	TrustedProxies []string `yaml:"trusted-proxies,omitempty"`
+	// Limits bounds what a single client request may ask of nodecore. Nothing
+	// is limited unless a field is set.
+	Limits *LimitsConfig `yaml:"limits,omitempty"`
 
 	// trustedProxyPrefixes is TrustedProxies parsed once during validation.
 	trustedProxyPrefixes []netip.Prefix
@@ -46,6 +49,32 @@ func (s *ServerConfig) TrustedProxyPrefixes() []netip.Prefix {
 		return nil
 	}
 	return s.trustedProxyPrefixes
+}
+
+// LimitsConfig holds the client request limits. Every field is optional and
+// its zero value means "no limit".
+type LimitsConfig struct {
+	// MaxRequestSize caps one request as the handler reads it: an HTTP body
+	// (after decoding, when it arrives compressed) or one WebSocket message.
+	// A size string such as "512KB" or "32MB".
+	MaxRequestSize string `yaml:"max-request-size,omitempty"`
+	// MaxBatchSize caps the number of items in one JSON-RPC batch, over HTTP
+	// and WebSocket alike.
+	MaxBatchSize int `yaml:"max-batch-size,omitempty"`
+}
+
+// MaxRequestBytes is MaxRequestSize in bytes, or 0 when no limit is set.
+func (l *LimitsConfig) MaxRequestBytes() int64 {
+	if l.MaxRequestSize == "" {
+		return 0
+	}
+	// the string is checked by validate at config load; a hand-built config
+	// with a malformed size limits nothing rather than everything
+	maxRequestBytes, err := parseSize(l.MaxRequestSize)
+	if err != nil {
+		return 0
+	}
+	return maxRequestBytes
 }
 
 const SecureSignedLabel = "secure-signed"
@@ -152,6 +181,22 @@ func (s *ServerConfig) validate() error {
 		return err
 	}
 
+	if err := s.Limits.validate(); err != nil {
+		return fmt.Errorf("limits validation error - %s", err.Error())
+	}
+
+	return nil
+}
+
+func (l *LimitsConfig) validate() error {
+	if l.MaxRequestSize != "" {
+		if _, err := parseSize(l.MaxRequestSize); err != nil {
+			return fmt.Errorf("max-request-size: %s", err.Error())
+		}
+	}
+	if l.MaxBatchSize < 0 {
+		return errors.New("max-batch-size must not be negative")
+	}
 	return nil
 }
 

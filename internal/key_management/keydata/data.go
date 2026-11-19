@@ -83,6 +83,12 @@ func CheckContracts(contracts []string, request protocol.RequestHolder) error {
 				address, _ := addressParamNode.String()
 				addresses = append(addresses, address)
 			}
+			// a node reads a null or empty 'address' as "every contract", and any
+			// other type names no contract at all - with nothing to check against
+			// the allowed list the request must not pass
+			if len(addresses) == 0 {
+				return errors.New("'address' param must be a string or a non-empty array of strings due to the contracts settings")
+			}
 			for _, logAddress := range addresses {
 				allowed := lo.Contains(contracts, logAddress)
 				if !allowed {

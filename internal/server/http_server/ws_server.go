@@ -48,8 +48,15 @@ func HandleWebsocket(
 	chain string,
 	authPayload auth.AuthPayload,
 	appCtx *server_ctx.ApplicationServerContext,
+	limits *config.LimitsConfig,
 ) {
 	log := zerolog.Ctx(ctx)
+
+	// a message past the limit is never buffered: the read fails and the
+	// client is told with a "message too big" close frame
+	if maxRequestBytes := limits.MaxRequestBytes(); maxRequestBytes > 0 {
+		conn.SetReadLimit(maxRequestBytes)
+	}
 
 	subCtx := flow.NewSubCtx(chains.GetChain(chain).Chain)
 
@@ -98,7 +105,7 @@ loop:
 			preRequest := &server_ctx.Request{
 				Chain: chain,
 			}
-			requestHandler, err := NewJsonRpcHandler(preRequest, bytes.NewReader(message.message), true)
+			requestHandler, err := NewJsonRpcHandler(preRequest, bytes.NewReader(message.message), true, limits.MaxBatchSize)
 			if err != nil {
 				log.Error().Err(err).Msg("couldn't create requestHandler")
 				break loop

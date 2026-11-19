@@ -32,6 +32,9 @@ server:
     provider-private-key-path: /path/to/provider.key
     external-public-key-path: /path/to/external.pub
     session-ttl: 24h
+  limits:
+    max-request-size: 32MB
+    max-batch-size: 1000
 ```
 
 ## Fields
@@ -60,6 +63,9 @@ server:
   - `session-ttl` - lifetime of a successful authentication session before a new handshake is required. **_Default_**: `24h`
 - `tor-url` - Address of a SOCKS5 proxy (typically a local Tor instance) used for connecting to `.onion` upstreams. Format: `host:port`. Example: `localhost:9050`. See [Upstream Config](05-upstream-config.md#tor-onion-upstreams) for details
 - `trusted-proxies` - A list of reverse proxies/load balancers in front of nodecore, as CIDRs (`10.0.0.0/8`) or bare IPs (`192.168.1.10`, treated as `/32` or `/128`). Controls whether the `X-Forwarded-For` header is trusted when resolving the client IP for [key `allowed-ips` checks](03-auth.md#local-keys). Invalid entries fail config validation at startup. **_Default_**: empty. See [Client IP resolution](#client-ip-resolution) below
+- `limits` - Optional bounds on what a single client request may ask of nodecore. Nothing is limited unless a field is set. See [Request limits](#request-limits) below
+  - `max-request-size` - The largest request nodecore reads: one HTTP body, or one WebSocket message. A positive integer followed by `KB` or `MB` (`512KB`, `32MB`). **_Default_**: not set (no limit)
+  - `max-batch-size` - The largest number of items in one JSON-RPC batch, over HTTP and WebSocket. **_Default_**: not set (no limit)
 
 
 ## Client IP resolution
@@ -80,6 +86,25 @@ Entries are accepted both as a bare IP and in the `ip:port` form that some gatew
 > In the default (empty) mode a client that connects directly to nodecore can present an arbitrary IP by sending its own `X-Forwarded-For` header, which is enough to satisfy an `allowed-ips` restriction. If you rely on `allowed-ips`, set `trusted-proxies` to the proxies actually in front of nodecore; if there are none, list `127.0.0.1` so that `X-Forwarded-For` from remote clients is never honored.
 
 If the peer address cannot be parsed as an IP, `127.0.0.1` is used.
+
+## Request limits
+
+The `limits` section is off by default: with no section, or with a field left out, nodecore behaves as if the limit did not exist. Both limits apply to client traffic on `port` (HTTP and WebSocket); the gRPC servers are not affected. A change to the section takes effect on restart.
+
+**`max-request-size`** bounds a request as nodecore reads it.
+
+- An HTTP body over the limit is answered with `413` and the message `request body is too large`. A request that declares a `Content-Length` over the limit is rejected without reading its body.
+- For a [compressed](15-compression.md) body the limit applies to the decoded size. When `max-request-size` is set it replaces the built-in 32 MiB cap on decoded bodies, so a value above 32 MiB raises that cap and a value below it lowers it. When it is not set, the built-in cap keeps applying to compressed bodies only.
+- A WebSocket message over the limit closes the connection with the `1009` ("message too big") close code.
+- A body or message of exactly the limit is served.
+
+**`max-batch-size`** bounds the number of items in a JSON-RPC batch. A batch with more items is rejected as a whole, before any of its items is sent to an upstream, with one error:
+
+```json
+[{"id":0,"jsonrpc":"2.0","error":{"message":"client error - batch size 1500 exceeds the limit of 1000","code":400}}]
+```
+
+Over WebSocket the same error is sent as a message and the connection stays open. A single (non-batch) request is never affected.
 
 ## Request parsing
 

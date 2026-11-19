@@ -26,6 +26,7 @@ func TestServerConfig(t *testing.T) {
 			PublicKeyOwner: "drpc",
 			SessionTTL:     24 * time.Hour,
 		},
+		Limits: &config.LimitsConfig{},
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
@@ -118,4 +119,57 @@ func TestTlsEnabledNoKeyThenError(t *testing.T) {
 	t.Setenv(config.ConfigPathVar, "configs/server/server-config-tls-enabled-no-key.yaml")
 	_, err := config.NewAppConfig()
 	assert.ErrorContains(t, err, "tls config validation error - the tls certificate key can't be empty")
+}
+
+func TestServerConfigLimits(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-limits.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Equal(t, "2MB", appConfig.ServerConfig.Limits.MaxRequestSize)
+	assert.Equal(t, int64(2*1024*1024), appConfig.ServerConfig.Limits.MaxRequestBytes())
+	assert.Equal(t, 100, appConfig.ServerConfig.Limits.MaxBatchSize)
+}
+
+// The limits are opt-in: a config that does not mention them limits nothing.
+func TestServerConfigNoLimitsThenNothingIsLimited(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.Zero(t, appConfig.ServerConfig.Limits.MaxRequestBytes())
+	assert.Zero(t, appConfig.ServerConfig.Limits.MaxBatchSize)
+}
+
+func TestServerConfigLimitsRequestSizeUnits(t *testing.T) {
+	tests := []struct {
+		size     string
+		expected int64
+	}{
+		{size: "512KB", expected: 512 * 1024},
+		{size: "32MB", expected: 32 * 1024 * 1024},
+		{size: "", expected: 0},
+	}
+
+	for _, test := range tests {
+		t.Run(test.size, func(t *testing.T) {
+			limits := &config.LimitsConfig{MaxRequestSize: test.size}
+
+			assert.Equal(t, test.expected, limits.MaxRequestBytes())
+		})
+	}
+}
+
+func TestServerConfigLimitsWrongRequestSizeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-limits-wrong-request-size.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "limits validation error - max-request-size: size must be in KB or MB")
+}
+
+func TestServerConfigLimitsNegativeBatchSizeThenError(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-limits-negative-batch-size.yaml")
+	_, err := config.NewAppConfig()
+
+	assert.ErrorContains(t, err, "limits validation error - max-batch-size must not be negative")
 }

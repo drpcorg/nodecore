@@ -16,6 +16,8 @@ func ToHttpCode(response ResponseHolder) int {
 			code = http.StatusForbidden
 		case RequestTimeout:
 			code = http.StatusRequestTimeout
+		case RequestTooLarge:
+			code = http.StatusRequestEntityTooLarge
 		case InternalServerErrorCode, IncorrectResponseBody:
 			code = http.StatusInternalServerError
 		case RateLimitExceeded:

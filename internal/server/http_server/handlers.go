@@ -118,11 +118,15 @@ type JsonRpcHandler struct {
 	single          bool
 	jsonRpcRequests []protocol.JsonRpcRequestBody
 	isWsCtx         bool
+	maxBatchSize    int
 }
 
 var _ RequestHandler = (*JsonRpcHandler)(nil)
 
-func NewJsonRpcHandler(preReq *server_ctx.Request, requestBody io.Reader, isWsCtx bool) (*JsonRpcHandler, error) {
+// NewJsonRpcHandler parses a JSON-RPC body - a single request or a batch.
+// maxBatchSize is server.limits.max-batch-size: a batch with more items is
+// rejected in RequestDecode. Zero means no limit.
+func NewJsonRpcHandler(preReq *server_ctx.Request, requestBody io.Reader, isWsCtx bool, maxBatchSize int) (*JsonRpcHandler, error) {
 	body, err := io.ReadAll(requestBody)
 	if err != nil {
 		return nil, err
@@ -156,6 +160,7 @@ func NewJsonRpcHandler(preReq *server_ctx.Request, requestBody io.Reader, isWsCt
 
 	return &JsonRpcHandler{
 		isWsCtx:         isWsCtx,
+		maxBatchSize:    maxBatchSize,
 		preReq:          preReq,
 		requestBody:     body,
 		jsonRpcRequests: jsonRpcRequests,
@@ -177,6 +182,12 @@ func (j *JsonRpcHandler) RequestCount() int {
 }
 
 func (j *JsonRpcHandler) RequestDecode(ctx context.Context) (*server_ctx.Request, error) {
+	// the whole batch is turned away before a single upstream request is built:
+	// every item costs a goroutine and, unless cached, an upstream call
+	if j.maxBatchSize > 0 && len(j.jsonRpcRequests) > j.maxBatchSize {
+		return nil, protocol.BatchTooLargeError(len(j.jsonRpcRequests), j.maxBatchSize)
+	}
+
 	upstreamRequests := make([]protocol.RequestHolder, 0)
 
 	for i, jsonRpcReq := range j.jsonRpcRequests {

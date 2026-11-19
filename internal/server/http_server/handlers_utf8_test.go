@@ -24,6 +24,7 @@ func TestJsonRpcHandlerRejectsNonUtf8Method(t *testing.T) {
 		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
+		0,
 	)
 
 	require.ErrorIs(t, err, errNonUtf8Method)
@@ -40,6 +41,7 @@ func TestJsonRpcHandlerRejectsNonUtf8MethodInBatch(t *testing.T) {
 		&server_ctx.Request{Chain: "ethereum"},
 		strings.NewReader(body),
 		false,
+		0,
 	)
 
 	require.ErrorIs(t, err, errNonUtf8Method)

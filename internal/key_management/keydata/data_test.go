@@ -132,6 +132,47 @@ func TestCheckContracts_EthGetLogs_AddressArrayOneNotAllowed_ReturnsError(t *tes
 	assert.ErrorContains(t, err, "'0x3' address is not allowed")
 }
 
+// An EVM node reads a null or empty 'address' as "every contract", so letting
+// either through would hand a restricted key the whole chain's logs.
+func TestCheckContracts_EthGetLogs_AddressMatchingEveryContract_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name    string
+		address any
+	}{
+		{name: "null", address: nil},
+		{name: "empty array", address: []any{}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := &config.AuthContracts{Allowed: []string{"0xabc"}}
+			req := test_utils.NewUpstreamRequest(t, "eth_getLogs", []any{map[string]any{"address": test.address}})
+			err := keydata.CheckContracts(cfg.Allowed, req)
+			assert.ErrorContains(t, err, "'address' param must be a string or a non-empty array of strings")
+		})
+	}
+}
+
+func TestCheckContracts_EthGetLogs_AddressOfUnsupportedType_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name    string
+		address any
+	}{
+		{name: "number", address: 123},
+		{name: "object", address: map[string]any{}},
+		{name: "bool", address: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := &config.AuthContracts{Allowed: []string{"0xabc"}}
+			req := test_utils.NewUpstreamRequest(t, "eth_getLogs", []any{map[string]any{"address": test.address}})
+			err := keydata.CheckContracts(cfg.Allowed, req)
+			assert.ErrorContains(t, err, "'address' param must be a string or a non-empty array of strings")
+		})
+	}
+}
+
 // -------------------- Tests for CheckContracts with other method --------------------
 
 func TestCheckContracts_AnotherMethod_Ignored_ReturnsNil(t *testing.T) {

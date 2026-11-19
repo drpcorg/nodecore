@@ -92,8 +92,8 @@ sees it, so handlers always read plain bytes.
 - An **empty body** is accepted whatever coding it claims — a peer that labels an empty `204` with a
   `Content-Encoding` is not an error worth failing.
 - A decoded body is capped at **32 MiB** (`MaxDecodedRequestBytes`). Past the cap the read fails
-  rather than returning a short body, so a truncated request is rejected instead of silently parsed.
-  See [Limits](#limits-and-safety) for why.
+  rather than returning a short body, so a truncated request is rejected (`413`) instead of silently
+  parsed. See [Limits](#limits-and-safety) for why.
 
 ## Upstream
 
@@ -203,7 +203,9 @@ it a few hundred kilobytes on the wire can ask for gigabytes, from anyone who ca
 32 MiB is far above anything JSON-RPC produces in practice (a batch of ten thousand calls is on the
 order of a megabyte), so it is a ceiling on abuse rather than a limit real traffic meets. It applies
 to client request bodies only; upstream responses are bounded by the connector's
-[`response-timeout`](05-upstream-config.md#connectors) instead.
+[`response-timeout`](05-upstream-config.md#connectors) instead. Setting
+[`server.limits.max-request-size`](02-server-config.md#request-limits) replaces this cap with the
+configured value, which then bounds every request body, compressed or not.
 
 ## What is not covered
 

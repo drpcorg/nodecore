@@ -86,6 +86,10 @@ func TestReadFullConfig(t *testing.T) {
 				PublicKeyOwner: "drpc",
 				SessionTTL:     24 * time.Hour,
 			},
+			Limits: &config.LimitsConfig{
+				MaxRequestSize: "32MB",
+				MaxBatchSize:   1000,
+			},
 		},
 		AuthConfig: &config.AuthConfig{
 			Enabled: true,

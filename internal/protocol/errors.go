@@ -14,6 +14,7 @@ const (
 	ClientErrorCode         = 400
 	AuthErrorCode           = 403
 	RequestTimeout          = 408
+	RequestTooLarge         = 413
 	InternalServerErrorCode = 500
 	RateLimitExceeded       = 429
 	NoSupportedMethod       = -32601
@@ -64,6 +65,20 @@ func ParseError() *ResponseError {
 		Message: "couldn't parse a request",
 		Code:    ClientErrorCode,
 	}
+}
+
+// RequestTooLargeError answers a request whose body runs past the size limit.
+func RequestTooLargeError() *ResponseError {
+	return &ResponseError{
+		Message: "request body is too large",
+		Code:    RequestTooLarge,
+	}
+}
+
+// BatchTooLargeError answers a JSON-RPC batch with more items than
+// server.limits.max-batch-size allows.
+func BatchTooLargeError(size, limit int) *ResponseError {
+	return ClientError(fmt.Errorf("batch size %d exceeds the limit of %d", size, limit))
 }
 
 func RequestTimeoutError() *ResponseError {
