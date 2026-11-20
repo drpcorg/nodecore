@@ -2,6 +2,7 @@ package ratelimiter
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -282,4 +283,31 @@ func TestUpstreamAutoTune_ConcurrentAccess(t *testing.T) {
 	// Should not panic and should have valid state
 	limit := autotune.ratelimit.Load()
 	assert.Greater(t, limit, int32(0))
+}
+
+func TestUpstreamAutoTune_Allow_BucketsByNanosecondPeriods(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	period := 20 * time.Millisecond
+	cfg := &config.RateLimitAutoTuneConfig{
+		Period:              time.Hour,
+		ErrorRateThreshold:  0.1,
+		InitRateLimit:       1000,
+		InitRateLimitPeriod: period,
+	}
+
+	autotune := NewUpstreamAutoTune(ctx, "test-upstream", cfg)
+	autotune.Allow()
+
+	var bucket int64
+	found := false
+	autotune.attemptCounts.Load().Range(func(key int64, val *atomic.Int32) bool {
+		bucket = key
+		found = true
+		return false
+	})
+	assert.True(t, found, "Allow must record an attempt bucket")
+
+	expectedBucket := time.Now().UnixNano() / int64(period)
+	assert.InDelta(t, expectedBucket, bucket, 1, "attempt bucket must be derived from nanoseconds divided by the rate limit period")
 }

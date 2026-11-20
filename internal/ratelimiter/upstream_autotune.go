@@ -68,7 +68,7 @@ func NewUpstreamAutoTune(ctx context.Context, upstreamId string, config *config.
 
 func (u *UpstreamAutoTune) Allow() bool {
 	// register in bucket how much requests were made in current period
-	timeKey := time.Now().UnixMilli() / int64(u.rateLimitPeriod)
+	timeKey := time.Now().UnixNano() / int64(u.rateLimitPeriod)
 	result, _ := u.attemptCounts.Load().LoadOrStore(timeKey, &atomic.Int32{})
 	result.Add(1)
 
