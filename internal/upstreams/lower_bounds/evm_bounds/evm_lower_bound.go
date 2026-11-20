@@ -35,6 +35,13 @@ type EvmLowerBoundDetector struct {
 
 	capabilities *EvmCapabilities
 
+	// stateAnchorTrusted lets the state anchor judge the blocks of this upstream, see
+	// refreshStateAnchor. stateAnchorCheckedAt is the time of the check behind it in unix
+	// nanoseconds, zero before the first one.
+	stateAnchorTrusted         atomic.Bool
+	stateAnchorCheckedAt       atomic.Int64
+	stateAnchorRecheckInterval time.Duration
+
 	stateOverrideSupport atomic.Int32
 
 	// bareHeadersProven is the block detector's servesBareHeaders verdict, kept between
@@ -74,6 +81,7 @@ func newEvmLowerBoundDetectorWithSupportedTypes(
 		LowerBoundSearchCalculator: lower_bounds.NewLowerBoundSearchCalculatorWithOffset(upstreamId, boundType, supportedTypes, evmLowerBoundPeriod, maxOffset),
 		evmRpcClient:               evmRpcClient{connector: connector, chain: chain, internalTimeout: internalTimeout},
 		goldBlockRetryDelay:        evmGoldBlockRetryDelay,
+		stateAnchorRecheckInterval: evmStateAnchorRecheckInterval,
 	}
 }
 
@@ -89,6 +97,9 @@ func (e *EvmLowerBoundDetector) DetectLowerBound(ctx context.Context) ([]protoco
 	}
 	if e.MainBoundType == protocol.BlockBound && e.servesBareHeaders(ctx) {
 		return e.DetectContiguousLowerBoundWithOffset(ctx, e.fetchLatestHeight, e.probeBlockBody, evmLowerBoundMaxOffset)
+	}
+	if e.MainBoundType == protocol.StateBound {
+		return e.detectStateBound(ctx)
 	}
 	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, e.fetchLatestHeight, e.probe)
 }

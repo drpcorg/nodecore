@@ -6,6 +6,7 @@ import (
 
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/drpcorg/nodecore/internal/upstreams/connectors"
+	"github.com/drpcorg/nodecore/internal/upstreams/lower_bounds"
 	"github.com/drpcorg/nodecore/pkg/chains"
 )
 
@@ -42,7 +43,62 @@ func NewEvmStateLowerBoundDetector(
 	)
 }
 
+// detectStateBound searches the state bound. Where the state anchor is trusted, the bound is
+// the start of the contiguous range of real state that ends at the head. The search from
+// genesis stops at the first old block that answers, and an upstream that serves the state of
+// a later block in the middle of its history has such blocks below the fake range.
+func (e *EvmLowerBoundDetector) detectStateBound(ctx context.Context) ([]protocol.LowerBoundData, error) {
+	fetchHead := e.fetchLatestHeight
+	// one head serves both the check of the anchor and the search
+	if head, err := e.fetchLatestHeight(ctx); err == nil {
+		e.refreshStateAnchor(ctx, head)
+		fetchHead = func(context.Context) (int64, error) { return head, nil }
+	}
+	if e.stateAnchorTrusted.Load() {
+		return e.DetectContiguousLowerBound(ctx, fetchHead, e.probeStateFromHead)
+	}
+	return e.LowerBoundSearchCalculator.DetectLowerBound(ctx, fetchHead, e.probe)
+}
+
+func (e *EvmLowerBoundDetector) probeStateFromHead(ctx context.Context, height int64) (lower_bounds.ContiguousProbeResult, error) {
+	available, err := e.hasState(ctx, height)
+	if err != nil || !available {
+		return lower_bounds.ProbeMiss, err
+	}
+	return lower_bounds.ProbeHit, nil
+}
+
+// hasState asks the state anchor first, where it is trusted: it is the only probe that
+// checks what the upstream answers with. The plain probes accept any non-empty answer and
+// decide the blocks the anchor has no verdict for.
+//
+// A failed call of the anchor is not a missing verdict. The plain probes are asked then only
+// to rule the block out: without state there the failure changes nothing (besu fails the call
+// to the contract for a pruned block). With state there it may be the state of a later block,
+// so the failure goes to the search, which asks the block again and takes a block that keeps
+// failing for one without state.
 func (e *EvmLowerBoundDetector) hasState(ctx context.Context, height int64) (bool, error) {
+	var anchorFailure error
+	if e.stateAnchorTrusted.Load() {
+		verdict, _, err := e.stateAnchorAt(ctx, height)
+		switch {
+		case err != nil:
+			anchorFailure = err
+		case verdict == stateAnchorReal:
+			return true, nil
+		case verdict == stateAnchorFrozen:
+			return false, nil
+		}
+	}
+	available, err := e.hasPlainState(ctx, height)
+	if available && anchorFailure != nil {
+		return false, anchorFailure
+	}
+	return available, err
+}
+
+// hasPlainState reports a block the upstream returns state for. It does not check which state.
+func (e *EvmLowerBoundDetector) hasPlainState(ctx context.Context, height int64) (bool, error) {
 	if e.supportsStateOverride(ctx) {
 		available, err := e.hasStateWithOverride(ctx, height)
 		if err == nil && available {
