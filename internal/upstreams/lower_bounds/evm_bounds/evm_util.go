@@ -59,9 +59,10 @@ func (e *EvmLowerBoundDetector) lastTxHash(ctx context.Context, height int64) (h
 type evmBlockEnvelope struct {
 	Number string `json:"number"`
 	Hash   string `json:"hash"`
-	// TransactionsRoot stays raw: only isBareHeader reads it, and a root of an unusual shape
-	// must not fail the tx and receipts probes
+	// TransactionsRoot and GasUsed stay raw: only isBareHeader and hasGasUsed read them, and a
+	// value of an unusual shape must not fail the tx and receipts probes
 	TransactionsRoot json.RawMessage   `json:"transactionsRoot"`
+	GasUsed          json.RawMessage   `json:"gasUsed"`
 	Transactions     []json.RawMessage `json:"transactions"`
 }
 
@@ -75,6 +76,21 @@ func (b evmBlockEnvelope) isBareHeader() bool {
 	root := strings.ToLower(strings.Trim(strings.TrimSpace(string(b.TransactionsRoot)), `"`))
 	isHash := len(root) == len(evmZeroHash) && strings.HasPrefix(root, "0x")
 	return isHash && root != evmEmptyTxRoot && root != evmZeroHash
+}
+
+// hasGasUsed reports a header that says gas was spent in the block. A gasUsed that is absent
+// or unreadable is no gas.
+func (b evmBlockEnvelope) hasGasUsed() bool {
+	gas, err := parseHexInt(b.GasUsed)
+	return err == nil && gas > 0
+}
+
+// lostBody reports a bare header whose gas also says the block had transactions. Neither the
+// root nor the gas alone tells a pruned block from an empty one on every chain, see
+// TestEvmBlockLowerBoundDetectorTakesNoEmptyBlockForBareHeader. The gold block needs no such
+// check: it is known to hold a transaction.
+func (b evmBlockEnvelope) lostBody() bool {
+	return b.isBareHeader() && b.hasGasUsed()
 }
 
 type evmTxRef struct {
