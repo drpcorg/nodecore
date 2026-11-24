@@ -118,9 +118,10 @@ type RequestUpstreamIdSelector struct {
   of the cache key.
 
 **`UpstreamIdMatcher`** in `flow/matchers.go` succeeds when the upstream id passed to `Match` is
-in the set, otherwise returns a new `UpstreamIdResponse` of `SelectorType` whose cause names the
-requested ids. `compileSelector` in `flow/selectors.go` gets one new case mapping the selector to
-the matcher (without it the selector falls into the `unsupported` default).
+in the set, otherwise returns a new `UpstreamIdResponse` of `SelectorType`. Its cause is a fixed
+message that does not list the requested ids: the client knows what it sent, and the list is as
+long as the client made it. `compileSelector` in `flow/selectors.go` gets one new case mapping the
+selector to the matcher (without it the selector falls into the `unsupported` default).
 
 `RequestGroupLabelSelector` keeps compiling to `GroupLabelMatcher` regardless of the new field.
 

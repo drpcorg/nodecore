@@ -160,7 +160,7 @@ How a request with a header is routed:
 Where the headers are read:
 
 - **HTTP** (JSON-RPC and REST), per request.
-- **WebSocket**, from the handshake request: the restriction is fixed for the connection and applies to every request and subscription on it. Subscriptions restricted differently never share an upstream subscription.
+- **WebSocket**, from the handshake request: the restriction is fixed for the connection and applies to every request and subscription on it. Subscriptions restricted differently never share an upstream subscription. A browser's WebSocket API cannot set custom request headers, so the headers are usable only from WebSocket clients that can, such as server-side ones.
 - **[gRPC chain ingress](14-grpc-ingress.md)**, as the metadata keys `x-nodecore-group-label` and `x-nodecore-upstream-id`.
 
 None of these ever forwards the two headers to an upstream, whether the option is on or off. The option is read at startup; a change takes effect on restart.
