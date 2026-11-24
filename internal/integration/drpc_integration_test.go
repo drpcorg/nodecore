@@ -124,9 +124,12 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 
 	connector.On("OwnerExists", cfg.Owner.Id, cfg.Owner.ApiToken).Return(nil)
 	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(initialKeys, nil).Once()
+	// the same keys again - must not emit any event
+	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(initialKeys, nil).Once()
 	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(moreKeys, nil).Once()
 	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(changedKeys, nil).Once()
-	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(removedAndAddedKeys, nil).Once()
+	// every later poll returns the last state, so it emits nothing until cancel
+	connector.On("LoadOwnerKeys", cfg.Owner.Id, cfg.Owner.ApiToken).Return(removedAndAddedKeys, nil)
 
 	events, err := client.InitKeys("id", cfg)
 	assert.NoError(t, err)
@@ -134,16 +137,8 @@ func TestDrpcIntegrationClientPollKeys(t *testing.T) {
 	key := <-events
 	assert.Equal(t, initialKeys[0], key.(*keydata.UpdatedKeyEvent).NewKey)
 
-	// get the same key
-	var event keydata.KeyEvent
-	select {
-	case <-time.After(5 * time.Millisecond):
-	case event = <-events:
-	}
-	assert.Nil(t, event)
-
-	// add a new key
-	event = <-events
+	// add a new key; events are ordered, so getting it right away proves the same-keys poll emitted nothing
+	event := <-events
 	ev, ok := event.(*keydata.UpdatedKeyEvent)
 	assert.True(t, ok)
 	drpcKey, ok := ev.NewKey.(*drpc.DrpcKey)
