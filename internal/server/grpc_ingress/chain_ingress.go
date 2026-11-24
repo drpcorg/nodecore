@@ -101,7 +101,7 @@ func (c *chainIngress) handle(_ any, stream grpc.ServerStream) error {
 	call := newGrpcCall(stream, md, fullMethod)
 	// result-only: subscription frames are bare payloads (no JSON-RPC envelope,
 	// no client subscription id); irrelevant for unary calls
-	handleResp := c.appCtx.HandleRequest(ctx, call, authPayload, flow.NewResultOnlySubCtx())
+	handleResp := c.appCtx.HandleRequest(ctx, call, authPayload, flow.NewResultOnlySubCtx(), server_ctx.RoutingSelectors(md.Get))
 	return call.serve(stream, handleResp)
 }
 

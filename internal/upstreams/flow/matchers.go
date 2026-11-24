@@ -230,6 +230,23 @@ func (g *GroupLabelMatcher) Match(upstreamId string, _ *protocol.UpstreamState) 
 	return GroupLabelResponse{g.labels}
 }
 
+// UpstreamIdMatcher admits an upstream whose config id is one of ids - the
+// upstreams a client named with X-Nodecore-Upstream-Id.
+type UpstreamIdMatcher struct {
+	ids mapset.Set[string]
+}
+
+func NewUpstreamIdMatcher(ids mapset.Set[string]) *UpstreamIdMatcher {
+	return &UpstreamIdMatcher{ids: ids}
+}
+
+func (u *UpstreamIdMatcher) Match(upstreamId string, _ *protocol.UpstreamState) MatchResponse {
+	if u.ids.ContainsOne(upstreamId) {
+		return SuccessResponse{}
+	}
+	return UpstreamIdResponse{}
+}
+
 type HeightMatcher struct{ height int64 }
 
 func NewHeightMatcher(height int64) *HeightMatcher { return &HeightMatcher{height: height} }

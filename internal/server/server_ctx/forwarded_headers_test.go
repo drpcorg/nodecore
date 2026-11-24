@@ -55,3 +55,20 @@ func TestSanitizeForwardedHeadersEmptyAndAllReserved(t *testing.T) {
 	assert.Nil(t, server_ctx.SanitizeForwardedHeaders(map[string][]string{}))
 	assert.Nil(t, server_ctx.SanitizeForwardedHeaders(map[string][]string{"authorization": {"x"}}))
 }
+
+// group names and upstream ids are internal: an upstream must not receive them
+func TestSanitizeForwardedHeadersStripsRoutingHeaders(t *testing.T) {
+	httpOut := server_ctx.SanitizeForwardedHeaders(http.Header{
+		"X-Nodecore-Group-Label": {"archive"},
+		"X-Nodecore-Upstream-Id": {"own-archive"},
+		"X-Custom":               {"keep"},
+	})
+	assert.Equal(t, http.Header{"X-Custom": {"keep"}}, httpOut)
+
+	mdOut := server_ctx.SanitizeForwardedHeaders(metadata.Pairs(
+		"x-nodecore-group-label", "archive",
+		"x-nodecore-upstream-id", "own-archive",
+		"x-custom", "keep",
+	))
+	assert.Equal(t, metadata.Pairs("x-custom", "keep"), mdOut)
+}

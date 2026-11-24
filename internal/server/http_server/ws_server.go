@@ -49,6 +49,7 @@ func HandleWebsocket(
 	authPayload auth.AuthPayload,
 	appCtx *server_ctx.ApplicationServerContext,
 	limits *config.LimitsConfig,
+	routingSelectors []protocol.RequestSelector,
 ) {
 	log := zerolog.Ctx(ctx)
 
@@ -115,7 +116,7 @@ loop:
 				break loop
 			}
 
-			handleResp := appCtx.HandleRequest(cancelCtx, requestHandler, authPayload, subCtx)
+			handleResp := appCtx.HandleRequest(cancelCtx, requestHandler, authPayload, subCtx, routingSelectors)
 
 			wg.Add(1)
 			go func(ctx context.Context) {

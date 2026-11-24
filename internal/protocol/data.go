@@ -307,13 +307,26 @@ type RequestUnsupportedSelector struct {
 func (RequestUnsupportedSelector) isRequestSelector() {}
 
 // RequestGroupLabelSelector admits an upstream that carries at least one of
-// Labels among its config group-labels. Clients cannot send it: nodecore adds
-// it on behalf of an API key whose settings restrict its upstreams.
+// Labels among its config group-labels. nodecore adds it either on behalf of
+// an API key whose settings restrict its upstreams, or for a client that sent
+// X-Nodecore-Group-Label.
 type RequestGroupLabelSelector struct {
 	Labels []string
+	// FromRoutingHeader is set when the client asked for the group itself
+	// (X-Nodecore-Group-Label) rather than an API key restricting it. Such a
+	// request is not routed by label-balancing.
+	FromRoutingHeader bool
 }
 
 func (RequestGroupLabelSelector) isRequestSelector() {}
+
+// RequestUpstreamIdSelector admits an upstream whose config id is one of Ids.
+// nodecore adds it for a client that sent X-Nodecore-Upstream-Id.
+type RequestUpstreamIdSelector struct {
+	Ids mapset.Set[string]
+}
+
+func (RequestUpstreamIdSelector) isRequestSelector() {}
 
 // SelectorAppender is implemented by request holders that accept selectors
 // after construction. Callers adding a mandatory restriction must treat a

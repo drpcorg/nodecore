@@ -143,9 +143,29 @@ func compileSelector(selector protocol.RequestSelector, predict LowerHeightPredi
 		return unsupported(s.Reason)
 	case protocol.RequestGroupLabelSelector:
 		return NewGroupLabelMatcher(s.Labels, groupLabels), nil
+	case protocol.RequestUpstreamIdSelector:
+		return NewUpstreamIdMatcher(s.Ids), nil
 	default:
 		return unsupported(fmt.Sprintf("unsupported selector %T", selector))
 	}
+}
+
+// hasRoutingHeaderSelector reports whether the client restricted the request
+// itself with a routing header: an upstream-id selector, or a group-label
+// selector that came from the header rather than from an API key. Only
+// top-level selectors count - that is where the ingress puts them.
+func hasRoutingHeaderSelector(selectors []protocol.RequestSelector) bool {
+	for _, selector := range selectors {
+		switch s := selector.(type) {
+		case protocol.RequestUpstreamIdSelector:
+			return true
+		case protocol.RequestGroupLabelSelector:
+			if s.FromRoutingHeader {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type UpstreamOrder func([]string) []string

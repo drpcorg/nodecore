@@ -47,14 +47,19 @@ func (h *HandleResponse) CorsOrigins() []string {
 
 // HandleRequest is the shared ingress pipeline every client-facing server
 // (HTTP, WS, gRPC) routes through: key pre-validation, request decoding,
-// chain resolution, per-request key validation, and the execution flow with
-// the canonical hook set. Errors come back as response wrappers on the
-// channel - each ingress renders them in its own protocol shape.
+// chain resolution, the client's routing restriction, per-request key
+// validation, and the execution flow with the canonical hook set. Errors come
+// back as response wrappers on the channel - each ingress renders them in its
+// own protocol shape.
+//
+// routingSelectors is what the ingress read from the client's routing headers
+// (see RoutingSelectors); it is applied only when server.routing-headers is on.
 func (a *ApplicationServerContext) HandleRequest(
 	ctx context.Context,
 	requestHandler RequestHandler,
 	authPayload auth.AuthPayload,
 	subCtx flow.SubCtx,
+	routingSelectors []protocol.RequestSelector,
 ) *HandleResponse {
 	var request *Request
 
@@ -85,7 +90,17 @@ func (a *ApplicationServerContext) HandleRequest(
 		)
 	}
 
+	if !a.routingHeadersEnabled() {
+		routingSelectors = nil
+	}
 	for _, requestHolder := range request.UpstreamRequests {
+		err = appendRoutingSelectors(requestHolder, routingSelectors)
+		if err != nil {
+			return NewHandleResponse(
+				createWrapperFromError(request, protocol.ServerErrorWithCause(err), requestHandler.GetRequestType()),
+				nil,
+			)
+		}
 		err = a.AuthProcessor.PostKeyValidate(ctx, authPayload, requestHolder)
 		if err != nil {
 			return NewHandleResponse(

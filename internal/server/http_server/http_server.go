@@ -115,6 +115,9 @@ func NewHttpServer(appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
 		restPath := c.Param("*") // for rest requests
 		reqCtx := utils.ContextWithIps(c.Request().Context(), c.Request(), trustedProxies)
 		reqCtx = quorum.WithParams(reqCtx, quorum.ParamsFromQuery(c.Request().URL.Query()))
+		// read once per HTTP request; on a WebSocket this is the handshake, so
+		// the restriction holds for the whole connection
+		routingSelectors := server_ctx.RoutingSelectors(c.Request().Header.Values)
 		// An empty rest path with a GET is a REST call on the API root: a
 		// JSON-RPC request is always a POST, so nothing legitimate is
 		// reclassified. Without this, a root endpoint (Horizon's GET /) is
@@ -166,10 +169,10 @@ func NewHttpServer(appCtx *server_ctx.ApplicationServerContext) *echo.Echo {
 				log.Error().Err(err).Msg("couldn't upgrade http to ws")
 				return err
 			}
-			HandleWebsocket(reqCtx, conn, chain, authPayload, appCtx, limits)
+			HandleWebsocket(reqCtx, conn, chain, authPayload, appCtx, limits, routingSelectors)
 			return nil
 		}
-		err = handleHttp(reqCtx, c, chain, restPath, reqType, authPayload, appCtx, limits.MaxBatchSize)
+		err = handleHttp(reqCtx, c, chain, restPath, reqType, authPayload, appCtx, limits.MaxBatchSize, routingSelectors)
 		requestTimeToLastByte.Observe(time.Since(start).Seconds())
 		return err
 	}
@@ -224,6 +227,7 @@ func handleHttp(
 	authPayload auth.AuthPayload,
 	appCtx *server_ctx.ApplicationServerContext,
 	maxBatchSize int,
+	routingSelectors []protocol.RequestSelector,
 ) error {
 	preRequest := &server_ctx.Request{
 		Chain: chain,
@@ -259,7 +263,7 @@ func handleHttp(
 			resp.EncodeResponse([]byte("0")),
 		)
 	}
-	handleResp := appCtx.HandleRequest(ctx, requestHandler, authPayload, nil)
+	handleResp := appCtx.HandleRequest(ctx, requestHandler, authPayload, nil, routingSelectors)
 
 	return handleResponse(ctx, requestHandler, reqCtx, handleResp)
 }

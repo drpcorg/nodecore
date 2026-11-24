@@ -14,6 +14,7 @@ server:
   trusted-proxies:
     - 10.0.0.0/8
     - 192.168.1.10
+  routing-headers: false
   tls:
     enabled: true
     certificate: /path
@@ -63,6 +64,7 @@ server:
   - `session-ttl` - lifetime of a successful authentication session before a new handshake is required. **_Default_**: `24h`
 - `tor-url` - Address of a SOCKS5 proxy (typically a local Tor instance) used for connecting to `.onion` upstreams. Format: `host:port`. Example: `localhost:9050`. See [Upstream Config](05-upstream-config.md#tor-onion-upstreams) for details
 - `trusted-proxies` - A list of reverse proxies/load balancers in front of nodecore, as CIDRs (`10.0.0.0/8`) or bare IPs (`192.168.1.10`, treated as `/32` or `/128`). Controls whether the `X-Forwarded-For` header is trusted when resolving the client IP for [key `allowed-ips` checks](03-auth.md#local-keys). Invalid entries fail config validation at startup. **_Default_**: empty. See [Client IP resolution](#client-ip-resolution) below
+- `routing-headers` - Lets clients restrict a request to a group label or to named upstreams with the `X-Nodecore-Group-Label` and `X-Nodecore-Upstream-Id` headers. **_Default_**: `false`. See [Routing headers](#routing-headers) below
 - `limits` - Optional bounds on what a single client request may ask of nodecore. Nothing is limited unless a field is set. See [Request limits](#request-limits) below
   - `max-request-size` - The largest request nodecore reads: one HTTP body, or one WebSocket message. A positive integer followed by `KB` or `MB` (`512KB`, `32MB`). The units are binary: `1KB` is 1024 bytes and `1MB` is 1024 KB, so `32MB` is 32 MiB. **_Default_**: not set (no limit)
   - `max-batch-size` - The largest number of items in one JSON-RPC batch, over HTTP and WebSocket. `0` means no limit, the same as leaving the field out. **_Default_**: not set (no limit)
@@ -114,6 +116,56 @@ Over HTTP the error is the only item of the response array, as above. Over WebSo
 The connection stays open. A single (non-batch) request is never affected.
 
 A batch is parsed before its items are counted, so `max-batch-size` bounds the work a batch sends to upstreams, not the memory it takes to parse. Set `max-request-size` next to it to bound that as well.
+
+## Routing headers
+
+By default a client has no say in which upstream serves its request: the chain's balancing strategy and, for a key, its [upstream restriction](03-auth.md#upstream-restriction) decide. With `routing-headers: true` a client may narrow one request itself with two headers:
+
+| Header | Value | Admits |
+| --- | --- | --- |
+| `X-Nodecore-Group-Label` | one label | upstreams whose [`group-labels`](05-upstream-config.md#label-balancing) contain it |
+| `X-Nodecore-Upstream-Id` | one or more upstream ids | upstreams whose `id` is one of them |
+
+```bash
+# serve this request from the "archive" group and nowhere else
+curl 'http://localhost:9090/queries/ethereum' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Nodecore-Group-Label: archive' \
+  -d '{"id":1,"jsonrpc":"2.0","method":"eth_getLogs","params":[{"fromBlock":"0x0","toBlock":"0xf4240"}]}'
+
+# send this request to one named upstream
+curl 'http://localhost:9090/queries/ethereum' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Nodecore-Upstream-Id: own-archive' \
+  -d '{"id":1,"jsonrpc":"2.0","method":"eth_blockNumber"}'
+```
+
+How the values are read:
+
+- `X-Nodecore-Group-Label` is one label, taken as written. It is never split: `archive, full` is a single label that no upstream carries.
+- `X-Nodecore-Upstream-Id` takes several ids, comma-separated (`a, b`) or as repeated header lines; any of the named upstreams may serve. An upstream whose id contains a comma cannot be named.
+- An empty header is treated as not sent.
+
+How a request with a header is routed:
+
+- The headers are **filters with no fallback**. An upstream they do not admit is never used for the request - not on the first attempt, not on a retry, not for a hedge. If no admitted upstream can serve, the request fails with `no available upstreams`. With one upstream admitted there is nothing to retry on or hedge to: its answer, or its error, is the response.
+- When both headers are sent, an upstream must satisfy both.
+- The request is **not routed by [`label-balancing`](05-upstream-config.md#label-balancing)**: group order, `pass-on-error` and `include-default` do not apply to it. The chain's [`balancing-strategy`](05-upstream-config.md#balancing-strategy) orders the admitted upstreams. Naming several ids says any of them may serve; it promises no particular split of requests between them.
+- Everything else still applies to an admitted upstream: it must be available, support the method and have rate-limit budget left. An upstream that cannot serve is an error, not an exception to these checks.
+- A key's [upstream restriction](03-auth.md#upstream-restriction) still holds: the headers narrow within the key's upstreams and never widen them.
+- The cache is shared, as for any request. A cached answer is returned without asking an upstream, and the `response-provider` response header then reads `NoUpstream`; on a single (non-batch) request served by an upstream it carries that upstream's id.
+- In a batch the headers apply to every item.
+- One exception, the same one the key restriction has: the local `newPendingTransactions` and `drpc_pendingTransactions` subscription sources merge every upstream of the chain and do not honor the headers. See the warning under [Upstream restriction](03-auth.md#upstream-restriction).
+
+Where the headers are read:
+
+- **HTTP** (JSON-RPC and REST), per request.
+- **WebSocket**, from the handshake request: the restriction is fixed for the connection and applies to every request and subscription on it. Subscriptions restricted differently never share an upstream subscription.
+- **[gRPC chain ingress](14-grpc-ingress.md)**, as the metadata keys `x-nodecore-group-label` and `x-nodecore-upstream-id`.
+
+None of these ever forwards the two headers to an upstream, whether the option is on or off. The option is read at startup; a change takes effect on restart.
+
+> **⚠️ The headers override the routing you configured.** Once the option is on, any client that can send a request can choose a group you ordered last in `label-balancing`, or keep all of its traffic on one node. Leave it off when nodecore is reachable by callers you do not control.
 
 ## Request parsing
 

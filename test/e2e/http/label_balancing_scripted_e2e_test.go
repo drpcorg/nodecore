@@ -196,6 +196,34 @@ func scorePolicyPathConfig(path string) string {
 	return fmt.Sprintf("    calculation-function-file-path: %q\n", path)
 }
 
+// routingHeadersConfig is the server.routing-headers line, indented to sit
+// inside the server block.
+func routingHeadersConfig(enabled bool) string {
+	if !enabled {
+		return ""
+	}
+	return "  routing-headers: true\n"
+}
+
+// restrictedKeyConfig is an auth block with one local key restricted to the
+// upstreams carrying groupLabel.
+func restrictedKeyConfig(groupLabel string) string {
+	if groupLabel == "" {
+		return ""
+	}
+	return fmt.Sprintf(`auth:
+  enabled: true
+  key-management:
+    - id: local-e2e
+      type: local
+      local:
+        key: %q
+        settings:
+          upstreams:
+            group-labels: [%s]
+`, httpAuthKey, groupLabel)
+}
+
 type labelBalancingOptions struct {
 	Order           string
 	PassOnError     bool
@@ -204,6 +232,11 @@ type labelBalancingOptions struct {
 	Labels          map[string]string
 	DisabledMethods map[string][]string
 	ScorePolicyPath string
+	// RoutingHeaders turns server.routing-headers on.
+	RoutingHeaders bool
+	// KeyGroupLabel, when set, enables auth with one local key (httpAuthKey)
+	// restricted to the upstreams carrying this group label.
+	KeyGroupLabel string
 }
 
 func labelBalancingAdvancedConfig(opts labelBalancingOptions, upstreams ...*harness.RPCNode) string {
@@ -219,7 +252,7 @@ func labelBalancingAdvancedConfig(opts labelBalancingOptions, upstreams ...*harn
   health-port: 9091
   grpc-auth:
     enabled: false
-upstream-config:
+%s%supstream-config:
   mode: default
   failsafe-config:
     retry:
@@ -240,7 +273,7 @@ upstream-config:
   score-policy-config:
     calculation-interval: 100ms
 %s  upstreams:
-`, retryAttempts, opts.Order, opts.PassOnError, opts.IncludeDefault, scorePolicyPathConfig(opts.ScorePolicyPath))
+`, routingHeadersConfig(opts.RoutingHeaders), restrictedKeyConfig(opts.KeyGroupLabel), retryAttempts, opts.Order, opts.PassOnError, opts.IncludeDefault, scorePolicyPathConfig(opts.ScorePolicyPath))
 	for _, upstream := range upstreams {
 		out += fmt.Sprintf(`    - id: %s
       chain: ethereum

@@ -7,16 +7,18 @@ import (
 	"github.com/drpcorg/nodecore/internal/auth"
 )
 
-// reservedClientHeaders is nodecore's own credential surface: consumed by the
-// ingresses for authentication and NEVER forwarded to an upstream - a node
-// operator must not receive credentials usable against nodecore. Lowercase;
-// header and metadata keys are case-insensitive. Ingress-specific reserved
-// keys (e.g. the gRPC chain-routing metadata) are passed as extras by the
-// respective ingress.
+// reservedClientHeaders is nodecore's own credential and routing surface:
+// consumed by the ingresses and NEVER forwarded to an upstream - a node
+// operator must not receive credentials usable against nodecore, nor the
+// group names and upstream ids of the routing headers. Lowercase; header and
+// metadata keys are case-insensitive. Ingress-specific reserved keys (e.g. the
+// gRPC chain-routing metadata) are passed as extras by the respective ingress.
 var reservedClientHeaders = mapset.NewThreadUnsafeSet(
 	strings.ToLower(auth.XNodecoreKey),
 	strings.ToLower(auth.XNodecoreToken),
 	"authorization",
+	strings.ToLower(xNodecoreGroupLabel),
+	strings.ToLower(xNodecoreUpstreamId),
 )
 
 // SanitizeForwardedHeaders deep-copies client headers/metadata (http.Header,

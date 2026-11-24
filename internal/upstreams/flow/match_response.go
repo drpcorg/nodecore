@@ -166,6 +166,15 @@ func (g GroupLabelResponse) Cause() string {
 	return fmt.Sprintf("Upstream has none of group-labels %v", g.labels)
 }
 
+// UpstreamIdResponse does not list the requested ids: the client knows what
+// it sent, and the list is as long as the client made it.
+type UpstreamIdResponse struct{}
+
+func (u UpstreamIdResponse) Type() MatchResponseType { return SelectorType }
+func (u UpstreamIdResponse) Cause() string {
+	return "Upstream id is not among the requested ones"
+}
+
 func flattenResponses(responses []MatchResponse) []MatchResponse {
 	out := make([]MatchResponse, 0, len(responses))
 	for _, r := range responses {
