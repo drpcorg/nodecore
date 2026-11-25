@@ -1,6 +1,7 @@
 package emerald
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -57,6 +58,17 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 	}
 
 	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream)
+}
+
+func (s *GrpcBlockchainService) Describe(ctx context.Context, _ *dshackle.DescribeRequest) (*dshackle.DescribeResponse, error) {
+	if err := s.sessionAuth.requireSession(ctx); err != nil {
+		return nil, err
+	}
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
+		return nil, status.Error(codes.Unavailable, "upstream supervisor is not configured")
+	}
+
+	return DescribeChains(s.appCtx.UpstreamSupervisor), nil
 }
 
 func (s *GrpcBlockchainService) NativeCall(request *dshackle.NativeCallRequest, stream dshackle.Blockchain_NativeCallServer) error {

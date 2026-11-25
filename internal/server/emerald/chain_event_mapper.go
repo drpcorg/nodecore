@@ -18,24 +18,10 @@ func SubMethodsToApi(methods []string) *dshackle.ChainEvent {
 }
 
 func LabelsToApi(labels []upstreams.AggregatedLabels) *dshackle.ChainEvent {
-	nodeDetails := lo.Map(labels, func(item upstreams.AggregatedLabels, index int) *dshackle.NodeDetails {
-		apiLabels := lo.MapToSlice(item.Labels, func(key string, value string) *dshackle.Label {
-			return &dshackle.Label{
-				Name:  key,
-				Value: value,
-			}
-		})
-
-		return &dshackle.NodeDetails{
-			Quorum: uint32(item.Amount),
-			Labels: apiLabels,
-		}
-	})
-
 	return &dshackle.ChainEvent{
 		ChainEvent: &dshackle.ChainEvent_NodesEvent{
 			NodesEvent: &dshackle.NodeDetailsEvent{
-				Nodes: nodeDetails,
+				Nodes: nodeDetailsToApi(labels),
 			},
 		},
 	}
@@ -168,4 +154,20 @@ func availabilityStatusToApi(status protocol.AvailabilityStatus) dshackle.Availa
 	default:
 		return dshackle.AvailabilityEnum_AVAIL_UNKNOWN
 	}
+}
+
+func nodeDetailsToApi(labels []upstreams.AggregatedLabels) []*dshackle.NodeDetails {
+	return lo.Map(labels, func(item upstreams.AggregatedLabels, index int) *dshackle.NodeDetails {
+		apiLabels := lo.MapToSlice(item.Labels, func(key string, value string) *dshackle.Label {
+			return &dshackle.Label{
+				Name:  key,
+				Value: value,
+			}
+		})
+
+		return &dshackle.NodeDetails{
+			Quorum: uint32(item.Amount),
+			Labels: apiLabels,
+		}
+	})
 }

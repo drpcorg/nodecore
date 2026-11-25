@@ -44,6 +44,14 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`Describe(DescribeRequest) → DescribeResponse`**
+
+  Unary RPC. Returns the nodecore build version and one entry per served chain that has a `ChainRef`: its availability, current height, the methods available through `NativeCall`, the subscriptions available through `NativeSubscribe`, and the labels of its upstreams.
+
+  A chain is listed once one of its upstreams has reported state; its height is `0` until the first head arrives. Chains come back ordered by their `chain` (`ChainRef`) value, methods and subscriptions alphabetically. `status.quorum`, `capabilities`, `excludedMethods`, `current_lower_block` and `current_lower_slot` are not filled.
+
+  This is a point-in-time read. To follow state as it changes, use `SubscribeChainStatus`.
+
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
