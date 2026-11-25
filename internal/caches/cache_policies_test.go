@@ -21,6 +21,7 @@ import (
 	specs "github.com/drpcorg/public/pkg/methods"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
@@ -32,7 +33,9 @@ func TestCachePolicyNoMethodThenReceiveAndStoreNothing(t *testing.T) {
 	go chainSupervisor.Start()
 
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
-	time.Sleep(10 * time.Millisecond)
+	awaitChainState(t, chainSupervisor, func(state upstreams.ChainSupervisorState) bool {
+		return state.Methods.HasMethod("eth_superTest")
+	})
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -62,7 +65,9 @@ func TestCachePolicyNotCachableMethodThenReceiveAndStoreNothing(t *testing.T) {
 	go chainSupervisor.Start()
 
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEvent("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock))
-	time.Sleep(10 * time.Millisecond)
+	awaitChainState(t, chainSupervisor, func(state upstreams.ChainSupervisorState) bool {
+		return state.Methods.HasMethod("eth_superTest")
+	})
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -153,7 +158,10 @@ func TestCachePolicyFinalizedNoMatchedOrBlockTagThenReceiveAndStoreNothing(t *te
 	go chainSupervisor.Start()
 
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
-	time.Sleep(10 * time.Millisecond)
+	awaitChainState(t, chainSupervisor, func(state upstreams.ChainSupervisorState) bool {
+		_, ok := state.Blocks[protocol.FinalizedBlock]
+		return ok
+	})
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -349,7 +357,10 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 	go chainSupervisor.Start()
 
 	chainSupervisor.PublishUpstreamEvent(test_utils.CreateEventWithBlockData("id", protocol.Available, protocol.NewBlockWithHeight(100), methodsMock, blockInfo1))
-	time.Sleep(10 * time.Millisecond)
+	awaitChainState(t, chainSupervisor, func(state upstreams.ChainSupervisorState) bool {
+		_, ok := state.Blocks[protocol.FinalizedBlock]
+		return ok
+	})
 
 	upSupervisor := mocks.NewUpstreamSupervisorMock()
 	upSupervisor.On("GetChainSupervisor", mock.Anything).Return(chainSupervisor)
@@ -400,8 +411,8 @@ func TestCachePolicyAnyMethodThenReceiveAndStoreResult(t *testing.T) {
 			request := protocol.NewUpstreamJsonRpcRequest("1", body, false, "eth")
 
 			result, ok := policy.Receive(context.Background(), chains.POLYGON, request)
-			assert.True(t, ok)
-			assert.True(t, bytes.Equal(result, result1))
+			assert.True(te, ok)
+			assert.True(te, bytes.Equal(result, result1))
 
 			ok = policy.Store(context.Background(), chains.POLYGON, request, result1)
 			assert.True(te, ok)
@@ -590,4 +601,13 @@ func TestCachePolicyLabelSelectorsNamespaceTheCacheKey(t *testing.T) {
 
 	connectorMock.AssertExpectations(t)
 	upSupervisor.AssertExpectations(t)
+}
+
+// awaitChainState waits until the chain supervisor, which processes upstream
+// events on its own goroutine, has published a state satisfying ready.
+func awaitChainState(t *testing.T, chainSupervisor upstreams.ChainSupervisor, ready func(upstreams.ChainSupervisorState) bool) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return ready(chainSupervisor.GetChainState())
+	}, 5*time.Second, time.Millisecond)
 }
