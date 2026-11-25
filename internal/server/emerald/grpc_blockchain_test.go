@@ -519,6 +519,34 @@ func TestNativeCallUnauthenticated(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not exist")
 }
 
+func TestDescribeUnauthenticated(t *testing.T) {
+	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)), signature.NewDisabledSigner())
+
+	_, err := service.Describe(context.Background(), &dshackle.DescribeRequest{})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.Contains(t, err.Error(), "no metadata")
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionid", "unknown"))
+	_, err = service.Describe(ctx, &dshackle.DescribeRequest{})
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.Contains(t, err.Error(), "does not exist")
+}
+
+func TestDescribeAcceptsValidSession(t *testing.T) {
+	store := newGrpcSessionStore(time.Minute)
+	store.Put("known")
+	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, store), signature.NewDisabledSigner())
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("sessionid", "known"))
+	_, err := service.Describe(ctx, &dshackle.DescribeRequest{})
+	// the session passed; with no app context the next gate answers
+	require.Error(t, err)
+	assert.Equal(t, codes.Unavailable, status.Code(err))
+	assert.Contains(t, err.Error(), "upstream supervisor is not configured")
+}
+
 func TestNativeSubscribeUnauthenticated(t *testing.T) {
 	service := NewGrpcBlockchainService(nil, newGrpcSessionAuth(true, newGrpcSessionStore(time.Minute)), signature.NewDisabledSigner())
 	stream := &testNativeSubscribeStream{ctx: context.Background()}
