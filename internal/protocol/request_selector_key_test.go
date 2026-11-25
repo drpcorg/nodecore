@@ -3,6 +3,7 @@ package protocol_test
 import (
 	"testing"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/drpcorg/nodecore/internal/protocol"
 	"github.com/stretchr/testify/assert"
 )
@@ -422,4 +423,26 @@ func TestLabelCacheKeyIncludesVersionSelector(t *testing.T) {
 		protocol.LabelCacheKey(sel(and(label("type", "a"), protocol.RequestVersionSelector{Min: "1.2.0"}))),
 		protocol.LabelCacheKey(sel(and(protocol.RequestVersionSelector{Min: "1.2.0"}, label("type", "a")))),
 	)
+}
+
+func TestUpstreamIdSelectorKeyIsSortedAndDeduplicated(t *testing.T) {
+	a := protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("b", "a")}
+	b := protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("a", "b", "a")}
+	assert.Equal(t, "upstream(a|b)", a.Key())
+	assert.Equal(t, a.Key(), b.Key())
+	assert.NotEqual(t, a.Key(), protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("a")}.Key())
+}
+
+// the mark says who asked for the group, not which upstreams are admitted
+func TestGroupLabelSelectorKeyIgnoresRoutingHeaderMark(t *testing.T) {
+	fromKey := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}}
+	fromHeader := protocol.RequestGroupLabelSelector{Labels: []string{"archive"}, FromRoutingHeader: true}
+	assert.Equal(t, fromKey.Key(), fromHeader.Key())
+}
+
+// naming upstreams picks which nodes answer, not what they answer, so it
+// must not split the cache
+func TestLabelCacheKeyIgnoresUpstreamIdSelector(t *testing.T) {
+	ids := protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("a")}
+	assert.Empty(t, protocol.LabelCacheKey([]protocol.RequestSelector{ids}))
 }

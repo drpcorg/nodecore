@@ -754,3 +754,69 @@ func TestGrpcRequestHandlerAcceptsGrpcAdditionalMethod(t *testing.T) {
 	assert.Equal(t, "/protocol.WalletSolidity/GetAccount", request.UpstreamRequests[0].Method())
 	assert.Equal(t, protocol.Grpc, request.UpstreamRequests[0].RequestType())
 }
+
+// routingIngress serves sui from the single upstream "id" with the
+// routing-headers option set as asked. The connector records what reached it:
+// the request's selectors and the metadata forwarded to the upstream.
+func routingIngress(t *testing.T, enabled bool) (*grpc.ClientConn, *mocks.ConnectorMock, *protocol.RequestHolder) {
+	t.Helper()
+	var sent protocol.RequestHolder
+	connector := mocks.NewConnectorMockWithType(specs.GrpcConnector)
+	respBytes, err := proto.Marshal(&sui.GetServiceInfoResponse{Chain: new("mainnet")})
+	require.NoError(t, err)
+	connector.On("SendRequest", mock.Anything, mock.MatchedBy(func(r protocol.RequestHolder) bool {
+		sent = r
+		return true
+	})).Return(protocol.NewGrpcUpstreamResponse("1", respBytes)).Maybe()
+
+	appCtx := ingressAppCtx(t, connector)
+	appCtx.AppConfig.ServerConfig = &config.ServerConfig{RoutingHeaders: enabled}
+	return startIngressServer(t, appCtx, nil), connector, &sent
+}
+
+func invokeWithMetadata(t *testing.T, conn *grpc.ClientConn, pairs ...string) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+	ctx = metadata.AppendToOutgoingContext(ctx, append([]string{"x-nodecore-chain", "sui"}, pairs...)...)
+	return conn.Invoke(ctx, suiGetServiceInfo, &sui.GetServiceInfoRequest{}, &sui.GetServiceInfoResponse{})
+}
+
+// the routing metadata restricts the call and is consumed by the ingress
+func TestChainIngressAppliesRoutingMetadata(t *testing.T) {
+	conn, _, sent := routingIngress(t, true)
+
+	require.NoError(t, invokeWithMetadata(t, conn, "x-nodecore-upstream-id", "id", "x-custom-meta", "keep-me"))
+
+	require.NotNil(t, *sent)
+	assert.Equal(t,
+		[]protocol.RequestSelector{protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("id")}},
+		(*sent).Selectors(),
+	)
+	forwarded := metadata.MD((*sent).RequestParams().Headers)
+	assert.Equal(t, []string{"keep-me"}, forwarded.Get("x-custom-meta"))
+	assert.Empty(t, forwarded.Get("x-nodecore-upstream-id"))
+}
+
+// naming an upstream the chain does not have is an error, never a fallback
+func TestChainIngressRoutingMetadataNamingAnotherUpstreamFails(t *testing.T) {
+	conn, connector, _ := routingIngress(t, true)
+
+	err := invokeWithMetadata(t, conn, "x-nodecore-upstream-id", "other")
+
+	require.Error(t, err)
+	connector.AssertNotCalled(t, "SendRequest", mock.Anything, mock.Anything)
+}
+
+// off by default: the metadata restricts nothing, and still never reaches the upstream
+func TestChainIngressIgnoresRoutingMetadataWhenOptionOff(t *testing.T) {
+	conn, _, sent := routingIngress(t, false)
+
+	require.NoError(t, invokeWithMetadata(t, conn, "x-nodecore-upstream-id", "other", "x-nodecore-group-label", "archive"))
+
+	require.NotNil(t, *sent)
+	assert.Empty(t, (*sent).Selectors())
+	forwarded := metadata.MD((*sent).RequestParams().Headers)
+	assert.Empty(t, forwarded.Get("x-nodecore-upstream-id"))
+	assert.Empty(t, forwarded.Get("x-nodecore-group-label"))
+}

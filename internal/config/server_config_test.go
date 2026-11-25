@@ -30,6 +30,8 @@ func TestServerConfig(t *testing.T) {
 	}
 
 	assert.Equal(t, &expected, appConfig.ServerConfig)
+	// the routing headers are opt-in
+	assert.False(t, appConfig.ServerConfig.RoutingHeaders)
 }
 
 func TestServerConfigTrustedProxiesParsedOnce(t *testing.T) {
@@ -129,6 +131,14 @@ func TestServerConfigLimits(t *testing.T) {
 	assert.Equal(t, "2MB", appConfig.ServerConfig.Limits.MaxRequestSize)
 	assert.Equal(t, int64(2*1024*1024), appConfig.ServerConfig.Limits.MaxRequestBytes())
 	assert.Equal(t, 100, appConfig.ServerConfig.Limits.MaxBatchSize)
+}
+
+func TestServerConfigRoutingHeaders(t *testing.T) {
+	t.Setenv(config.ConfigPathVar, "configs/server/server-config-routing-headers.yaml")
+	appConfig, err := config.NewAppConfig()
+	require.NoError(t, err)
+
+	assert.True(t, appConfig.ServerConfig.RoutingHeaders)
 }
 
 // The limits are opt-in: a config that does not mention them limits nothing.

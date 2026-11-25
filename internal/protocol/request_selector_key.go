@@ -66,6 +66,14 @@ func (s RequestGroupLabelSelector) Key() string {
 	return fmt.Sprintf("group(%s)", strings.Join(labels, "|"))
 }
 
+// Key sorts the ids: set iteration order is random, and the key decides which
+// subscriptions share an upstream subscription.
+func (s RequestUpstreamIdSelector) Key() string {
+	ids := s.Ids.ToSlice()
+	sort.Strings(ids)
+	return fmt.Sprintf("upstream(%s)", strings.Join(ids, "|"))
+}
+
 func selectorGroupKey(children []RequestSelector) string {
 	parts := make([]string, 0, len(children))
 	for _, child := range children {
@@ -142,9 +150,9 @@ func labelClassKey(selector RequestSelector) string {
 		return fmt.Sprintf("not(%s)", key)
 	default:
 		// RequestAnySelector, height/slot/tag/lower-bound, unsupported, nil:
-		// no node-class constraint. RequestGroupLabelSelector restricts routing
-		// (which upstreams may serve), not the response, so keys sharing data
-		// keep sharing cache entries.
+		// no node-class constraint. RequestGroupLabelSelector and
+		// RequestUpstreamIdSelector restrict routing (which upstreams may serve),
+		// not the response, so keys sharing data keep sharing cache entries.
 		return ""
 	}
 }

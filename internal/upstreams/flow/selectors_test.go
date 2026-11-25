@@ -102,3 +102,11 @@ func TestSelectorCompilesVersionSelectorIntoRangeMatcher(t *testing.T) {
 	_, ok := matchers[0].(*VersionRangeMatcher)
 	assert.True(t, ok)
 }
+
+func TestCompileSelectorMapsUpstreamIdSelector(t *testing.T) {
+	matcher, order := compileSelector(protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("a")}, nil, nil)
+
+	assert.Nil(t, order)
+	assert.IsType(t, &UpstreamIdMatcher{}, matcher)
+	assert.Equal(t, SuccessType, matcher.Match("a", &protocol.UpstreamState{}).Type())
+}

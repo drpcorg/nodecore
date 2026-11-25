@@ -594,6 +594,12 @@ How groups are traversed:
 The per-upstream `group-labels` field (see [Fields](#fields)) assigns an upstream to one or
 more groups. Labels not present in `order` route the upstream to the default group.
 
+A request that carries a [routing header](02-server-config.md#routing-headers)
+(`X-Nodecore-Group-Label` or `X-Nodecore-Upstream-Id`, when `server.routing-headers` is on) is
+not routed by label-balancing: the client named what it wants, so the group order,
+`pass-on-error` and `include-default` are skipped for that request and the chain's
+[`balancing-strategy`](#balancing-strategy) orders the upstreams the header admits.
+
 ## balancing-strategy
 
 ```yaml

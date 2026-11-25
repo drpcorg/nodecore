@@ -196,6 +196,7 @@ Every other method passes this check untouched, including ones that reach the sa
 
 > **⚠️ Local pending-transaction subscriptions do not honor the restriction yet.** The [local](13-subscriptions.md#local-subscriptions-vs-node-backed-passthrough) `newPendingTransactions` and `drpc_pendingTransactions` sources merge every upstream of the chain, so a restricted key subscribing to them is served from all upstreams. Until they honor it, disable `enable-new-pending-transactions` under [`chain-defaults.<chain>.local-subscriptions`](05-upstream-config.md#chain-defaults) on chains with restricted keys: `newPendingTransactions` then becomes node-backed and respects the restriction. `drpc_pendingTransactions` is always local and cannot be switched off this way.
 * The cache is shared: the restriction chooses which nodes answer, not what they answer.
+* The [routing headers](02-server-config.md#routing-headers) narrow within the key's upstreams and never widen them: a restricted key naming an upstream outside its labels gets `no available upstreams`. A request of the key that carries such a header is ordered by the chain's `balancing-strategy` for that request, not by `label-balancing`.
 
 Every listed label must be carried by at least one configured upstream, otherwise nodecore fails to start — a mistyped label would otherwise leave the key with no upstream at all. The restriction is available for `local` keys only.
 

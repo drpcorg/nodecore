@@ -34,6 +34,10 @@ type ServerConfig struct {
 	// default) keeps the legacy behavior of treating every X-Forwarded-For entry
 	// as a client IP.
 	TrustedProxies []string `yaml:"trusted-proxies,omitempty"`
+	// RoutingHeaders lets a client restrict a request to a config group-label
+	// (X-Nodecore-Group-Label) or to named upstreams (X-Nodecore-Upstream-Id).
+	// Off by default: the headers override the routing the operator configured.
+	RoutingHeaders bool `yaml:"routing-headers,omitempty"`
 	// Limits bounds what a single client request may ask of nodecore. Nothing
 	// is limited unless a field is set.
 	Limits *LimitsConfig `yaml:"limits,omitempty"`

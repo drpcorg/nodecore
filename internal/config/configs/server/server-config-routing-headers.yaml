@@ -1,0 +1,11 @@
+server:
+  port: 9095
+  routing-headers: true
+
+upstream-config:
+  upstreams:
+    - id: eth-upstream
+      chain: ethereum
+      connectors:
+        - type: json-rpc
+          url: https://test.com

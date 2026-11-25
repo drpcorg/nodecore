@@ -44,6 +44,8 @@ Metadata keys are case-insensitive.
 | `x-nodecore-key` | Access key, when [key management](03-auth.md) is enabled — the metadata twin of the `X-Nodecore-Key` header |
 | `x-nodecore-token` | Static token, when the `token` [request strategy](03-auth.md#request-strategy) is enabled |
 | `authorization` | `Bearer <jwt>`, when the `jwt` request strategy is enabled |
+| `x-nodecore-group-label` | Restricts the call to the upstreams carrying this group label, when [`server.routing-headers`](02-server-config.md#routing-headers) is on |
+| `x-nodecore-upstream-id` | Restricts the call to the named upstreams (comma-separated or repeated), when [`server.routing-headers`](02-server-config.md#routing-headers) is on |
 
 Key scoping (allowed/forbidden methods, etc.) applies to full gRPC method names such as
 `/sui.rpc.v2.LedgerService/GetObject`.

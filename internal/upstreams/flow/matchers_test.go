@@ -262,3 +262,13 @@ func TestVersionRangeMatcherRejectsMalformedBounds(t *testing.T) {
 	// fails closed if one reaches it another way.
 	assert.Equal(t, SelectorType, NewVersionRangeMatcher("1.13", "").Match("up", &state).Type())
 }
+
+func TestUpstreamIdMatcher(t *testing.T) {
+	matcher := NewUpstreamIdMatcher(mapset.NewThreadUnsafeSet("b", "a"))
+
+	assert.Equal(t, SuccessType, matcher.Match("a", &protocol.UpstreamState{}).Type())
+
+	miss := matcher.Match("c", &protocol.UpstreamState{})
+	assert.Equal(t, SelectorType, miss.Type())
+	assert.Equal(t, "Upstream id is not among the requested ones", miss.Cause())
+}

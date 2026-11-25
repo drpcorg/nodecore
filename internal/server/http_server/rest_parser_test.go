@@ -149,13 +149,15 @@ func TestParseRestRequest_RestPathWithoutLeadingSlash(t *testing.T) {
 	assert.Equal(t, "POST#/exchange", template, "no double slash in the canonical template")
 }
 
-// nodecore's credential headers are consumed by the ingress and must never
-// enter the request holder; everything else is forwarded
+// nodecore's credential and routing headers are consumed by the ingress and
+// must never enter the request holder; everything else is forwarded
 func TestParseRestRequestStripsReservedCredentialHeaders(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
 	req.Header.Set("X-Nodecore-Key", "secret")
 	req.Header.Set("X-Nodecore-Token", "token")
 	req.Header.Set("Authorization", "Bearer jwt")
+	req.Header.Set("X-Nodecore-Group-Label", "archive")
+	req.Header.Set("X-Nodecore-Upstream-Id", "own-archive")
 	req.Header.Set("X-Custom", "keep")
 
 	_, requestParams, err := parseRestRequest(req, "v2/status", "aptos")
@@ -166,4 +168,6 @@ func TestParseRestRequestStripsReservedCredentialHeaders(t *testing.T) {
 	assert.Empty(t, headers.Get("X-Nodecore-Key"))
 	assert.Empty(t, headers.Get("X-Nodecore-Token"))
 	assert.Empty(t, headers.Get("Authorization"))
+	assert.Empty(t, headers.Get("X-Nodecore-Group-Label"))
+	assert.Empty(t, headers.Get("X-Nodecore-Upstream-Id"))
 }
