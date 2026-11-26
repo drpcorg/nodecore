@@ -30,7 +30,7 @@ RUN go run cmd/chains/init_chains.go && \
 # distroless/static ships CA certificates, tzdata and a built-in nonroot user (uid 65532).
 # debian13: its ca-certificates (20250419+deb13u1) distrusts the compromised eMudhra
 # intermediates; static-debian12 still ships 20250419~deb12u1, which trusts them.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:8ce6dd87e9823c5b48dcfb2c8604714ccb351ce59607327bcc4957448da279b5
 WORKDIR /app
 
 # Copy binary from builder stage
