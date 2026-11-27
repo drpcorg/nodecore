@@ -328,6 +328,17 @@ type RequestUpstreamIdSelector struct {
 
 func (RequestUpstreamIdSelector) isRequestSelector() {}
 
+// RequestUpstreamSelector admits exactly one upstream instance: the upstream
+// whose config id is Id and whose index is Index. The index changes when an
+// upstream is replaced under the same id, so the pair never matches the
+// replacement.
+type RequestUpstreamSelector struct {
+	Id    string
+	Index string
+}
+
+func (RequestUpstreamSelector) isRequestSelector() {}
+
 // SelectorAppender is implemented by request holders that accept selectors
 // after construction. Callers adding a mandatory restriction must treat a
 // holder that does not implement it as an error, never skip the restriction.

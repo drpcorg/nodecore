@@ -154,3 +154,23 @@ func TestMapDshackleVersionSelectorsFailClosedForMalformedVersion(t *testing.T) 
 	unsupported = maxSelector.(protocol.RequestUnsupportedSelector)
 	assert.Contains(t, unsupported.Reason, "max version selector value geth is not a valid semver")
 }
+
+func upstreamSelectorOf(id, index string) *dshackle.Selector {
+	return &dshackle.Selector{SelectorType: &dshackle.Selector_UpstreamSelector{
+		UpstreamSelector: &dshackle.UpstreamSelector{UpstreamId: id, UpstreamIndex: index},
+	}}
+}
+
+// ids and indices are opaque: they are taken as sent, untrimmed
+func TestMapDshackleSelectorMapsUpstreamSelector(t *testing.T) {
+	assert.Equal(t, protocol.RequestUpstreamSelector{Id: "up1", Index: "00003"}, mapDshackleSelector(upstreamSelectorOf("up1", "00003")))
+	assert.Equal(t, protocol.RequestUpstreamSelector{Id: " up1 ", Index: " 3"}, mapDshackleSelector(upstreamSelectorOf(" up1 ", " 3")))
+}
+
+func TestMapDshackleSelectorRejectsIncompleteUpstreamSelector(t *testing.T) {
+	rejected := protocol.RequestUnsupportedSelector{Reason: "upstream selector needs both upstream_id and upstream_index"}
+
+	assert.Equal(t, rejected, mapDshackleSelector(upstreamSelectorOf("", "00003")))
+	assert.Equal(t, rejected, mapDshackleSelector(upstreamSelectorOf("up1", "")))
+	assert.Equal(t, rejected, mapDshackleSelector(&dshackle.Selector{SelectorType: &dshackle.Selector_UpstreamSelector{}}))
+}

@@ -175,6 +175,15 @@ func (u UpstreamIdResponse) Cause() string {
 	return "Upstream id is not among the requested ones"
 }
 
+// UpstreamInstanceResponse does not name the requested instance, for the same
+// reason as UpstreamIdResponse.
+type UpstreamInstanceResponse struct{}
+
+func (u UpstreamInstanceResponse) Type() MatchResponseType { return SelectorType }
+func (u UpstreamInstanceResponse) Cause() string {
+	return "Upstream is not the requested instance"
+}
+
 func flattenResponses(responses []MatchResponse) []MatchResponse {
 	out := make([]MatchResponse, 0, len(responses))
 	for _, r := range responses {

@@ -60,6 +60,21 @@ func (s *GrpcBlockchainService) SubscribeChainStatus(request *dshackle.Subscribe
 	return SubscribeChainStatus(s.appCtx.UpstreamSupervisor, stream)
 }
 
+func (s *GrpcBlockchainService) SubscribeUpstreamStatus(request *dshackle.SubscribeUpstreamStatusRequest, stream dshackle.Blockchain_SubscribeUpstreamStatusServer) error {
+	if err := s.sessionAuth.requireSession(stream.Context()); err != nil {
+		return err
+	}
+	if request == nil {
+		return status.Error(codes.Internal, "request is nil")
+	}
+	if s.appCtx == nil || s.appCtx.UpstreamSupervisor == nil {
+		return status.Error(codes.Unavailable, "upstream supervisor is not configured")
+	}
+
+	minInterval := time.Duration(request.GetMinIntervalMs()) * time.Millisecond
+	return SubscribeUpstreamStatus(s.appCtx.UpstreamSupervisor, stream, minInterval)
+}
+
 func (s *GrpcBlockchainService) Describe(ctx context.Context, _ *dshackle.DescribeRequest) (*dshackle.DescribeResponse, error) {
 	if err := s.sessionAuth.requireSession(ctx); err != nil {
 		return nil, err

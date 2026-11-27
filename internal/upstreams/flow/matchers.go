@@ -247,6 +247,24 @@ func (u *UpstreamIdMatcher) Match(upstreamId string, _ *protocol.UpstreamState) 
 	return UpstreamIdResponse{}
 }
 
+// UpstreamInstanceMatcher admits the one upstream whose config id and index
+// both match - the instance a client named with an upstream selector.
+type UpstreamInstanceMatcher struct {
+	id    string
+	index string
+}
+
+func NewUpstreamInstanceMatcher(id, index string) *UpstreamInstanceMatcher {
+	return &UpstreamInstanceMatcher{id: id, index: index}
+}
+
+func (u *UpstreamInstanceMatcher) Match(upstreamId string, state *protocol.UpstreamState) MatchResponse {
+	if upstreamId == u.id && state != nil && state.UpstreamIndex == u.index {
+		return SuccessResponse{}
+	}
+	return UpstreamInstanceResponse{}
+}
+
 type HeightMatcher struct{ height int64 }
 
 func NewHeightMatcher(height int64) *HeightMatcher { return &HeightMatcher{height: height} }

@@ -154,10 +154,10 @@ func subscribeChainSupervisorStates(
 	}()
 }
 
-func sendResponse(
+func sendResponse[T any](
 	ctx context.Context,
-	responses chan<- *dshackle.SubscribeChainStatusResponse,
-	resp *dshackle.SubscribeChainStatusResponse,
+	responses chan<- T,
+	resp T,
 ) bool {
 	select {
 	case <-ctx.Done():
@@ -184,6 +184,14 @@ func snapshotStateWrappers(state upstreams.ChainSupervisorState) []upstreams.Cha
 }
 
 func stateWrappersToResponse(grpcId int, wrappers []upstreams.ChainSupervisorStateWrapper) *dshackle.SubscribeChainStatusResponse {
+	return &dshackle.SubscribeChainStatusResponse{
+		ChainDescription: wrappersToChainDescription(grpcId, wrappers),
+	}
+}
+
+// wrappersToChainDescription is shared by the chain and the upstream status
+// streams: both describe their subject with the same events.
+func wrappersToChainDescription(grpcId int, wrappers []upstreams.ChainSupervisorStateWrapper) *dshackle.ChainDescription {
 	events := make([]*dshackle.ChainEvent, len(wrappers))
 
 	for i, wrapper := range wrappers {
@@ -205,11 +213,9 @@ func stateWrappersToResponse(grpcId int, wrappers []upstreams.ChainSupervisorSta
 		}
 	}
 
-	return &dshackle.SubscribeChainStatusResponse{
-		ChainDescription: &dshackle.ChainDescription{
-			Chain:      dshackle.ChainRef(grpcId),
-			ChainEvent: events,
-		},
+	return &dshackle.ChainDescription{
+		Chain:      dshackle.ChainRef(grpcId),
+		ChainEvent: events,
 	}
 }
 

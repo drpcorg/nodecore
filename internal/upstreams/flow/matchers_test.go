@@ -272,3 +272,18 @@ func TestUpstreamIdMatcher(t *testing.T) {
 	assert.Equal(t, SelectorType, miss.Type())
 	assert.Equal(t, "Upstream id is not among the requested ones", miss.Cause())
 }
+
+func TestUpstreamInstanceMatcher(t *testing.T) {
+	matcher := NewUpstreamInstanceMatcher("up1", "00003")
+	state := func(index string) *protocol.UpstreamState { return &protocol.UpstreamState{UpstreamIndex: index} }
+
+	assert.Equal(t, SuccessType, matcher.Match("up1", state("00003")).Type())
+	for name, response := range map[string]MatchResponse{
+		"other id":    matcher.Match("up2", state("00003")),
+		"other index": matcher.Match("up1", state("00007")),
+		"nil state":   matcher.Match("up1", nil),
+	} {
+		assert.Equal(t, SelectorType, response.Type(), name)
+		assert.Equal(t, "Upstream is not the requested instance", response.Cause(), name)
+	}
+}

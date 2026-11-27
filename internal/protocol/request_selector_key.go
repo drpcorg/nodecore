@@ -74,6 +74,11 @@ func (s RequestUpstreamIdSelector) Key() string {
 	return fmt.Sprintf("upstream(%s)", strings.Join(ids, "|"))
 }
 
+// Key quotes both fields: an id is free text and may contain the separator.
+func (s RequestUpstreamSelector) Key() string {
+	return fmt.Sprintf("upstream_instance(%q,%q)", s.Id, s.Index)
+}
+
 func selectorGroupKey(children []RequestSelector) string {
 	parts := make([]string, 0, len(children))
 	for _, child := range children {
@@ -150,9 +155,10 @@ func labelClassKey(selector RequestSelector) string {
 		return fmt.Sprintf("not(%s)", key)
 	default:
 		// RequestAnySelector, height/slot/tag/lower-bound, unsupported, nil:
-		// no node-class constraint. RequestGroupLabelSelector and
-		// RequestUpstreamIdSelector restrict routing (which upstreams may serve),
-		// not the response, so keys sharing data keep sharing cache entries.
+		// no node-class constraint. RequestGroupLabelSelector,
+		// RequestUpstreamIdSelector and RequestUpstreamSelector restrict routing
+		// (which upstreams may serve), not the response, so keys sharing data
+		// keep sharing cache entries.
 		return ""
 	}
 }

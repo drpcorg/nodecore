@@ -44,6 +44,10 @@ The main service. Exposes the following RPCs:
 
   Use this to drive a real-time view of which upstreams are healthy, what block heights they are at, and which capability labels they carry.
 
+- **`SubscribeUpstreamStatus(SubscribeUpstreamStatusRequest) → stream SubscribeUpstreamStatusResponse`**
+
+  Server-streaming RPC. The same information as `SubscribeChainStatus`, but for every upstream on its own instead of merged per chain: each response describes one upstream of one chain and names it with `upstream_id` and `upstream_index`. See [Upstream status stream](#upstream-status-stream).
+
 - **`Describe(DescribeRequest) → DescribeResponse`**
 
   Unary RPC. Returns the nodecore build version and one entry per served chain that has a `ChainRef`: its availability, current height, the methods available through `NativeCall`, the subscriptions available through `NativeSubscribe`, and the labels of its upstreams.
@@ -55,6 +59,8 @@ The main service. Exposes the following RPCs:
 - **`NativeCall(NativeCallRequest) → stream NativeCallReplyItem`**
 
   Server-streaming RPC. Executes one or more JSON-RPC calls against a configured chain. The call goes through nodecore's full execution flow - rating-based upstream selection, cache check, retries, hedging, integrity checks - just as if it had arrived over HTTP. Multiple items in one request are returned as separate stream items so a client can read partial results as they complete.
+
+  A request can be bound to one upstream with the `upstream_selector`, see [Upstream selector](#upstream-selector).
 
 - **`NativeSubscribe(NativeSubscribeRequest) → stream NativeSubscribeReplyItem`**
 
@@ -85,6 +91,61 @@ Used only when `server.grpc-auth.enabled: true`. The handshake is a single RPC t
 4. Sessions auto-extend on every successful use, up to `session-ttl` of inactivity. Stale sessions are evicted.
 
 This is the same handshake shape that the DRPC platform uses against its provider fleet. When `grpc-auth.enabled: false`, no session is required and all `BlockchainService` RPCs are open.
+
+## Upstream status stream
+
+`SubscribeUpstreamStatus` lets a client that does its own balancing see every upstream behind a nodecore separately. The response has the fields of `SubscribeChainStatusResponse` (`chain_description`, `build_info`, `full_response`) plus two that identify the upstream:
+
+| field | meaning |
+|---|---|
+| `upstream_id` | the upstream's `id` from the config |
+| `upstream_index` | the index of this upstream instance. It changes when the upstream is replaced under the same id (a config reload), so the pair `upstream_id` + `upstream_index` names one instance |
+
+Both are set on every response. A response is one of four kinds:
+
+| kind | content | when |
+|---|---|---|
+| full | `full_response = true`, `build_info`, and all seven events: status, supported methods, lower bounds, head, finalization blocks, supported subscriptions, node labels | the first time the stream reports this upstream instance |
+| delta | only the events that changed | any later change |
+| resync | all events except the head | once a minute, for every reported upstream |
+| unavailable | one status event, unavailable | the upstream was removed; sent once |
+
+Details a client relies on:
+
+- **The first response waits for a head.** An upstream is reported once it has a head, as a chain is in `SubscribeChainStatus`.
+- **One response may carry several events.** A delta can hold the head together with other events. A client must apply every event of a response.
+- **The resync repairs lost updates.** It repeats the whole upstream without its head. The head is added only when it differs from the last head the stream sent for that upstream, so an unchanged head is never sent twice.
+- **A removed upstream is reported unavailable once** and then no longer mentioned.
+- **A replaced upstream arrives as a full response with a new `upstream_index`.** If the replacement has no head yet, the old instance is reported unavailable first and the full response follows with the head.
+- **Status** is the upstream's own status, including the verdict of the head-lag check.
+- **Labels** are sent as a single node with quorum 1.
+- A chain without a `ChainRef` is not reported.
+
+### Throttling
+
+`min_interval_ms` in the request is the minimum time between two responses about the same upstream instance. `0` (the default) sends every change at once. With a positive value:
+
+- an update about an upstream that was quiet for at least the interval goes out immediately, so the first response about an upstream is never delayed;
+- updates that follow within the interval are held and merged into one response, the latest value of each event winning;
+- the interval counts from when the previous response about that upstream was sent.
+
+The throttle is per upstream: a busy upstream does not delay a quiet one.
+
+The interval does not carry over a removal. Once an upstream has been reported unavailable because it was removed, the stream keeps nothing about it, so an upstream that comes back or is replaced under the same id is a new instance and its full response goes out at once, however recently the unavailable status was sent.
+
+## Upstream selector
+
+`Selector` has the member `upstream_selector` with two fields, `upstream_id` and `upstream_index`. It admits exactly one upstream instance, the one a `SubscribeUpstreamStatus` response named with that pair. Both fields are required; a selector with an empty field is rejected.
+
+For a `NativeCall` or `NativeSubscribe` request that carries it:
+
+- only that instance serves the request. Retries, hedging, dispatch fan-out and integrity re-checks have no other upstream to go to, and the upstream's own error is the response;
+- if the instance cannot serve - it is unavailable, does not support the method, or was replaced and its index no longer matches - the request fails with `no available upstreams`;
+- the request is not routed by `label-balancing`; the chain's `balancing-strategy` applies to the one admitted upstream;
+- the response cache is used as for any other request: the selector decides which upstream may answer, not what the answer is;
+- the locally built pending-transaction subscriptions (`newPendingTransactions`, `drpc_pendingTransactions`) do not apply upstream restrictions, this one included.
+
+The selector combines with the other selectors like any of them.
 
 ## Response signing
 

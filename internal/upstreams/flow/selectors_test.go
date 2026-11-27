@@ -110,3 +110,35 @@ func TestCompileSelectorMapsUpstreamIdSelector(t *testing.T) {
 	assert.IsType(t, &UpstreamIdMatcher{}, matcher)
 	assert.Equal(t, SuccessType, matcher.Match("a", &protocol.UpstreamState{}).Type())
 }
+
+func TestCompileSelectorMapsUpstreamSelector(t *testing.T) {
+	matcher, order := compileSelector(protocol.RequestUpstreamSelector{Id: "a", Index: "00001"}, nil, nil)
+
+	assert.Nil(t, order)
+	assert.IsType(t, &UpstreamInstanceMatcher{}, matcher)
+	assert.Equal(t, SuccessType, matcher.Match("a", &protocol.UpstreamState{UpstreamIndex: "00001"}).Type())
+}
+
+// the selector is an ordinary predicate: it composes under OR and NOT like any other
+func TestUpstreamSelectorUnderOrAndNot(t *testing.T) {
+	up1 := protocol.RequestUpstreamSelector{Id: "up1", Index: "00001"}
+	up2 := protocol.RequestUpstreamSelector{Id: "up2", Index: "00002"}
+	states := map[string]*protocol.UpstreamState{
+		"up1": {UpstreamIndex: "00001"},
+		"up2": {UpstreamIndex: "00002"},
+		"up3": {UpstreamIndex: "00003"},
+	}
+	admitted := func(selector protocol.RequestSelector) []string {
+		matcher, _ := compileSelector(selector, nil, nil)
+		ids := make([]string, 0)
+		for id, state := range states {
+			if matcher.Match(id, state).Type() == SuccessType {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	}
+
+	assert.ElementsMatch(t, []string{"up1", "up2"}, admitted(protocol.RequestOrSelector{Children: []protocol.RequestSelector{up1, up2}}))
+	assert.ElementsMatch(t, []string{"up2", "up3"}, admitted(protocol.RequestNotSelector{Child: up1}))
+}

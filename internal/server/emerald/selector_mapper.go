@@ -68,6 +68,14 @@ func mapDshackleSelector(selector *dshackle.Selector) protocol.RequestSelector {
 			return protocol.RequestAnySelector{}
 		}
 		return protocol.RequestVersionSelector{Max: version}
+	case *dshackle.Selector_UpstreamSelector:
+		// both fields are opaque and taken as sent: an instance is named by
+		// the exact pair the status stream reported
+		id, index := s.UpstreamSelector.GetUpstreamId(), s.UpstreamSelector.GetUpstreamIndex()
+		if id == "" || index == "" {
+			return protocol.RequestUnsupportedSelector{Reason: "upstream selector needs both upstream_id and upstream_index"}
+		}
+		return protocol.RequestUpstreamSelector{Id: id, Index: index}
 	default:
 		return protocol.RequestUnsupportedSelector{Reason: "unsupported selector"}
 	}
