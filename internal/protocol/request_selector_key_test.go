@@ -446,3 +446,19 @@ func TestLabelCacheKeyIgnoresUpstreamIdSelector(t *testing.T) {
 	ids := protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("a")}
 	assert.Empty(t, protocol.LabelCacheKey([]protocol.RequestSelector{ids}))
 }
+
+// an id may contain the separator, so both fields are quoted
+func TestUpstreamSelectorKeyIsInjective(t *testing.T) {
+	a := protocol.RequestUpstreamSelector{Id: "up,1", Index: "00001"}
+	b := protocol.RequestUpstreamSelector{Id: "up", Index: "1,00001"}
+	assert.NotEqual(t, a.Key(), b.Key())
+	assert.NotEqual(t, a.Key(), protocol.RequestUpstreamIdSelector{Ids: mapset.NewThreadUnsafeSet("up,1")}.Key())
+	assert.Equal(t, a.Key(), protocol.RequestUpstreamSelector{Id: "up,1", Index: "00001"}.Key())
+}
+
+// naming one upstream instance picks which node answers, not what it answers
+func TestLabelCacheKeyIgnoresUpstreamSelector(t *testing.T) {
+	selector := protocol.RequestUpstreamSelector{Id: "up1", Index: "00001"}
+	assert.Empty(t, protocol.LabelCacheKey([]protocol.RequestSelector{selector}))
+	assert.Empty(t, protocol.LabelCacheKey([]protocol.RequestSelector{protocol.RequestAndSelector{Children: []protocol.RequestSelector{selector}}}))
+}

@@ -210,7 +210,7 @@ func (e *GenericExecutionFlow) createStrategy(ctx context.Context, request proto
 	}
 	// a client that named a group or upstreams itself is not walked through the
 	// label-balancing groups: the chain's balancing strategy orders what it admitted
-	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil && !hasRoutingHeaderSelector(request.Selectors()) {
+	if cfg := e.appConfig.UpstreamConfig.LabelBalancingFor(e.chain.String()); cfg != nil && !hasClientRoutingSelector(request.Selectors()) {
 		return NewLabelGroupStrategy(e.chain, request.Method(), cfg, chainSupervisor, e.upstreamSupervisor, e.registry).
 			WithAdditionalMatchers(additionalMatchers).
 			WithOrder(order)

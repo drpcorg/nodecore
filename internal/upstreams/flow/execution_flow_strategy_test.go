@@ -182,6 +182,67 @@ func TestCreateStrategyUpstreamIdSkipsLabelBalancing(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// newLabelBalancedExec publishes every upstream with this index
+const labelBalancedIndex = "index"
+
+func upstreamSelector(id, index string) protocol.RequestUpstreamSelector {
+	return protocol.RequestUpstreamSelector{Id: id, Index: index}
+}
+
+// plain-up is outside the label order and the default group is off: only a
+// request that skips label-balancing reaches it
+func TestCreateStrategyUpstreamSelectorSkipsLabelBalancing(t *testing.T) {
+	exec := newLabelBalancedExec(t, "")
+	request := routedRequest(false, upstreamSelector("plain-up", labelBalancedIndex))
+
+	strategy := exec.createStrategy(context.Background(), request)
+
+	assert.IsType(t, &RatingStrategy{}, strategy)
+	upstreamId, err := strategy.SelectUpstream(request)
+	assert.NoError(t, err)
+	assert.Equal(t, "plain-up", upstreamId)
+	_, err = strategy.SelectUpstream(request) // a retry has nowhere else to go
+	assert.Error(t, err)
+}
+
+func TestCreateStrategyUpstreamSelectorUnderAndSkipsLabelBalancing(t *testing.T) {
+	exec := newLabelBalancedExec(t, "")
+	request := routedRequest(false, protocol.RequestAndSelector{Children: []protocol.RequestSelector{
+		protocol.RequestAndSelector{Children: []protocol.RequestSelector{upstreamSelector("plain-up", labelBalancedIndex)}},
+	}})
+
+	strategy := exec.createStrategy(context.Background(), request)
+
+	assert.IsType(t, &RatingStrategy{}, strategy)
+	upstreamId, err := strategy.SelectUpstream(request)
+	assert.NoError(t, err)
+	assert.Equal(t, "plain-up", upstreamId)
+	_, err = strategy.SelectUpstream(request)
+	assert.Error(t, err)
+}
+
+// under OR the selector no longer names one upstream, so the request stays
+// under label-balancing
+func TestCreateStrategyUpstreamSelectorUnderOrKeepsLabelBalancing(t *testing.T) {
+	exec := newLabelBalancedExec(t, "")
+	request := routedRequest(false, protocol.RequestOrSelector{Children: []protocol.RequestSelector{
+		upstreamSelector("plain-up", labelBalancedIndex),
+		upstreamSelector("full-up", labelBalancedIndex),
+	}})
+
+	assert.IsType(t, &LabelGroupStrategy{}, exec.createStrategy(context.Background(), request))
+}
+
+// the index of a replaced upstream no longer matches: nothing else is tried
+func TestCreateStrategyUpstreamSelectorWrongIndexHasNoUpstream(t *testing.T) {
+	exec := newLabelBalancedExec(t, "")
+	request := routedRequest(false, upstreamSelector("plain-up", "00042"))
+
+	_, err := exec.createStrategy(context.Background(), request).SelectUpstream(request)
+
+	assert.Error(t, err)
+}
+
 func TestCreateStrategyUpstreamIdUsesBaseWhenConfigured(t *testing.T) {
 	exec := newLabelBalancedExec(t, config.BaseBalancingStrategy)
 	request := routedRequest(false, upstreamIdSelector("archive-up", "plain-up"))
